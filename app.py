@@ -389,8 +389,128 @@ def api_item_streams(item_id):
 
 
 
+@app.route('/hls/<item_id>/master.m3u8')
+def proxy_hls_master(item_id):
+    """Lightweight HLS master playlist proxy - keeps Emby internal"""
+    try:
+        from flask import Response
+        import re
+
+        # Forward all query parameters from client
+        query_string = request.query_string.decode('utf-8')
+
+        # Build Emby URL
+        emby_url = f"{EMBY_SERVER_URL}/emby/Videos/{item_id}/master.m3u8"
+        if query_string:
+            emby_url += f"?{query_string}"
+
+        logger.debug(f"Proxying HLS master: {emby_url}")
+
+        # Fetch from Emby (internal network only)
+        emby_response = requests.get(emby_url, headers=emby_client.headers)
+        emby_response.raise_for_status()
+
+        # Rewrite URLs in the playlist to point to our proxy
+        playlist_content = emby_response.text
+
+        # Replace absolute Emby URLs with proxy URLs
+        # Pattern: http://server/emby/Videos/ITEMID/path → /hls/ITEMID/path
+        playlist_content = re.sub(
+            rf'{re.escape(EMBY_SERVER_URL)}/emby/Videos/{item_id}/',
+            f'/hls/{item_id}/',
+            playlist_content
+        )
+
+        # Also handle relative URLs that might start with just the path
+        # Pattern: /emby/Videos/ITEMID/path → /hls/ITEMID/path
+        playlist_content = re.sub(
+            rf'/emby/Videos/{item_id}/',
+            f'/hls/{item_id}/',
+            playlist_content
+        )
+
+        logger.debug(f"Rewritten playlist URLs to use /hls/{item_id}/ prefix")
+
+        # Return with CORS headers
+        response = Response(playlist_content, mimetype='application/vnd.apple.mpegurl')
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Range'
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Error proxying HLS master: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
+@app.route('/hls/<item_id>/<path:subpath>')
+def proxy_hls_segment(item_id, subpath):
+    """Lightweight HLS segment/playlist proxy - keeps Emby internal"""
+    try:
+        from flask import Response
+        import re
+
+        # Forward all query parameters
+        query_string = request.query_string.decode('utf-8')
+
+        emby_url = f"{EMBY_SERVER_URL}/emby/Videos/{item_id}/{subpath}"
+        if query_string:
+            emby_url += f"?{query_string}"
+
+        logger.debug(f"Proxying HLS segment: {subpath}")
+
+        # Fetch from Emby (internal network only)
+        emby_response = requests.get(emby_url, headers=emby_client.headers, stream=True)
+        emby_response.raise_for_status()
+
+        # Determine content type
+        content_type = emby_response.headers.get('Content-Type', 'application/octet-stream')
+        if subpath.endswith('.m3u8'):
+            content_type = 'application/vnd.apple.mpegurl'
+        elif subpath.endswith('.ts'):
+            content_type = 'video/MP2T'
+
+        # If this is a playlist (.m3u8), rewrite URLs
+        if subpath.endswith('.m3u8'):
+            playlist_content = emby_response.text
+
+            # Replace absolute Emby URLs with proxy URLs
+            playlist_content = re.sub(
+                rf'{re.escape(EMBY_SERVER_URL)}/emby/Videos/{item_id}/',
+                f'/hls/{item_id}/',
+                playlist_content
+            )
+
+            # Also handle relative URLs
+            playlist_content = re.sub(
+                rf'/emby/Videos/{item_id}/',
+                f'/hls/{item_id}/',
+                playlist_content
+            )
+
+            response = Response(playlist_content, mimetype=content_type)
+        else:
+            # For binary content (.ts files), stream as-is
+            def generate():
+                for chunk in emby_response.iter_content(chunk_size=8192):
+                    if chunk:
+                        yield chunk
+
+            response = Response(generate(), mimetype=content_type)
+
+            if 'Content-Length' in emby_response.headers:
+                response.headers['Content-Length'] = emby_response.headers['Content-Length']
+
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Range'
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Error proxying HLS segment {subpath}: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/image/<item_id>')
@@ -576,8 +696,8 @@ def handle_select_video(data):
             params.append(f"SubtitleStreamIndex={subtitle_index}")
             params.append("SubtitleMethod=Encode")  # Burn subtitles into video
 
-        # Use direct Emby URL (no proxy needed)
-        stream_url = f"{EMBY_SERVER_URL}/emby/Videos/{item_id}/master.m3u8?{'&'.join(params)}"
+        # Use Flask proxy URL to keep Emby internal
+        stream_url = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"
     else:
         logger.error(f"Could not get playback info for item {item_id}")
         emit('error', {'message': 'Failed to load video'})
@@ -702,7 +822,8 @@ def handle_change_streams(data):
             params.append(f"SubtitleStreamIndex={subtitle_index}")
             params.append("SubtitleMethod=Encode")  # Burn subtitles into video
 
-        stream_url = f"{EMBY_SERVER_URL}/emby/Videos/{item_id}/master.m3u8?{'&'.join(params)}"
+        # Use Flask proxy URL to keep Emby internal
+        stream_url = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"
     else:
         logger.error(f"Could not get playback info for item {item_id}")
         emit('error', {'message': 'Failed to change streams'})
