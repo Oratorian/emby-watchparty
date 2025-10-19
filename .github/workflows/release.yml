@@ -1,0 +1,94 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get the version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create config.py.example
+        run: |
+          cat > config.py.example << 'EOF'
+          import os
+
+          # Logging configuration
+          LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+          LOG_FILE = os.getenv('LOG_FILE', 'logs/emby-watchparty.log')
+          LOG_FORMAT = 'rsyslog'  # rsyslog-style formatting
+          LOG_MAX_SIZE = 10 * 1024 * 1024  # 10MB
+          CONSOLE_LOG_LEVEL = 'WARNING'  # Only show warnings/errors in console
+
+          # Emby configuration
+          EMBY_SERVER_URL = os.getenv('EMBY_SERVER_URL', 'http://your-emby-server:8096')
+          EMBY_API_KEY = os.getenv('EMBY_API_KEY', 'your-api-key-here')
+          EMBY_USERNAME = os.getenv('EMBY_USERNAME', 'your-username')
+          EMBY_PASSWORD = os.getenv('EMBY_PASSWORD', 'your-password')
+          EOF
+
+      - name: Create release archive
+        run: |
+          # Create a clean directory for the release
+          mkdir -p emby-watchparty-${{ steps.get_version.outputs.VERSION }}
+
+          # Copy application files (exclude .git, __pycache__, logs, config.py)
+          rsync -av --progress . emby-watchparty-${{ steps.get_version.outputs.VERSION }}/ \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='logs' \
+            --exclude='config.py' \
+            --exclude='.vscode' \
+            --exclude='.idea' \
+            --exclude='*.swp' \
+            --exclude='.DS_Store' \
+            --exclude='venv' \
+            --exclude='env' \
+            --exclude='.venv'
+
+          # Create the zip file
+          zip -r emby-watchparty-${{ steps.get_version.outputs.VERSION }}.zip emby-watchparty-${{ steps.get_version.outputs.VERSION }}/
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: emby-watchparty-${{ steps.get_version.outputs.VERSION }}.zip
+          body: |
+            ## Emby Watch Party v${{ steps.get_version.outputs.VERSION }}
+
+            ### Installation
+            1. Download and extract `emby-watchparty-${{ steps.get_version.outputs.VERSION }}.zip`
+            2. Copy `config.py.example` to `config.py` and configure your Emby server details
+            3. Install dependencies: `pip install -r requirements.txt`
+            4. Run: `python app.py`
+            5. Open browser to `http://localhost:5000`
+
+            ### What's Included
+            - Complete application source code
+            - Requirements file for easy dependency installation
+            - Example configuration file
+            - README with full documentation
+            - MIT License
+
+            ### Requirements
+            - Python 3.8 or higher
+            - Emby server with user account credentials
+            - Modern web browser
+
+            See [README.md](https://github.com/Oratorian/emby-watchparty/blob/main/README.md) for full documentation.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

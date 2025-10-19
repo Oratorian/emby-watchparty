@@ -25,6 +25,7 @@ wheels/
 
 # Environment variables
 .env
+*.zip
 
 # IDE
 .vscode/
