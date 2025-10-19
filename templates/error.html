@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch Party Not Found</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Emby Watch Party</h1>
+        </header>
+
+        <main>
+            <div class="card" style="max-width: 600px; margin: 0 auto; text-align: center;">
+                <div style="font-size: 4rem; margin-bottom: 1rem;">🎬</div>
+                <h2 style="color: #f56565; margin-bottom: 1rem;">Watch Party Not Found</h2>
+                <p style="color: #666; margin-bottom: 2rem;">
+                    {{ message or "The watch party you're looking for doesn't exist or has ended." }}
+                </p>
+                <p style="color: #888; margin-bottom: 2rem;">
+                    Party Code: <strong style="color: #333; font-family: monospace;">{{ party_id }}</strong>
+                </p>
+                <a href="/" class="btn btn-primary" style="text-decoration: none; display: inline-block;">
+                    Return to Home
+                </a>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

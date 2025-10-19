@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emby Watch Party</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Emby Watch Party</h1>
+            <p>Watch together, wherever you are</p>
+        </header>
+
+        <main>
+            <div class="action-cards">
+                <div class="card">
+                    <h2>Create Watch Party</h2>
+                    <p>Start a new watch party and invite friends to join</p>
+                    <button id="createPartyBtn" class="btn btn-primary">Create Party</button>
+                </div>
+
+                <div class="card">
+                    <h2>Join Watch Party</h2>
+                    <p>Enter a party code to join an existing watch party</p>
+                    <input type="text" id="partyCodeInput" placeholder="Enter party code" />
+                    <button id="joinPartyBtn" class="btn btn-secondary">Join Party</button>
+                </div>
+            </div>
+
+            <div id="status"></div>
+        </main>
+    </div>
+
+    <script>
+        const createPartyBtn = document.getElementById('createPartyBtn');
+        const joinPartyBtn = document.getElementById('joinPartyBtn');
+        const partyCodeInput = document.getElementById('partyCodeInput');
+        const status = document.getElementById('status');
+
+        createPartyBtn.addEventListener('click', async () => {
+            try {
+                createPartyBtn.disabled = true;
+                status.textContent = 'Creating party...';
+
+                const response = await fetch('/api/party/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    window.location.href = data.url;
+                } else {
+                    status.textContent = 'Error creating party';
+                    createPartyBtn.disabled = false;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                status.textContent = 'Error creating party';
+                createPartyBtn.disabled = false;
+            }
+        });
+
+        joinPartyBtn.addEventListener('click', () => {
+            const partyCode = partyCodeInput.value.trim();
+
+            if (!partyCode) {
+                status.textContent = 'Please enter a party code';
+                return;
+            }
+
+            window.location.href = `/party/${partyCode}`;
+        });
+
+        partyCodeInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                joinPartyBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>

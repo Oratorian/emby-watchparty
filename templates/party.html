@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch Party - {{ party_id }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+<body class="party-page">
+    <div class="party-container">
+        <!-- Header -->
+        <header class="party-header">
+            <div>
+                <h1>Watch Party</h1>
+                <div class="party-code">
+                    Party Code: <strong id="partyCode">{{ party_id }}</strong>
+                    <button id="copyCodeBtn" class="btn-small">Copy</button>
+                </div>
+            </div>
+            <div class="user-info">
+                <span id="userCount">0 users</span>
+                <button id="leavePartyBtn" class="btn-small btn-danger">Leave</button>
+            </div>
+        </header>
+
+        <!-- Main content -->
+        <div class="party-content">
+            <!-- Left sidebar - Library browser -->
+            <aside class="library-sidebar" id="librarySidebar">
+                <div class="sidebar-header">
+                    <h2>Browse Library</h2>
+                    <button id="toggleSidebarBtn" class="btn-small">Hide</button>
+                </div>
+
+                <div class="library-nav">
+                    <button class="nav-btn active" data-type="libraries">Libraries</button>
+                    <button class="nav-btn" data-type="movies">Movies</button>
+                    <button class="nav-btn" data-type="shows">TV Shows</button>
+                </div>
+
+                <div id="libraryContent" class="library-content">
+                    <p>Loading...</p>
+                </div>
+            </aside>
+
+            <!-- Main video area -->
+            <main class="video-area">
+                <div id="noVideoState" class="no-video-state">
+                    <div class="placeholder">
+                        <h2>No video selected</h2>
+                        <p>Browse the library and select a video to start watching together</p>
+                    </div>
+                </div>
+
+                <div id="videoPlayer" class="video-player" style="display: none;">
+                    <video id="videoElement" controls width="100%" preload="auto" crossorigin="anonymous">
+                        Your browser does not support the video tag.
+                    </video>
+
+                    <div class="video-controls">
+                        <div class="stream-controls">
+                            <div class="stream-control-group">
+                                <label for="audioSelect">Audio:</label>
+                                <select id="audioSelect" class="stream-select">
+                                    <option value="">Loading...</option>
+                                </select>
+                            </div>
+                            <div class="stream-control-group">
+                                <label for="subtitleSelect">Subtitles:</label>
+                                <select id="subtitleSelect" class="stream-select">
+                                    <option value="">Loading...</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="video-info">
+                        <h2 id="videoTitle">Video Title</h2>
+                        <p id="videoDescription"></p>
+                    </div>
+                </div>
+
+                <!-- Chat -->
+                <div class="chat-container">
+                    <div class="chat-header">
+                        <h3>Chat</h3>
+                    </div>
+                    <div id="chatMessages" class="chat-messages"></div>
+                    <div class="chat-input">
+                        <input type="text" id="chatInput" placeholder="Type a message..." />
+                        <button id="sendChatBtn" class="btn-small">Send</button>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Username modal -->
+    <div id="usernameModal" class="modal">
+        <div class="modal-content">
+            <h2>Join Watch Party</h2>
+            <p>Enter your name (or leave blank for random name):</p>
+            <input type="text" id="usernameInput" placeholder="Your name (optional)" />
+            <button id="joinBtn" class="btn btn-primary">Join</button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/party.js') }}"></script>
+</body>
+</html>
