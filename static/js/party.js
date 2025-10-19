@@ -526,7 +526,6 @@ socket.on('sync_state', (data) => {
             }, { once: true });
         }
     }
-    }
 });
 
 socket.on('video_selected', (data) => {
