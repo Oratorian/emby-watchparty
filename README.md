@@ -10,6 +10,7 @@ A synchronized watch party application for Emby media servers. Watch videos toge
 
 ## Features
 
+- **Secure Proxy Architecture**: Emby server stays on your local network - never exposed to the internet
 - **HLS Streaming**: High-quality HTTP Live Streaming with adaptive bitrate and buffering
 - **Real-time synchronization**: Watch videos together with automatic play/pause/seek synchronization
 - **Library browsing**: Browse your entire Emby library and select videos to watch
@@ -26,9 +27,10 @@ A synchronized watch party application for Emby media servers. Watch videos toge
 ### Prerequisites
 
 - Python 3.8 or higher
-- An Emby server with API access
+- An Emby server (can be on local/internal network only)
 - Emby user account credentials (username and password)
-- Emby must be accessible from outside - use VPNs like Tailscale or Hamachi if port forwarding is not possible
+- Flask app must be accessible to remote users - use VPNs like Tailscale or Hamachi if port forwarding is not possible
+- **Note:** Emby server does NOT need to be exposed to the internet - the Flask app acts as a secure proxy
 
 ### Installation
 
@@ -143,8 +145,8 @@ Each room maintains:
 #### Synchronization
 When any user performs an action (play/pause/seek), it's broadcast to all users in the room via WebSocket, ensuring everyone stays in sync. The application uses a coordinated pause-seek-buffer-resume flow to prevent desynchronization during seeking operations.
 
-#### Authentication
-The application authenticates with Emby using username/password credentials to obtain an AccessToken, which is then used for all HLS streaming requests. This ensures secure access to your media library.
+#### Authentication & Security
+The application authenticates with Emby using username/password credentials to obtain an AccessToken, which is then used for all HLS streaming requests. All media streaming goes through the Flask proxy, keeping your Emby server on your internal network and never exposed to the internet.
 
 ## API Endpoints
 
@@ -185,10 +187,11 @@ The application authenticates with Emby using username/password credentials to o
 ## Troubleshooting
 
 ### Videos won't play
-- Ensure your Emby server is accessible from the client browsers
+- Ensure the Flask app is accessible from client browsers
 - Check that your username and password are correct in [config.py](config.py)
+- Verify the Emby server is reachable from the Flask app server (internal network)
 - Verify the user account has permission to access the media
-- Check the logs in `logs/emby-watchparty.log` for authentication errors
+- Check the logs in `logs/emby-watchparty.log` for authentication or proxy errors
 
 ### Synchronization issues
 - Check your network connection
@@ -199,17 +202,19 @@ The application authenticates with Emby using username/password credentials to o
 ### Can't browse library
 - Verify the Emby server URL is correct in [config.py](config.py)
 - Check that your username and password are correct
-- Ensure the Emby server is running and accessible
+- Ensure the Emby server is running and reachable from the Flask app (internal network)
 - Verify the user account has library access permissions
 
 ## Security Notes
 
+- **Proxy Architecture**: Your Emby server stays on your local network and is never exposed to the internet
+- The Flask app proxies all HLS streaming requests, acting as a security layer between users and your Emby server
 - This application authenticates with Emby using username/password credentials
 - Credentials are stored in [config.py](config.py) - **do not commit this file to public repositories**
 - Party codes are generated using cryptographically secure random tokens
 - AccessTokens are obtained at runtime and not stored persistently
 - For production use, consider adding:
-  - HTTPS/TLS encryption
+  - HTTPS/TLS encryption (recommended if exposing Flask to internet)
   - User authentication for watch party access
   - Rate limiting
   - CORS restrictions
