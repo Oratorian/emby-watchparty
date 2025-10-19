@@ -28,6 +28,7 @@ A synchronized watch party application for Emby media servers. Watch videos toge
 - Python 3.8 or higher
 - An Emby server with API access
 - Emby user account credentials (username and password)
+- Emby must be accessible from outside - use VPNs like Tailscale or Hamachi if port forwarding is not possible
 
 ### Installation
 
