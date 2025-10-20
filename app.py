@@ -5,7 +5,7 @@ GitHub: https://github.com/Oratorian
 Description: A Flask-based web application that allows multiple users to watch
              Emby media in sync with real-time chat and playback synchronization.
              Supports HLS streaming with proper authentication.
-Version: 1.0.1
+Version: 1.0.2
 """
 
 from flask import Flask, render_template, request, jsonify
