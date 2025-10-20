@@ -10,11 +10,11 @@ const usernameInput = document.getElementById('usernameInput');
 const joinBtn = document.getElementById('joinBtn');
 const partyCodeEl = document.getElementById('partyCode');
 const copyCodeBtn = document.getElementById('copyCodeBtn');
+const showLibraryBtn = document.getElementById('showLibraryBtn');
 const userCountEl = document.getElementById('userCount');
 const leavePartyBtn = document.getElementById('leavePartyBtn');
 const libraryContent = document.getElementById('libraryContent');
 const navBtns = document.querySelectorAll('.nav-btn');
-const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
 const librarySidebar = document.getElementById('librarySidebar');
 const noVideoState = document.getElementById('noVideoState');
 const videoPlayer = document.getElementById('videoPlayer');
@@ -127,11 +127,13 @@ leavePartyBtn.addEventListener('click', () => {
     }
 });
 
-// Toggle sidebar
-toggleSidebarBtn.addEventListener('click', () => {
-    librarySidebar.classList.toggle('hidden');
-    toggleSidebarBtn.textContent = librarySidebar.classList.contains('hidden') ? 'Show' : 'Hide';
-});
+// Show library button (in header)
+if (showLibraryBtn) {
+    showLibraryBtn.addEventListener('click', () => {
+        librarySidebar.classList.remove('hidden');
+        showLibraryBtn.style.display = 'none';
+    });
+}
 
 // Navigation buttons
 navBtns.forEach(btn => {
@@ -329,7 +331,18 @@ function createLibraryItem(item, onClick, showImage = false) {
 
 // Select video to watch
 function selectVideo(item) {
-    addSystemMessage(`${username} selected: ${item.Name}`);
+    addSystemMessage(`${username} selected ${item.Name}`);
+
+    // Auto-hide library sidebar when video is selected
+    const sidebar = document.getElementById('librarySidebar');
+    if (sidebar && !sidebar.classList.contains('hidden')) {
+        sidebar.classList.add('hidden');
+
+        // Show the "Show Library" button in header
+        if (showLibraryBtn) {
+            showLibraryBtn.style.display = 'inline-block';
+        }
+    }
 
     socket.emit('select_video', {
         party_id: partyId,
@@ -483,6 +496,12 @@ socket.on('connected', (data) => {
 socket.on('user_joined', (data) => {
     currentUsers = data.users;
     updateUserCount();
+
+    // If this is us joining and we don't have a username yet, use the one from server
+    if (!username && data.users.includes(data.username)) {
+        username = data.username;
+    }
+
     addSystemMessage(`${data.username} joined the party`);
 });
 
@@ -819,16 +838,11 @@ async function loadAvailableStreams(itemId) {
             });
         }
 
-        const audioCount = data.audio ? data.audio.length : 0;
-        const subtitleCount = data.subtitles ? data.subtitles.length : 0;
-
-        if (audioCount > 0 || subtitleCount > 0) {
-            addSystemMessage(`Found ${audioCount} audio track(s) and ${subtitleCount} subtitle track(s)`);
-        }
+        // Don't spam chat with track counts - users can see in dropdowns
     } catch (error) {
         audioSelect.innerHTML = '<option value="">Default Audio</option>';
         subtitleSelect.innerHTML = '<option value="none">None</option>';
-        addSystemMessage('Could not load stream information');
+        // Don't show error message - not critical, users can still watch
     }
 }
 
@@ -863,9 +877,9 @@ function loadVideo(video) {
         subtitleSelect.value = video.subtitle_index === null ? 'none' : video.subtitle_index;
     }
 
-    // Add load success handler
+    // Video ready handler - no need to spam chat
     videoElement.onloadedmetadata = function() {
-        addSystemMessage('Video loaded and ready to play');
+        // Video is ready - no message needed
     };
 
     // Check if the video is HLS (.m3u8)
@@ -897,7 +911,7 @@ function loadVideo(video) {
                 if (!isSyncing) {
                     videoElement.currentTime = 0;
                 }
-                addSystemMessage('HLS stream ready');
+                // Stream is ready - no message needed
             });
 
             hls.on(Hls.Events.ERROR, function(event, data) {
@@ -931,7 +945,7 @@ function loadVideo(video) {
         } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
             // Native HLS support (Safari, some mobile browsers)
             videoElement.src = video.stream_url;
-            addSystemMessage('Using native HLS playback');
+            // Native HLS playback - no message needed
         } else {
             addSystemMessage('Error: HLS playback not supported in this browser');
         }
@@ -945,4 +959,50 @@ function loadVideo(video) {
 function updateUserCount() {
     const count = currentUsers.length;
     userCountEl.textContent = count === 1 ? '1 user' : `${count} users`;
+}
+
+// Chat resize functionality
+const chatContainer = document.getElementById('chatContainer');
+const chatResizeHandle = document.getElementById('chatResizeHandle');
+
+if (chatResizeHandle && chatContainer) {
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    chatResizeHandle.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        startX = e.clientX;
+        startWidth = chatContainer.offsetWidth;
+        chatResizeHandle.classList.add('dragging');
+
+        // Prevent text selection while dragging
+        e.preventDefault();
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'ew-resize';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+
+        // Calculate new width (dragging left increases width, right decreases)
+        const deltaX = startX - e.clientX;
+        const newWidth = startWidth + deltaX;
+
+        // Apply constraints (250px - 600px)
+        const minWidth = 250;
+        const maxWidth = 600;
+        const constrainedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+
+        chatContainer.style.width = `${constrainedWidth}px`;
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            chatResizeHandle.classList.remove('dragging');
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+        }
+    });
 }

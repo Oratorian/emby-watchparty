@@ -17,6 +17,7 @@
                 <div class="party-code">
                     Party Code: <strong id="partyCode">{{ party_id }}</strong>
                     <button id="copyCodeBtn" class="btn-small">Copy</button>
+                    <button id="showLibraryBtn" class="btn-small" style="display: none;">Show Library</button>
                 </div>
             </div>
             <div class="user-info">
@@ -31,7 +32,6 @@
             <aside class="library-sidebar" id="librarySidebar">
                 <div class="sidebar-header">
                     <h2>Browse Library</h2>
-                    <button id="toggleSidebarBtn" class="btn-small">Hide</button>
                 </div>
 
                 <div class="library-nav">
@@ -59,31 +59,34 @@
                         Your browser does not support the video tag.
                     </video>
 
-                    <div class="video-controls">
-                        <div class="stream-controls">
-                            <div class="stream-control-group">
-                                <label for="audioSelect">Audio:</label>
-                                <select id="audioSelect" class="stream-select">
-                                    <option value="">Loading...</option>
-                                </select>
-                            </div>
-                            <div class="stream-control-group">
-                                <label for="subtitleSelect">Subtitles:</label>
-                                <select id="subtitleSelect" class="stream-select">
-                                    <option value="">Loading...</option>
-                                </select>
+                    <div class="video-meta">
+                        <div class="video-info">
+                            <h2 id="videoTitle">Video Title</h2>
+                            <p id="videoDescription"></p>
+                        </div>
+
+                        <div class="video-controls">
+                            <div class="stream-controls">
+                                <div class="stream-control-group">
+                                    <label for="audioSelect">Audio:</label>
+                                    <select id="audioSelect" class="stream-select">
+                                        <option value="">Loading...</option>
+                                    </select>
+                                </div>
+                                <div class="stream-control-group">
+                                    <label for="subtitleSelect">Subtitles:</label>
+                                    <select id="subtitleSelect" class="stream-select">
+                                        <option value="">Loading...</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
-                    </div>
-
-                    <div class="video-info">
-                        <h2 id="videoTitle">Video Title</h2>
-                        <p id="videoDescription"></p>
                     </div>
                 </div>
 
                 <!-- Chat -->
-                <div class="chat-container">
+                <div class="chat-container" id="chatContainer">
+                    <div class="chat-resize-handle" id="chatResizeHandle"></div>
                     <div class="chat-header">
                         <h3>Chat</h3>
                     </div>
