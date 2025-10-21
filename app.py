@@ -5,7 +5,6 @@ GitHub: https://github.com/Oratorian
 Description: A Flask-based web application that allows multiple users to watch
              Emby media in sync with real-time chat and playback synchronization.
              Supports HLS streaming with proper authentication.
-Version: 1.0.4
 """
 
 from flask import Flask, render_template, request, jsonify, session
@@ -22,6 +21,9 @@ import hashlib
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'logger'))
 from logger import setup_logger
 import config
+
+# Application version
+VERSION = "1.0.4"
 
 # Import frequently used config values as module-level constants for convenience
 EMBY_SERVER_URL = config.EMBY_SERVER_URL
@@ -1636,6 +1638,31 @@ def handle_chat_message(data):
             'timestamp': datetime.now().isoformat()
         }, room=party_id)
 
+def check_for_updates():
+    """Check GitHub for latest release and notify if update available"""
+    try:
+        # GitHub API endpoint for latest release
+        github_api_url = "https://api.github.com/repos/Oratorian/emby-watchparty/releases/latest"
+        response = requests.get(github_api_url, timeout=5)
+
+        if response.status_code == 200:
+            latest_release = response.json()
+            latest_version = latest_release.get('tag_name', '').lstrip('v')
+
+            if latest_version and latest_version != VERSION:
+                logger.warning("=" * 60)
+                logger.warning(f"UPDATE AVAILABLE: v{latest_version} (current: v{VERSION})")
+                logger.warning(f"Download: {latest_release.get('html_url', 'https://github.com/Oratorian/emby-watchparty/releases')}")
+                logger.warning("=" * 60)
+            else:
+                logger.info(f"Running latest version: v{VERSION}")
+        else:
+            # Silently skip if GitHub API is unreachable
+            logger.debug(f"Could not check for updates (GitHub API returned {response.status_code})")
+    except Exception as e:
+        # Don't spam logs if update check fails
+        logger.debug(f"Update check failed: {e}")
+
 if __name__ == '__main__':
     logger.info("=" * 60)
     logger.info("Emby Watch Party Server")
@@ -1643,6 +1670,11 @@ if __name__ == '__main__':
     logger.info(f"Emby Server: {EMBY_SERVER_URL}")
     logger.info(f"API Key configured: {'Yes' if EMBY_API_KEY else 'No'}")
     logger.info("")
+
+    # Check for updates
+    check_for_updates()
+    logger.info("")
+
     logger.info("To configure, set environment variables:")
     logger.info("  EMBY_SERVER_URL - Your Emby server URL")
     logger.info("  EMBY_API_KEY - Your Emby API key")
