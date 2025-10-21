@@ -41,6 +41,7 @@ let syncThreshold = 0.5; // Only sync if difference is more than 2 seconds
 let lastSeekBroadcast = 0;
 let seekBroadcastDelay = 500; // Throttle seek broadcasts to max once per 500ms
 let currentItemId = null;
+let currentMediaSourceId = null;
 let availableStreams = { audio: [], subtitles: [] };
 let lastPlayBroadcast = 0;
 let lastPauseBroadcast = 0;
@@ -510,6 +511,10 @@ subtitleSelect.addEventListener('change', () => {
     const audioIndex = audioSelect.value === 'none' ? null : parseInt(audioSelect.value);
     const subtitleIndex = subtitleSelect.value === 'none' ? null : parseInt(subtitleSelect.value);
 
+    // Immediately update subtitles locally (without reloading video)
+    loadSubtitleTrack(subtitleIndex);
+
+    // Also notify server to sync with other users (server will send streams_changed)
     socket.emit('change_streams', {
         party_id: partyId,
         audio_index: audioIndex,
@@ -670,6 +675,11 @@ socket.on('streams_changed', (data) => {
     const wasPlaying = !videoElement.paused;
     const currentTime = videoElement.currentTime;
 
+    // Update current video metadata
+    if (data.video.media_source_id) {
+        currentMediaSourceId = data.video.media_source_id;
+    }
+
     // Destroy previous HLS instance if it exists
     if (hls) {
         hls.destroy();
@@ -703,6 +713,11 @@ socket.on('streams_changed', (data) => {
             hls.on(Hls.Events.MANIFEST_PARSED, function() {
                 videoElement.currentTime = data.current_time || currentTime;
 
+                // Load subtitle track if one is selected
+                if (data.video.subtitle_index !== undefined && data.video.subtitle_index !== null) {
+                    loadSubtitleTrack(data.video.subtitle_index);
+                }
+
                 if (wasPlaying) {
                     videoElement.play().then(() => {
                         setTimeout(() => {
@@ -724,6 +739,11 @@ socket.on('streams_changed', (data) => {
             videoElement.addEventListener('loadedmetadata', function restorePlayback() {
                 videoElement.currentTime = data.current_time || currentTime;
 
+                // Load subtitle track if one is selected
+                if (data.video.subtitle_index !== undefined && data.video.subtitle_index !== null) {
+                    loadSubtitleTrack(data.video.subtitle_index);
+                }
+
                 if (wasPlaying) {
                     videoElement.play().then(() => {
                         setTimeout(() => { isSyncing = false; }, 100);
@@ -742,6 +762,11 @@ socket.on('streams_changed', (data) => {
 
         videoElement.addEventListener('loadedmetadata', function restorePlayback() {
             videoElement.currentTime = data.current_time || currentTime;
+
+            // Load subtitle track if one is selected
+            if (data.video.subtitle_index !== undefined && data.video.subtitle_index !== null) {
+                loadSubtitleTrack(data.video.subtitle_index);
+            }
 
             if (wasPlaying) {
                 videoElement.play().then(() => {
@@ -916,6 +941,9 @@ async function loadAvailableStreams(itemId) {
 
         availableStreams = data;
         currentItemId = itemId;
+        if (data.media_source_id) {
+            currentMediaSourceId = data.media_source_id;
+        }
 
         // Populate audio select
         audioSelect.innerHTML = '';
@@ -961,6 +989,44 @@ async function loadAvailableStreams(itemId) {
     }
 }
 
+function loadSubtitleTrack(subtitleIndex) {
+    // Remove all existing text tracks
+    while (videoElement.textTracks.length > 0) {
+        const track = videoElement.textTracks[0];
+        const trackElement = Array.from(videoElement.querySelectorAll('track')).find(t => t.track === track);
+        if (trackElement) {
+            videoElement.removeChild(trackElement);
+        }
+    }
+
+    // If subtitle index is 'none' or null, just leave them removed
+    if (!subtitleIndex || subtitleIndex === 'none' || subtitleIndex === -1) {
+        return;
+    }
+
+    // Find the subtitle in available streams
+    const subtitle = availableStreams.subtitles?.find(s => s.index === parseInt(subtitleIndex));
+
+    // Only load if it's a text subtitle stream
+    if (subtitle && subtitle.isTextSubtitleStream && currentMediaSourceId) {
+        const track = document.createElement('track');
+        track.kind = 'subtitles';
+        track.label = subtitle.displayLanguage || subtitle.language || 'Unknown';
+        track.srclang = subtitle.language || 'und';
+        track.src = `/api/subtitles/${currentItemId}/${currentMediaSourceId}/${subtitleIndex}`;
+        track.default = true;
+
+        track.addEventListener('load', function() {
+            // Ensure the track is showing
+            if (this.track.mode !== 'showing') {
+                this.track.mode = 'showing';
+            }
+        });
+
+        videoElement.appendChild(track);
+    }
+}
+
 function loadVideo(video) {
     noVideoState.style.display = 'none';
     videoPlayer.style.display = 'block';
@@ -988,6 +1054,10 @@ function loadVideo(video) {
     videoElement.onloadstart = null;
     videoElement.onprogress = null;
 
+    // Store current video metadata
+    currentItemId = video.item_id;
+    currentMediaSourceId = video.media_source_id;
+
     // Load available streams for this video
     loadAvailableStreams(video.item_id);
 
@@ -1010,9 +1080,12 @@ function loadVideo(video) {
         subtitleSelect.value = video.subtitle_index === null ? 'none' : video.subtitle_index;
     }
 
-    // Video ready handler - no need to spam chat
+    // Video ready handler - load subtitles once metadata is loaded
     videoElement.onloadedmetadata = function() {
-        // Video is ready - no message needed
+        // Load subtitle track if one is selected
+        if (video.subtitle_index !== undefined && video.subtitle_index !== null) {
+            loadSubtitleTrack(video.subtitle_index);
+        }
     };
 
     // Check if the video is HLS (.m3u8)

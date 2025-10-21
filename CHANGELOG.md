@@ -5,6 +5,46 @@ All notable changes to Emby Watch Party will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2025-10-22
+
+### Added
+- **External Subtitle Support**: Major improvement to subtitle handling
+  - New subtitle proxy endpoint `/api/subtitles/<item_id>/<media_source_id>/<index>` for serving WebVTT files
+  - HTML5 `<track>` element integration for native browser subtitle rendering
+  - `loadSubtitleTrack()` function for dynamic subtitle loading in frontend
+  - `isTextSubtitleStream` flag in streams API response
+  - `media_source_id` tracking across video selection and stream changes
+- **Transcoding Cleanup**: Automatic cleanup of Emby HLS transcoding sessions
+  - `stop_active_encodings()` method in EmbyClient
+  - Calls DELETE `/Videos/ActiveEncodings` when video stops or changes
+  - Prevents abandoned transcoding processes from consuming server resources
+
+### Changed
+- **Subtitle Delivery Method**: Switched from burned-in to external subtitles
+  - Removed `SubtitleMethod` parameter from HLS URLs
+  - Subtitles now load as separate WebVTT files instead of being encoded into video
+  - Enables instant subtitle switching without video reload
+- **UI Layout Redesign**: Compact video controls layout
+  - Video description and stream controls now displayed side-by-side
+  - Audio, Subtitles, and Stop Video button placed in single horizontal row
+  - Video description reduced to 2-line clamp for space efficiency
+  - Added invisible label to Stop Video button for proper vertical alignment
+  - Improved responsive flex layout for stream controls
+
+### Fixed
+- **Subtitle Timeout Issues**: Resolved 502 Bad Gateway errors on complex subtitle files
+  - Complex ASS/SSA subtitle files (e.g., "The Apothecary Diaries") no longer cause timeouts
+  - Emby no longer forced to burn subtitles into video stream during transcoding
+  - Significantly reduced CPU load during playback with subtitles
+- **Resource Management**: Proper cleanup of server resources
+  - HLS transcoding sessions now properly terminated when playback ends
+  - Prevents memory and CPU waste from abandoned encoding processes
+
+### Technical
+- Frontend subtitle track management with proper cleanup and replacement
+- Media source ID propagation through `video_selected`, `streams_changed`, and `sync_state` events
+- Enhanced stream metadata with text subtitle stream detection
+
 ## [1.0.3] - 2025-10-21
 
 ### Added
@@ -115,6 +155,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.0.4** (2025-10-22): External subtitle support, transcoding cleanup, UI layout improvements
 - **v1.0.3** (2025-10-21): Stop video feature, HLS token validation, enhanced debugging
 - **v1.0.2** (2025-10-20): Chat cleanup and username fixes
 - **v1.0.1** (2025-10-20): Secure HLS proxy, Emby stays internal
