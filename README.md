@@ -113,9 +113,9 @@ You can configure the application in [config.py](config.py) or using environment
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `EMBY_SERVER_URL` | Your Emby server URL | `http://central.andrew.home` |
-| `EMBY_USERNAME` | Your Emby username | `andrew` |
-| `EMBY_PASSWORD` | Your Emby password | `andrew` |
+| `EMBY_SERVER_URL` | Your Emby server URL | `http://hostname:8096` |
+| `EMBY_USERNAME` | Your Emby username | `username` |
+| `EMBY_PASSWORD` | Your Emby password | `password` |
 | `LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
 | `LOG_FILE` | Path to log file | `logs/emby-watchparty.log` |
 | `CONSOLE_LOG_LEVEL` | Console log level | `WARNING` |
