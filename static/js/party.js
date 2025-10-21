@@ -26,6 +26,9 @@ const chatInput = document.getElementById('chatInput');
 const sendChatBtn = document.getElementById('sendChatBtn');
 const audioSelect = document.getElementById('audioSelect');
 const subtitleSelect = document.getElementById('subtitleSelect');
+const searchInput = document.getElementById('searchInput');
+const clearSearchBtn = document.getElementById('clearSearchBtn');
+const stopVideoBtn = document.getElementById('stopVideoBtn');
 
 // State
 let username = '';
@@ -47,6 +50,7 @@ let lastSyncType = '';
 let isUserSeeking = false;
 let seekSettleTimer = null;
 let hls = null; // HLS.js instance
+let canStopVideo = false; // Track if current user can stop the video
 
 // Show username modal on load
 usernameModal.style.display = 'flex';
@@ -127,6 +131,13 @@ leavePartyBtn.addEventListener('click', () => {
     }
 });
 
+// Stop video button
+stopVideoBtn.addEventListener('click', () => {
+    if (confirm('Are you sure you want to stop the video for everyone?')) {
+        socket.emit('stop_video', { party_id: partyId });
+    }
+});
+
 // Show library button (in header)
 if (showLibraryBtn) {
     showLibraryBtn.addEventListener('click', () => {
@@ -193,11 +204,12 @@ async function loadItemsFromLibrary(parentId) {
 }
 
 // Load episodes from a series
-async function loadSeriesEpisodes(seriesId, seriesName) {
+async function loadSeriesSeasons(seriesId, seriesName) {
     try {
-        libraryContent.innerHTML = '<p>Loading episodes...</p>';
+        libraryContent.innerHTML = '<p>Loading seasons...</p>';
 
-        const response = await fetch(`/api/items?parentId=${seriesId}&recursive=true`);
+        // Get seasons (non-recursive to get only direct children)
+        const response = await fetch(`/api/items?parentId=${seriesId}&recursive=false`);
         const data = await response.json();
 
         // Add a back button
@@ -227,6 +239,64 @@ async function loadSeriesEpisodes(seriesId, seriesName) {
         titleDiv.textContent = seriesName;
         libraryContent.appendChild(titleDiv);
 
+        // Check if we have seasons or just episodes
+        const items = data.Items || [];
+        if (items.length > 0 && items[0].Type === 'Season') {
+            // Display seasons
+            displayItems(items, 'seasons', seriesName);
+        } else {
+            // No seasons, display episodes directly
+            displayItems(items, 'episodes');
+        }
+    } catch (error) {
+        libraryContent.innerHTML = '<p>Error loading seasons</p>';
+    }
+}
+
+async function loadSeasonEpisodes(seasonId, seasonName, seriesName) {
+    try {
+        libraryContent.innerHTML = '<p>Loading episodes...</p>';
+
+        const response = await fetch(`/api/items?parentId=${seasonId}&recursive=false`);
+        const data = await response.json();
+
+        // Add a back button
+        libraryContent.innerHTML = '';
+
+        const backBtn = document.createElement('div');
+        backBtn.className = 'library-item';
+        backBtn.style.background = '#667eea';
+        backBtn.style.cursor = 'pointer';
+        backBtn.innerHTML = `
+            <div class="library-item-info">
+                <div class="library-item-title">← Back to Seasons</div>
+                <div class="library-item-meta">Return to ${seriesName}</div>
+            </div>
+        `;
+        backBtn.addEventListener('click', () => {
+            // Go back to season view - need to get series ID from season
+            fetch(`/api/item/${seasonId}`)
+                .then(res => res.json())
+                .then(season => {
+                    if (season.SeriesId) {
+                        loadSeriesSeasons(season.SeriesId, seriesName);
+                    } else {
+                        loadLibraries();
+                    }
+                })
+                .catch(() => loadLibraries());
+        });
+        libraryContent.appendChild(backBtn);
+
+        // Show season title
+        const titleDiv = document.createElement('div');
+        titleDiv.style.padding = '1rem';
+        titleDiv.style.color = '#667eea';
+        titleDiv.style.fontWeight = 'bold';
+        titleDiv.style.fontSize = '1.1rem';
+        titleDiv.textContent = `${seriesName} - ${seasonName}`;
+        libraryContent.appendChild(titleDiv);
+
         displayItems(data.Items, 'episodes');
     } catch (error) {
         libraryContent.innerHTML = '<p>Error loading episodes</p>';
@@ -248,7 +318,7 @@ async function loadItems(itemType) {
 }
 
 // Display items in the library
-function displayItems(items, context = 'library') {
+function displayItems(items, context = 'library', seriesName = null) {
     if (items && items.length > 0) {
         libraryContent.innerHTML = '';
 
@@ -259,6 +329,9 @@ function displayItems(items, context = 'library') {
             displayableItems = items.filter(item =>
                 item.Type === 'Movie' || item.Type === 'Series' || item.Type === 'Video'
             );
+        } else if (context === 'seasons') {
+            // When showing seasons, show all Season items
+            displayableItems = items.filter(item => item.Type === 'Season');
         } else {
             // When browsing specific content, show playable items
             displayableItems = items.filter(item =>
@@ -269,9 +342,12 @@ function displayItems(items, context = 'library') {
         if (displayableItems.length > 0) {
             displayableItems.forEach(item => {
                 const itemEl = createLibraryItem(item, () => {
-                    // If it's a Series, load its episodes
+                    // If it's a Series, load its seasons
                     if (item.Type === 'Series') {
-                        loadSeriesEpisodes(item.Id, item.Name);
+                        loadSeriesSeasons(item.Id, item.Name);
+                    } else if (item.Type === 'Season') {
+                        // Load episodes from this season
+                        loadSeasonEpisodes(item.Id, item.Name, seriesName);
                     } else {
                         selectVideo(item);
                     }
@@ -350,6 +426,9 @@ function selectVideo(item) {
         item_name: item.Name,
         item_overview: item.Overview || ''
     });
+
+    // Mark that this user selected the video (after emit so it happens first)
+    canStopVideo = true;
 }
 
 // Video player controls
@@ -548,7 +627,43 @@ socket.on('sync_state', (data) => {
 });
 
 socket.on('video_selected', (data) => {
+    // canStopVideo is set to true in selectVideo() when this user selects
+    // When this event arrives:
+    // - If canStopVideo is true, this user selected it, keep it true
+    // - If canStopVideo is false, someone else selected it, keep it false
+    // This way only the user who selected can see the stop button
     loadVideo(data.video);
+});
+
+socket.on('video_stopped', (data) => {
+    // Clear the video player and show no video state
+    if (hls) {
+        hls.destroy();
+        hls = null;
+    }
+
+    videoElement.pause();
+    videoElement.src = '';
+    videoPlayer.style.display = 'none';
+    noVideoState.style.display = 'flex';
+
+    // Show library sidebar again for all users
+    const sidebar = document.getElementById('librarySidebar');
+    if (sidebar && sidebar.classList.contains('hidden')) {
+        sidebar.classList.remove('hidden');
+
+        // Hide the "Show Library" button since sidebar is now visible
+        if (showLibraryBtn) {
+            showLibraryBtn.style.display = 'none';
+        }
+    }
+
+    // Reset state
+    canStopVideo = false;
+    currentItemId = null;
+
+    // Show message in chat
+    addSystemMessage(data.message);
 });
 
 socket.on('streams_changed', (data) => {
@@ -850,6 +965,17 @@ function loadVideo(video) {
     noVideoState.style.display = 'none';
     videoPlayer.style.display = 'block';
 
+    // Auto-hide library sidebar when video is loaded for all users
+    const sidebar = document.getElementById('librarySidebar');
+    if (sidebar && !sidebar.classList.contains('hidden')) {
+        sidebar.classList.add('hidden');
+
+        // Show the "Show Library" button in header
+        if (showLibraryBtn) {
+            showLibraryBtn.style.display = 'inline-block';
+        }
+    }
+
     // Destroy previous HLS instance if it exists
     if (hls) {
         hls.destroy();
@@ -868,6 +994,13 @@ function loadVideo(video) {
     // Set video properties
     videoTitle.textContent = video.title;
     videoDescription.textContent = video.overview || '';
+
+    // Show/hide stop button based on whether this user selected the video
+    if (canStopVideo) {
+        stopVideoBtn.style.display = 'inline-block';
+    } else {
+        stopVideoBtn.style.display = 'none';
+    }
 
     // Update stream selectors if provided
     if (video.audio_index !== undefined) {
@@ -1005,4 +1138,80 @@ if (chatResizeHandle && chatContainer) {
             document.body.style.cursor = '';
         }
     });
+}
+
+// Search functionality
+let searchTimeout;
+
+if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.trim();
+
+        // Show/hide clear button
+        if (clearSearchBtn) {
+            clearSearchBtn.style.display = query ? 'flex' : 'none';
+        }
+
+        // Debounce search
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            if (query.length >= 2) {
+                performSearch(query);
+            } else if (query.length === 0) {
+                // Clear search - go back to libraries
+                loadLibraries();
+            }
+        }, 300);
+    });
+
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            const query = e.target.value.trim();
+            if (query.length >= 2) {
+                clearTimeout(searchTimeout);
+                performSearch(query);
+            }
+        }
+    });
+}
+
+if (clearSearchBtn) {
+    clearSearchBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        clearSearchBtn.style.display = 'none';
+        loadLibraries();
+        searchInput.focus();
+    });
+}
+
+async function performSearch(query) {
+    try {
+        libraryContent.innerHTML = '<p>Searching...</p>';
+
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+
+        libraryContent.innerHTML = '';
+
+        // Add search header
+        const headerDiv = document.createElement('div');
+        headerDiv.style.padding = '1rem';
+        headerDiv.style.color = '#667eea';
+        headerDiv.style.fontWeight = 'bold';
+        headerDiv.style.fontSize = '1.1rem';
+        headerDiv.textContent = `Search results for "${query}"`;
+        libraryContent.appendChild(headerDiv);
+
+        if (data.Items && data.Items.length > 0) {
+            displayItems(data.Items, 'library');
+        } else {
+            const noResults = document.createElement('p');
+            noResults.textContent = 'No results found';
+            noResults.style.padding = '1rem';
+            noResults.style.color = '#aaa';
+            libraryContent.appendChild(noResults);
+        }
+    } catch (error) {
+        libraryContent.innerHTML = '<p>Error performing search</p>';
+    }
 }

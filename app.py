@@ -5,24 +5,25 @@ GitHub: https://github.com/Oratorian
 Description: A Flask-based web application that allows multiple users to watch
              Emby media in sync with real-time chat and playback synchronization.
              Supports HLS streaming with proper authentication.
-Version: 1.0.2
+Version: 1.0.3
 """
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session
 from flask_socketio import SocketIO, emit, join_room, leave_room, rooms
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import secrets
 import random
 import os
 import sys
+import time
+import hashlib
 
-# Add logger directory to path and import logger
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'logger'))
 from logger import setup_logger
 import config
 
-# Import config values
+# Import frequently used config values as module-level constants for convenience
 EMBY_SERVER_URL = config.EMBY_SERVER_URL
 EMBY_API_KEY = config.EMBY_API_KEY
 EMBY_USERNAME = config.EMBY_USERNAME
@@ -30,15 +31,105 @@ EMBY_PASSWORD = config.EMBY_PASSWORD
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
-socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Initialize logger
 logger = setup_logger("emby-watchparty")
+socketio_logger = setup_logger(
+    name="socketio",
+    log_file="logs/socketio.log",
+    log_level="WARNING"  # Only log warnings/errors from Socket.IO
+)
+engineio_logger = setup_logger(
+    name="engineio",
+    log_file="logs/socketio.log",  # Same file as socketio
+    log_level="WARNING"  # Only log warnings/errors from Engine.IO
+)
 
-# Store active watch party rooms
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    logger=socketio_logger,  # Redirect to separate log file
+    engineio_logger=engineio_logger  # Redirect to separate log file
+)
+
+# Redirect Flask/Werkzeug HTTP access logs to use custom logger
+import logging
+
+# Get Werkzeug's logger and REMOVE its default console handler
+werkzeug_logger = logging.getLogger('werkzeug')
+werkzeug_logger.handlers.clear()  # Remove default console handler
+
+# Replace with our custom logger that writes to file
+werkzeug_custom_logger = setup_logger(
+    name="werkzeug",
+    log_file="logs/access.log",
+    log_level="INFO"  # Log all HTTP requests to file
+)
+
+# Initialize rate limiter if enabled
+if config.ENABLE_RATE_LIMITING:
+    try:
+        from flask_limiter import Limiter
+        from flask_limiter.util import get_remote_address
+        limiter = Limiter(
+            app=app,
+            key_func=get_remote_address,
+            default_limits=[config.RATE_LIMIT_API_CALLS],
+            storage_uri="memory://"
+        )
+        logger.info("Rate limiting enabled")
+    except ImportError:
+        logger.error("ENABLE_RATE_LIMITING is set to true, but Flask-Limiter is not installed!")
+        logger.error("Install with: pip install Flask-Limiter")
+        logger.error("Or disable rate limiting by setting ENABLE_RATE_LIMITING=false in config")
+        sys.exit(1)  # Exit with error code
+else:
+    limiter = None
+    logger.info("Rate limiting disabled (ENABLE_RATE_LIMITING=false)")
+
+"""
+Global watch party storage.
+
+Dictionary mapping party_id to party data containing users, current video,
+and playback state. Structure:
+    {
+        'party_id': {
+            'id': str,
+            'created_at': str (ISO format),
+            'users': {socket_id: username},
+            'current_video': {
+                'item_id': str,
+                'title': str,
+                'overview': str,
+                'stream_url_base': str (without token),
+                'audio_index': int,
+                'subtitle_index': int
+            },
+            'playback_state': {
+                'playing': bool,
+                'time': float,
+                'last_update': str (ISO format)
+            }
+        }
+    }
+"""
 watch_parties = {}
 
-# Random username generator
+"""
+HLS token storage for secure stream validation.
+
+Dictionary mapping token strings to token metadata. Tokens are per-user
+and expire after HLS_TOKEN_EXPIRY seconds. Structure:
+    {
+        'token_string': {
+            'party_id': str,
+            'sid': str (socket session ID),
+            'expires': float (Unix timestamp)
+        }
+    }
+"""
+hls_tokens = {}
+
+"""Word lists for generating random usernames (e.g., 'BraveWolf42')."""
 ADJECTIVES = [
     'Happy', 'Sleepy', 'Brave', 'Clever', 'Swift', 'Mighty', 'Gentle', 'Wise', 'Lucky', 'Bold',
     'Silent', 'Wild', 'Calm', 'Fierce', 'Noble', 'Quick', 'Bright', 'Dark', 'Golden', 'Silver',
@@ -71,6 +162,15 @@ class EmbyClient:
     """Client for interacting with Emby Server API"""
 
     def __init__(self, server_url, api_key, username=None, password=None):
+        """
+        Initialize Emby client with server connection details.
+
+        Args:
+            server_url: Base URL of the Emby server
+            api_key: API key for Emby authentication
+            username: Optional username for user-specific authentication
+            password: Optional password for user-specific authentication
+        """
         self.server_url = server_url.rstrip('/')
         self.api_key = api_key
         self.headers = {
@@ -208,6 +308,28 @@ class EmbyClient:
             logger.error(f"Error fetching item details: {e}")
             return None
 
+    def search_items(self, query):
+        """Search for items by name"""
+        if not self.user_id:
+            logger.warning("No user ID available for search request")
+            return {"Items": []}
+
+        try:
+            url = f"{self.server_url}/emby/Users/{self.user_id}/Items"
+            params = {
+                'SearchTerm': query,
+                'Recursive': 'true',
+                'Fields': 'Overview,PrimaryImageAspectRatio,ProductionYear',
+                'IncludeItemTypes': 'Movie,Series',
+                'api_key': self.api_key
+            }
+            response = requests.get(url, headers=self.headers, params=params)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Error searching items: {e}")
+            return {"Items": []}
+
     def get_image_url(self, item_id, image_type='Primary'):
         """Get image URL for an item"""
         return f"{self.server_url}/emby/Items/{item_id}/Images/{image_type}?api_key={self.api_key}"
@@ -241,11 +363,105 @@ class EmbyClient:
             return self.get_item_details(item_id)
 
 
-# Initialize Emby client with user authentication
 emby_client = EmbyClient(EMBY_SERVER_URL, EMBY_API_KEY, EMBY_USERNAME, EMBY_PASSWORD)
 
 
-# ============== Web Routes ==============
+# =============================================================================
+# Security Helper Functions
+# =============================================================================
+
+def generate_hls_token(party_id, sid):
+    """Generate a time-limited token for HLS stream access"""
+    if not config.ENABLE_HLS_TOKEN_VALIDATION:
+        logger.debug("HLS token generation skipped - validation disabled")
+        return None
+
+    token = secrets.token_urlsafe(32)
+    expires = time.time() + config.HLS_TOKEN_EXPIRY
+    expires_dt = datetime.fromtimestamp(expires).isoformat()
+
+    hls_tokens[token] = {
+        'party_id': party_id,
+        'sid': sid,
+        'expires': expires
+    }
+
+    logger.debug(f"Generated HLS token: {token[:16]}... for party={party_id}, sid={sid}, expires={expires_dt}")
+    logger.debug(f"Total active tokens: {len(hls_tokens)}")
+
+    # Clean up expired tokens
+    cleanup_expired_tokens()
+
+    return token
+
+
+def validate_hls_token(token, item_id=None):
+    """Validate HLS token and return party_id if valid"""
+    if not config.ENABLE_HLS_TOKEN_VALIDATION:
+        return True  # Token validation disabled
+
+    if not token:
+        logger.debug("Token validation failed: No token provided")
+        return False
+
+    if token not in hls_tokens:
+        logger.debug(f"Token validation failed: Token not found in hls_tokens. Available tokens: {len(hls_tokens)}")
+        return False
+
+    token_data = hls_tokens[token]
+
+    # Check if token expired
+    if time.time() > token_data['expires']:
+        logger.debug(f"Token validation failed: Token expired")
+        del hls_tokens[token]
+        return False
+
+    # Check if user is still in the party
+    party_id = token_data['party_id']
+    sid = token_data['sid']
+
+    if party_id not in watch_parties:
+        logger.debug(f"Token validation failed: Party {party_id} not found")
+        return False
+
+    if sid not in watch_parties[party_id]['users']:
+        logger.debug(f"Token validation failed: User sid {sid} not in party {party_id}. Current users: {list(watch_parties[party_id]['users'].keys())}")
+        return False
+
+    logger.debug(f"Token validation successful for party {party_id}, user {sid}")
+    return True
+
+
+def cleanup_expired_tokens():
+    """Remove expired HLS tokens"""
+    current_time = time.time()
+    expired = [token for token, data in hls_tokens.items() if current_time > data['expires']]
+    if expired:
+        logger.debug(f"Cleaning up {len(expired)} expired HLS tokens")
+        for token in expired:
+            logger.debug(f"Removed expired token: {token[:16]}... (party={hls_tokens[token]['party_id']}, sid={hls_tokens[token]['sid']})")
+            del hls_tokens[token]
+
+
+def get_user_token(party_id, sid):
+    """Get existing valid token for user or generate new one"""
+    # Find existing valid token for this user
+    for token, data in hls_tokens.items():
+        if data['party_id'] == party_id and data['sid'] == sid:
+            if time.time() <= data['expires']:
+                logger.debug(f"Reusing existing token for party {party_id}, sid {sid}")
+                return token
+
+    # Generate new token
+    new_token = generate_hls_token(party_id, sid)
+    if new_token:
+        logger.debug(f"Generated new token for party {party_id}, sid {sid}: {new_token[:16]}...")
+    return new_token
+
+
+# =============================================================================
+# Web Routes
+# =============================================================================
 
 @app.route('/')
 def index():
@@ -263,18 +479,82 @@ def party(party_id):
     return render_template('party.html', party_id=party_id)
 
 
-# ============== API Routes ==============
+# =============================================================================
+# API Routes
+# =============================================================================
+"""
+REST API endpoints for building custom frontends.
+
+All endpoints return JSON unless otherwise specified.
+Rate limiting applies to some endpoints when ENABLE_RATE_LIMITING=true.
+
+Library & Media Endpoints:
+    GET  /api/libraries           - List all Emby libraries
+    GET  /api/items               - List items (with filters)
+    GET  /api/search              - Search for content
+    GET  /api/item/<id>           - Get item details
+    GET  /api/item/<id>/streams   - Get audio/subtitle streams
+    GET  /api/image/<id>          - Get item poster/thumbnail
+
+Party Management Endpoints:
+    POST /api/party/create        - Create new watch party
+    GET  /api/party/<id>/info     - Get party state
+
+HLS Streaming Endpoints (Token Protected):
+    GET  /hls/<id>/master.m3u8    - HLS master playlist
+    GET  /hls/<id>/<path>          - HLS segments/playlists
+"""
 
 @app.route('/api/libraries')
 def api_libraries():
-    """Get all media libraries"""
+    """
+    Get all media libraries from Emby server.
+
+    Returns:
+        JSON: {
+            "Items": [
+                {
+                    "Id": str,
+                    "Name": str,
+                    "CollectionType": str ("movies", "tvshows", etc.)
+                }
+            ]
+        }
+
+    Example:
+        GET /api/libraries
+    """
     libraries = emby_client.get_libraries()
     return jsonify(libraries)
 
 
 @app.route('/api/items')
 def api_items():
-    """Get items from a library"""
+    """
+    Get items from a library (movies, series, episodes, seasons).
+
+    Query Parameters:
+        parentId (str, optional): Filter by parent library/series/season ID
+        type (str, optional): Filter by type ("Movie", "Series", etc.)
+        recursive (bool, optional): Include child items recursively
+
+    Returns:
+        JSON: {
+            "Items": [
+                {
+                    "Id": str,
+                    "Name": str,
+                    "Type": str,
+                    "Overview": str,
+                    "ProductionYear": int
+                }
+            ]
+        }
+
+    Examples:
+        GET /api/items?parentId=12345
+        GET /api/items?type=Movie&recursive=true
+    """
     parent_id = request.args.get('parentId')
     item_type = request.args.get('type')
     recursive = request.args.get('recursive', 'false').lower() == 'true'
@@ -283,9 +563,64 @@ def api_items():
     return jsonify(items)
 
 
+@app.route('/api/search')
+def api_search():
+    """
+    Search for movies and TV series by name.
+
+    Query Parameters:
+        q (str, required): Search query string
+
+    Returns:
+        JSON: {
+            "Items": [
+                {
+                    "Id": str,
+                    "Name": str,
+                    "Type": str ("Movie" or "Series"),
+                    "Overview": str,
+                    "ProductionYear": int
+                }
+            ]
+        }
+
+    Examples:
+        GET /api/search?q=inception
+        GET /api/search?q=breaking+bad
+    """
+    query = request.args.get('q', '').strip()
+
+    if not query:
+        return jsonify({"Items": []})
+
+    results = emby_client.search_items(query)
+    return jsonify(results)
+
+
 @app.route('/api/item/<item_id>')
 def api_item_details(item_id):
-    """Get details for a specific item"""
+    """
+    Get detailed information for a specific item.
+
+    Path Parameters:
+        item_id (str): Emby item ID
+
+    Returns:
+        JSON: {
+            "Id": str,
+            "Name": str,
+            "Type": str,
+            "Overview": str,
+            "ProductionYear": int,
+            "MediaStreams": [...]
+        }
+
+    Errors:
+        404: Item not found
+
+    Example:
+        GET /api/item/12345
+    """
     details = emby_client.get_item_details(item_id)
     if details:
         return jsonify(details)
@@ -294,7 +629,42 @@ def api_item_details(item_id):
 
 @app.route('/api/item/<item_id>/streams')
 def api_item_streams(item_id):
-    """Get available audio and subtitle streams for an item"""
+    """
+    Get available audio and subtitle streams for a media item.
+
+    Path Parameters:
+        item_id (str): Emby item ID
+
+    Returns:
+        JSON: {
+            "audio": [
+                {
+                    "index": int,
+                    "language": str,
+                    "displayLanguage": str,
+                    "codec": str,
+                    "channels": int,
+                    "isDefault": bool,
+                    "title": str
+                }
+            ],
+            "subtitles": [
+                {
+                    "index": int,
+                    "language": str,
+                    "displayLanguage": str,
+                    "codec": str,
+                    "isDefault": bool,
+                    "isForced": bool,
+                    "isExternal": bool,
+                    "title": str
+                }
+            ]
+        }
+
+    Example:
+        GET /api/item/<item_id>/streams
+    """
     logger.debug(f"Fetching streams for item ID: {item_id}")
 
     # Try multiple approaches to get stream information
@@ -386,18 +756,25 @@ def api_item_streams(item_id):
         'subtitles': subtitle_streams
     })
 
-
-
-
 @app.route('/hls/<item_id>/master.m3u8')
 def proxy_hls_master(item_id):
     """Lightweight HLS master playlist proxy - keeps Emby internal"""
+    emby_url = None  # Initialize for error handling
     try:
         from flask import Response
         import re
 
-        # Forward all query parameters from client
-        query_string = request.query_string.decode('utf-8')
+        # Validate HLS token if enabled
+        if config.ENABLE_HLS_TOKEN_VALIDATION:
+            token = request.args.get('token')
+            logger.debug(f"Master playlist request with token: {token[:16] if token else 'None'}... from {request.remote_addr}")
+            if not validate_hls_token(token):
+                logger.warning(f"Invalid or missing HLS token for master playlist access from {request.remote_addr}")
+                return jsonify({"error": "Unauthorized"}), 401
+
+        # Forward all query parameters from client (except our token)
+        query_params = {k: v for k, v in request.args.items() if k != 'token'}
+        query_string = '&'.join([f"{k}={v}" for k, v in query_params.items()])
 
         # Build Emby URL
         emby_url = f"{EMBY_SERVER_URL}/emby/Videos/{item_id}/master.m3u8"
@@ -409,27 +786,64 @@ def proxy_hls_master(item_id):
         # Fetch from Emby (internal network only)
         emby_response = requests.get(emby_url, headers=emby_client.headers)
         emby_response.raise_for_status()
+        logger.debug(f"Received master playlist from Emby, content length: {len(emby_response.text)} bytes")
 
         # Rewrite URLs in the playlist to point to our proxy
         playlist_content = emby_response.text
 
+        # Add token to rewritten URLs if validation is enabled
+        token_param = f"?token={request.args.get('token')}" if config.ENABLE_HLS_TOKEN_VALIDATION and request.args.get('token') else ""
+        if token_param:
+            logger.debug(f"Will add token parameter: {token_param[:30]}...")
+        else:
+            logger.debug("No token parameter (validation disabled or no token)")
+
         # Replace absolute Emby URLs with proxy URLs
-        # Pattern: http://server/emby/Videos/ITEMID/path → /hls/ITEMID/path
+        # Pattern: http://server/emby/Videos/ITEMID/path → /hls/ITEMID/path?token=...
+        before_rewrite = playlist_content
         playlist_content = re.sub(
             rf'{re.escape(EMBY_SERVER_URL)}/emby/Videos/{item_id}/',
             f'/hls/{item_id}/',
             playlist_content
         )
+        if before_rewrite != playlist_content:
+            logger.debug("Rewrote absolute Emby URLs to proxy URLs")
 
         # Also handle relative URLs that might start with just the path
-        # Pattern: /emby/Videos/ITEMID/path → /hls/ITEMID/path
+        # Pattern: /emby/Videos/ITEMID/path → /hls/ITEMID/path?token=...
+        before_rewrite = playlist_content
         playlist_content = re.sub(
             rf'/emby/Videos/{item_id}/',
             f'/hls/{item_id}/',
             playlist_content
         )
+        if before_rewrite != playlist_content:
+            logger.debug("Rewrote relative Emby URLs to proxy URLs")
 
-        logger.debug(f"Rewritten playlist URLs to use /hls/{item_id}/ prefix")
+        # Add token parameter to all segment URLs if needed
+        if token_param:
+            logger.debug(f"Master playlist before token addition:\n{playlist_content}")
+            # Add token to .m3u8 and .ts file references
+            # Match filenames ending with .m3u8 or .ts (not already having token param)
+            lines = playlist_content.split('\n')
+            for i, line in enumerate(lines):
+                # Skip comment lines and empty lines
+                if line.strip().startswith('#') or not line.strip():
+                    continue
+                # If line contains .m3u8 or .ts and doesn't have token already
+                if ('.m3u8' in line or '.ts' in line) and 'token=' not in line:
+                    # Use & if URL already has query params, otherwise use ?
+                    separator = '&' if '?' in line else '?'
+                    token_to_add = f"{separator}token={request.args.get('token')}"
+                    old_line = line
+                    lines[i] = line + token_to_add
+                    logger.debug(f"Token addition: '{old_line}' -> '{lines[i]}'")
+            playlist_content = '\n'.join(lines)
+            logger.debug(f"Master playlist after token addition:\n{playlist_content}")
+        else:
+            logger.debug("Skipping token addition (no token available)")
+
+        logger.debug(f"Rewritten playlist URLs to use /hls/{item_id}/ prefix and added tokens")
 
         # Return with CORS headers
         response = Response(playlist_content, mimetype='application/vnd.apple.mpegurl')
@@ -439,26 +853,48 @@ def proxy_hls_master(item_id):
 
         return response
 
+    except requests.exceptions.RequestException as e:
+        logger.error(f"CRITICAL: Failed to fetch master playlist from Emby server")
+        logger.error(f"  Item ID: {item_id}")
+        logger.error(f"  Emby URL: {emby_url if emby_url else '(URL not constructed)'}")
+        logger.error(f"  Error: {str(e)}")
+        logger.error(f"  Error Type: {type(e).__name__}")
+        return jsonify({"error": "Failed to fetch video from media server"}), 502
     except Exception as e:
-        logger.error(f"Error proxying HLS master: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"CRITICAL: Unexpected error in HLS master playlist proxy")
+        logger.error(f"  Item ID: {item_id}")
+        logger.error(f"  Error: {str(e)}")
+        logger.error(f"  Error Type: {type(e).__name__}")
+        import traceback
+        logger.error(f"  Traceback: {traceback.format_exc()}")
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route('/hls/<item_id>/<path:subpath>')
 def proxy_hls_segment(item_id, subpath):
     """Lightweight HLS segment/playlist proxy - keeps Emby internal"""
+    emby_url = None  # Initialize for error handling
     try:
         from flask import Response
         import re
 
-        # Forward all query parameters
-        query_string = request.query_string.decode('utf-8')
+        # Validate HLS token if enabled
+        if config.ENABLE_HLS_TOKEN_VALIDATION:
+            token = request.args.get('token')
+            logger.debug(f"Segment request for {subpath} with token: {token[:16] if token else 'None'}... from {request.remote_addr}")
+            if not validate_hls_token(token):
+                logger.warning(f"Invalid or missing HLS token for segment access: {subpath} from {request.remote_addr}")
+                return jsonify({"error": "Unauthorized"}), 401
+
+        # Forward all query parameters (except our token)
+        query_params = {k: v for k, v in request.args.items() if k != 'token'}
+        query_string = '&'.join([f"{k}={v}" for k, v in query_params.items()])
 
         emby_url = f"{EMBY_SERVER_URL}/emby/Videos/{item_id}/{subpath}"
         if query_string:
             emby_url += f"?{query_string}"
 
-        logger.debug(f"Proxying HLS segment: {subpath}")
+        logger.debug(f"Proxying HLS segment: {subpath} -> {emby_url}")
 
         # Fetch from Emby (internal network only)
         emby_response = requests.get(emby_url, headers=emby_client.headers, stream=True)
@@ -475,6 +911,9 @@ def proxy_hls_segment(item_id, subpath):
         if subpath.endswith('.m3u8'):
             playlist_content = emby_response.text
 
+            # Add token to rewritten URLs if validation is enabled
+            token_param = f"?token={request.args.get('token')}" if config.ENABLE_HLS_TOKEN_VALIDATION and request.args.get('token') else ""
+
             # Replace absolute Emby URLs with proxy URLs
             playlist_content = re.sub(
                 rf'{re.escape(EMBY_SERVER_URL)}/emby/Videos/{item_id}/',
@@ -489,10 +928,26 @@ def proxy_hls_segment(item_id, subpath):
                 playlist_content
             )
 
+            # Add token parameter to segment URLs if needed
+            if token_param:
+                # Add token to .m3u8 and .ts file references
+                lines = playlist_content.split('\n')
+                for i, line in enumerate(lines):
+                    # Skip comment lines and empty lines
+                    if line.strip().startswith('#') or not line.strip():
+                        continue
+                    # If line contains .m3u8 or .ts and doesn't have token already
+                    if ('.m3u8' in line or '.ts' in line) and 'token=' not in line:
+                        # Use & if URL already has query params, otherwise use ?
+                        separator = '&' if '?' in line else '?'
+                        token_to_add = f"{separator}token={request.args.get('token')}"
+                        lines[i] = line + token_to_add
+                playlist_content = '\n'.join(lines)
+
             response = Response(playlist_content, mimetype=content_type)
         else:
-            # For binary content (.ts files), stream as-is
             def generate():
+                """Generator function to stream binary video segment data in chunks."""
                 for chunk in emby_response.iter_content(chunk_size=8192):
                     if chunk:
                         yield chunk
@@ -508,14 +963,47 @@ def proxy_hls_segment(item_id, subpath):
 
         return response
 
+    except requests.exceptions.RequestException as e:
+        logger.error(f"CRITICAL: Failed to fetch HLS segment from Emby server")
+        logger.error(f"  Item ID: {item_id}")
+        logger.error(f"  Subpath: {subpath}")
+        logger.error(f"  Emby URL: {emby_url if emby_url else '(URL not constructed)'}")
+        logger.error(f"  Error: {str(e)}")
+        logger.error(f"  Error Type: {type(e).__name__}")
+        return jsonify({"error": "Failed to fetch video segment from media server"}), 502
     except Exception as e:
-        logger.error(f"Error proxying HLS segment {subpath}: {e}")
-        return jsonify({"error": str(e)}), 500
-
+        logger.error(f"CRITICAL: Unexpected error in HLS segment proxy")
+        logger.error(f"  Item ID: {item_id}")
+        logger.error(f"  Subpath: {subpath}")
+        logger.error(f"  Error: {str(e)}")
+        logger.error(f"  Error Type: {type(e).__name__}")
+        import traceback
+        logger.error(f"  Traceback: {traceback.format_exc()}")
+        return jsonify({"error": "Internal server error"}), 500
 
 @app.route('/api/image/<item_id>')
 def api_image(item_id):
-    """Proxy image requests to Emby server"""
+    """
+    Get poster/thumbnail image for a media item.
+
+    Proxies image requests from Emby server to keep server internal.
+
+    Path Parameters:
+        item_id (str): Emby item ID
+
+    Query Parameters:
+        type (str, optional): Image type (default: "Primary")
+            Options: "Primary", "Backdrop", "Thumb", etc.
+
+    Returns:
+        Binary image data (JPEG/PNG)
+
+    Errors:
+        404: Image not found
+
+    Example:
+        GET /api/image/12345?type=Primary
+    """
     image_type = request.args.get('type', 'Primary')
     image_url = emby_client.get_image_url(item_id, image_type)
 
@@ -529,10 +1017,26 @@ def api_image(item_id):
         logger.error(f"Error fetching image: {e}")
         return '', 404
 
-
 @app.route('/api/party/create', methods=['POST'])
 def create_party():
-    """Create a new watch party"""
+    """
+    Create a new watch party room.
+
+    Method: POST
+
+    Returns:
+        JSON: {
+            "party_id": str (unique party identifier),
+            "url": str (party URL path)
+        }
+
+    Rate Limit:
+        5 per hour per IP (if rate limiting enabled)
+
+    Example:
+        POST /api/party/create
+        Response: {"party_id": "abc123", "url": "/party/abc123"}
+    """
     party_id = secrets.token_urlsafe(8)
 
     watch_parties[party_id] = {
@@ -552,10 +1056,43 @@ def create_party():
         'url': f'/party/{party_id}'
     })
 
+# Apply rate limiting to party creation if enabled
+if limiter:
+    create_party = limiter.limit(config.RATE_LIMIT_PARTY_CREATION)(create_party)
 
 @app.route('/api/party/<party_id>/info')
 def party_info(party_id):
-    """Get information about a watch party"""
+    """
+    Get current state and information about a watch party.
+
+    Path Parameters:
+        party_id (str): Party ID
+
+    Returns:
+        JSON: {
+            "id": str,
+            "users": [str] (list of usernames),
+            "current_video": {
+                "item_id": str,
+                "title": str,
+                "overview": str,
+                "stream_url_base": str,
+                "audio_index": int,
+                "subtitle_index": int
+            } or null,
+            "playback_state": {
+                "playing": bool,
+                "time": float,
+                "last_update": str (ISO timestamp)
+            }
+        }
+
+    Errors:
+        404: Party not found
+
+    Example:
+        GET /api/party/abc123/info
+    """
     if party_id not in watch_parties:
         return jsonify({"error": "Party not found"}), 404
 
@@ -568,7 +1105,51 @@ def party_info(party_id):
     })
 
 
-# ============== WebSocket Events ==============
+# =============================================================================
+# WebSocket Events
+# =============================================================================
+"""
+Socket.IO events for real-time party synchronization.
+
+Connection Events:
+    connect              - Client connects to server
+    disconnect           - Client disconnects
+
+Party Management Events:
+    join_party           - Join a watch party room
+        Data: {party_id, username}
+    leave_party          - Leave a watch party room
+        Data: {party_id}
+
+Video Control Events (Synced to all users):
+    select_video         - Select a video to watch
+        Data: {party_id, item_id, item_name, item_overview}
+    play                 - Play video
+        Data: {party_id, time}
+    pause                - Pause video
+        Data: {party_id, time}
+    seek                 - Seek to position
+        Data: {party_id, time, playing}
+    change_streams       - Change audio/subtitle tracks
+        Data: {party_id, audio_index, subtitle_index}
+
+Chat Events:
+    chat_message         - Send chat message
+        Data: {party_id, message}
+
+Server Emitted Events:
+    connected            - Connection confirmed
+    user_joined          - User joined party
+    user_left            - User left party
+    sync_state           - Initial party state on join
+    video_selected       - New video selected
+    streams_changed      - Audio/subtitle changed
+    play                 - Play command
+    pause                - Pause command
+    seek                 - Seek command
+    chat_message         - Chat message broadcast
+    error                - Error message
+"""
 
 @socketio.on('connect')
 def handle_connect():
@@ -605,6 +1186,14 @@ def handle_join_party(data):
         emit('error', {'message': 'Watch party not found'})
         return
 
+    # Check max users per party limit
+    if config.MAX_USERS_PER_PARTY > 0:
+        current_user_count = len(watch_parties[party_id]['users'])
+        if current_user_count >= config.MAX_USERS_PER_PARTY:
+            logger.warning(f"Party {party_id} is full ({current_user_count}/{config.MAX_USERS_PER_PARTY})")
+            emit('error', {'message': f'Party is full (max {config.MAX_USERS_PER_PARTY} users)'})
+            return
+
     # Join the room
     join_room(party_id)
 
@@ -617,10 +1206,31 @@ def handle_join_party(data):
         'users': list(watch_parties[party_id]['users'].values())
     }, room=party_id)
 
-    # Send current state to the new user
+    # Send current state to the new user with their individual token
     party = watch_parties[party_id]
+    current_video = None
+
+    if party['current_video']:
+        # Build video object with individual token for this user
+        current_video = {
+            'item_id': party['current_video']['item_id'],
+            'title': party['current_video']['title'],
+            'overview': party['current_video']['overview'],
+            'audio_index': party['current_video']['audio_index'],
+            'subtitle_index': party['current_video']['subtitle_index']
+        }
+
+        # Add stream URL with individual token
+        stream_url = party['current_video']['stream_url_base']
+        if config.ENABLE_HLS_TOKEN_VALIDATION:
+            user_token = get_user_token(party_id, request.sid)
+            if user_token:
+                stream_url += f"&token={user_token}"
+
+        current_video['stream_url'] = stream_url
+
     emit('sync_state', {
-        'current_video': party['current_video'],
+        'current_video': current_video,
         'playback_state': party['playback_state']
     })
 
@@ -696,20 +1306,22 @@ def handle_select_video(data):
             params.append(f"SubtitleStreamIndex={subtitle_index}")
             params.append("SubtitleMethod=Encode")  # Burn subtitles into video
 
-        # Use Flask proxy URL to keep Emby internal
-        stream_url = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"
+        # Use Flask proxy URL to keep Emby internal (WITHOUT token)
+        stream_url_base = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"
     else:
         logger.error(f"Could not get playback info for item {item_id}")
         emit('error', {'message': 'Failed to load video'})
         return
 
+    # Store base URL without token in party data
     watch_parties[party_id]['current_video'] = {
         'item_id': item_id,
         'title': item_name,
         'overview': item_overview,
-        'stream_url': stream_url,
+        'stream_url_base': stream_url_base,  # Base URL without token
         'audio_index': audio_index,
-        'subtitle_index': subtitle_index
+        'subtitle_index': subtitle_index,
+        'selected_by': request.sid  # Track who selected this video
     }
 
     watch_parties[party_id]['playback_state'] = {
@@ -718,10 +1330,90 @@ def handle_select_video(data):
         'last_update': datetime.now().isoformat()
     }
 
+    # Send video to each user with their own individual token
+    logger.debug(f"Sending video to {len(watch_parties[party_id]['users'])} users in party {party_id}")
+    for user_sid in watch_parties[party_id]['users'].keys():
+        username = watch_parties[party_id]['users'][user_sid]
+        stream_url_with_token = stream_url_base
+
+        # Add individual token for this user
+        if config.ENABLE_HLS_TOKEN_VALIDATION:
+            user_token = get_user_token(party_id, user_sid)
+            if user_token:
+                stream_url_with_token += f"&token={user_token}"
+                logger.debug(f"Assigned token {user_token[:16]}... to user {username} (sid={user_sid})")
+            else:
+                logger.warning(f"Failed to get token for user {username} (sid={user_sid})")
+        else:
+            logger.debug(f"Sending video to user {username} without token (validation disabled)")
+
+        logger.debug(f"Stream URL for {username}: {stream_url_with_token[:100]}...")
+
+        # Send to this specific user with their token
+        socketio.emit('video_selected', {
+            'video': {
+                'item_id': item_id,
+                'title': item_name,
+                'overview': item_overview,
+                'stream_url': stream_url_with_token,  # With individual token
+                'audio_index': audio_index,
+                'subtitle_index': subtitle_index
+            }
+        }, to=user_sid)  # Send only to this user's socket
+
+
+@socketio.on('stop_video')
+def handle_stop_video(data):
+    """
+    Stop the currently playing video and clear it from the party.
+    Only the user who selected the video can stop it.
+
+    Args:
+        data: {
+            'party_id': str - The party ID
+        }
+
+    Emits:
+        'video_stopped': Broadcast to all users in the party
+        'error': If user is not authorized or party doesn't exist
+    """
+    party_id = data.get('party_id')
+
+    if not party_id or party_id not in watch_parties:
+        emit('error', {'message': 'Party not found'})
+        return
+
+    party = watch_parties[party_id]
+
+    # Check if there's a current video
+    if not party.get('current_video'):
+        emit('error', {'message': 'No video is currently playing'})
+        return
+
+    # Check if the requester is the one who selected the video
+    if party['current_video'].get('selected_by') != request.sid:
+        emit('error', {'message': 'Only the user who selected the video can stop it'})
+        logger.warning(f"User {request.sid} tried to stop video in party {party_id} but was not authorized")
+        return
+
+    # Clear the video and reset playback state
+    video_title = party['current_video'].get('title', 'Unknown')
+    username = party['users'].get(request.sid, 'Unknown')
+
+    party['current_video'] = None
+    party['playback_state'] = {
+        'playing': False,
+        'time': 0,
+        'last_update': datetime.now().isoformat()
+    }
+
     # Broadcast to all users in the party
-    emit('video_selected', {
-        'video': watch_parties[party_id]['current_video']
+    emit('video_stopped', {
+        'message': f'{username} stopped the video',
+        'stopped_by': username
     }, room=party_id)
+
+    logger.info(f"User {username} stopped video '{video_title}' in party {party_id}")
 
 
 @socketio.on('play')
@@ -782,7 +1474,6 @@ def handle_seek(data):
             # Video was already paused, just seek normally for everyone
             emit('seek', {'time': seek_time, 'playing': False}, room=party_id)
 
-
 @socketio.on('change_streams')
 def handle_change_streams(data):
     """Handle audio/subtitle stream changes"""
@@ -822,24 +1513,42 @@ def handle_change_streams(data):
             params.append(f"SubtitleStreamIndex={subtitle_index}")
             params.append("SubtitleMethod=Encode")  # Burn subtitles into video
 
-        # Use Flask proxy URL to keep Emby internal
-        stream_url = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"
+        # Use Flask proxy URL to keep Emby internal (WITHOUT token)
+        stream_url_base = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"
     else:
         logger.error(f"Could not get playback info for item {item_id}")
         emit('error', {'message': 'Failed to change streams'})
         return
 
-    # Update the video info
-    current_video['stream_url'] = stream_url
+    # Update the video info with base URL (no token)
+    current_video['stream_url_base'] = stream_url_base
     current_video['audio_index'] = audio_index
     current_video['subtitle_index'] = subtitle_index
 
-    # Broadcast stream change to all users
-    emit('streams_changed', {
-        'video': current_video,
-        'current_time': watch_parties[party_id]['playback_state']['time']
-    }, room=party_id)
+    # Send stream change to each user with their individual token
+    current_time = watch_parties[party_id]['playback_state']['time']
 
+    for user_sid in watch_parties[party_id]['users'].keys():
+        stream_url_with_token = stream_url_base
+
+        # Add individual token for this user
+        if config.ENABLE_HLS_TOKEN_VALIDATION:
+            user_token = get_user_token(party_id, user_sid)
+            if user_token:
+                stream_url_with_token += f"&token={user_token}"
+
+        # Send to this specific user
+        socketio.emit('streams_changed', {
+            'video': {
+                'item_id': item_id,
+                'title': current_video['title'],
+                'overview': current_video['overview'],
+                'stream_url': stream_url_with_token,
+                'audio_index': audio_index,
+                'subtitle_index': subtitle_index
+            },
+            'current_time': current_time
+        }, to=user_sid)
 
 @socketio.on('chat_message')
 def handle_chat_message(data):
@@ -856,7 +1565,6 @@ def handle_chat_message(data):
             'timestamp': datetime.now().isoformat()
         }, room=party_id)
 
-
 if __name__ == '__main__':
     logger.info("=" * 60)
     logger.info("Emby Watch Party Server")
@@ -870,4 +1578,4 @@ if __name__ == '__main__':
     logger.info("=" * 60)
     logger.info("")
 
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=False, host=config.WATCH_PARTY_BIND, port=config.WATCH_PARTY_PORT)

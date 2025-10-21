@@ -34,6 +34,11 @@
                     <h2>Browse Library</h2>
                 </div>
 
+                <div class="search-container">
+                    <input type="text" id="searchInput" class="search-input" placeholder="Search for movies or shows...">
+                    <button id="clearSearchBtn" class="clear-search-btn" style="display: none;">×</button>
+                </div>
+
                 <div class="library-nav">
                     <button class="nav-btn active" data-type="libraries">Libraries</button>
                     <button class="nav-btn" data-type="movies">Movies</button>
@@ -78,6 +83,9 @@
                                     <select id="subtitleSelect" class="stream-select">
                                         <option value="">Loading...</option>
                                     </select>
+                                </div>
+                                <div class="stream-control-group">
+                                    <button id="stopVideoBtn" class="btn-small btn-danger" style="display: none;">Stop Video</button>
                                 </div>
                             </div>
                         </div>

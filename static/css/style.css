@@ -224,6 +224,7 @@ header p {
 }
 
 .library-sidebar.hidden .sidebar-header,
+.library-sidebar.hidden .search-container,
 .library-sidebar.hidden .library-nav,
 .library-sidebar.hidden .library-content {
     opacity: 0;
@@ -240,6 +241,56 @@ header p {
 
 .sidebar-header h2 {
     font-size: 1.2rem;
+    color: #667eea;
+}
+
+.search-container {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #0f3460;
+    position: relative;
+}
+
+.search-input {
+    width: 100%;
+    padding: 0.5rem 2rem 0.5rem 0.75rem;
+    background: #0f0f1e;
+    border: 1px solid #0f3460;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 0.9rem;
+    transition: all 0.3s;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.search-input::placeholder {
+    color: #666;
+}
+
+.clear-search-btn {
+    position: absolute;
+    right: 1.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: #aaa;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+}
+
+.clear-search-btn:hover {
     color: #667eea;
 }
 
