@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Emby Community Forum
+  - name: Emby Watch Party Discussion Thread
     url: https://emby.media/community/index.php?/topic/143565-emby-watch-party-synchronized-viewing-for-friends-family/
-    about: Ask questions and discuss with the Emby community
+    about: Discuss with the community and get help from other users
   - name: Documentation
     url: https://github.com/Oratorian/emby-watchparty/blob/main/README.md
     about: Read the full documentation and setup guide
