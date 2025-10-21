@@ -17,6 +17,37 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          # Extract the changelog section for this version
+          VERSION="${GITHUB_REF#refs/tags/v}"
+
+          # Use awk to extract content between version headers
+          CHANGELOG=$(awk -v version="$VERSION" '
+            /^## \[/ {
+              if (found) exit;
+              if ($0 ~ "\\[" version "\\]") {
+                found=1;
+                next;
+              }
+            }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md)
+
+          # If no changelog found, use a default message
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="See [CHANGELOG.md](https://github.com/Oratorian/emby-watchparty/blob/main/CHANGELOG.md) for details."
+          fi
+
+          # Save to output (escape for multiline)
+          {
+            echo 'NOTES<<EOF'
+            echo "$CHANGELOG"
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
       - name: Create config.py.example
         run: |
           cat > config.py.example << 'EOF'
@@ -67,6 +98,10 @@ jobs:
           files: emby-watchparty-${{ steps.get_version.outputs.VERSION }}.zip
           body: |
             ## Emby Watch Party v${{ steps.get_version.outputs.VERSION }}
+
+            ${{ steps.changelog.outputs.NOTES }}
+
+            ---
 
             ### Installation
             1. Download and extract `emby-watchparty-${{ steps.get_version.outputs.VERSION }}.zip`
