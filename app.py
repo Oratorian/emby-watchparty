@@ -5,7 +5,7 @@ GitHub: https://github.com/Oratorian
 Description: A Flask-based web application that allows multiple users to watch
              Emby media in sync with real-time chat and playback synchronization.
              Supports HLS streaming with proper authentication.
-Version: 1.0.3
+Version: 1.0.4
 """
 
 from flask import Flask, render_template, request, jsonify, session
@@ -362,6 +362,28 @@ class EmbyClient:
             # Fallback to trying to get item details which may have MediaStreams
             return self.get_item_details(item_id)
 
+    def stop_active_encodings(self):
+        """
+        Stop all active HLS transcoding sessions for this device.
+        Should be called when playback stops to free up server resources.
+
+        Per Emby API: After playback is complete, it is necessary to inform
+        the server to stop any related HLS transcoding.
+        """
+        try:
+            url = f"{self.server_url}/emby/Videos/ActiveEncodings"
+            params = {
+                'DeviceId': self.device_id,
+                'api_key': self.api_key
+            }
+            response = requests.delete(url, headers=self.headers, params=params)
+            response.raise_for_status()
+            logger.debug(f"Stopped active encodings for device {self.device_id}")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to stop active encodings: {e}")
+            return False
+
 
 emby_client = EmbyClient(EMBY_SERVER_URL, EMBY_API_KEY, EMBY_USERNAME, EMBY_PASSWORD)
 
@@ -701,6 +723,7 @@ def api_item_streams(item_id):
 
     audio_streams = []
     subtitle_streams = []
+    media_source_id = None
 
     # Extract media streams - could be at different locations depending on endpoint
     media_streams = []
@@ -708,6 +731,7 @@ def api_item_streams(item_id):
     # Check if we got PlaybackInfo response
     if 'MediaSources' in playback_info and playback_info['MediaSources']:
         media_streams = playback_info['MediaSources'][0].get('MediaStreams', [])
+        media_source_id = playback_info['MediaSources'][0].get('Id')
     # Otherwise check for direct MediaStreams
     elif 'MediaStreams' in playback_info:
         media_streams = playback_info['MediaStreams']
@@ -746,6 +770,7 @@ def api_item_streams(item_id):
                 'isDefault': stream.get('IsDefault', False),
                 'isForced': stream.get('IsForced', False),
                 'isExternal': stream.get('IsExternal', False),
+                'isTextSubtitleStream': stream.get('IsTextSubtitleStream', False),
                 'title': stream.get('Title', '')
             })
 
@@ -753,7 +778,8 @@ def api_item_streams(item_id):
 
     return jsonify({
         'audio': audio_streams,
-        'subtitles': subtitle_streams
+        'subtitles': subtitle_streams,
+        'media_source_id': media_source_id
     })
 
 @app.route('/hls/<item_id>/master.m3u8')
@@ -1017,6 +1043,49 @@ def api_image(item_id):
         logger.error(f"Error fetching image: {e}")
         return '', 404
 
+@app.route('/api/subtitles/<item_id>/<media_source_id>/<int:subtitle_index>')
+def api_subtitles(item_id, media_source_id, subtitle_index):
+    """
+    Get subtitle file for a media item in WebVTT format.
+
+    Proxies subtitle requests from Emby server to keep server internal.
+
+    Path Parameters:
+        item_id (str): Emby item ID
+        media_source_id (str): Media source ID
+        subtitle_index (int): Subtitle stream index
+
+    Returns:
+        WebVTT subtitle file (text/vtt)
+
+    Errors:
+        404: Subtitle not found
+
+    Example:
+        GET /api/subtitles/12345/67890/2
+    """
+    try:
+        # Build Emby subtitle URL (always request VTT format for web compatibility)
+        subtitle_url = f"{EMBY_SERVER_URL}/emby/Videos/{item_id}/{media_source_id}/Subtitles/{subtitle_index}/Stream.vtt"
+
+        # Add API key
+        subtitle_url += f"?api_key={EMBY_API_KEY}"
+
+        logger.debug(f"Fetching subtitle: {subtitle_url}")
+
+        response = requests.get(subtitle_url, headers=emby_client.headers)
+        if response.status_code == 200:
+            return response.content, 200, {
+                'Content-Type': 'text/vtt',
+                'Access-Control-Allow-Origin': '*'
+            }
+        else:
+            logger.warning(f"Subtitle not found: {subtitle_url} (status: {response.status_code})")
+            return '', 404
+    except Exception as e:
+        logger.error(f"Error fetching subtitle: {e}")
+        return '', 404
+
 @app.route('/api/party/create', methods=['POST'])
 def create_party():
     """
@@ -1217,7 +1286,8 @@ def handle_join_party(data):
             'title': party['current_video']['title'],
             'overview': party['current_video']['overview'],
             'audio_index': party['current_video']['audio_index'],
-            'subtitle_index': party['current_video']['subtitle_index']
+            'subtitle_index': party['current_video']['subtitle_index'],
+            'media_source_id': party['current_video'].get('media_source_id')
         }
 
         # Add stream URL with individual token
@@ -1294,17 +1364,12 @@ def handle_select_video(data):
             f"PlaySessionId={play_session_id}",
             f"DeviceId={emby_client.device_id}",
             f"api_key={emby_client.api_key}",
-            "VideoCodec=h264",
-            "AudioCodec=aac",
-            "MaxAudioChannels=2",
             "SegmentContainer=ts"
         ]
 
         if audio_index is not None:
             params.append(f"AudioStreamIndex={audio_index}")
-        if subtitle_index is not None and subtitle_index != -1:
-            params.append(f"SubtitleStreamIndex={subtitle_index}")
-            params.append("SubtitleMethod=Encode")  # Burn subtitles into video
+        # Note: SubtitleStreamIndex not added to HLS URL - subtitles loaded separately as VTT tracks
 
         # Use Flask proxy URL to keep Emby internal (WITHOUT token)
         stream_url_base = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"
@@ -1312,6 +1377,10 @@ def handle_select_video(data):
         logger.error(f"Could not get playback info for item {item_id}")
         emit('error', {'message': 'Failed to load video'})
         return
+
+    # Stop any active transcoding for previous video (if changing videos)
+    if watch_parties[party_id].get('current_video'):
+        emby_client.stop_active_encodings()
 
     # Store base URL without token in party data
     watch_parties[party_id]['current_video'] = {
@@ -1321,6 +1390,7 @@ def handle_select_video(data):
         'stream_url_base': stream_url_base,  # Base URL without token
         'audio_index': audio_index,
         'subtitle_index': subtitle_index,
+        'media_source_id': media_source_id,  # Needed for subtitle URLs
         'selected_by': request.sid  # Track who selected this video
     }
 
@@ -1357,7 +1427,8 @@ def handle_select_video(data):
                 'overview': item_overview,
                 'stream_url': stream_url_with_token,  # With individual token
                 'audio_index': audio_index,
-                'subtitle_index': subtitle_index
+                'subtitle_index': subtitle_index,
+                'media_source_id': media_source_id  # Needed for subtitle URLs
             }
         }, to=user_sid)  # Send only to this user's socket
 
@@ -1399,6 +1470,9 @@ def handle_stop_video(data):
     # Clear the video and reset playback state
     video_title = party['current_video'].get('title', 'Unknown')
     username = party['users'].get(request.sid, 'Unknown')
+
+    # Stop any active transcoding sessions on Emby server
+    emby_client.stop_active_encodings()
 
     party['current_video'] = None
     party['playback_state'] = {
@@ -1501,17 +1575,12 @@ def handle_change_streams(data):
             f"PlaySessionId={play_session_id}",
             f"DeviceId={emby_client.device_id}",
             f"api_key={emby_client.api_key}",
-            "VideoCodec=h264",
-            "AudioCodec=aac",
-            "MaxAudioChannels=2",
             "SegmentContainer=ts"
         ]
 
         if audio_index is not None:
             params.append(f"AudioStreamIndex={audio_index}")
-        if subtitle_index is not None and subtitle_index != -1:
-            params.append(f"SubtitleStreamIndex={subtitle_index}")
-            params.append("SubtitleMethod=Encode")  # Burn subtitles into video
+        # Note: SubtitleStreamIndex not added to HLS URL - subtitles loaded separately as VTT tracks
 
         # Use Flask proxy URL to keep Emby internal (WITHOUT token)
         stream_url_base = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"
@@ -1524,6 +1593,7 @@ def handle_change_streams(data):
     current_video['stream_url_base'] = stream_url_base
     current_video['audio_index'] = audio_index
     current_video['subtitle_index'] = subtitle_index
+    current_video['media_source_id'] = media_source_id
 
     # Send stream change to each user with their individual token
     current_time = watch_parties[party_id]['playback_state']['time']
@@ -1545,7 +1615,8 @@ def handle_change_streams(data):
                 'overview': current_video['overview'],
                 'stream_url': stream_url_with_token,
                 'audio_index': audio_index,
-                'subtitle_index': subtitle_index
+                'subtitle_index': subtitle_index,
+                'media_source_id': media_source_id
             },
             'current_time': current_time
         }, to=user_sid)
