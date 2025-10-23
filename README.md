@@ -15,12 +15,32 @@ A synchronized watch party application for Emby media servers. Watch videos toge
 - **Real-time synchronization**: Watch videos together with automatic play/pause/seek synchronization
 - **Library browsing**: Browse your entire Emby library and select videos to watch
 - **Subtitle & Audio Support**: Automatic detection of default tracks with burned-in subtitle support
-- **Room system**: Create private watch party rooms with unique codes
+- **Room system**: Create private watch party rooms with simple 5-character codes
 - **Live chat**: Chat with other viewers while watching
 - **Random usernames**: Auto-generated usernames if not provided (554,400+ combinations)
 - **Multiple users**: Support for unlimited concurrent viewers in a room
 - **Professional logging**: rsyslog-style logging with automatic rotation
 - **Responsive UI**: Modern, clean interface that works on desktop and mobile
+
+## Browser Compatibility
+
+Emby Watch Party works best with the following browsers:
+
+### Desktop
+- ✅ **Chrome** - Full support (recommended)
+- ✅ **Edge** - Full support (recommended)
+- ✅ **Firefox** - Full support
+- ✅ **Safari** - Full support
+- ✅ **Brave** - Full support
+
+### Mobile
+- ✅ **Safari (iOS)** - Full support with subtitles (recommended for iOS)
+- ✅ **Chrome (Android)** - Full support (recommended for Android)
+- ⚠️ **Brave (iOS)** - Video playback works, but subtitles do not appear in fullscreen mode
+  - **Workaround**: Use Safari on iOS if you need subtitle support
+
+### Known Issues
+- **Brave Browser on iOS**: Subtitles work in normal view but disappear when entering fullscreen mode. This is a limitation of how Brave handles native video controls on iOS. Safari is recommended for iOS users who need subtitle support.
 
 ## Setup
 

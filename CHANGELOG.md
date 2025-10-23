@@ -5,6 +5,51 @@ All notable changes to Emby Watch Party will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2025-10-23
+
+### Added
+- **Periodic Sync Check**: Automatic drift correction every 5 seconds
+  - New `startPeriodicSync()` function monitors playback timing
+  - Automatically corrects sync drift greater than 0.3 seconds
+  - Only syncs during active playback (skips when paused or seeking)
+  - Stops when video is stopped to conserve resources
+- **Browser Compatibility Documentation**: Added detailed browser support section to README
+  - Desktop browser compatibility (Chrome, Edge, Firefox, Safari, Brave)
+  - Mobile browser compatibility with specific iOS/Android recommendations
+  - Known issues section for Brave iOS subtitle limitation
+
+### Changed
+- **Improved Invite Codes**: Simplified party code format for easier communication
+  - Changed from 10-12 character URL-safe tokens to simple 5-character codes
+  - Uses uppercase letters and numbers only (A-Z, 2-9)
+  - Excludes confusing characters (0, O, 1, I, L) for clarity
+  - Examples: `A3B7K`, `N2YS2`, `Y5HYP` instead of `abc123XyZ9aBc1`
+  - Much easier to communicate over phone or in person
+- **Tighter Sync Threshold**: Reduced from 0.5s to 0.3s for better accuracy
+  - Fixed misleading comment (was "2 seconds" but code was 0.5s)
+  - More accurate synchronization between players
+  - Reduces typical sync offset from ~4 seconds to under 0.3 seconds
+- **Better Browser Reload Handling**: Improved sync behavior when users refresh
+  - Changed condition from `time > 1` to `time >= 0`
+  - Now syncs correctly at any video timestamp, including beginning
+  - Starts periodic sync check immediately after reload
+
+### Fixed
+- **Sync Timing Issues**: Addressed offset between players after seeking or reloading
+  - Periodic sync check prevents drift accumulation over time
+  - Browser reloads now sync correctly regardless of video position
+  - Seeking and leaving/reloading no longer causes 4-second desync
+- **State Tracking**: Enhanced playback state management
+  - Added `currentPartyState` variable to track server's authoritative state
+  - Updated on every play/pause/seek event from server
+  - Used by periodic sync to detect and correct drift
+
+### Documentation
+- Added browser compatibility matrix for desktop and mobile
+- Added known issues section for Brave iOS subtitle limitation
+- Documented recommended browsers for different platforms
+- Updated party code format in features list
+
 ## [1.0.4] - 2025-10-22
 
 ### Added
@@ -155,6 +200,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.0.5** (2025-10-23): Simplified invite codes, improved sync timing, browser compatibility docs
 - **v1.0.4** (2025-10-22): External subtitle support, transcoding cleanup, UI layout improvements
 - **v1.0.3** (2025-10-21): Stop video feature, HLS token validation, enhanced debugging
 - **v1.0.2** (2025-10-20): Chat cleanup and username fixes

@@ -36,8 +36,8 @@ let currentUsers = [];
 let isHost = false;
 let isSyncing = false;
 let lastSyncTime = 0;
-let syncThreshold = 0.5; // Only sync if difference is more than 2 seconds
-// Allows some drift to prevent constant re-syncing when browsers buffer differently
+let syncThreshold = 0.3; // Only sync if difference is more than 0.3 seconds
+// Tighter threshold for better sync accuracy, while still allowing minor buffering differences
 let lastSeekBroadcast = 0;
 let seekBroadcastDelay = 500; // Throttle seek broadcasts to max once per 500ms
 let currentItemId = null;
@@ -52,6 +52,8 @@ let isUserSeeking = false;
 let seekSettleTimer = null;
 let hls = null; // HLS.js instance
 let canStopVideo = false; // Track if current user can stop the video
+let periodicSyncInterval = null; // Periodic sync check interval
+let currentPartyState = null; // Store current party playback state for periodic sync
 
 // Show username modal on load
 usernameModal.style.display = 'flex';
@@ -599,23 +601,34 @@ socket.on('sync_state', (data) => {
     if (data.current_video) {
         loadVideo(data.current_video);
 
-        // Only sync to non-zero time if video is actually playing or has meaningful progress
-        // This prevents syncing to stale times when a new video is just selected
-        if (data.playback_state && (data.playback_state.playing || data.playback_state.time > 1)) {
+        // Store party state for periodic sync
+        if (data.playback_state) {
+            currentPartyState = {
+                time: data.playback_state.time,
+                playing: data.playback_state.playing
+            };
+        }
+
+        // Improved browser reload handling: sync to current time even if it's small
+        // Only skip sync if time is exactly 0 (brand new video)
+        if (data.playback_state && data.playback_state.time >= 0) {
             isSyncing = true;
 
             // Wait for video to be loaded before syncing
             videoElement.addEventListener('loadedmetadata', function syncAfterLoad() {
+                // Set to the exact time from server
                 videoElement.currentTime = data.playback_state.time;
 
                 if (data.playback_state.playing) {
                     videoElement.play().then(() => {
                         setTimeout(() => {
                             isSyncing = false;
+                            startPeriodicSync(); // Start periodic sync check
                         }, 100);
                     }).catch(() => {
                         setTimeout(() => {
                             isSyncing = false;
+                            startPeriodicSync(); // Start periodic sync check
                         }, 100);
                     });
                 } else {
@@ -666,6 +679,10 @@ socket.on('video_stopped', (data) => {
     // Reset state
     canStopVideo = false;
     currentItemId = null;
+    currentPartyState = null;
+
+    // Stop periodic sync check
+    stopPeriodicSync();
 
     // Show message in chat
     addSystemMessage(data.message);
@@ -808,6 +825,14 @@ socket.on('play', (data) => {
     lastSyncedTime = data.time;
     lastSyncType = 'play';
 
+    // Update party state for periodic sync
+    currentPartyState = { time: data.time, playing: true };
+
+    // Start periodic sync if not already running
+    if (!periodicSyncInterval) {
+        startPeriodicSync();
+    }
+
     processSyncCommand({ type: 'play', time: data.time });
 });
 
@@ -819,6 +844,9 @@ socket.on('pause', (data) => {
 
     lastSyncedTime = data.time;
     lastSyncType = 'pause';
+
+    // Update party state for periodic sync
+    currentPartyState = { time: data.time, playing: false };
 
     processSyncCommand({ type: 'pause', time: data.time });
 });
@@ -838,6 +866,9 @@ socket.on('seek', (data) => {
 
     lastSyncedTime = data.time;
     lastSyncType = 'seek';
+
+    // Update party state for periodic sync
+    currentPartyState = { time: data.time, playing: data.playing || false };
 
     processSyncCommand({
         type: 'seek',
@@ -1211,6 +1242,51 @@ if (chatResizeHandle && chatContainer) {
             document.body.style.cursor = '';
         }
     });
+}
+
+// Periodic sync check to correct drift over time
+function startPeriodicSync() {
+    // Clear any existing interval
+    if (periodicSyncInterval) {
+        clearInterval(periodicSyncInterval);
+    }
+
+    // Check sync every 5 seconds
+    periodicSyncInterval = setInterval(() => {
+        // Only sync if we have a video loaded and party state
+        if (!currentPartyState || !videoElement.src || videoElement.paused) {
+            return;
+        }
+
+        // Don't sync if user is actively seeking
+        if (isUserSeeking || isSyncing) {
+            return;
+        }
+
+        // Calculate time difference
+        const timeDiff = Math.abs(videoElement.currentTime - currentPartyState.time);
+
+        // If drift is significant, correct it
+        if (timeDiff > syncThreshold && currentPartyState.playing) {
+            console.log(`Periodic sync: correcting ${timeDiff.toFixed(2)}s drift`);
+            isSyncing = true;
+            videoElement.currentTime = currentPartyState.time;
+
+            // Resume playing after sync
+            videoElement.play().then(() => {
+                setTimeout(() => { isSyncing = false; }, 300);
+            }).catch(() => {
+                setTimeout(() => { isSyncing = false; }, 300);
+            });
+        }
+    }, 5000); // Check every 5 seconds
+}
+
+function stopPeriodicSync() {
+    if (periodicSyncInterval) {
+        clearInterval(periodicSyncInterval);
+        periodicSyncInterval = null;
+    }
 }
 
 // Search functionality

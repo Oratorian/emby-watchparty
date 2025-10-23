@@ -23,7 +23,7 @@ from logger import setup_logger
 import config
 
 # Application version
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 
 # Import frequently used config values as module-level constants for convenience
 EMBY_SERVER_URL = config.EMBY_SERVER_URL
@@ -158,6 +158,27 @@ def generate_random_username():
     noun = random.choice(NOUNS)
     number = random.randint(1, 99)
     return f"{adjective}{noun}{number}"
+
+
+def generate_party_code():
+    """
+    Generate a simple 5-character alphanumeric party code.
+    Uses uppercase letters and numbers, excluding confusing characters (0, O, 1, I, L).
+    Returns codes like: A3B7K, 9XR4P, etc.
+    """
+    # Character set without confusing characters
+    chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+
+    # Keep generating until we find a unique code
+    max_attempts = 100
+    for _ in range(max_attempts):
+        code = ''.join(random.choice(chars) for _ in range(5))
+        if code not in watch_parties:
+            return code
+
+    # Fallback to longer code if somehow we can't find a unique 5-digit code
+    logger.warning("Could not generate unique 5-character code after 100 attempts, using longer code")
+    return secrets.token_urlsafe(8)
 
 
 class EmbyClient:
@@ -1106,9 +1127,9 @@ def create_party():
 
     Example:
         POST /api/party/create
-        Response: {"party_id": "abc123", "url": "/party/abc123"}
+        Response: {"party_id": "A3B7K", "url": "/party/A3B7K"}
     """
-    party_id = secrets.token_urlsafe(8)
+    party_id = generate_party_code()
 
     watch_parties[party_id] = {
         'id': party_id,
