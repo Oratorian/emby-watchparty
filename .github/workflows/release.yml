@@ -50,11 +50,11 @@ jobs:
 
       - name: Create release archive
         run: |
-          # Create a clean directory for the release
-          mkdir -p release-temp
+          # Create directory with version name directly
+          mkdir -p emby-watchparty-${{ steps.get_version.outputs.VERSION }}
           
-          # Copy application files to temp directory (exclude development files)
-          rsync -a . release-temp/ \
+          # Copy application files directly to versioned directory
+          rsync -a . emby-watchparty-${{ steps.get_version.outputs.VERSION }}/ \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='__pycache__' \
@@ -68,15 +68,12 @@ jobs:
             --exclude='venv/' \
             --exclude='env/' \
             --exclude='.venv/' \
-            --exclude='*.log'
-          
-          # Rename the directory to include version
-          mv release-temp emby-watchparty-${{ steps.get_version.outputs.VERSION }}
+            --exclude='*.log' \
+            --exclude='emby-watchparty-*'
 
-          # Create the zip file with proper options
+          # Create the zip file
           zip -r emby-watchparty-${{ steps.get_version.outputs.VERSION }}.zip \
-            emby-watchparty-${{ steps.get_version.outputs.VERSION }}/ \
-            -x "*.git*" -x "*__pycache__*"
+            emby-watchparty-${{ steps.get_version.outputs.VERSION }}/
 
       - name: Create Release
         id: create_release
