@@ -23,7 +23,7 @@ from logger import setup_logger
 import config
 
 # Application version
-VERSION = "1.0.5"
+VERSION = "1.0.6"
 
 # Import frequently used config values as module-level constants for convenience
 EMBY_SERVER_URL = config.EMBY_SERVER_URL
@@ -836,6 +836,7 @@ def proxy_hls_master(item_id):
         emby_response = requests.get(emby_url, headers=emby_client.headers)
         emby_response.raise_for_status()
         logger.debug(f"Received master playlist from Emby, content length: {len(emby_response.text)} bytes")
+        logger.debug(f"Master playlist content:\n{emby_response.text}")
 
         # Rewrite URLs in the playlist to point to our proxy
         playlist_content = emby_response.text
@@ -1368,11 +1369,20 @@ def handle_select_video(data):
 
         # If no audio/subtitle specified, use defaults from media source
         if audio_index is None and 'MediaStreams' in media_source:
+            # First, try to find the default audio stream
             for stream in media_source['MediaStreams']:
                 if stream.get('Type') == 'Audio' and stream.get('IsDefault'):
                     audio_index = stream.get('Index')
                     logger.debug(f"Using default audio track: {audio_index}")
                     break
+
+            # If no default found, use the first audio stream
+            if audio_index is None:
+                for stream in media_source['MediaStreams']:
+                    if stream.get('Type') == 'Audio':
+                        audio_index = stream.get('Index')
+                        logger.debug(f"No default audio found, using first audio track: {audio_index}")
+                        break
 
         if subtitle_index is None and 'MediaStreams' in media_source:
             for stream in media_source['MediaStreams']:
@@ -1387,11 +1397,20 @@ def handle_select_video(data):
             f"PlaySessionId={play_session_id}",
             f"DeviceId={emby_client.device_id}",
             f"api_key={emby_client.api_key}",
-            "SegmentContainer=ts"
+            "SegmentContainer=ts",
+            "TranscodingMaxAudioChannels=2",  # Ensure audio is included
+            "AudioCodec=aac,mp3",  # Support AAC and MP3 for better compatibility (handles TrueHD, FLAC, etc.)
+            "BreakOnNonKeyFrames=True",  # Allow seeking to any point
+            "VideoCodec=h264",  # Force H.264 for maximum browser compatibility
+            "MaxAudioChannels=2"  # Downmix to stereo for TrueHD/multi-channel audio
         ]
 
-        if audio_index is not None:
-            params.append(f"AudioStreamIndex={audio_index}")
+        # NOTE: AudioStreamIndex is intentionally NOT added here
+        # When omitted, Emby includes ALL audio tracks in the HLS stream
+        # and the browser/player can select which one to play
+        # Specifying AudioStreamIndex can cause Emby to strip audio during transcoding
+        # Users can still select audio tracks via the Audio dropdown which will reload the stream
+
         # Note: SubtitleStreamIndex not added to HLS URL - subtitles loaded separately as VTT tracks
 
         # Use Flask proxy URL to keep Emby internal (WITHOUT token)
@@ -1598,11 +1617,19 @@ def handle_change_streams(data):
             f"PlaySessionId={play_session_id}",
             f"DeviceId={emby_client.device_id}",
             f"api_key={emby_client.api_key}",
-            "SegmentContainer=ts"
+            "SegmentContainer=ts",
+            "TranscodingMaxAudioChannels=2",  # Ensure audio is included
+            "AudioCodec=aac,mp3",  # Support AAC and MP3 for better compatibility (handles TrueHD, FLAC, etc.)
+            "BreakOnNonKeyFrames=True",  # Allow seeking to any point
+            "VideoCodec=h264",  # Force H.264 for maximum browser compatibility
+            "MaxAudioChannels=2"  # Downmix to stereo for TrueHD/multi-channel audio
         ]
 
-        if audio_index is not None:
-            params.append(f"AudioStreamIndex={audio_index}")
+        # NOTE: AudioStreamIndex is intentionally NOT added here
+        # When omitted, Emby includes ALL audio tracks in the HLS stream
+        # Specifying AudioStreamIndex can cause Emby to strip audio during transcoding
+        # The browser/player will select the appropriate audio track
+
         # Note: SubtitleStreamIndex not added to HLS URL - subtitles loaded separately as VTT tracks
 
         # Use Flask proxy URL to keep Emby internal (WITHOUT token)

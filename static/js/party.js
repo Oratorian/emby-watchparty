@@ -616,6 +616,9 @@ socket.on('sync_state', (data) => {
 
             // Wait for video to be loaded before syncing
             videoElement.addEventListener('loadedmetadata', function syncAfterLoad() {
+                // Ensure video is not muted
+                videoElement.muted = false;
+
                 // Set to the exact time from server
                 videoElement.currentTime = data.playback_state.time;
 
@@ -1113,6 +1116,9 @@ function loadVideo(video) {
 
     // Video ready handler - load subtitles once metadata is loaded
     videoElement.onloadedmetadata = function() {
+        // Ensure video is not muted (browser autoplay policies may force mute)
+        videoElement.muted = false;
+
         // Load subtitle track if one is selected
         if (video.subtitle_index !== undefined && video.subtitle_index !== null) {
             loadSubtitleTrack(video.subtitle_index);
@@ -1144,6 +1150,9 @@ function loadVideo(video) {
             });
 
             hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
+                // Ensure video is not muted
+                videoElement.muted = false;
+
                 // Reset to beginning when loading a new video (unless we're syncing)
                 if (!isSyncing) {
                     videoElement.currentTime = 0;
