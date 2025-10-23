@@ -48,48 +48,35 @@ jobs:
             echo 'EOF'
           } >> $GITHUB_OUTPUT
 
-      - name: Create config.py.example
-        run: |
-          cat > config.py.example << 'EOF'
-          import os
-
-          # Logging configuration
-          LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
-          LOG_FILE = os.getenv('LOG_FILE', 'logs/emby-watchparty.log')
-          LOG_FORMAT = 'rsyslog'  # rsyslog-style formatting
-          LOG_MAX_SIZE = 10 * 1024 * 1024  # 10MB
-          CONSOLE_LOG_LEVEL = 'WARNING'  # Only show warnings/errors in console
-
-          # Emby configuration
-          EMBY_SERVER_URL = os.getenv('EMBY_SERVER_URL', 'http://your-emby-server:8096')
-          EMBY_API_KEY = os.getenv('EMBY_API_KEY', 'your-api-key-here')
-          EMBY_USERNAME = os.getenv('EMBY_USERNAME', 'your-username')
-          EMBY_PASSWORD = os.getenv('EMBY_PASSWORD', 'your-password')
-          EOF
-
       - name: Create release archive
         run: |
           # Create a clean directory for the release
-          mkdir -p emby-watchparty-${{ steps.get_version.outputs.VERSION }}
-
-          # Copy application files (exclude .git, __pycache__, logs, config.py)
-          rsync -av --progress . emby-watchparty-${{ steps.get_version.outputs.VERSION }}/ \
+          mkdir -p release-temp
+          
+          # Copy application files to temp directory (exclude development files)
+          rsync -a . release-temp/ \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='__pycache__' \
             --exclude='*.pyc' \
-            --exclude='logs' \
+            --exclude='logs/' \
             --exclude='config.py' \
             --exclude='.vscode' \
             --exclude='.idea' \
             --exclude='*.swp' \
             --exclude='.DS_Store' \
-            --exclude='venv' \
-            --exclude='env' \
-            --exclude='.venv'
+            --exclude='venv/' \
+            --exclude='env/' \
+            --exclude='.venv/' \
+            --exclude='*.log'
+          
+          # Rename the directory to include version
+          mv release-temp emby-watchparty-${{ steps.get_version.outputs.VERSION }}
 
-          # Create the zip file
-          zip -r emby-watchparty-${{ steps.get_version.outputs.VERSION }}.zip emby-watchparty-${{ steps.get_version.outputs.VERSION }}/
+          # Create the zip file with proper options
+          zip -r emby-watchparty-${{ steps.get_version.outputs.VERSION }}.zip \
+            emby-watchparty-${{ steps.get_version.outputs.VERSION }}/ \
+            -x "*.git*" -x "*__pycache__*"
 
       - name: Create Release
         id: create_release
