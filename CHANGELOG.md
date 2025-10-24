@@ -5,6 +5,69 @@ All notable changes to Emby Watch Party will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Skip Intro Button**: Interactive button to skip intro sequences
+  - Appears when intro markers are detected in Emby metadata
+  - Positioned above video controls for easy access
+  - Automatically shows/hides based on current playback position
+  - Only works in normal viewing mode (limitation: not visible in fullscreen due to HTML5 video fullscreen constraints)
+  - Synced across all party members when clicked
+
+- **Intelligent PGS Subtitle Handling**: Smart detection and burn-in for image-based subtitles
+  - Automatically detects PGS (Presentation Graphic Stream) subtitles
+  - Burns in PGS/VobSub/DVD subtitles for pixel-perfect quality
+  - Supports: pgssub, pgs, dvd_subtitle, dvdsub, vobsub formats
+  - Prevents quality loss from PGS-to-text conversion
+  - Works on both GPU and software encoding setups
+  - PGS subtitles marked with [Burned-in] indicator in dropdown
+
+- **Independent VTT Subtitle Selection**: Per-user subtitle language choice
+  - All text-based subtitles automatically loaded as WebVTT tracks
+  - Each party member can independently choose their subtitle language
+  - Uses native browser CC button for subtitle selection
+  - No transcode restarts needed for VTT subtitle changes
+  - Subtitle dropdown automatically hides when only VTT subtitles available
+  - PGS subtitles remain synced (burned-in), VTT selection is local-only
+
+### Changed
+- **Subtitle Workflow**: Dual-mode subtitle handling
+  - PGS subtitles: Server-side burn-in with `SubtitleMethod=Encode` (synced for all users)
+  - Text subtitles: Client-side VTT loading with independent selection (local per user)
+  - Subtitle dropdown now only shows PGS options when available
+  - Audio selection remains synced across all party members (requires transcode)
+
+- **Multi-Audio Track Support**: Re-enabled audio track selection
+  - Added back `AudioStreamIndex` parameter for proper audio track selection
+  - Users can now switch between multiple audio tracks (e.g., different languages)
+  - Audio track changes are synced across all party members
+  - Fixes issue where only default audio track was available
+
+### Fixed
+- **Subtitle Filtering and Sync Issues**: Resolved subtitle-related sync loop bug
+  - Fixed issue where mid-play joiners caused sync loops
+  - Improved subtitle stream filtering logic
+  - Better handling of default/forced subtitle selection
+  - Removed invalid `SubtitleMethod=Drop` parameter (doesn't exist in Emby API)
+  - Fixed PGS subtitles appearing by default when "None" selected
+  - Omit subtitle parameters entirely when None selected to prevent Emby auto-selection
+
+- **UI Layout Issues**: Fixed spacing and layout problems
+  - Clear all subtitle tracks from video element when changing videos (prevents CC button clutter)
+  - Fixed Stop Video button stretching with `flex: 0 0 auto`
+  - Changed subtitle container visibility from `display` to `visibility` toggle
+  - Prevents Audio and Stop Video button from squishing together
+  - Added max-width to stream controls for consistent spacing
+  - Proper button positioning with `.stop-button-group` class
+
+### Technical
+- Enhanced subtitle stream detection with `isPGS` flag in backend
+- Automatic text track cleanup in `loadAllTextSubtitles()` function
+- Modified subtitle dropdown event listener to only emit party sync for PGS subtitles
+- Added subtitle track clearing when loading new videos
+- Improved stream control layout with better flexbox handling
+
 ## [1.0.6] - 2025-10-24
 
 ### Fixed
