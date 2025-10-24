@@ -70,7 +70,7 @@ Edit [config.py](config.py) or set environment variables:
 EMBY_SERVER_URL = 'http://your-emby-server:8096'
 EMBY_USERNAME = 'your-username'
 EMBY_PASSWORD = 'your-password'
-EMBY_API_KEY = 'API-KEY')
+EMBY_API_KEY = 'API-KEY'
 ```
 
 **Option 2: Environment Variables**
