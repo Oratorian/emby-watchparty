@@ -54,6 +54,9 @@ let hls = null; // HLS.js instance
 let canStopVideo = false; // Track if current user can stop the video
 let periodicSyncInterval = null; // Periodic sync check interval
 let currentPartyState = null; // Store current party playback state for periodic sync
+let playbackStartTime = null; // Track when playback started for drift calculation
+let introData = null; // Store intro timing data for current video
+let introCheckInterval = null; // Interval for checking if we're in intro
 
 // Show username modal on load
 usernameModal.style.display = 'flex';
@@ -830,6 +833,7 @@ socket.on('play', (data) => {
 
     // Update party state for periodic sync
     currentPartyState = { time: data.time, playing: true };
+    playbackStartTime = Date.now(); // Track when playback started
 
     // Start periodic sync if not already running
     if (!periodicSyncInterval) {
@@ -850,6 +854,7 @@ socket.on('pause', (data) => {
 
     // Update party state for periodic sync
     currentPartyState = { time: data.time, playing: false };
+    playbackStartTime = null; // Clear playback start time when paused
 
     processSyncCommand({ type: 'pause', time: data.time });
 });
@@ -872,6 +877,13 @@ socket.on('seek', (data) => {
 
     // Update party state for periodic sync
     currentPartyState = { time: data.time, playing: data.playing || false };
+
+    // Reset playback start time if resuming after seek
+    if (data.playing) {
+        playbackStartTime = Date.now();
+    } else {
+        playbackStartTime = null;
+    }
 
     processSyncCommand({
         type: 'seek',
@@ -1008,12 +1020,13 @@ async function loadAvailableStreams(itemId) {
                 const title = stream.title ? ` (${stream.title})` : '';
                 const forced = stream.isForced ? ' [Forced]' : '';
                 option.textContent = `${lang}${title}${forced}`;
-                if (stream.isDefault) {
-                    option.selected = true;
-                }
+                // Don't auto-select default subtitles - let users opt-in
+                // (Removed: if (stream.isDefault) { option.selected = true; })
                 subtitleSelect.appendChild(option);
             });
         }
+        // Ensure "None" is selected by default
+        subtitleSelect.value = 'none';
 
         // Don't spam chat with track counts - users can see in dropdowns
     } catch (error) {
@@ -1024,7 +1037,12 @@ async function loadAvailableStreams(itemId) {
 }
 
 function loadSubtitleTrack(subtitleIndex) {
-    // Remove all existing text tracks
+    // First, disable all text tracks
+    for (let i = 0; i < videoElement.textTracks.length; i++) {
+        videoElement.textTracks[i].mode = 'disabled';
+    }
+
+    // Remove all existing text track elements
     while (videoElement.textTracks.length > 0) {
         const track = videoElement.textTracks[0];
         const trackElement = Array.from(videoElement.querySelectorAll('track')).find(t => t.track === track);
@@ -1200,7 +1218,103 @@ function loadVideo(video) {
         videoElement.src = video.stream_url;
         videoElement.load();
     }
+
+    // Load intro data for this video
+    loadIntroData(video.item_id);
 }
+
+// Load intro timing data for a video
+async function loadIntroData(itemId) {
+    try {
+        const response = await fetch(`/api/intro/${itemId}`);
+        const data = await response.json();
+
+        if (data.hasIntro) {
+            introData = data;
+            console.log(`Intro detected: ${data.start.toFixed(2)}s - ${data.end.toFixed(2)}s (${data.duration.toFixed(2)}s)`);
+            startIntroCheck();
+        } else {
+            introData = null;
+            stopIntroCheck();
+            hideSkipIntroButton();
+        }
+    } catch (error) {
+        console.error('Failed to load intro data:', error);
+        introData = null;
+        stopIntroCheck();
+        hideSkipIntroButton();
+    }
+}
+
+// Check if current playback time is within intro range
+function checkIntroButton() {
+    if (!introData || !videoElement || !videoElement.src) {
+        hideSkipIntroButton();
+        return;
+    }
+
+    const currentTime = videoElement.currentTime;
+    const skipButton = document.getElementById('skipIntroBtn');
+
+    // Show button if we're within intro range (add 5s buffer at start to give user time to see it)
+    if (currentTime >= (introData.start + 5) && currentTime < introData.end) {
+        if (skipButton) {
+            skipButton.style.display = 'block';
+        }
+    } else {
+        hideSkipIntroButton();
+    }
+}
+
+// Hide skip intro button
+function hideSkipIntroButton() {
+    const skipButton = document.getElementById('skipIntroBtn');
+    if (skipButton) {
+        skipButton.style.display = 'none';
+    }
+}
+
+// Skip to end of intro
+function skipIntro() {
+    if (!introData) return;
+
+    console.log(`Skipping intro to ${introData.end.toFixed(2)}s`);
+
+    // Prevent sync correction during skip
+    isSyncing = true;
+
+    // Seek to end of intro
+    videoElement.currentTime = introData.end;
+
+    // Hide button
+    hideSkipIntroButton();
+
+    // Re-enable sync after a short delay
+    setTimeout(() => {
+        isSyncing = false;
+    }, 1000);
+}
+
+// Start checking for intro timeframe
+function startIntroCheck() {
+    // Clear any existing interval
+    stopIntroCheck();
+
+    // Check every 500ms if we're in intro range
+    introCheckInterval = setInterval(checkIntroButton, 500);
+}
+
+// Stop checking for intro
+function stopIntroCheck() {
+    if (introCheckInterval) {
+        clearInterval(introCheckInterval);
+        introCheckInterval = null;
+    }
+}
+
+// Note: Skip Intro button only works in normal (non-fullscreen) mode
+// This is a browser limitation - custom buttons cannot appear inside fullscreen <video> elements
+// To support fullscreen, a custom video player with custom controls would be needed
 
 function updateUserCount() {
     const count = currentUsers.length;
@@ -1272,14 +1386,21 @@ function startPeriodicSync() {
             return;
         }
 
-        // Calculate time difference
-        const timeDiff = Math.abs(videoElement.currentTime - currentPartyState.time);
+        // Calculate expected time based on when playback started
+        let expectedTime = currentPartyState.time;
+        if (currentPartyState.playing && playbackStartTime) {
+            const elapsedSeconds = (Date.now() - playbackStartTime) / 1000;
+            expectedTime = currentPartyState.time + elapsedSeconds;
+        }
+
+        // Calculate time difference against expected time (not static party state)
+        const timeDiff = Math.abs(videoElement.currentTime - expectedTime);
 
         // If drift is significant, correct it
         if (timeDiff > syncThreshold && currentPartyState.playing) {
-            console.log(`Periodic sync: correcting ${timeDiff.toFixed(2)}s drift`);
+            console.log(`Periodic sync: correcting ${timeDiff.toFixed(2)}s drift (expected: ${expectedTime.toFixed(2)}, actual: ${videoElement.currentTime.toFixed(2)})`);
             isSyncing = true;
-            videoElement.currentTime = currentPartyState.time;
+            videoElement.currentTime = expectedTime;
 
             // Resume playing after sync
             videoElement.play().then(() => {
