@@ -468,6 +468,13 @@ header p {
     gap: 0.25rem;
     flex: 1;
     min-width: 120px;
+    max-width: 250px;
+}
+
+.stop-button-group {
+    flex: 0 0 auto;
+    margin-left: 0.5rem;
+    min-width: auto;
 }
 
 .stream-control-group label {

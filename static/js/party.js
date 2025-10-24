@@ -516,15 +516,24 @@ subtitleSelect.addEventListener('change', () => {
     const audioIndex = audioSelect.value === 'none' ? null : parseInt(audioSelect.value);
     const subtitleIndex = subtitleSelect.value === 'none' ? null : parseInt(subtitleSelect.value);
 
-    // Immediately update subtitles locally (without reloading video)
-    loadSubtitleTrack(subtitleIndex);
+    // Only process PGS subtitles (requires transcode restart and party sync)
+    // Text subtitles are handled by CC button and don't need party sync
+    const subtitle = availableStreams.subtitles?.find(s => s.index === subtitleIndex);
 
-    // Also notify server to sync with other users (server will send streams_changed)
-    socket.emit('change_streams', {
-        party_id: partyId,
-        audio_index: audioIndex,
-        subtitle_index: subtitleIndex
-    });
+    if (!subtitle || subtitle.isPGS || subtitleIndex === null) {
+        // PGS or None - sync with party (triggers transcode)
+        loadSubtitleTrack(subtitleIndex); // For PGS burn-in
+
+        socket.emit('change_streams', {
+            party_id: partyId,
+            audio_index: audioIndex,
+            subtitle_index: subtitleIndex
+        });
+        console.log('PGS subtitle change synced with party');
+    } else {
+        // Text subtitles - user should use CC button, but if they somehow triggered this, ignore
+        console.log('Text subtitle selected - use CC button for VTT subtitle selection');
+    }
 });
 
 // Chat functionality
@@ -1010,24 +1019,32 @@ async function loadAvailableStreams(itemId) {
             audioSelect.innerHTML = '<option value="">Default Audio</option>';
         }
 
-        // Populate subtitle select
-        subtitleSelect.innerHTML = '<option value="none">None</option>';
-        if (data.subtitles && data.subtitles.length > 0) {
-            data.subtitles.forEach(stream => {
+        // Check if there are any PGS subtitles
+        const hasPGS = data.subtitles && data.subtitles.some(s => s.isPGS);
+        const subtitleControlContainer = document.getElementById('subtitleControlContainer');
+
+        if (hasPGS) {
+            // Show subtitle dropdown for PGS subtitle selection
+            subtitleControlContainer.style.visibility = 'visible';
+
+            // Populate with PGS subtitles only
+            subtitleSelect.innerHTML = '<option value="none">None</option>';
+            data.subtitles.filter(s => s.isPGS).forEach(stream => {
                 const option = document.createElement('option');
                 option.value = stream.index;
                 const lang = stream.displayLanguage || stream.language || 'Unknown';
                 const title = stream.title ? ` (${stream.title})` : '';
                 const forced = stream.isForced ? ' [Forced]' : '';
-                const burnedIn = stream.isPGS ? ' [Burned-in]' : '';
-                option.textContent = `${lang}${title}${forced}${burnedIn}`;
-                // Don't auto-select default subtitles - let users opt-in
-                // (Removed: if (stream.isDefault) { option.selected = true; })
+                option.textContent = `${lang}${title}${forced} [Burned-in]`;
                 subtitleSelect.appendChild(option);
             });
+            subtitleSelect.value = 'none';
+            console.log('PGS subtitles available - dropdown visible');
+        } else {
+            // Hide subtitle dropdown - users will use CC button for text subtitles
+            subtitleControlContainer.style.visibility = 'hidden';
+            console.log('Only text subtitles available - dropdown hidden, use CC button');
         }
-        // Ensure "None" is selected by default
-        subtitleSelect.value = 'none';
 
         // Don't spam chat with track counts - users can see in dropdowns
     } catch (error) {
@@ -1084,6 +1101,43 @@ function loadSubtitleTrack(subtitleIndex) {
 
         videoElement.appendChild(track);
     }
+}
+
+// Load ALL text-based subtitle tracks automatically (for independent selection via CC button)
+function loadAllTextSubtitles() {
+    // First, clear any existing text tracks from previous videos
+    const existingTracks = videoElement.querySelectorAll('track');
+    existingTracks.forEach(track => track.remove());
+    console.log('Cleared existing subtitle tracks');
+
+    if (!availableStreams.subtitles || !currentItemId || !currentMediaSourceId) {
+        console.log('No subtitle streams available or missing IDs');
+        return;
+    }
+
+    // Filter to only text-based subtitles (skip PGS - they're burned-in)
+    const textSubtitles = availableStreams.subtitles.filter(s => !s.isPGS && s.isTextSubtitleStream);
+
+    if (textSubtitles.length === 0) {
+        console.log('No text-based subtitles to load');
+        return;
+    }
+
+    console.log(`Loading ${textSubtitles.length} text subtitle track(s) for independent selection`);
+
+    textSubtitles.forEach((subtitle) => {
+        const track = document.createElement('track');
+        track.kind = 'subtitles';
+        track.label = subtitle.displayLanguage || subtitle.language || 'Unknown';
+        track.srclang = subtitle.language || 'und';
+        track.src = `/api/subtitles/${currentItemId}/${currentMediaSourceId}/${subtitle.index}`;
+
+        // Start with all tracks hidden - user must click CC button to choose
+        track.mode = 'hidden';
+
+        videoElement.appendChild(track);
+        console.log(`Loaded VTT track: ${track.label} (${track.srclang})`);
+    });
 }
 
 function loadVideo(video) {
@@ -1144,7 +1198,10 @@ function loadVideo(video) {
         // Ensure video is not muted (browser autoplay policies may force mute)
         videoElement.muted = false;
 
-        // Load subtitle track if one is selected
+        // Load ALL text-based subtitle tracks for independent selection
+        loadAllTextSubtitles();
+
+        // Load subtitle track if one is selected (PGS burn-in)
         if (video.subtitle_index !== undefined && video.subtitle_index !== null) {
             loadSubtitleTrack(video.subtitle_index);
         }
