@@ -44,7 +44,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Audio track changes are synced across all party members
   - Fixes issue where only default audio track was available
 
+- **Sync Architecture Overhaul**: Removed periodic sync workaround
+  - Disabled 5-second periodic sync check (added in v1.0.5, no longer needed)
+  - Server now calculates accurate current time for new joiners
+  - Client compensates for network and loading delays
+  - Sync accuracy improved from ±4 seconds to sub-second precision
+  - Simpler, more reliable sync mechanism
+
 ### Fixed
+- **Mid-Play Join Sync Issues**: Complete overhaul of new joiner sync behavior
+  - Fixed video restarting to 0:00 for existing users when someone joins
+  - New joiners now start at correct position (e.g., 22 minutes, not 0:00)
+  - New joiners can immediately receive play/pause/seek commands
+  - Set isSyncing flag before loadVideo() to prevent MANIFEST_PARSED reset
+  - Use HLS.js startPosition config to load correct video segments immediately
+  - Clear isSyncing in MANIFEST_PARSED to allow command processing
+  - Server calculates elapsed time since last play/pause/seek for accurate sync
+  - Client compensates for network + metadata loading delay (0.1-0.5s typical)
+  - Loading delay compensation capped at 2 seconds to prevent over-compensation
+
+- **False Drift Detection**: Eliminated random seeking and desyncing
+  - Periodic sync was detecting false "drift" after pause/play
+  - Example: Pause at 496s, play again → periodic sync thought 5s drift existed
+  - Removed periodic sync - play/pause/seek events provide sufficient sync
+  - No more random video forwarding or seeking
+  - Pause/play now works smoothly without desyncing users
+
 - **Subtitle Filtering and Sync Issues**: Resolved subtitle-related sync loop bug
   - Fixed issue where mid-play joiners caused sync loops
   - Improved subtitle stream filtering logic
@@ -62,11 +87,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Proper button positioning with `.stop-button-group` class
 
 ### Technical
-- Enhanced subtitle stream detection with `isPGS` flag in backend
-- Automatic text track cleanup in `loadAllTextSubtitles()` function
-- Modified subtitle dropdown event listener to only emit party sync for PGS subtitles
-- Added subtitle track clearing when loading new videos
-- Improved stream control layout with better flexbox handling
+- **Server-Side (app.py):**
+  - Calculate accurate current time when new user joins (handle_join_party)
+  - Add elapsed time since last_update to playback_state.time for playing videos
+  - Send compensated time to new joiners: `current_time = stored_time + elapsed`
+  - Added debug logging for new joiner sync calculations
+
+- **Client-Side (party.js):**
+  - Capture sync_state arrival time for delay compensation
+  - Set playbackStartTime when new joiner starts playing
+  - Disabled periodic sync (removed from play handler and sync_state handler)
+  - Improved periodic sync guards (check both party state and video state)
+  - Enhanced subtitle stream detection with `isPGS` flag
+  - Automatic text track cleanup in `loadAllTextSubtitles()` function
+  - Modified subtitle dropdown event listener to only emit party sync for PGS subtitles
+
+- **Code Cleanup:**
+  - Removed 3 unused variables (lastSyncTime, lastSeekBroadcast, seekBroadcastDelay)
+  - Removed empty socket.on('connected') handler
+  - Removed 12 development console.log statements
+  - Reduced party.js from 1493 to 1459 lines (34 lines saved)
+  - Fixed syntax error (extra closing brace in subtitle change handler)
 
 ## [1.0.6] - 2025-10-24
 
