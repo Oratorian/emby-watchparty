@@ -35,11 +35,7 @@ let username = '';
 let currentUsers = [];
 let isHost = false;
 let isSyncing = false;
-let lastSyncTime = 0;
-let syncThreshold = 0.3; // Only sync if difference is more than 0.3 seconds
-// Tighter threshold for better sync accuracy, while still allowing minor buffering differences
-let lastSeekBroadcast = 0;
-let seekBroadcastDelay = 500; // Throttle seek broadcasts to max once per 500ms
+let syncThreshold = 0.3;
 let currentItemId = null;
 let currentMediaSourceId = null;
 let availableStreams = { audio: [], subtitles: [] };
@@ -529,10 +525,6 @@ subtitleSelect.addEventListener('change', () => {
             audio_index: audioIndex,
             subtitle_index: subtitleIndex
         });
-        console.log('PGS subtitle change synced with party');
-    } else {
-        // Text subtitles - user should use CC button, but if they somehow triggered this, ignore
-        console.log('Text subtitle selected - use CC button for VTT subtitle selection');
     }
 });
 
@@ -587,10 +579,6 @@ function addSystemMessage(message) {
 }
 
 // Socket.IO event handlers
-socket.on('connected', (data) => {
-    // Connected to server
-});
-
 socket.on('user_joined', (data) => {
     currentUsers = data.users;
     updateUserCount();
@@ -611,6 +599,22 @@ socket.on('user_left', (data) => {
 
 socket.on('sync_state', (data) => {
     if (data.current_video) {
+        // Capture arrival time immediately for accurate sync compensation
+        const syncStateArrivalTime = Date.now();
+
+        // Set isSyncing BEFORE loadVideo() to prevent MANIFEST_PARSED from resetting to 0
+        if (data.playback_state && data.playback_state.time >= 0) {
+            isSyncing = true;
+
+            // Safety timeout: ensure isSyncing gets reset even if something fails
+            setTimeout(() => {
+                if (isSyncing) {
+                    console.warn('isSyncing was stuck true, resetting after 3 seconds');
+                    isSyncing = false;
+                }
+            }, 3000);
+        }
+
         loadVideo(data.current_video);
 
         // Store party state for periodic sync
@@ -624,26 +628,29 @@ socket.on('sync_state', (data) => {
         // Improved browser reload handling: sync to current time even if it's small
         // Only skip sync if time is exactly 0 (brand new video)
         if (data.playback_state && data.playback_state.time >= 0) {
-            isSyncing = true;
 
             // Wait for video to be loaded before syncing
             videoElement.addEventListener('loadedmetadata', function syncAfterLoad() {
                 // Ensure video is not muted
                 videoElement.muted = false;
 
-                // Set to the exact time from server
-                videoElement.currentTime = data.playback_state.time;
+                // Compensate for loading delay: account for time elapsed since sync_state arrived
+                // Only compensate if video is playing, and cap at 2 seconds to avoid over-compensation
+                const loadingDelay = (Date.now() - syncStateArrivalTime) / 1000;
+                const cappedDelay = Math.min(loadingDelay, 2.0);
+                const compensatedTime = data.playback_state.time + (data.playback_state.playing ? cappedDelay : 0);
+
+                videoElement.currentTime = compensatedTime;
 
                 if (data.playback_state.playing) {
+                    playbackStartTime = Date.now();
                     videoElement.play().then(() => {
                         setTimeout(() => {
                             isSyncing = false;
-                            startPeriodicSync(); // Start periodic sync check
                         }, 100);
                     }).catch(() => {
                         setTimeout(() => {
                             isSyncing = false;
-                            startPeriodicSync(); // Start periodic sync check
                         }, 100);
                     });
                 } else {
@@ -844,11 +851,6 @@ socket.on('play', (data) => {
     currentPartyState = { time: data.time, playing: true };
     playbackStartTime = Date.now(); // Track when playback started
 
-    // Start periodic sync if not already running
-    if (!periodicSyncInterval) {
-        startPeriodicSync();
-    }
-
     processSyncCommand({ type: 'play', time: data.time });
 });
 
@@ -1039,11 +1041,8 @@ async function loadAvailableStreams(itemId) {
                 subtitleSelect.appendChild(option);
             });
             subtitleSelect.value = 'none';
-            console.log('PGS subtitles available - dropdown visible');
         } else {
-            // Hide subtitle dropdown - users will use CC button for text subtitles
             subtitleControlContainer.style.visibility = 'hidden';
-            console.log('Only text subtitles available - dropdown hidden, use CC button');
         }
 
         // Don't spam chat with track counts - users can see in dropdowns
@@ -1077,9 +1076,7 @@ function loadSubtitleTrack(subtitleIndex) {
     // Find the subtitle in available streams
     const subtitle = availableStreams.subtitles?.find(s => s.index === parseInt(subtitleIndex));
 
-    // Skip if this is a PGS subtitle (it's burned-in to the video stream)
     if (subtitle && subtitle.isPGS) {
-        console.log('PGS subtitle selected - burned into video stream, not loading as text track');
         return;
     }
 
@@ -1105,25 +1102,18 @@ function loadSubtitleTrack(subtitleIndex) {
 
 // Load ALL text-based subtitle tracks automatically (for independent selection via CC button)
 function loadAllTextSubtitles() {
-    // First, clear any existing text tracks from previous videos
     const existingTracks = videoElement.querySelectorAll('track');
     existingTracks.forEach(track => track.remove());
-    console.log('Cleared existing subtitle tracks');
 
     if (!availableStreams.subtitles || !currentItemId || !currentMediaSourceId) {
-        console.log('No subtitle streams available or missing IDs');
         return;
     }
 
-    // Filter to only text-based subtitles (skip PGS - they're burned-in)
     const textSubtitles = availableStreams.subtitles.filter(s => !s.isPGS && s.isTextSubtitleStream);
 
     if (textSubtitles.length === 0) {
-        console.log('No text-based subtitles to load');
         return;
     }
-
-    console.log(`Loading ${textSubtitles.length} text subtitle track(s) for independent selection`);
 
     textSubtitles.forEach((subtitle) => {
         const track = document.createElement('track');
@@ -1136,7 +1126,6 @@ function loadAllTextSubtitles() {
         track.mode = 'hidden';
 
         videoElement.appendChild(track);
-        console.log(`Loaded VTT track: ${track.label} (${track.srclang})`);
     });
 }
 
@@ -1211,7 +1200,8 @@ function loadVideo(video) {
     if (video.stream_url.includes('.m3u8')) {
         // Check if HLS.js is supported
         if (Hls.isSupported()) {
-            hls = new Hls({
+            // Use startPosition from party state if available (for mid-join sync)
+            const hlsConfig = {
                 debug: false,
                 enableWorker: true,
                 lowLatencyMode: false,
@@ -1221,7 +1211,13 @@ function loadVideo(video) {
                 fragLoadingRetryDelay: 1000, // Wait 1s between retries
                 manifestLoadingTimeOut: 10000,
                 levelLoadingTimeOut: 10000
-            });
+            };
+
+            if (currentPartyState && currentPartyState.time > 0) {
+                hlsConfig.startPosition = currentPartyState.time;
+            }
+
+            hls = new Hls(hlsConfig);
 
             // Attach media element
             hls.attachMedia(videoElement);
@@ -1232,14 +1228,15 @@ function loadVideo(video) {
             });
 
             hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
-                // Ensure video is not muted
                 videoElement.muted = false;
 
-                // Reset to beginning when loading a new video (unless we're syncing)
-                if (!isSyncing) {
+                if (!isSyncing && !hlsConfig.startPosition) {
                     videoElement.currentTime = 0;
                 }
-                // Stream is ready - no message needed
+
+                if (isSyncing) {
+                    isSyncing = false;
+                }
             });
 
             hls.on(Hls.Events.ERROR, function(event, data) {
@@ -1345,7 +1342,7 @@ function startPeriodicSync() {
     // Check sync every 5 seconds
     periodicSyncInterval = setInterval(() => {
         // Only sync if we have a video loaded and party state
-        if (!currentPartyState || !videoElement.src || videoElement.paused) {
+        if (!currentPartyState || !videoElement.src) {
             return;
         }
 
@@ -1354,9 +1351,19 @@ function startPeriodicSync() {
             return;
         }
 
+        // Only sync when party state says we should be playing
+        if (!currentPartyState.playing) {
+            return;
+        }
+
+        // Only sync when video is actually playing locally
+        if (videoElement.paused) {
+            return;
+        }
+
         // Calculate expected time based on when playback started
         let expectedTime = currentPartyState.time;
-        if (currentPartyState.playing && playbackStartTime) {
+        if (playbackStartTime) {
             const elapsedSeconds = (Date.now() - playbackStartTime) / 1000;
             expectedTime = currentPartyState.time + elapsedSeconds;
         }
@@ -1365,7 +1372,7 @@ function startPeriodicSync() {
         const timeDiff = Math.abs(videoElement.currentTime - expectedTime);
 
         // If drift is significant, correct it
-        if (timeDiff > syncThreshold && currentPartyState.playing) {
+        if (timeDiff > syncThreshold) {
             console.log(`Periodic sync: correcting ${timeDiff.toFixed(2)}s drift (expected: ${expectedTime.toFixed(2)}, actual: ${videoElement.currentTime.toFixed(2)})`);
             isSyncing = true;
             videoElement.currentTime = expectedTime;

@@ -1403,9 +1403,27 @@ def handle_join_party(data):
 
         current_video['stream_url'] = stream_url
 
+    # Calculate accurate current time for new joiner
+    playback_state = party['playback_state'].copy()
+    if playback_state.get('playing') and playback_state.get('last_update'):
+        try:
+            # Calculate elapsed time since last update
+            from datetime import datetime
+            last_update = datetime.fromisoformat(playback_state['last_update'])
+            elapsed_seconds = (datetime.now() - last_update).total_seconds()
+
+            # Add elapsed time to stored time for accurate sync
+            stored_time = playback_state['time']
+            current_time = stored_time + elapsed_seconds
+            playback_state['time'] = current_time
+
+            logger.debug(f"New joiner sync: stored_time={stored_time:.2f}s, elapsed={elapsed_seconds:.2f}s, current_time={current_time:.2f}s")
+        except Exception as e:
+            logger.warning(f"Error calculating playback time for new joiner: {e}")
+
     emit('sync_state', {
         'current_video': current_video,
-        'playback_state': party['playback_state']
+        'playback_state': playback_state
     })
 
 
