@@ -784,15 +784,11 @@ def api_item_streams(item_id):
                 'title': stream.get('Title', '')
             })
         elif stream_type == 'Subtitle':
-            # Only include text-based subtitles (skip PGS/VOBSUB which are image-based)
-            # PGS/VOBSUB cannot be converted to WebVTT for browser display
             is_text_subtitle = stream.get('IsTextSubtitleStream', False)
             codec = stream.get('Codec', '').lower()
 
-            # Skip image-based subtitle formats
-            if not is_text_subtitle or codec in ['pgssub', 'pgs', 'dvd_subtitle', 'dvdsub', 'vobsub']:
-                logger.debug(f"Skipping image-based subtitle: codec={codec}, isText={is_text_subtitle}")
-                continue
+            # Detect image-based subtitle formats (PGS, VobSub)
+            is_image_subtitle = codec in ['pgssub', 'pgs', 'dvd_subtitle', 'dvdsub', 'vobsub']
 
             lang = stream.get('Language', 'und')
             display_lang = stream.get('DisplayLanguage') or stream.get('DisplayTitle') or lang
@@ -807,7 +803,8 @@ def api_item_streams(item_id):
                 'isDefault': stream.get('IsDefault', False),
                 'isForced': stream.get('IsForced', False),
                 'isExternal': stream.get('IsExternal', False),
-                'isTextSubtitleStream': stream.get('IsTextSubtitleStream', False),
+                'isTextSubtitleStream': is_text_subtitle,
+                'isPGS': is_image_subtitle,  # Mark image-based subs for burn-in
                 'title': stream.get('Title', '')
             })
 
@@ -1492,16 +1489,29 @@ def handle_select_video(data):
         else:
             logger.debug("No audio stream index specified, Emby will use default")
 
-        # Always specify subtitle stream index to control subtitle burning
-        # -1 = no subtitles burned into video stream
-        # This prevents Emby from including subtitle tracks in HLS manifest
+        # Handle subtitle burning based on subtitle type
         if subtitle_index is not None and subtitle_index != -1:
-            # Note: We don't burn subtitles into the video stream
-            # Instead, we load them separately as VTT text tracks for better control
-            # So we always use -1 here to prevent embedded subtitles
-            pass
-        params.append("SubtitleStreamIndex=-1")
-        logger.debug("Disabling burned-in subtitles (loading separately as VTT)")
+            # Check if this is a PGS/image-based subtitle that needs burn-in
+            is_pgs = False
+            for stream in media_source['MediaStreams']:
+                if stream.get('Type') == 'Subtitle' and stream.get('Index') == subtitle_index:
+                    codec = stream.get('Codec', '').lower()
+                    is_pgs = codec in ['pgssub', 'pgs', 'dvd_subtitle', 'dvdsub', 'vobsub']
+                    break
+
+            if is_pgs:
+                # Burn-in PGS subtitles for perfect quality (image-based)
+                params.append(f"SubtitleStreamIndex={subtitle_index}")
+                params.append("SubtitleMethod=Encode")  # Force burn-in
+                logger.debug(f"Burning in PGS subtitle track {subtitle_index}")
+            else:
+                # Text-based subtitles: load separately as VTT for better control
+                # Don't add SubtitleStreamIndex parameter - let Emby ignore subtitles
+                logger.debug(f"Text subtitle {subtitle_index} will be loaded separately as VTT (not burning)")
+        else:
+            # No subtitles selected - don't add any subtitle parameters
+            # This prevents Emby from auto-selecting default/forced subtitles
+            logger.debug("No subtitles selected - omitting subtitle parameters")
 
         # Use Flask proxy URL to keep Emby internal (WITHOUT token)
         stream_url_base = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"
@@ -1700,6 +1710,7 @@ def handle_change_streams(data):
     if playback_info and 'MediaSources' in playback_info:
         media_source_id = playback_info['MediaSources'][0]['Id']
         play_session_id = playback_info.get('PlaySessionId')
+        media_source = playback_info['MediaSources'][0]
 
         # Build direct Emby HLS URL with authentication
         params = [
@@ -1723,11 +1734,29 @@ def handle_change_streams(data):
         else:
             logger.debug("No audio stream index specified, Emby will use default")
 
-        # Always specify subtitle stream index to control subtitle burning
-        # -1 = no subtitles burned into video stream
-        # This prevents Emby from including subtitle tracks in HLS manifest
-        params.append("SubtitleStreamIndex=-1")
-        logger.debug("Disabling burned-in subtitles (loading separately as VTT)")
+        # Handle subtitle burning based on subtitle type
+        if subtitle_index is not None and subtitle_index != -1:
+            # Check if this is a PGS/image-based subtitle that needs burn-in
+            is_pgs = False
+            for stream in media_source['MediaStreams']:
+                if stream.get('Type') == 'Subtitle' and stream.get('Index') == subtitle_index:
+                    codec = stream.get('Codec', '').lower()
+                    is_pgs = codec in ['pgssub', 'pgs', 'dvd_subtitle', 'dvdsub', 'vobsub']
+                    break
+
+            if is_pgs:
+                # Burn-in PGS subtitles for perfect quality (image-based)
+                params.append(f"SubtitleStreamIndex={subtitle_index}")
+                params.append("SubtitleMethod=Encode")  # Force burn-in
+                logger.debug(f"Burning in PGS subtitle track {subtitle_index}")
+            else:
+                # Text-based subtitles: load separately as VTT for better control
+                # Don't add SubtitleStreamIndex parameter - let Emby ignore subtitles
+                logger.debug(f"Text subtitle {subtitle_index} will be loaded separately as VTT (not burning)")
+        else:
+            # No subtitles selected - don't add any subtitle parameters
+            # This prevents Emby from auto-selecting default/forced subtitles
+            logger.debug("No subtitles selected - omitting subtitle parameters")
 
         # Use Flask proxy URL to keep Emby internal (WITHOUT token)
         stream_url_base = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"

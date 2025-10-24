@@ -1019,7 +1019,8 @@ async function loadAvailableStreams(itemId) {
                 const lang = stream.displayLanguage || stream.language || 'Unknown';
                 const title = stream.title ? ` (${stream.title})` : '';
                 const forced = stream.isForced ? ' [Forced]' : '';
-                option.textContent = `${lang}${title}${forced}`;
+                const burnedIn = stream.isPGS ? ' [Burned-in]' : '';
+                option.textContent = `${lang}${title}${forced}${burnedIn}`;
                 // Don't auto-select default subtitles - let users opt-in
                 // (Removed: if (stream.isDefault) { option.selected = true; })
                 subtitleSelect.appendChild(option);
@@ -1058,6 +1059,12 @@ function loadSubtitleTrack(subtitleIndex) {
 
     // Find the subtitle in available streams
     const subtitle = availableStreams.subtitles?.find(s => s.index === parseInt(subtitleIndex));
+
+    // Skip if this is a PGS subtitle (it's burned-in to the video stream)
+    if (subtitle && subtitle.isPGS) {
+        console.log('PGS subtitle selected - burned into video stream, not loading as text track');
+        return;
+    }
 
     // Only load if it's a text subtitle stream
     if (subtitle && subtitle.isTextSubtitleStream && currentMediaSourceId) {
