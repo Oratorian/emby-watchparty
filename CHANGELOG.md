@@ -5,6 +5,42 @@ All notable changes to Emby Watch Party will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2025-10-24
+
+### Fixed
+- **Critical Audio Fix**: Videos now play with audio correctly
+  - Added `AudioCodec=aac,mp3` parameter to force compatible audio transcoding
+  - Added `TranscodingMaxAudioChannels=2` and `MaxAudioChannels=2` to ensure audio inclusion
+  - Removed `AudioStreamIndex` parameter that was causing Emby to strip audio
+  - Fixes issue where videos with FLAC or other lossless audio codecs had no sound
+  - **Dolby TrueHD support**: Now properly downmixes and transcodes to stereo AAC/MP3
+  - HLS streams now properly transcode audio to browser-compatible formats
+
+- **Video Looping Fix**: Videos no longer loop after 2-4 seconds
+  - Added `BreakOnNonKeyFrames=True` to allow proper HLS segment generation
+  - Added `VideoCodec=h264` to ensure maximum browser compatibility
+  - Fixes issue where videos would play 2-4 seconds then restart
+  - Works with both HEVC (H.265) and AVC (H.264) source videos
+
+### Changed
+- **Unified Transcoding Profile**: All clients receive same quality stream
+  - Video: H.264 (maximum compatibility, works on all browsers)
+  - Audio: AAC or MP3 (handles FLAC, TrueHD, DTS, AC3, etc.)
+  - Channels: Downmixed to stereo (2.0) from any multi-channel format
+  - Single transcode per party = better performance and perfect sync
+
+- **Enhanced HLS Parameters**:
+  - `AudioCodec=aac,mp3` - Supports both AAC and MP3 fallback
+  - `VideoCodec=h264` - Force H.264 for universal browser support
+  - `BreakOnNonKeyFrames=True` - Allow seeking to any point in video
+  - `MaxAudioChannels=2` - Downmix surround sound to stereo
+
+### Technical
+- Modified HLS URL generation in `select_video` and `change_streams` handlers
+- Added debug logging for HLS master playlist content
+- Enhanced audio stream handling to prevent transcoding issues
+- Optimized for "lowest common denominator" approach (single transcode for all clients)
+
 ## [1.0.5] - 2025-10-23
 
 ### Added
@@ -200,6 +236,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.0.6** (2025-10-24): Critical audio fix - videos now play with sound
 - **v1.0.5** (2025-10-23): Simplified invite codes, improved sync timing, browser compatibility docs
 - **v1.0.4** (2025-10-22): External subtitle support, transcoding cleanup, UI layout improvements
 - **v1.0.3** (2025-10-21): Stop video feature, HLS token validation, enhanced debugging
