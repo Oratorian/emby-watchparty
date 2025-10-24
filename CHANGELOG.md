@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatically shows/hides based on current playback position
   - Only works in normal viewing mode (limitation: not visible in fullscreen due to HTML5 video fullscreen constraints)
   - Synced across all party members when clicked
+  - **Note:** Requires Emby API key to be configured for intro marker detection
 
 - **Intelligent PGS Subtitle Handling**: Smart detection and burn-in for image-based subtitles
   - Automatically detects PGS (Presentation Graphic Stream) subtitles
