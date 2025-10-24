@@ -468,6 +468,13 @@ header p {
     gap: 0.25rem;
     flex: 1;
     min-width: 120px;
+    max-width: 250px;
+}
+
+.stop-button-group {
+    flex: 0 0 auto;
+    margin-left: 0.5rem;
+    min-width: auto;
 }
 
 .stream-control-group label {
@@ -735,4 +742,41 @@ header p {
         width: 350px;
         min-width: 350px;
     }
+}
+
+/* Skip Intro Button - Note: Only works in normal (non-fullscreen) mode */
+.skip-intro-button {
+    position: absolute;  /* Absolute positioning relative to video player */
+    bottom: 215px;  /* Position above player controls */
+    right: 80px;    /* More to the left, away from right edge */
+    padding: 12px 24px;
+    background: rgba(0, 0, 0, 0.85);
+    color: white;
+    border: 2px solid rgba(255, 255, 255, 0.9);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    z-index: 1000;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(10px);
+    pointer-events: auto;
+}
+
+.skip-intro-button:hover {
+    background: rgba(255, 255, 255, 0.95);
+    color: #16213e;
+    transform: scale(1.05);
+    border-color: #667eea;
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.skip-intro-button:active {
+    transform: scale(0.98);
+}
+
+/* Make video player container position relative so button positions correctly */
+.video-player {
+    position: relative;
 }

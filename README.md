@@ -61,6 +61,7 @@ pip install -r requirements.txt
 
 2. Configure your Emby server credentials:
 
+Rename [config.example.py](config.py.example) to [config.py](config.py)
 Edit [config.py](config.py) or set environment variables:
 
 **Option 1: Edit config.py (Recommended)**

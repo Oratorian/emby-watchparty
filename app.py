@@ -23,7 +23,7 @@ from logger import setup_logger
 import config
 
 # Application version
-VERSION = "1.0.6"
+VERSION = "1.1.0"
 
 # Import frequently used config values as module-level constants for convenience
 EMBY_SERVER_URL = config.EMBY_SERVER_URL
@@ -450,7 +450,8 @@ def validate_hls_token(token, item_id=None):
         return False
 
     if token not in hls_tokens:
-        logger.debug(f"Token validation failed: Token not found in hls_tokens. Available tokens: {len(hls_tokens)}")
+        logger.debug(f"Token validation failed: Token not found: {token[:16]}...")
+        logger.debug(f"Available tokens: {[t[:16] + '...' for t in list(hls_tokens.keys())[:5]]}")
         return False
 
     token_data = hls_tokens[token]
@@ -466,11 +467,11 @@ def validate_hls_token(token, item_id=None):
     sid = token_data['sid']
 
     if party_id not in watch_parties:
-        logger.debug(f"Token validation failed: Party {party_id} not found")
+        logger.debug(f"Token validation failed: Party {party_id} not found. Available parties: {list(watch_parties.keys())}")
         return False
 
     if sid not in watch_parties[party_id]['users']:
-        logger.debug(f"Token validation failed: User sid {sid} not in party {party_id}. Current users: {list(watch_parties[party_id]['users'].keys())}")
+        logger.debug(f"Token validation failed: User sid {sid} not in party {party_id}. Current user sids: {list(watch_parties[party_id]['users'].keys())}")
         return False
 
     logger.debug(f"Token validation successful for party {party_id}, user {sid}")
@@ -517,6 +518,9 @@ def index():
 @app.route('/party/<party_id>')
 def party(party_id):
     """Watch party room page"""
+    # Convert to uppercase for case-insensitive matching
+    party_id = party_id.upper()
+
     if party_id not in watch_parties:
         return render_template('error.html',
                              party_id=party_id,
@@ -780,6 +784,12 @@ def api_item_streams(item_id):
                 'title': stream.get('Title', '')
             })
         elif stream_type == 'Subtitle':
+            is_text_subtitle = stream.get('IsTextSubtitleStream', False)
+            codec = stream.get('Codec', '').lower()
+
+            # Detect image-based subtitle formats (PGS, VobSub)
+            is_image_subtitle = codec in ['pgssub', 'pgs', 'dvd_subtitle', 'dvdsub', 'vobsub']
+
             lang = stream.get('Language', 'und')
             display_lang = stream.get('DisplayLanguage') or stream.get('DisplayTitle') or lang
             if lang == 'und':
@@ -793,7 +803,8 @@ def api_item_streams(item_id):
                 'isDefault': stream.get('IsDefault', False),
                 'isForced': stream.get('IsForced', False),
                 'isExternal': stream.get('IsExternal', False),
-                'isTextSubtitleStream': stream.get('IsTextSubtitleStream', False),
+                'isTextSubtitleStream': is_text_subtitle,
+                'isPGS': is_image_subtitle,  # Mark image-based subs for burn-in
                 'title': stream.get('Title', '')
             })
 
@@ -804,6 +815,72 @@ def api_item_streams(item_id):
         'subtitles': subtitle_streams,
         'media_source_id': media_source_id
     })
+
+@app.route('/api/intro/<item_id>', methods=['GET'])
+def get_intro_info(item_id):
+    """
+    Get intro timing information for a specific item.
+
+    Returns intro start/end times in seconds if available,
+    or indicates no intro data exists.
+
+    Response format:
+        {
+            "hasIntro": bool,
+            "start": float (seconds),
+            "end": float (seconds),
+            "duration": float (seconds)
+        }
+
+    Example:
+        GET /api/intro/63359
+        Returns: {"hasIntro": true, "start": 90.67, "end": 138.56, "duration": 47.89}
+    """
+    logger.debug(f"Fetching intro info for item ID: {item_id}")
+
+    try:
+        # Fetch all intro data from Emby's Chapter API plugin
+        # Note: This endpoint requires admin access, so we use API key directly
+        response = requests.get(
+            f"{EMBY_SERVER_URL}/emby/Items/Intros",
+            params={"api_key": EMBY_API_KEY},
+            headers={'Content-Type': 'application/json'},
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            all_intros = response.json()
+
+            # Find intro for this specific item
+            for intro in all_intros:
+                if str(intro.get('Id')) == str(item_id):
+                    # Convert ticks (100-nanosecond units) to seconds
+                    # 1 second = 10,000,000 ticks
+                    start_seconds = intro.get('Start', 0) / 10_000_000
+                    end_seconds = intro.get('End', 0) / 10_000_000
+
+                    logger.info(f"Found intro for item {item_id}: {start_seconds:.2f}s - {end_seconds:.2f}s")
+
+                    return jsonify({
+                        'hasIntro': True,
+                        'start': start_seconds,
+                        'end': end_seconds,
+                        'duration': end_seconds - start_seconds
+                    })
+
+            # No intro found for this item
+            logger.debug(f"No intro data found for item {item_id}")
+            return jsonify({'hasIntro': False})
+        else:
+            logger.warning(f"Failed to fetch intro data from Emby: HTTP {response.status_code}")
+            return jsonify({'hasIntro': False})
+
+    except requests.exceptions.Timeout:
+        logger.error(f"Timeout fetching intro info for item {item_id}")
+        return jsonify({'hasIntro': False})
+    except Exception as e:
+        logger.error(f"Error fetching intro info for item {item_id}: {e}")
+        return jsonify({'hasIntro': False})
 
 @app.route('/hls/<item_id>/master.m3u8')
 def proxy_hls_master(item_id):
@@ -1267,7 +1344,7 @@ def handle_disconnect():
 @socketio.on('join_party')
 def handle_join_party(data):
     """User joins a watch party"""
-    party_id = data.get('party_id')
+    party_id = data.get('party_id', '').strip().upper()  # Convert to uppercase for case-insensitive matching
     username = data.get('username', '').strip()
 
     # Generate random username if empty
@@ -1320,19 +1397,40 @@ def handle_join_party(data):
             user_token = get_user_token(party_id, request.sid)
             if user_token:
                 stream_url += f"&token={user_token}"
+                logger.debug(f"New user {username} joining party {party_id} with token: {user_token[:16]}...")
+            else:
+                logger.warning(f"Failed to generate token for new user {username} in party {party_id}")
 
         current_video['stream_url'] = stream_url
 
+    # Calculate accurate current time for new joiner
+    playback_state = party['playback_state'].copy()
+    if playback_state.get('playing') and playback_state.get('last_update'):
+        try:
+            # Calculate elapsed time since last update
+            from datetime import datetime
+            last_update = datetime.fromisoformat(playback_state['last_update'])
+            elapsed_seconds = (datetime.now() - last_update).total_seconds()
+
+            # Add elapsed time to stored time for accurate sync
+            stored_time = playback_state['time']
+            current_time = stored_time + elapsed_seconds
+            playback_state['time'] = current_time
+
+            logger.debug(f"New joiner sync: stored_time={stored_time:.2f}s, elapsed={elapsed_seconds:.2f}s, current_time={current_time:.2f}s")
+        except Exception as e:
+            logger.warning(f"Error calculating playback time for new joiner: {e}")
+
     emit('sync_state', {
         'current_video': current_video,
-        'playback_state': party['playback_state']
+        'playback_state': playback_state
     })
 
 
 @socketio.on('leave_party')
 def handle_leave_party(data):
     """User leaves a watch party"""
-    party_id = data.get('party_id')
+    party_id = data.get('party_id', '').strip().upper()  # Convert to uppercase for case-insensitive matching
 
     if party_id in watch_parties and request.sid in watch_parties[party_id]['users']:
         username = watch_parties[party_id]['users'][request.sid]
@@ -1348,7 +1446,7 @@ def handle_leave_party(data):
 @socketio.on('select_video')
 def handle_select_video(data):
     """Host selects a video to watch"""
-    party_id = data.get('party_id')
+    party_id = data.get('party_id', '').strip().upper()  # Convert to uppercase for case-insensitive matching
     item_id = data.get('item_id')
     item_name = data.get('item_name', 'Unknown')
     item_overview = data.get('item_overview', '')
@@ -1384,12 +1482,8 @@ def handle_select_video(data):
                         logger.debug(f"No default audio found, using first audio track: {audio_index}")
                         break
 
-        if subtitle_index is None and 'MediaStreams' in media_source:
-            for stream in media_source['MediaStreams']:
-                if stream.get('Type') == 'Subtitle' and stream.get('IsDefault'):
-                    subtitle_index = stream.get('Index')
-                    logger.debug(f"Using default subtitle track: {subtitle_index}")
-                    break
+        # Don't auto-select default subtitles - let users opt-in
+        # (Removed automatic default subtitle selection)
 
         # Build direct Emby HLS URL with authentication
         params = [
@@ -1413,7 +1507,29 @@ def handle_select_video(data):
         else:
             logger.debug("No audio stream index specified, Emby will use default")
 
-        # Note: SubtitleStreamIndex not added to HLS URL - subtitles loaded separately as VTT tracks
+        # Handle subtitle burning based on subtitle type
+        if subtitle_index is not None and subtitle_index != -1:
+            # Check if this is a PGS/image-based subtitle that needs burn-in
+            is_pgs = False
+            for stream in media_source['MediaStreams']:
+                if stream.get('Type') == 'Subtitle' and stream.get('Index') == subtitle_index:
+                    codec = stream.get('Codec', '').lower()
+                    is_pgs = codec in ['pgssub', 'pgs', 'dvd_subtitle', 'dvdsub', 'vobsub']
+                    break
+
+            if is_pgs:
+                # Burn-in PGS subtitles for perfect quality (image-based)
+                params.append(f"SubtitleStreamIndex={subtitle_index}")
+                params.append("SubtitleMethod=Encode")  # Force burn-in
+                logger.debug(f"Burning in PGS subtitle track {subtitle_index}")
+            else:
+                # Text-based subtitles: load separately as VTT for better control
+                # Don't add SubtitleStreamIndex parameter - let Emby ignore subtitles
+                logger.debug(f"Text subtitle {subtitle_index} will be loaded separately as VTT (not burning)")
+        else:
+            # No subtitles selected - don't add any subtitle parameters
+            # This prevents Emby from auto-selecting default/forced subtitles
+            logger.debug("No subtitles selected - omitting subtitle parameters")
 
         # Use Flask proxy URL to keep Emby internal (WITHOUT token)
         stream_url_base = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"
@@ -1492,7 +1608,7 @@ def handle_stop_video(data):
         'video_stopped': Broadcast to all users in the party
         'error': If user is not authorized or party doesn't exist
     """
-    party_id = data.get('party_id')
+    party_id = data.get('party_id', '').strip().upper()  # Convert to uppercase for case-insensitive matching
 
     if not party_id or party_id not in watch_parties:
         emit('error', {'message': 'Party not found'})
@@ -1537,7 +1653,7 @@ def handle_stop_video(data):
 @socketio.on('play')
 def handle_play(data):
     """Handle play command"""
-    party_id = data.get('party_id')
+    party_id = data.get('party_id', '').strip().upper()  # Convert to uppercase for case-insensitive matching
     current_time = data.get('time', 0)
 
     if party_id in watch_parties:
@@ -1553,7 +1669,7 @@ def handle_play(data):
 @socketio.on('pause')
 def handle_pause(data):
     """Handle pause command"""
-    party_id = data.get('party_id')
+    party_id = data.get('party_id', '').strip().upper()  # Convert to uppercase for case-insensitive matching
     current_time = data.get('time', 0)
 
     if party_id in watch_parties:
@@ -1569,7 +1685,7 @@ def handle_pause(data):
 @socketio.on('seek')
 def handle_seek(data):
     """Handle seek command with force pause for better buffering"""
-    party_id = data.get('party_id')
+    party_id = data.get('party_id', '').strip().upper()  # Convert to uppercase for case-insensitive matching
     seek_time = data.get('time', 0)
 
     if party_id in watch_parties:
@@ -1595,7 +1711,7 @@ def handle_seek(data):
 @socketio.on('change_streams')
 def handle_change_streams(data):
     """Handle audio/subtitle stream changes"""
-    party_id = data.get('party_id')
+    party_id = data.get('party_id', '').strip().upper()  # Convert to uppercase for case-insensitive matching
     audio_index = data.get('audio_index')
     subtitle_index = data.get('subtitle_index')
 
@@ -1612,6 +1728,7 @@ def handle_change_streams(data):
     if playback_info and 'MediaSources' in playback_info:
         media_source_id = playback_info['MediaSources'][0]['Id']
         play_session_id = playback_info.get('PlaySessionId')
+        media_source = playback_info['MediaSources'][0]
 
         # Build direct Emby HLS URL with authentication
         params = [
@@ -1635,7 +1752,29 @@ def handle_change_streams(data):
         else:
             logger.debug("No audio stream index specified, Emby will use default")
 
-        # Note: SubtitleStreamIndex not added to HLS URL - subtitles loaded separately as VTT tracks
+        # Handle subtitle burning based on subtitle type
+        if subtitle_index is not None and subtitle_index != -1:
+            # Check if this is a PGS/image-based subtitle that needs burn-in
+            is_pgs = False
+            for stream in media_source['MediaStreams']:
+                if stream.get('Type') == 'Subtitle' and stream.get('Index') == subtitle_index:
+                    codec = stream.get('Codec', '').lower()
+                    is_pgs = codec in ['pgssub', 'pgs', 'dvd_subtitle', 'dvdsub', 'vobsub']
+                    break
+
+            if is_pgs:
+                # Burn-in PGS subtitles for perfect quality (image-based)
+                params.append(f"SubtitleStreamIndex={subtitle_index}")
+                params.append("SubtitleMethod=Encode")  # Force burn-in
+                logger.debug(f"Burning in PGS subtitle track {subtitle_index}")
+            else:
+                # Text-based subtitles: load separately as VTT for better control
+                # Don't add SubtitleStreamIndex parameter - let Emby ignore subtitles
+                logger.debug(f"Text subtitle {subtitle_index} will be loaded separately as VTT (not burning)")
+        else:
+            # No subtitles selected - don't add any subtitle parameters
+            # This prevents Emby from auto-selecting default/forced subtitles
+            logger.debug("No subtitles selected - omitting subtitle parameters")
 
         # Use Flask proxy URL to keep Emby internal (WITHOUT token)
         stream_url_base = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"
@@ -1679,7 +1818,7 @@ def handle_change_streams(data):
 @socketio.on('chat_message')
 def handle_chat_message(data):
     """Handle chat messages"""
-    party_id = data.get('party_id')
+    party_id = data.get('party_id', '').strip().upper()  # Convert to uppercase for case-insensitive matching
     message = data.get('message', '')
 
     if party_id in watch_parties and request.sid in watch_parties[party_id]['users']:

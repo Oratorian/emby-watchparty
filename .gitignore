@@ -45,3 +45,7 @@ Thumbs.db
 logs/
 merge-to-main.ps1
 config.py
+
+# Documentations
+EMBY_PARTIES_API_RESEARCH.md
+SKIP_INTRO_IMPLEMENTATION.md
