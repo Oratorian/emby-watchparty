@@ -1405,11 +1405,13 @@ def handle_select_video(data):
             "MaxAudioChannels=2"  # Downmix to stereo for TrueHD/multi-channel audio
         ]
 
-        # NOTE: AudioStreamIndex is intentionally NOT added here
-        # When omitted, Emby includes ALL audio tracks in the HLS stream
-        # and the browser/player can select which one to play
-        # Specifying AudioStreamIndex can cause Emby to strip audio during transcoding
-        # Users can still select audio tracks via the Audio dropdown which will reload the stream
+        # Add audio stream index to select specific audio track
+        # This is important for videos with multiple audio tracks (different languages)
+        if audio_index is not None:
+            params.append(f"AudioStreamIndex={audio_index}")
+            logger.debug(f"Using audio stream index: {audio_index}")
+        else:
+            logger.debug("No audio stream index specified, Emby will use default")
 
         # Note: SubtitleStreamIndex not added to HLS URL - subtitles loaded separately as VTT tracks
 
@@ -1625,10 +1627,13 @@ def handle_change_streams(data):
             "MaxAudioChannels=2"  # Downmix to stereo for TrueHD/multi-channel audio
         ]
 
-        # NOTE: AudioStreamIndex is intentionally NOT added here
-        # When omitted, Emby includes ALL audio tracks in the HLS stream
-        # Specifying AudioStreamIndex can cause Emby to strip audio during transcoding
-        # The browser/player will select the appropriate audio track
+        # Add audio stream index to select specific audio track
+        # This is important for videos with multiple audio tracks (different languages)
+        if audio_index is not None:
+            params.append(f"AudioStreamIndex={audio_index}")
+            logger.debug(f"Using audio stream index: {audio_index}")
+        else:
+            logger.debug("No audio stream index specified, Emby will use default")
 
         # Note: SubtitleStreamIndex not added to HLS URL - subtitles loaded separately as VTT tracks
 
