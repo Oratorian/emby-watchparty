@@ -62,6 +62,7 @@ pip install -r requirements.txt
 2. Configure your Emby server credentials:
 
 Rename [config.example.py](config.py.example) to [config.py](config.py)
+
 Edit [config.py](config.py) or set environment variables:
 
 **Option 1: Edit config.py (Recommended)**
@@ -69,6 +70,7 @@ Edit [config.py](config.py) or set environment variables:
 EMBY_SERVER_URL = 'http://your-emby-server:8096'
 EMBY_USERNAME = 'your-username'
 EMBY_PASSWORD = 'your-password'
+EMBY_API_KEY = 'API-KEY')
 ```
 
 **Option 2: Environment Variables**
@@ -78,6 +80,7 @@ EMBY_PASSWORD = 'your-password'
 $env:EMBY_SERVER_URL="http://your-emby-server:8096"
 $env:EMBY_USERNAME="your-username"
 $env:EMBY_PASSWORD="your-password"
+$env:EMBY_API_KEY = "API-KEY"
 ```
 
 **Windows (Command Prompt):**
@@ -85,6 +88,7 @@ $env:EMBY_PASSWORD="your-password"
 set EMBY_SERVER_URL=http://your-emby-server:8096
 set EMBY_USERNAME=your-username
 set EMBY_PASSWORD=your-password
+set EMBY_API_KEY=API-KEY
 ```
 
 **Linux/Mac:**
@@ -92,6 +96,7 @@ set EMBY_PASSWORD=your-password
 export EMBY_SERVER_URL="http://your-emby-server:8096"
 export EMBY_USERNAME="your-username"
 export EMBY_PASSWORD="your-password"
+export EMBY_API_KEY="API-KEY"
 ```
 
 3. Run the application:
