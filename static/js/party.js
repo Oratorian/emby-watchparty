@@ -54,6 +54,70 @@ let playbackStartTime = null; // Track when playback started for drift calculati
 let introData = null; // Store intro timing data for current video
 let introCheckInterval = null; // Interval for checking if we're in intro
 
+// Library navigation state persistence
+const LIBRARY_STATE_KEY = 'emby-watchparty-library-state';
+
+// Save library navigation state
+function saveLibraryState(state) {
+    try {
+        localStorage.setItem(LIBRARY_STATE_KEY, JSON.stringify(state));
+    } catch (e) {
+        console.warn('Could not save library state to localStorage');
+    }
+}
+
+// Get saved library navigation state
+function getSavedLibraryState() {
+    try {
+        const saved = localStorage.getItem(LIBRARY_STATE_KEY);
+        return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+        console.warn('Could not load library state from localStorage');
+        return null;
+    }
+}
+
+// Clear library navigation state
+function clearLibraryState() {
+    try {
+        localStorage.removeItem(LIBRARY_STATE_KEY);
+    } catch (e) {
+        console.warn('Could not clear library state from localStorage');
+    }
+}
+
+// Restore library navigation state from localStorage
+async function restoreLibraryState() {
+    const savedState = getSavedLibraryState();
+
+    if (!savedState) {
+        // No saved state, load libraries by default
+        loadLibraries();
+        return;
+    }
+
+    console.log('Restoring library state:', savedState);
+
+    try {
+        if (savedState.type === 'episodes' && savedState.seasonId) {
+            // Restore to episode list
+            await loadSeasonEpisodes(savedState.seasonId, savedState.seasonName, savedState.seriesName);
+        } else if (savedState.type === 'seasons' && savedState.seriesId) {
+            // Restore to season list
+            await loadSeriesSeasons(savedState.seriesId, savedState.seriesName);
+        } else if (savedState.type === 'library' && savedState.libraryId) {
+            // Restore to library items
+            await loadItemsFromLibrary(savedState.libraryId);
+        } else {
+            // Invalid or incomplete state, load libraries
+            loadLibraries();
+        }
+    } catch (error) {
+        console.warn('Failed to restore library state, loading libraries:', error);
+        loadLibraries();
+    }
+}
+
 // Show username modal on load
 usernameModal.style.display = 'flex';
 
@@ -68,8 +132,8 @@ joinBtn.addEventListener('click', () => {
         username: username
     });
 
-    // Load libraries by default
-    loadLibraries();
+    // Restore saved library state or load libraries by default
+    restoreLibraryState();
 });
 
 usernameInput.addEventListener('keypress', (e) => {
@@ -171,6 +235,9 @@ async function loadLibraries() {
     try {
         libraryContent.innerHTML = '<p>Loading libraries...</p>';
 
+        // Clear saved library state when returning to library root
+        clearLibraryState();
+
         const response = await fetch('/api/libraries');
         const data = await response.json();
 
@@ -196,6 +263,12 @@ async function loadItemsFromLibrary(parentId) {
     try {
         libraryContent.innerHTML = '<p>Loading items...</p>';
 
+        // Save library state
+        saveLibraryState({
+            type: 'library',
+            libraryId: parentId
+        });
+
         const response = await fetch(`/api/items?parentId=${parentId}&recursive=true`);
         const data = await response.json();
 
@@ -209,6 +282,13 @@ async function loadItemsFromLibrary(parentId) {
 async function loadSeriesSeasons(seriesId, seriesName) {
     try {
         libraryContent.innerHTML = '<p>Loading seasons...</p>';
+
+        // Save library state
+        saveLibraryState({
+            type: 'seasons',
+            seriesId: seriesId,
+            seriesName: seriesName
+        });
 
         // Get seasons (non-recursive to get only direct children)
         const response = await fetch(`/api/items?parentId=${seriesId}&recursive=false`);
@@ -258,6 +338,14 @@ async function loadSeriesSeasons(seriesId, seriesName) {
 async function loadSeasonEpisodes(seasonId, seasonName, seriesName) {
     try {
         libraryContent.innerHTML = '<p>Loading episodes...</p>';
+
+        // Save library state
+        saveLibraryState({
+            type: 'episodes',
+            seasonId: seasonId,
+            seasonName: seasonName,
+            seriesName: seriesName
+        });
 
         const response = await fetch(`/api/items?parentId=${seasonId}&recursive=false`);
         const data = await response.json();
@@ -496,6 +584,80 @@ videoElement.addEventListener('seeking', () => {
     }
 });
 
+// Detect when video ends - show library for next episode
+videoElement.addEventListener('ended', () => {
+    console.log('Video playback ended');
+
+    // Reset playback state to prevent position carry-over to next video
+    currentPartyState = null;
+    playbackStartTime = null;
+
+    // Exit fullscreen if active
+    if (document.fullscreenElement || document.webkitFullscreenElement ||
+        document.mozFullScreenElement || document.msFullscreenElement) {
+
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        }
+
+        console.log('Exiting fullscreen - video ended');
+    }
+
+    // Broadcast to all users that video ended
+    socket.emit('video_ended', {
+        party_id: partyId
+    });
+
+    // Show the library sidebar automatically
+    if (librarySidebar.classList.contains('hidden')) {
+        librarySidebar.classList.remove('hidden');
+        showLibraryBtn.style.display = 'inline-block';
+    }
+
+    // Add system message to chat
+    addSystemMessage('🎬 Video ended - Select next episode from library');
+});
+
+// Fullscreen change detection - remove borders forcefully
+function handleFullscreenChange() {
+    const isFullscreen = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+    );
+
+    if (isFullscreen) {
+        // Force remove all borders and effects via inline styles
+        videoElement.style.border = 'none';
+        videoElement.style.borderRadius = '0';
+        videoElement.style.outline = 'none';
+        videoElement.style.boxShadow = 'none';
+        videoElement.style.outlineOffset = '0';
+        console.log('Fullscreen entered - borders removed');
+    } else {
+        // Restore normal styles by removing inline overrides
+        videoElement.style.border = '';
+        videoElement.style.borderRadius = '';
+        videoElement.style.outline = '';
+        videoElement.style.boxShadow = '';
+        videoElement.style.outlineOffset = '';
+        console.log('Fullscreen exited - borders restored');
+    }
+}
+
+// Listen for fullscreen changes across all browsers
+document.addEventListener('fullscreenchange', handleFullscreenChange);
+document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
 // Stream selection event listeners
 audioSelect.addEventListener('change', () => {
     const audioIndex = audioSelect.value === 'none' ? null : parseInt(audioSelect.value);
@@ -550,20 +712,25 @@ function sendMessage() {
     chatInput.value = '';
 }
 
-function addChatMessage(username, message) {
+function addChatMessage(messageUsername, message) {
     const div = document.createElement('div');
-    div.className = 'chat-message';
+    const isMyMessage = (messageUsername === username);
+    div.className = isMyMessage ? 'chat-message chat-message-mine' : 'chat-message chat-message-other';
 
     const usernameSpan = document.createElement('span');
     usernameSpan.className = 'chat-message-username';
-    usernameSpan.textContent = username + ':';
+    usernameSpan.textContent = messageUsername;
 
     const messageSpan = document.createElement('span');
     messageSpan.className = 'chat-message-text';
     messageSpan.textContent = message;
 
-    div.appendChild(usernameSpan);
-    div.appendChild(messageSpan);
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-message-bubble';
+    bubble.appendChild(usernameSpan);
+    bubble.appendChild(messageSpan);
+
+    div.appendChild(bubble);
 
     chatMessages.appendChild(div);
     chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -906,6 +1073,19 @@ socket.on('seek', (data) => {
 
 socket.on('chat_message', (data) => {
     addChatMessage(data.username, data.message);
+});
+
+socket.on('video_ended', (data) => {
+    console.log('Video ended notification received');
+
+    // Show the library sidebar automatically for all users
+    if (librarySidebar.classList.contains('hidden')) {
+        librarySidebar.classList.remove('hidden');
+        showLibraryBtn.style.display = 'inline-block';
+    }
+
+    // Add system message to chat
+    addSystemMessage('🎬 Video ended - Ready for next episode');
 });
 
 socket.on('error', (data) => {

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Watch Party - {{ party_id }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
@@ -22,6 +23,14 @@
             </div>
             <div class="user-info">
                 <span id="userCount">0 users</span>
+                <select id="themeSelector" class="btn-small theme-selector">
+                    <option value="cyberpunk">🎭 Cyberpunk Theater</option>
+                    <option value="material">🎨 Material Random</option>
+                    <option value="emby">🟢 Emby Green</option>
+                    <option value="classic">🌙 Classic Dark</option>
+                    <option value="minimal">☀️ Minimal Light</option>
+                    <option value="netflix">🎬 Netflix Red</option>
+                </select>
                 <button id="leavePartyBtn" class="btn-small btn-danger">Leave</button>
             </div>
         </header>

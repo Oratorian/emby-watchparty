@@ -1830,6 +1830,27 @@ def handle_chat_message(data):
             'timestamp': datetime.now().isoformat()
         }, room=party_id)
 
+@socketio.on('video_ended')
+def handle_video_ended(data):
+    """Handle video ended notification"""
+    party_id = data.get('party_id', '').strip().upper()
+
+    if party_id in watch_parties:
+        logger.info(f"Video ended in party {party_id}")
+
+        # Reset playback state to prevent position carry-over to next video
+        watch_parties[party_id]['playback_state'] = {
+            'playing': False,
+            'time': 0,
+            'last_update': datetime.now().isoformat()
+        }
+
+        # Broadcast to all users in the party
+        emit('video_ended', {
+            'party_id': party_id,
+            'timestamp': datetime.now().isoformat()
+        }, room=party_id)
+
 def check_for_updates():
     """Check GitHub for latest release and notify if update available"""
     try:
@@ -1873,4 +1894,4 @@ if __name__ == '__main__':
     logger.info("=" * 60)
     logger.info("")
 
-    socketio.run(app, debug=False, host=config.WATCH_PARTY_BIND, port=config.WATCH_PARTY_PORT)
+    socketio.run(app, debug=True, host=config.WATCH_PARTY_BIND, port=config.WATCH_PARTY_PORT)

@@ -5,12 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emby Watch Party</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>Emby Watch Party</h1>
             <p>Watch together, wherever you are</p>
+            <div style="margin-top: 1rem;">
+                <select id="themeSelector" class="btn-small theme-selector">
+                    <option value="cyberpunk">🎭 Cyberpunk Theater</option>
+                    <option value="material">🎨 Material Random</option>
+                    <option value="emby">🟢 Emby Green</option>
+                    <option value="classic">🌙 Classic Dark</option>
+                    <option value="minimal">☀️ Minimal Light</option>
+                    <option value="netflix">🎬 Netflix Red</option>
+                </select>
+            </div>
         </header>
 
         <main>
