@@ -208,8 +208,11 @@ stopVideoBtn.addEventListener('click', () => {
 // Show library button (in header)
 if (showLibraryBtn) {
     showLibraryBtn.addEventListener('click', () => {
-        librarySidebar.classList.remove('hidden');
-        showLibraryBtn.style.display = 'none';
+        // Broadcast to all users to show library
+        socket.emit('toggle_library', {
+            party_id: partyId,
+            show: true
+        });
     });
 }
 
@@ -511,16 +514,11 @@ function createLibraryItem(item, onClick, showImage = false) {
 function selectVideo(item) {
     addSystemMessage(`${username} selected ${item.Name}`);
 
-    // Auto-hide library sidebar when video is selected
-    const sidebar = document.getElementById('librarySidebar');
-    if (sidebar && !sidebar.classList.contains('hidden')) {
-        sidebar.classList.add('hidden');
-
-        // Show the "Show Library" button in header
-        if (showLibraryBtn) {
-            showLibraryBtn.style.display = 'inline-block';
-        }
-    }
+    // Auto-hide library sidebar for all users when video is selected
+    socket.emit('toggle_library', {
+        party_id: partyId,
+        show: false
+    });
 
     socket.emit('select_video', {
         party_id: partyId,
@@ -771,8 +769,10 @@ socket.on('user_joined', (data) => {
 });
 
 socket.on('user_left', (data) => {
-    currentUsers = data.users;
-    updateUserCount();
+    if (data.users) {
+        currentUsers = data.users;
+        updateUserCount();
+    }
     addSystemMessage(`${data.username} left the party`);
 });
 
@@ -1098,6 +1098,20 @@ socket.on('video_ended', (data) => {
 
     // Add system message to chat
     addSystemMessage('🎬 Video ended - Ready for next episode');
+});
+
+socket.on('toggle_library', (data) => {
+    console.log('Library toggle received:', data.show);
+
+    if (data.show) {
+        // Show library
+        librarySidebar.classList.remove('hidden');
+        showLibraryBtn.style.display = 'none';
+    } else {
+        // Hide library
+        librarySidebar.classList.add('hidden');
+        showLibraryBtn.style.display = 'inline-block';
+    }
 });
 
 socket.on('error', (data) => {

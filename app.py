@@ -1338,7 +1338,10 @@ def handle_disconnect():
         if request.sid in party['users']:
             username = party['users'][request.sid]
             del party['users'][request.sid]
-            emit('user_left', {'username': username}, room=party_id, skip_sid=request.sid)
+            emit('user_left', {
+                'username': username,
+                'users': list(party['users'].values())
+            }, room=party_id, skip_sid=request.sid)
 
 
 @socketio.on('join_party')
@@ -1849,6 +1852,20 @@ def handle_video_ended(data):
         emit('video_ended', {
             'party_id': party_id,
             'timestamp': datetime.now().isoformat()
+        }, room=party_id)
+
+@socketio.on('toggle_library')
+def handle_toggle_library(data):
+    """Handle library sidebar toggle for all users"""
+    party_id = data.get('party_id', '').strip().upper()
+    show = data.get('show', False)
+
+    if party_id in watch_parties:
+        logger.info(f"Library toggled in party {party_id}: show={show}")
+
+        # Broadcast to all users in the party
+        emit('toggle_library', {
+            'show': show
         }, room=party_id)
 
 def check_for_updates():
