@@ -5,6 +5,126 @@ All notable changes to Emby Watch Party will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2025-10-25
+
+### Added
+- **Multi-Theme System**: 6 chooseable themes with localStorage persistence
+  - Cyberpunk Theater (default with neon cyan/magenta accents)
+  - Material Random (infinite random gradient combinations from Material Design palette)
+  - Emby Green (inspired by Emby's signature green colors)
+  - Classic Dark (professional dark mode)
+  - Minimal Light (soft grey backgrounds, easy on eyes)
+  - Netflix Red (streaming service aesthetic)
+  - Theme selector with emoji icons on both index and party pages
+  - Dedicated [theme.js](static/js/theme.js) module for theme management
+  - Automatic theme persistence across sessions
+
+- **Material Random Theme**: JavaScript-powered infinite color variations
+  - 20 Material Design colors creating 152,000+ possible combinations
+  - Randomize button (🎲) appears when Material theme is selected
+  - Generates random gradients for primary/secondary/accent/gold colors
+  - Real-time CSS custom property injection
+  - Automatic style cleanup when switching to other themes
+
+- **WhatsApp-Style Chat Interface**: Modern messaging design
+  - Messages from others aligned left with tertiary background
+  - User's own messages aligned right with gradient bubble
+  - Rounded chat bubbles (12px radius) with proper shadows
+  - Username display in each message bubble
+  - Flexbox-based responsive layout (70% max-width bubbles)
+  - Different bubble tail styles (bottom-left vs bottom-right)
+
+- **Theater Media Center Aesthetic**: Cinema-inspired visual design
+  - Gold theater borders around video player (3px solid)
+  - Red curtain outline effect (8px rgba outline-offset)
+  - Marquee-style header with gradient top border
+  - Cinema emojis throughout UI (🎬 🎭 🎞️ 💬)
+  - Spotlight shadow effects and glow on interactive elements
+  - Inset shadows for depth and dimension on containers
+
+- **Video End Detection**: Automatic library showing when playback finishes
+  - Detects natural video end via HTML5 'ended' event
+  - Automatically shows library sidebar for all party members
+  - Perfect for anime binge-watching workflow
+  - System message in chat: "🎬 Video ended - Ready for next episode"
+  - Server broadcasts `video_ended` event via Socket.IO
+
+- **Auto-Exit Fullscreen on End**: Smooth transition after video playback
+  - Automatically exits fullscreen when video ends naturally
+  - Cross-browser support (Chrome, Firefox, Safari, Edge)
+  - Uses all vendor-prefixed fullscreen APIs
+  - Prevents users being stuck in fullscreen after completion
+
+- **Library Selection Persistence**: Navigation state survives page refreshes
+  - Saves current library/show/season selection to localStorage
+  - Automatically restores last browsing position on page reload
+  - Tracks three navigation levels: library items, season list, episode list
+  - Stores IDs and names for accurate restoration
+  - Graceful fallback to library root if saved state is invalid
+  - Perfect for when page refreshes are needed during browsing
+
+### Changed
+- **Fullscreen Border Removal**: JavaScript-based solution for reliability
+  - CSS pseudo-selectors (`:fullscreen`) weren't working across all browsers
+  - JavaScript event listeners detect fullscreen state changes
+  - Inline styles force border/outline/shadow removal (highest CSS specificity)
+  - All decorative elements (borders, shadows, outlines) hidden in fullscreen
+  - Normal styles automatically restored when exiting fullscreen
+  - Cross-browser event support (fullscreenchange, webkitfullscreenchange, etc.)
+
+- **Minimal Light Theme Colors**: Reduced brightness for eye comfort
+  - Changed primary background from pure white (#ffffff) to soft grey (#e8e8e8)
+  - Changed secondary background to light grey (#f0f0f0)
+  - Softer text colors (#2d3748 instead of near-black #1a202c)
+  - Much more comfortable for extended viewing sessions
+  - Maintains good contrast while being easier on eyes
+
+### Fixed
+- **Playback State Reset on Video End**: Prevent position carry-over to next video
+  - Video 'ended' event now resets currentPartyState and playbackStartTime on client
+  - Server resets playback_state to `{playing: false, time: 0}` when video ends
+  - Fixes issue where seek position from previous video carried over to next selection
+  - Each new video starts with clean playback state
+  - Prevents confusing behavior when selecting episodes back-to-back
+
+- **Material Theme Color Bleeding**: Theme switching bug resolved
+  - Material Random theme uses inline styles for dynamic random colors
+  - clearMaterialStyles() function removes all inline CSS custom properties
+  - Called automatically when switching away from Material theme
+  - Other themes no longer inherit Material's random color values
+  - Proper theme isolation and switching behavior
+
+### Technical
+- **Client-Side (party.js):**
+  - Library state persistence functions: saveLibraryState(), getSavedLibraryState(), clearLibraryState()
+  - restoreLibraryState() function called on party join to restore browsing position
+  - saveLibraryState() in loadItemsFromLibrary(), loadSeriesSeasons(), loadSeasonEpisodes()
+  - clearLibraryState() when returning to library root
+  - Fullscreen event listeners for all browser prefixes (fullscreenchange, webkitfullscreenchange, etc.)
+  - handleFullscreenChange() function applies/removes inline styles for border removal
+  - Video 'ended' event handler with state reset and automatic fullscreen exit
+  - currentPartyState and playbackStartTime reset to null on video end
+
+- **Server-Side (app.py):**
+  - handle_video_ended() Socket.IO event handler
+  - Reset playback_state to `{playing: false, time: 0}` on video end
+  - Broadcast video_ended event to all users in party room
+
+- **Theme System (theme.js):**
+  - Material Design color palette array with 20 vibrant colors
+  - generateMaterialGradient() creates random color combinations (152,000+ possibilities)
+  - applyMaterialGradients() sets CSS custom properties via inline styles
+  - clearMaterialStyles() removes inline properties when switching themes
+  - Randomize button dynamically shows/hides based on selected theme
+  - Theme selector event listeners synchronized across all dropdown instances
+
+- **UI/CSS (style.css):**
+  - 6 complete theme definitions using CSS custom properties
+  - WhatsApp-style chat bubble layout with flexbox alignment
+  - Theater aesthetic with gold borders, red curtain effects, cinema emojis
+  - Fullscreen CSS rules with !important (backup for JavaScript solution)
+  - Material Design elevation shadows (2dp, 4dp, 8dp)
+
 ## [1.1.0] - 2025-10-25
 
 ### Added
