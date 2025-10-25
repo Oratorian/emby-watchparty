@@ -8,6 +8,14 @@
 
 A synchronized watch party application for Emby media servers. Watch videos together with friends in real-time, no matter where you are!
 
+---
+
+### 🎉 Special Thanks
+
+Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
+
+---
+
 ## Features
 
 - **Secure Proxy Architecture**: Emby server stays on your local network - never exposed to the internet
