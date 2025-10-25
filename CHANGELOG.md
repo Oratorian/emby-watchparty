@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.1 - Planned Version (Unreleased)]
 
+### Special Thanks
+Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
+
 ### Added
 - **Multi-Theme System**: 6 chooseable themes with localStorage persistence
   - Cyberpunk Theater (default with neon cyan/magenta accents)

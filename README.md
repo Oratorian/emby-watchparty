@@ -259,3 +259,7 @@ Contributions are welcome! Feel free to submit issues or pull requests.
 - Built with Flask and SocketIO
 - Integrates with Emby Media Server
 - Inspired by various watch party applications
+
+### Special Thanks
+
+Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
