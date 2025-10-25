@@ -1485,7 +1485,98 @@ function loadVideo(video) {
         videoElement.src = video.stream_url;
         videoElement.load();
     }
+
+    // Load intro data for this video
+    loadIntroData(video.item_id);
 }
+
+// Load intro timing data for a video
+async function loadIntroData(itemId) {
+    try {
+        const response = await fetch(`/api/intro/${itemId}`);
+        const data = await response.json();
+
+        if (data.hasIntro) {
+            introData = data;
+            console.log(`Intro detected: ${data.start.toFixed(2)}s - ${data.end.toFixed(2)}s (${data.duration.toFixed(2)}s)`);
+            startIntroCheck();
+        } else {
+            introData = null;
+            stopIntroCheck();
+            hideSkipIntroButton();
+        }
+    } catch (error) {
+        console.error('Failed to load intro data:', error);
+        introData = null;
+        stopIntroCheck();
+        hideSkipIntroButton();
+    }
+}
+
+// Check if current playback time is within intro range
+function checkIntroButton() {
+    if (!introData || !videoElement || !videoElement.src) {
+        hideSkipIntroButton();
+        return;
+    }
+
+    const currentTime = videoElement.currentTime;
+    const skipButton = document.getElementById('skipIntroBtn');
+
+    // Show button if we're within intro range (add 5s buffer at start to give user time to see it)
+    if (currentTime >= (introData.start + 5) && currentTime < introData.end) {
+        if (skipButton) {
+            skipButton.style.display = 'block';
+        }
+    } else {
+        hideSkipIntroButton();
+    }
+}
+
+// Hide skip intro button
+function hideSkipIntroButton() {
+    const skipButton = document.getElementById('skipIntroBtn');
+    if (skipButton) {
+        skipButton.style.display = 'none';
+    }
+}
+
+// Skip to end of intro (syncs with all party members)
+function skipIntro() {
+    if (!introData) return;
+
+    console.log(`Skipping intro to ${introData.end.toFixed(2)}s`);
+
+    // Emit seek event to sync all party members to end of intro
+    socket.emit('seek', {
+        party_id: partyId,
+        time: introData.end
+    });
+
+    // Hide button for this user
+    hideSkipIntroButton();
+}
+
+// Start checking for intro timeframe
+function startIntroCheck() {
+    // Clear any existing interval
+    stopIntroCheck();
+
+    // Check every 500ms if we're in intro range
+    introCheckInterval = setInterval(checkIntroButton, 500);
+}
+
+// Stop checking for intro
+function stopIntroCheck() {
+    if (introCheckInterval) {
+        clearInterval(introCheckInterval);
+        introCheckInterval = null;
+    }
+}
+
+// Note: Skip Intro button only works in normal (non-fullscreen) mode
+// This is a browser limitation - custom buttons cannot appear inside fullscreen <video> elements
+// To support fullscreen, a custom video player with custom controls would be needed
 
 function updateUserCount() {
     const count = currentUsers.length;
