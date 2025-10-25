@@ -11,6 +11,7 @@ const joinBtn = document.getElementById('joinBtn');
 const partyCodeEl = document.getElementById('partyCode');
 const copyCodeBtn = document.getElementById('copyCodeBtn');
 const showLibraryBtn = document.getElementById('showLibraryBtn');
+const hideLibraryBtn = document.getElementById('hideLibraryBtn');
 const userCountEl = document.getElementById('userCount');
 const leavePartyBtn = document.getElementById('leavePartyBtn');
 const libraryContent = document.getElementById('libraryContent');
@@ -209,6 +210,17 @@ if (showLibraryBtn) {
     showLibraryBtn.addEventListener('click', () => {
         librarySidebar.classList.remove('hidden');
         showLibraryBtn.style.display = 'none';
+    });
+}
+
+// Hide library button (in sidebar header)
+if (hideLibraryBtn) {
+    hideLibraryBtn.addEventListener('click', () => {
+        // Broadcast to all users to hide library
+        socket.emit('toggle_library', {
+            party_id: partyId,
+            show: false
+        });
     });
 }
 
