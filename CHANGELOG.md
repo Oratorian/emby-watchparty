@@ -72,13 +72,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Normal styles automatically restored when exiting fullscreen
   - Cross-browser event support (fullscreenchange, webkitfullscreenchange, etc.)
 
-- **Minimal Light Theme Colors**: Reduced brightness for eye comfort
-  - Changed primary background from pure white (#ffffff) to soft grey (#e8e8e8)
-  - Changed secondary background to light grey (#f0f0f0)
-  - Softer text colors (#2d3748 instead of near-black #1a202c)
-  - Much more comfortable for extended viewing sessions
-  - Maintains good contrast while being easier on eyes
-
 ### Fixed
 - **Playback State Reset on Video End**: Prevent position carry-over to next video
   - Video 'ended' event now resets currentPartyState and playbackStartTime on client
@@ -86,13 +79,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixes issue where seek position from previous video carried over to next selection
   - Each new video starts with clean playback state
   - Prevents confusing behavior when selecting episodes back-to-back
-
-- **Material Theme Color Bleeding**: Theme switching bug resolved
-  - Material Random theme uses inline styles for dynamic random colors
-  - clearMaterialStyles() function removes all inline CSS custom properties
-  - Called automatically when switching away from Material theme
-  - Other themes no longer inherit Material's random color values
-  - Proper theme isolation and switching behavior
 
 ### Technical
 - **Client-Side (party.js):**
