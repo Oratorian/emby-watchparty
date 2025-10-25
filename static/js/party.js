@@ -1523,8 +1523,8 @@ function checkIntroButton() {
     const currentTime = videoElement.currentTime;
     const skipButton = document.getElementById('skipIntroBtn');
 
-    // Show button if we're within intro range (add 5s buffer at start to give user time to see it)
-    if (currentTime >= (introData.start + 5) && currentTime < introData.end) {
+    // Show button if we're within intro range (add 1s buffer at start to give user time to see it)
+    if (currentTime >= (introData.start + 1) && currentTime < introData.end) {
         if (skipButton) {
             skipButton.style.display = 'block';
         }
