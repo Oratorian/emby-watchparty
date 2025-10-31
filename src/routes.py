@@ -12,7 +12,7 @@ import re
 def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
     """
     Initialize all Flask routes with dependency injection
-    
+
     Args:
         app: Flask application instance
         emby_client: EmbyClient instance
@@ -21,38 +21,41 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         logger: Logger instance
         limiter: Optional Flask-Limiter instance
     """
-    
+
     # Import utils functions
     from src.utils import (
         generate_random_username,
         generate_party_code,
         generate_hls_token,
         validate_hls_token,
-        get_user_token
+        get_user_token,
     )
-    
+
     # Quick access to state
     watch_parties = party_manager.watch_parties
     hls_tokens = party_manager.hls_tokens
-    
-    @app.route('/')
+
+    @app.route("/")
     def index():
         """Main page - choose to create or join a watch party"""
-        return render_template('index.html')
+        return render_template("index.html")
 
-
-    @app.route('/party/<party_id>')
+    @app.route("/party/<party_id>")
     def party(party_id):
         """Watch party room page"""
         # Convert to uppercase for case-insensitive matching
         party_id = party_id.upper()
 
         if party_id not in watch_parties:
-            return render_template('error.html',
-                                 party_id=party_id,
-                                 message="The watch party you're looking for doesn't exist or has ended."), 404
-        return render_template('party.html', party_id=party_id)
-
+            return (
+                render_template(
+                    "error.html",
+                    party_id=party_id,
+                    message="The watch party you're looking for doesn't exist or has ended.",
+                ),
+                404,
+            )
+        return render_template("party.html", party_id=party_id)
 
     # =============================================================================
     # API Routes
@@ -80,7 +83,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         GET  /hls/<id>/<path>          - HLS segments/playlists
     """
 
-    @app.route('/api/libraries')
+    @app.route("/api/libraries")
     def api_libraries():
         """
         Get all media libraries from Emby server.
@@ -102,8 +105,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         libraries = emby_client.get_libraries()
         return jsonify(libraries)
 
-
-    @app.route('/api/items')
+    @app.route("/api/items")
     def api_items():
         """
         Get items from a library (movies, series, episodes, seasons).
@@ -130,15 +132,14 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             GET /api/items?parentId=12345
             GET /api/items?type=Movie&recursive=true
         """
-        parent_id = request.args.get('parentId')
-        item_type = request.args.get('type')
-        recursive = request.args.get('recursive', 'false').lower() == 'true'
+        parent_id = request.args.get("parentId")
+        item_type = request.args.get("type")
+        recursive = request.args.get("recursive", "false").lower() == "true"
 
         items = emby_client.get_items(parent_id, item_type, recursive)
         return jsonify(items)
 
-
-    @app.route('/api/search')
+    @app.route("/api/search")
     def api_search():
         """
         Search for movies and TV series by name.
@@ -163,7 +164,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             GET /api/search?q=inception
             GET /api/search?q=breaking+bad
         """
-        query = request.args.get('q', '').strip()
+        query = request.args.get("q", "").strip()
 
         if not query:
             return jsonify({"Items": []})
@@ -171,8 +172,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         results = emby_client.search_items(query)
         return jsonify(results)
 
-
-    @app.route('/api/item/<item_id>')
+    @app.route("/api/item/<item_id>")
     def api_item_details(item_id):
         """
         Get detailed information for a specific item.
@@ -201,8 +201,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             return jsonify(details)
         return jsonify({"error": "Item not found"}), 404
 
-
-    @app.route('/api/item/<item_id>/streams')
+    @app.route("/api/item/<item_id>/streams")
     def api_item_streams(item_id):
         """
         Get available audio and subtitle streams for a media item.
@@ -254,25 +253,40 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
 
         # Method 3: Try using the streaming endpoint directly to infer info
         if not playback_info:
-            logger.warning(f"Could not fetch item info via API, trying stream endpoint...")
+            logger.warning(
+                f"Could not fetch item info via API, trying stream endpoint..."
+            )
             try:
                 # Make a HEAD request to the stream endpoint to see if it exists
                 stream_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/stream.mp4?api_key={emby_client.api_key}"
                 response = requests.head(stream_url, timeout=5)
                 if response.status_code == 200:
-                    logger.info(f"Stream exists but no item metadata available - returning defaults")
+                    logger.info(
+                        f"Stream exists but no item metadata available - returning defaults"
+                    )
                     # Return minimal stream info - just use defaults
-                    return jsonify({
-                        "audio": [],
-                        "subtitles": [],
-                        "note": "Stream info not available - using default settings"
-                    })
+                    return jsonify(
+                        {
+                            "audio": [],
+                            "subtitles": [],
+                            "note": "Stream info not available - using default settings",
+                        }
+                    )
             except Exception as e:
                 logger.error(f"Stream endpoint check failed: {e}")
 
         if not playback_info:
             logger.error("All methods failed to get stream info")
-            return jsonify({"error": "Could not fetch stream information", "audio": [], "subtitles": []}), 200
+            return (
+                jsonify(
+                    {
+                        "error": "Could not fetch stream information",
+                        "audio": [],
+                        "subtitles": [],
+                    }
+                ),
+                200,
+            )
 
         audio_streams = []
         subtitle_streams = []
@@ -282,67 +296,85 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         media_streams = []
 
         # Check if we got PlaybackInfo response
-        if 'MediaSources' in playback_info and playback_info['MediaSources']:
-            media_streams = playback_info['MediaSources'][0].get('MediaStreams', [])
-            media_source_id = playback_info['MediaSources'][0].get('Id')
+        if "MediaSources" in playback_info and playback_info["MediaSources"]:
+            media_streams = playback_info["MediaSources"][0].get("MediaStreams", [])
+            media_source_id = playback_info["MediaSources"][0].get("Id")
         # Otherwise check for direct MediaStreams
-        elif 'MediaStreams' in playback_info:
-            media_streams = playback_info['MediaStreams']
+        elif "MediaStreams" in playback_info:
+            media_streams = playback_info["MediaStreams"]
 
         logger.debug(f"Found {len(media_streams)} media streams for item {item_id}")
 
         for stream in media_streams:
-            stream_type = stream.get('Type')
+            stream_type = stream.get("Type")
 
-            if stream_type == 'Audio':
-                lang = stream.get('Language', 'und')
-                display_lang = stream.get('DisplayLanguage') or stream.get('DisplayTitle') or lang
-                if lang == 'und':
-                    display_lang = 'Unknown'
+            if stream_type == "Audio":
+                lang = stream.get("Language", "und")
+                display_lang = (
+                    stream.get("DisplayLanguage") or stream.get("DisplayTitle") or lang
+                )
+                if lang == "und":
+                    display_lang = "Unknown"
 
-                audio_streams.append({
-                    'index': stream.get('Index'),
-                    'language': lang,
-                    'displayLanguage': display_lang,
-                    'codec': stream.get('Codec', ''),
-                    'channels': stream.get('Channels', 0),
-                    'isDefault': stream.get('IsDefault', False),
-                    'title': stream.get('Title', '')
-                })
-            elif stream_type == 'Subtitle':
-                is_text_subtitle = stream.get('IsTextSubtitleStream', False)
-                codec = stream.get('Codec', '').lower()
+                audio_streams.append(
+                    {
+                        "index": stream.get("Index"),
+                        "language": lang,
+                        "displayLanguage": display_lang,
+                        "codec": stream.get("Codec", ""),
+                        "channels": stream.get("Channels", 0),
+                        "isDefault": stream.get("IsDefault", False),
+                        "title": stream.get("Title", ""),
+                    }
+                )
+            elif stream_type == "Subtitle":
+                is_text_subtitle = stream.get("IsTextSubtitleStream", False)
+                codec = stream.get("Codec", "").lower()
 
                 # Detect image-based subtitle formats (PGS, VobSub)
-                is_image_subtitle = codec in ['pgssub', 'pgs', 'dvd_subtitle', 'dvdsub', 'vobsub']
+                is_image_subtitle = codec in [
+                    "pgssub",
+                    "pgs",
+                    "dvd_subtitle",
+                    "dvdsub",
+                    "vobsub",
+                ]
 
-                lang = stream.get('Language', 'und')
-                display_lang = stream.get('DisplayLanguage') or stream.get('DisplayTitle') or lang
-                if lang == 'und':
-                    display_lang = 'Unknown'
+                lang = stream.get("Language", "und")
+                display_lang = (
+                    stream.get("DisplayLanguage") or stream.get("DisplayTitle") or lang
+                )
+                if lang == "und":
+                    display_lang = "Unknown"
 
-                subtitle_streams.append({
-                    'index': stream.get('Index'),
-                    'language': lang,
-                    'displayLanguage': display_lang,
-                    'codec': stream.get('Codec', ''),
-                    'isDefault': stream.get('IsDefault', False),
-                    'isForced': stream.get('IsForced', False),
-                    'isExternal': stream.get('IsExternal', False),
-                    'isTextSubtitleStream': is_text_subtitle,
-                    'isPGS': is_image_subtitle,  # Mark image-based subs for burn-in
-                    'title': stream.get('Title', '')
-                })
+                subtitle_streams.append(
+                    {
+                        "index": stream.get("Index"),
+                        "language": lang,
+                        "displayLanguage": display_lang,
+                        "codec": stream.get("Codec", ""),
+                        "isDefault": stream.get("IsDefault", False),
+                        "isForced": stream.get("IsForced", False),
+                        "isExternal": stream.get("IsExternal", False),
+                        "isTextSubtitleStream": is_text_subtitle,
+                        "isPGS": is_image_subtitle,  # Mark image-based subs for burn-in
+                        "title": stream.get("Title", ""),
+                    }
+                )
 
-        logger.debug(f"Processed {len(audio_streams)} audio streams and {len(subtitle_streams)} subtitle streams")
+        logger.debug(
+            f"Processed {len(audio_streams)} audio streams and {len(subtitle_streams)} subtitle streams"
+        )
 
-        return jsonify({
-            'audio': audio_streams,
-            'subtitles': subtitle_streams,
-            'media_source_id': media_source_id
-        })
+        return jsonify(
+            {
+                "audio": audio_streams,
+                "subtitles": subtitle_streams,
+                "media_source_id": media_source_id,
+            }
+        )
 
-    @app.route('/api/intro/<item_id>', methods=['GET'])
+    @app.route("/api/intro/<item_id>", methods=["GET"])
     def get_intro_info(item_id):
         """
         Get intro timing information for a specific item.
@@ -370,8 +402,8 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             response = requests.get(
                 f"{config.EMBY_SERVER_URL}/emby/Items/Intros",
                 params={"api_key": emby_client.api_key},
-                headers={'Content-Type': 'application/json'},
-                timeout=5
+                headers={"Content-Type": "application/json"},
+                timeout=5,
             )
 
             if response.status_code == 200:
@@ -379,36 +411,42 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
 
                 # Find intro for this specific item
                 for intro in all_intros:
-                    if str(intro.get('Id')) == str(item_id):
+                    if str(intro.get("Id")) == str(item_id):
                         # Convert ticks (100-nanosecond units) to seconds
                         # 1 second = 10,000,000 ticks
-                        start_seconds = intro.get('Start', 0) / 10_000_000
-                        end_seconds = intro.get('End', 0) / 10_000_000
+                        start_seconds = intro.get("Start", 0) / 10_000_000
+                        end_seconds = intro.get("End", 0) / 10_000_000
 
-                        logger.info(f"Found intro for item {item_id}: {start_seconds:.2f}s - {end_seconds:.2f}s")
+                        logger.info(
+                            f"Found intro for item {item_id}: {start_seconds:.2f}s - {end_seconds:.2f}s"
+                        )
 
-                        return jsonify({
-                            'hasIntro': True,
-                            'start': start_seconds,
-                            'end': end_seconds,
-                            'duration': end_seconds - start_seconds
-                        })
+                        return jsonify(
+                            {
+                                "hasIntro": True,
+                                "start": start_seconds,
+                                "end": end_seconds,
+                                "duration": end_seconds - start_seconds,
+                            }
+                        )
 
                 # No intro found for this item
                 logger.debug(f"No intro data found for item {item_id}")
-                return jsonify({'hasIntro': False})
+                return jsonify({"hasIntro": False})
             else:
-                logger.warning(f"Failed to fetch intro data from Emby: HTTP {response.status_code}")
-                return jsonify({'hasIntro': False})
+                logger.warning(
+                    f"Failed to fetch intro data from Emby: HTTP {response.status_code}"
+                )
+                return jsonify({"hasIntro": False})
 
         except requests.exceptions.Timeout:
             logger.error(f"Timeout fetching intro info for item {item_id}")
-            return jsonify({'hasIntro': False})
+            return jsonify({"hasIntro": False})
         except Exception as e:
             logger.error(f"Error fetching intro info for item {item_id}: {e}")
-            return jsonify({'hasIntro': False})
+            return jsonify({"hasIntro": False})
 
-    @app.route('/hls/<item_id>/master.m3u8')
+    @app.route("/hls/<item_id>/master.m3u8")
     def proxy_hls_master(item_id):
         """Lightweight HLS master playlist proxy - keeps Emby internal"""
         emby_url = None  # Initialize for error handling
@@ -418,15 +456,21 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
 
             # Validate HLS token if enabled
             if config.ENABLE_HLS_TOKEN_VALIDATION:
-                token = request.args.get('token')
-                logger.debug(f"Master playlist request with token: {token[:16] if token else 'None'}... from {request.remote_addr}")
-                if not validate_hls_token(token, hls_tokens, watch_parties, config, logger, item_id):
-                    logger.warning(f"Invalid or missing HLS token for master playlist access from {request.remote_addr}")
+                token = request.args.get("token")
+                logger.debug(
+                    f"Master playlist request with token: {token[:16] if token else 'None'}... from {request.remote_addr}"
+                )
+                if not validate_hls_token(
+                    token, hls_tokens, watch_parties, config, logger, item_id
+                ):
+                    logger.warning(
+                        f"Invalid or missing HLS token for master playlist access from {request.remote_addr}"
+                    )
                     return jsonify({"error": "Unauthorized"}), 401
 
             # Forward all query parameters from client (except our token)
-            query_params = {k: v for k, v in request.args.items() if k != 'token'}
-            query_string = '&'.join([f"{k}={v}" for k, v in query_params.items()])
+            query_params = {k: v for k, v in request.args.items() if k != "token"}
+            query_string = "&".join([f"{k}={v}" for k, v in query_params.items()])
 
             # Build Emby URL
             emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/master.m3u8"
@@ -438,14 +482,20 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             # Fetch from Emby (internal network only)
             emby_response = requests.get(emby_url, headers=emby_client.headers)
             emby_response.raise_for_status()
-            logger.debug(f"Received master playlist from Emby, content length: {len(emby_response.text)} bytes")
+            logger.debug(
+                f"Received master playlist from Emby, content length: {len(emby_response.text)} bytes"
+            )
             logger.debug(f"Master playlist content:\n{emby_response.text}")
 
             # Rewrite URLs in the playlist to point to our proxy
             playlist_content = emby_response.text
 
             # Add token to rewritten URLs if validation is enabled
-            token_param = f"?token={request.args.get('token')}" if config.ENABLE_HLS_TOKEN_VALIDATION and request.args.get('token') else ""
+            token_param = (
+                f"?token={request.args.get('token')}"
+                if config.ENABLE_HLS_TOKEN_VALIDATION and request.args.get("token")
+                else ""
+            )
             if token_param:
                 logger.debug(f"Will add token parameter: {token_param[:30]}...")
             else:
@@ -455,9 +505,9 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             # Pattern: http://server/emby/Videos/ITEMID/path → /hls/ITEMID/path?token=...
             before_rewrite = playlist_content
             playlist_content = re.sub(
-                rf'{re.escape(config.EMBY_SERVER_URL)}/emby/Videos/{item_id}/',
-                f'/hls/{item_id}/',
-                playlist_content
+                rf"{re.escape(config.EMBY_SERVER_URL)}/emby/Videos/{item_id}/",
+                f"/hls/{item_id}/",
+                playlist_content,
             )
             if before_rewrite != playlist_content:
                 logger.debug("Rewrote absolute Emby URLs to proxy URLs")
@@ -466,50 +516,58 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             # Pattern: /emby/Videos/ITEMID/path → /hls/ITEMID/path?token=...
             before_rewrite = playlist_content
             playlist_content = re.sub(
-                rf'/emby/Videos/{item_id}/',
-                f'/hls/{item_id}/',
-                playlist_content
+                rf"/emby/Videos/{item_id}/", f"/hls/{item_id}/", playlist_content
             )
             if before_rewrite != playlist_content:
                 logger.debug("Rewrote relative Emby URLs to proxy URLs")
 
             # Add token parameter to all segment URLs if needed
             if token_param:
-                logger.debug(f"Master playlist before token addition:\n{playlist_content}")
+                logger.debug(
+                    f"Master playlist before token addition:\n{playlist_content}"
+                )
                 # Add token to .m3u8 and .ts file references
                 # Match filenames ending with .m3u8 or .ts (not already having token param)
-                lines = playlist_content.split('\n')
+                lines = playlist_content.split("\n")
                 for i, line in enumerate(lines):
                     # Skip comment lines and empty lines
-                    if line.strip().startswith('#') or not line.strip():
+                    if line.strip().startswith("#") or not line.strip():
                         continue
                     # If line contains .m3u8 or .ts and doesn't have token already
-                    if ('.m3u8' in line or '.ts' in line) and 'token=' not in line:
+                    if (".m3u8" in line or ".ts" in line) and "token=" not in line:
                         # Use & if URL already has query params, otherwise use ?
-                        separator = '&' if '?' in line else '?'
+                        separator = "&" if "?" in line else "?"
                         token_to_add = f"{separator}token={request.args.get('token')}"
                         old_line = line
                         lines[i] = line + token_to_add
                         logger.debug(f"Token addition: '{old_line}' -> '{lines[i]}'")
-                playlist_content = '\n'.join(lines)
-                logger.debug(f"Master playlist after token addition:\n{playlist_content}")
+                playlist_content = "\n".join(lines)
+                logger.debug(
+                    f"Master playlist after token addition:\n{playlist_content}"
+                )
             else:
                 logger.debug("Skipping token addition (no token available)")
 
-            logger.debug(f"Rewritten playlist URLs to use /hls/{item_id}/ prefix and added tokens")
+            logger.debug(
+                f"Rewritten playlist URLs to use /hls/{item_id}/ prefix and added tokens"
+            )
 
             # Return with CORS headers
-            response = Response(playlist_content, mimetype='application/vnd.apple.mpegurl')
-            response.headers['Access-Control-Allow-Origin'] = '*'
-            response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
-            response.headers['Access-Control-Allow-Headers'] = 'Range'
+            response = Response(
+                playlist_content, mimetype="application/vnd.apple.mpegurl"
+            )
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Range"
 
             return response
 
         except requests.exceptions.RequestException as e:
             logger.error(f"CRITICAL: Failed to fetch master playlist from Emby server")
             logger.error(f"  Item ID: {item_id}")
-            logger.error(f"  Emby URL: {emby_url if emby_url else '(URL not constructed)'}")
+            logger.error(
+                f"  Emby URL: {emby_url if emby_url else '(URL not constructed)'}"
+            )
             logger.error(f"  Error: {str(e)}")
             logger.error(f"  Error Type: {type(e).__name__}")
             return jsonify({"error": "Failed to fetch video from media server"}), 502
@@ -519,11 +577,11 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             logger.error(f"  Error: {str(e)}")
             logger.error(f"  Error Type: {type(e).__name__}")
             import traceback
+
             logger.error(f"  Traceback: {traceback.format_exc()}")
             return jsonify({"error": "Internal server error"}), 500
 
-
-    @app.route('/hls/<item_id>/<path:subpath>')
+    @app.route("/hls/<item_id>/<path:subpath>")
     def proxy_hls_segment(item_id, subpath):
         """Lightweight HLS segment/playlist proxy - keeps Emby internal"""
         emby_url = None  # Initialize for error handling
@@ -533,15 +591,21 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
 
             # Validate HLS token if enabled
             if config.ENABLE_HLS_TOKEN_VALIDATION:
-                token = request.args.get('token')
-                logger.debug(f"Segment request for {subpath} with token: {token[:16] if token else 'None'}... from {request.remote_addr}")
-                if not validate_hls_token(token, hls_tokens, watch_parties, config, logger, item_id):
-                    logger.warning(f"Invalid or missing HLS token for segment access: {subpath} from {request.remote_addr}")
+                token = request.args.get("token")
+                logger.debug(
+                    f"Segment request for {subpath} with token: {token[:16] if token else 'None'}... from {request.remote_addr}"
+                )
+                if not validate_hls_token(
+                    token, hls_tokens, watch_parties, config, logger, item_id
+                ):
+                    logger.warning(
+                        f"Invalid or missing HLS token for segment access: {subpath} from {request.remote_addr}"
+                    )
                     return jsonify({"error": "Unauthorized"}), 401
 
             # Forward all query parameters (except our token)
-            query_params = {k: v for k, v in request.args.items() if k != 'token'}
-            query_string = '&'.join([f"{k}={v}" for k, v in query_params.items()])
+            query_params = {k: v for k, v in request.args.items() if k != "token"}
+            query_string = "&".join([f"{k}={v}" for k, v in query_params.items()])
 
             emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/{subpath}"
             if query_string:
@@ -550,55 +614,64 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             logger.debug(f"Proxying HLS segment: {subpath} -> {emby_url}")
 
             # Fetch from Emby (internal network only)
-            emby_response = requests.get(emby_url, headers=emby_client.headers, stream=True)
+            emby_response = requests.get(
+                emby_url, headers=emby_client.headers, stream=True
+            )
             emby_response.raise_for_status()
 
             # Determine content type
-            content_type = emby_response.headers.get('Content-Type', 'application/octet-stream')
-            if subpath.endswith('.m3u8'):
-                content_type = 'application/vnd.apple.mpegurl'
-            elif subpath.endswith('.ts'):
-                content_type = 'video/MP2T'
+            content_type = emby_response.headers.get(
+                "Content-Type", "application/octet-stream"
+            )
+            if subpath.endswith(".m3u8"):
+                content_type = "application/vnd.apple.mpegurl"
+            elif subpath.endswith(".ts"):
+                content_type = "video/MP2T"
 
             # If this is a playlist (.m3u8), rewrite URLs
-            if subpath.endswith('.m3u8'):
+            if subpath.endswith(".m3u8"):
                 playlist_content = emby_response.text
 
                 # Add token to rewritten URLs if validation is enabled
-                token_param = f"?token={request.args.get('token')}" if config.ENABLE_HLS_TOKEN_VALIDATION and request.args.get('token') else ""
+                token_param = (
+                    f"?token={request.args.get('token')}"
+                    if config.ENABLE_HLS_TOKEN_VALIDATION and request.args.get("token")
+                    else ""
+                )
 
                 # Replace absolute Emby URLs with proxy URLs
                 playlist_content = re.sub(
-                    rf'{re.escape(config.EMBY_SERVER_URL)}/emby/Videos/{item_id}/',
-                    f'/hls/{item_id}/',
-                    playlist_content
+                    rf"{re.escape(config.EMBY_SERVER_URL)}/emby/Videos/{item_id}/",
+                    f"/hls/{item_id}/",
+                    playlist_content,
                 )
 
                 # Also handle relative URLs
                 playlist_content = re.sub(
-                    rf'/emby/Videos/{item_id}/',
-                    f'/hls/{item_id}/',
-                    playlist_content
+                    rf"/emby/Videos/{item_id}/", f"/hls/{item_id}/", playlist_content
                 )
 
                 # Add token parameter to segment URLs if needed
                 if token_param:
                     # Add token to .m3u8 and .ts file references
-                    lines = playlist_content.split('\n')
+                    lines = playlist_content.split("\n")
                     for i, line in enumerate(lines):
                         # Skip comment lines and empty lines
-                        if line.strip().startswith('#') or not line.strip():
+                        if line.strip().startswith("#") or not line.strip():
                             continue
                         # If line contains .m3u8 or .ts and doesn't have token already
-                        if ('.m3u8' in line or '.ts' in line) and 'token=' not in line:
+                        if (".m3u8" in line or ".ts" in line) and "token=" not in line:
                             # Use & if URL already has query params, otherwise use ?
-                            separator = '&' if '?' in line else '?'
-                            token_to_add = f"{separator}token={request.args.get('token')}"
+                            separator = "&" if "?" in line else "?"
+                            token_to_add = (
+                                f"{separator}token={request.args.get('token')}"
+                            )
                             lines[i] = line + token_to_add
-                    playlist_content = '\n'.join(lines)
+                    playlist_content = "\n".join(lines)
 
                 response = Response(playlist_content, mimetype=content_type)
             else:
+
                 def generate():
                     """Generator function to stream binary video segment data in chunks."""
                     for chunk in emby_response.iter_content(chunk_size=8192):
@@ -607,12 +680,14 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
 
                 response = Response(generate(), mimetype=content_type)
 
-                if 'Content-Length' in emby_response.headers:
-                    response.headers['Content-Length'] = emby_response.headers['Content-Length']
+                if "Content-Length" in emby_response.headers:
+                    response.headers["Content-Length"] = emby_response.headers[
+                        "Content-Length"
+                    ]
 
-            response.headers['Access-Control-Allow-Origin'] = '*'
-            response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
-            response.headers['Access-Control-Allow-Headers'] = 'Range'
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Range"
 
             return response
 
@@ -620,10 +695,15 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             logger.error(f"CRITICAL: Failed to fetch HLS segment from Emby server")
             logger.error(f"  Item ID: {item_id}")
             logger.error(f"  Subpath: {subpath}")
-            logger.error(f"  Emby URL: {emby_url if emby_url else '(URL not constructed)'}")
+            logger.error(
+                f"  Emby URL: {emby_url if emby_url else '(URL not constructed)'}"
+            )
             logger.error(f"  Error: {str(e)}")
             logger.error(f"  Error Type: {type(e).__name__}")
-            return jsonify({"error": "Failed to fetch video segment from media server"}), 502
+            return (
+                jsonify({"error": "Failed to fetch video segment from media server"}),
+                502,
+            )
         except Exception as e:
             logger.error(f"CRITICAL: Unexpected error in HLS segment proxy")
             logger.error(f"  Item ID: {item_id}")
@@ -631,10 +711,11 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             logger.error(f"  Error: {str(e)}")
             logger.error(f"  Error Type: {type(e).__name__}")
             import traceback
+
             logger.error(f"  Traceback: {traceback.format_exc()}")
             return jsonify({"error": "Internal server error"}), 500
 
-    @app.route('/api/image/<item_id>')
+    @app.route("/api/image/<item_id>")
     def api_image(item_id):
         """
         Get poster/thumbnail image for a media item.
@@ -657,20 +738,28 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         Example:
             GET /api/image/12345?type=Primary
         """
-        image_type = request.args.get('type', 'Primary')
+        image_type = request.args.get("type", "Primary")
         image_url = emby_client.get_image_url(item_id, image_type)
 
         try:
             response = requests.get(image_url, headers=emby_client.headers)
             if response.status_code == 200:
-                return response.content, 200, {'Content-Type': response.headers.get('Content-Type', 'image/jpeg')}
+                return (
+                    response.content,
+                    200,
+                    {
+                        "Content-Type": response.headers.get(
+                            "Content-Type", "image/jpeg"
+                        )
+                    },
+                )
             else:
-                return '', 404
+                return "", 404
         except Exception as e:
             logger.error(f"Error fetching image: {e}")
-            return '', 404
+            return "", 404
 
-    @app.route('/api/subtitles/<item_id>/<media_source_id>/<int:subtitle_index>')
+    @app.route("/api/subtitles/<item_id>/<media_source_id>/<int:subtitle_index>")
     def api_subtitles(item_id, media_source_id, subtitle_index):
         """
         Get subtitle file for a media item in WebVTT format.
@@ -702,18 +791,21 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
 
             response = requests.get(subtitle_url, headers=emby_client.headers)
             if response.status_code == 200:
-                return response.content, 200, {
-                    'Content-Type': 'text/vtt',
-                    'Access-Control-Allow-Origin': '*'
-                }
+                return (
+                    response.content,
+                    200,
+                    {"Content-Type": "text/vtt", "Access-Control-Allow-Origin": "*"},
+                )
             else:
-                logger.warning(f"Subtitle not found: {subtitle_url} (status: {response.status_code})")
-                return '', 404
+                logger.warning(
+                    f"Subtitle not found: {subtitle_url} (status: {response.status_code})"
+                )
+                return "", 404
         except Exception as e:
             logger.error(f"Error fetching subtitle: {e}")
-            return '', 404
+            return "", 404
 
-    @app.route('/api/party/create', methods=['POST'])
+    @app.route("/api/party/create", methods=["POST"])
     def create_party():
         """
         Create a new watch party room.
@@ -736,27 +828,24 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         party_id = generate_party_code(watch_parties)
 
         watch_parties[party_id] = {
-            'id': party_id,
-            'created_at': datetime.now().isoformat(),
-            'users': {},
-            'current_video': None,
-            'playback_state': {
-                'playing': False,
-                'time': 0,
-                'last_update': datetime.now().isoformat()
-            }
+            "id": party_id,
+            "created_at": datetime.now().isoformat(),
+            "users": {},
+            "current_video": None,
+            "playback_state": {
+                "playing": False,
+                "time": 0,
+                "last_update": datetime.now().isoformat(),
+            },
         }
 
-        return jsonify({
-            'party_id': party_id,
-            'url': f'/party/{party_id}'
-        })
+        return jsonify({"party_id": party_id, "url": f"/party/{party_id}"})
 
     # Apply rate limiting to party creation if enabled
     if limiter:
         create_party = limiter.limit(config.RATE_LIMIT_PARTY_CREATION)(create_party)
 
-    @app.route('/api/party/<party_id>/info')
+    @app.route("/api/party/<party_id>/info")
     def party_info(party_id):
         """
         Get current state and information about a watch party.
@@ -793,13 +882,14 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             return jsonify({"error": "Party not found"}), 404
 
         party = watch_parties[party_id]
-        return jsonify({
-            'id': party['id'],
-            'users': list(party['users'].values()),
-            'current_video': party['current_video'],
-            'playback_state': party['playback_state']
-        })
-
+        return jsonify(
+            {
+                "id": party["id"],
+                "users": list(party["users"].values()),
+                "current_video": party["current_video"],
+                "playback_state": party["playback_state"],
+            }
+        )
 
     # =============================================================================
     # WebSocket Events

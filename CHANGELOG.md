@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Special Thanks
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
 
-## [Unreleased] - 1.1.2
+## [Unreleased] - 1.2.0
 
 ### Added
 - **Auto Next Episode Feature**: Automatic episode progression for binge-watching
@@ -25,6 +25,20 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
   - Added IndexNumber (episode number), ParentIndexNumber (season number)
   - Added SeriesId and SeasonId for proper episode relationship tracking
   - Enables accurate next episode detection for autoplay feature
+
+- **Major Code Refactoring**: Modular architecture with dependency injection
+  - Split monolithic app.py (1913 lines) into clean modular structure
+  - New app.py entry point: 161 lines (92% reduction)
+  - Replaced custom logger with rsyslog-logger for production-grade logging
+  - All components use dependency injection (no global variables)
+  - Improved maintainability and testability
+
+- **Logger Replacement**: Switched from custom logger to rsyslog-logger
+  - Production-grade logging with proper formatting
+  - Structured logs with timestamps and log levels
+  - Automatic log rotation (20MB max size, 10 backups)
+  - Both console and file output with configurable levels
+  - Made debugging significantly easier with clear error messages
 
 ### Technical
 - **Client-Side (party.js):**
@@ -51,6 +65,46 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 - **Backend (app.py):**
   - Updated get_items() to include episode-specific fields in API response
   - Fields added to Emby API request: IndexNumber, ParentIndexNumber, SeriesId, SeasonId
+
+- **Architecture Refactoring:**
+  - **src/__init__.py**: Package initialization with version tracking
+  - **src/emby_client.py** (240 lines): EmbyClient class encapsulates all Emby API interactions
+    - Logger injected as constructor parameter for testability
+    - Methods: authenticate, fetch libraries, get item details, playback info, transcoding cleanup
+  - **src/party_manager.py** (145 lines): PartyManager class for state management
+    - Replaces global watch_parties and hls_tokens dictionaries
+    - Methods: create_party, get_party, update_party, cleanup
+  - **src/utils.py** (190 lines): Helper functions with dependency injection
+    - generate_random_username, generate_party_code, generate_hls_token
+    - validate_hls_token, get_user_token
+    - All functions accept dependencies as parameters (no globals)
+  - **src/routes.py** (848 lines): All Flask HTTP routes
+    - init_routes() function wraps all route definitions
+    - Dependency injection: app, emby_client, party_manager, config, logger
+    - Routes import utilities and access party state via party_manager
+  - **src/socket_handlers.py** (624 lines): All SocketIO event handlers
+    - init_socket_handlers() function wraps all handlers
+    - Dependency injection: socketio, emby_client, party_manager, config, logger
+    - Handlers import utilities and access party state via party_manager
+  - **app.py** (161 lines): Clean entry point with dependency injection
+    - Initializes rsyslog-logger, EmbyClient, PartyManager
+    - Calls init_routes() and init_socket_handlers() with injected dependencies
+    - Reduced from 1913 lines (92% reduction)
+
+- **Dependency Injection Fixes:**
+  - Fixed generate_party_code() missing watch_parties parameter
+  - Fixed get_user_token() calls missing hls_tokens, config, logger parameters
+  - Fixed validate_hls_token() calls missing hls_tokens, watch_parties, config, logger, item_id
+  - Replaced all EMBY_SERVER_URL references with config.EMBY_SERVER_URL
+  - Replaced all EMBY_API_KEY references with emby_client.api_key
+
+- **rsyslog-logger Integration:**
+  - Replaced custom logger with rsyslog-logger package (user's own package)
+  - Setup: name="emby-watchparty", log_file="logs/emby-watchparty.log", log_level="INFO"
+  - Format: "rsyslog" with structured timestamps and log levels
+  - Rotation: max_size=20MB, backup_count=10
+  - Console and file output with independent log level control
+  - Made debugging significantly easier with clear structured error messages
 
 ## 1.1.1 - 2025-10-30
 
