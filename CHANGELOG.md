@@ -5,10 +5,54 @@ All notable changes to Emby Watch Party will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 1.1.1 - 2025-10-30
-
 ### Special Thanks
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
+
+## [Unreleased] - 1.1.2
+
+### Added
+- **Auto Next Episode Feature**: Automatic episode progression for binge-watching
+  - Toggle button to enable/disable auto-next (labeled "Auto Next Episode: ON/OFF")
+  - 4-second countdown overlay when episode ends showing next episode name
+  - Cancel button to stop autoplay during countdown
+  - Automatically plays next episode in season when countdown expires
+  - Tracks current episode position within season
+  - Shows library when reaching end of season
+  - Episode metadata now includes IndexNumber, ParentIndexNumber, SeriesId, SeasonId
+
+### Changed
+- **Episode API Enhancement**: Backend now returns additional episode metadata
+  - Added IndexNumber (episode number), ParentIndexNumber (season number)
+  - Added SeriesId and SeasonId for proper episode relationship tracking
+  - Enables accurate next episode detection for autoplay feature
+
+### Technical
+- **Client-Side (party.js):**
+  - New state variables: autoplayEnabled, currentEpisodeList, currentEpisodeIndex, currentSeasonId, currentSeriesId
+  - loadSeasonEpisodes() now stores episode list for autoplay tracking
+  - selectVideo() tracks current episode index when playing episodes
+  - Video 'ended' event handler checks for next episode and triggers countdown
+  - startAutoplayCountdown() displays 4-second timer overlay
+  - cancelAutoplay() stops countdown and shows library instead
+  - hideAutoplayCountdown() removes countdown overlay
+
+- **UI/HTML (party.html):**
+  - Added autoplay toggle button in stream controls
+  - Added countdown overlay with episode name, timer, and cancel button
+  - Countdown initially displays "4" seconds
+
+- **Styling (style.css):**
+  - Autoplay toggle button with gradient styling (cyan/purple when ON, grey when OFF)
+  - Countdown overlay with blur backdrop and centered content
+  - Animated countdown number with pulse effect (5rem font, gradient text)
+  - fadeIn animation for smooth countdown appearance
+  - Cancel button styling with proper spacing
+
+- **Backend (app.py):**
+  - Updated get_items() to include episode-specific fields in API response
+  - Fields added to Emby API request: IndexNumber, ParentIndexNumber, SeriesId, SeasonId
+
+## 1.1.1 - 2025-10-30
 
 ### Added
 - **Multi-Theme System**: 6 chooseable themes with localStorage persistence

@@ -30,6 +30,9 @@ const subtitleSelect = document.getElementById('subtitleSelect');
 const searchInput = document.getElementById('searchInput');
 const clearSearchBtn = document.getElementById('clearSearchBtn');
 const stopVideoBtn = document.getElementById('stopVideoBtn');
+const autoplayToggle = document.getElementById('autoplayToggle');
+const autoplayCountdown = document.getElementById('autoplayCountdown');
+const cancelAutoplayBtn = document.getElementById('cancelAutoplayBtn');
 
 // State
 let username = '';
@@ -54,6 +57,16 @@ let currentPartyState = null; // Store current party playback state for periodic
 let playbackStartTime = null; // Track when playback started for drift calculation
 let introData = null; // Store intro timing data for current video
 let introCheckInterval = null; // Interval for checking if we're in intro
+
+// Autoplay state
+let autoplayEnabled = true; // Autoplay is enabled by default
+let currentEpisodeList = []; // List of episodes in current season
+let currentEpisodeIndex = -1; // Index of current episode in the list
+let currentSeasonId = null; // Current season ID
+let currentSeriesId = null; // Current series ID
+let currentSeriesName = null; // Current series name
+let autoplayCountdownTimer = null; // Countdown timer
+let autoplayTimeoutId = null; // Timeout for auto-selecting next episode
 
 // Library navigation state persistence
 const LIBRARY_STATE_KEY = 'emby-watchparty-library-state';
@@ -205,6 +218,30 @@ stopVideoBtn.addEventListener('click', () => {
     }
 });
 
+// Autoplay toggle button
+if (autoplayToggle) {
+    autoplayToggle.addEventListener('click', () => {
+        autoplayEnabled = !autoplayEnabled;
+        autoplayToggle.dataset.enabled = autoplayEnabled;
+        autoplayToggle.querySelector('.toggle-text').textContent = autoplayEnabled ? 'ON' : 'OFF';
+
+        // Cancel any pending autoplay
+        if (!autoplayEnabled) {
+            cancelAutoplay();
+        }
+
+        addSystemMessage(`Play next Episode automatically ${autoplayEnabled ? 'enabled' : 'disabled'}`);
+    });
+}
+
+// Cancel autoplay button
+if (cancelAutoplayBtn) {
+    cancelAutoplayBtn.addEventListener('click', () => {
+        cancelAutoplay();
+        addSystemMessage('Play next Episode automatically cancelled');
+    });
+}
+
 // Show library button (in header)
 if (showLibraryBtn) {
     showLibraryBtn.addEventListener('click', () => {
@@ -350,7 +387,7 @@ async function loadSeriesSeasons(seriesId, seriesName) {
     }
 }
 
-async function loadSeasonEpisodes(seasonId, seasonName, seriesName) {
+async function loadSeasonEpisodes(seasonId, seasonName, seriesName, seriesId = null) {
     try {
         libraryContent.innerHTML = '<p>Loading episodes...</p>';
 
@@ -364,6 +401,24 @@ async function loadSeasonEpisodes(seasonId, seasonName, seriesName) {
 
         const response = await fetch(`/api/items?parentId=${seasonId}&recursive=false`);
         const data = await response.json();
+
+        // Store episode list for autoplay
+        currentEpisodeList = data.Items || [];
+        currentSeasonId = seasonId;
+        currentSeriesName = seriesName;
+
+        // If series ID not provided, fetch it from the season
+        if (!seriesId) {
+            try {
+                const seasonResponse = await fetch(`/api/item/${seasonId}`);
+                const seasonData = await seasonResponse.json();
+                currentSeriesId = seasonData.SeriesId || null;
+            } catch (e) {
+                currentSeriesId = null;
+            }
+        } else {
+            currentSeriesId = seriesId;
+        }
 
         // Add a back button
         libraryContent.innerHTML = '';
@@ -520,6 +575,18 @@ function selectVideo(item) {
         show: false
     });
 
+    // Track current episode index if this is an episode
+    if (item.Type === 'Episode' && currentEpisodeList.length > 0) {
+        currentEpisodeIndex = currentEpisodeList.findIndex(ep => ep.Id === item.Id);
+        console.log(`Selected episode ${currentEpisodeIndex + 1} of ${currentEpisodeList.length}`);
+    } else {
+        // Reset episode tracking for non-episodes
+        currentEpisodeIndex = -1;
+        currentEpisodeList = [];
+        currentSeasonId = null;
+        currentSeriesId = null;
+    }
+
     socket.emit('select_video', {
         party_id: partyId,
         item_id: item.Id,
@@ -624,14 +691,23 @@ videoElement.addEventListener('ended', () => {
         party_id: partyId
     });
 
-    // Show the library sidebar automatically
-    if (librarySidebar.classList.contains('hidden')) {
-        librarySidebar.classList.remove('hidden');
-        showLibraryBtn.style.display = 'inline-block';
-    }
+    // Check if autoplay should trigger
+    if (autoplayEnabled && currentEpisodeIndex !== -1 && currentEpisodeList.length > 0) {
+        const nextEpisodeIndex = currentEpisodeIndex + 1;
 
-    // Add system message to chat
-    addSystemMessage('🎬 Video ended - Select next episode from library');
+        if (nextEpisodeIndex < currentEpisodeList.length) {
+            // There's a next episode - start autoplay countdown
+            startAutoplayCountdown(currentEpisodeList[nextEpisodeIndex]);
+        } else {
+            // No more episodes in this season
+            showLibraryAfterVideoEnd();
+            addSystemMessage('🎬 Season finished - Select next content from library');
+        }
+    } else {
+        // Autoplay disabled or not an episode - show library
+        showLibraryAfterVideoEnd();
+        addSystemMessage('🎬 Video ended - Select next content from library');
+    }
 });
 
 // Fullscreen change detection - remove borders forcefully
@@ -1764,5 +1840,75 @@ async function performSearch(query) {
         }
     } catch (error) {
         libraryContent.innerHTML = '<p>Error performing search</p>';
+    }
+}
+
+// Autoplay Functions
+
+function showLibraryAfterVideoEnd() {
+    // Show the library sidebar automatically
+    if (librarySidebar.classList.contains('hidden')) {
+        librarySidebar.classList.remove('hidden');
+        showLibraryBtn.style.display = 'inline-block';
+    }
+}
+
+function startAutoplayCountdown(nextEpisode) {
+    console.log('Starting autoplay countdown for:', nextEpisode.Name);
+
+    // Show countdown overlay
+    autoplayCountdown.style.display = 'flex';
+
+    // Update episode info
+    document.getElementById('nextEpisodeTitle').textContent = 'Next Episode';
+    document.getElementById('nextEpisodeInfo').textContent = nextEpisode.Name;
+
+    // Start countdown from 4 seconds
+    let timeLeft = 4;
+    document.getElementById('countdownNumber').textContent = timeLeft;
+
+    // Update countdown every second
+    autoplayCountdownTimer = setInterval(() => {
+        timeLeft--;
+        document.getElementById('countdownNumber').textContent = timeLeft;
+
+        if (timeLeft <= 0) {
+            clearInterval(autoplayCountdownTimer);
+            autoplayCountdownTimer = null;
+        }
+    }, 1000);
+
+    // Auto-select next episode after 4 seconds
+    autoplayTimeoutId = setTimeout(() => {
+        hideAutoplayCountdown();
+        selectVideo(nextEpisode);
+        addSystemMessage(`🎬 Autoplaying: ${nextEpisode.Name}`);
+    }, 4000);
+}
+
+function cancelAutoplay() {
+    console.log('Cancelling autoplay');
+
+    // Clear timers
+    if (autoplayCountdownTimer) {
+        clearInterval(autoplayCountdownTimer);
+        autoplayCountdownTimer = null;
+    }
+
+    if (autoplayTimeoutId) {
+        clearTimeout(autoplayTimeoutId);
+        autoplayTimeoutId = null;
+    }
+
+    // Hide countdown overlay
+    hideAutoplayCountdown();
+
+    // Show library instead
+    showLibraryAfterVideoEnd();
+}
+
+function hideAutoplayCountdown() {
+    if (autoplayCountdown) {
+        autoplayCountdown.style.display = 'none';
     }
 }
