@@ -23,7 +23,7 @@ from logger import setup_logger
 import config
 
 # Application version
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 # Import frequently used config values as module-level constants for convenience
 EMBY_SERVER_URL = config.EMBY_SERVER_URL
