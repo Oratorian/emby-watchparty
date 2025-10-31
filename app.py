@@ -22,13 +22,11 @@ from rsyslog_logger import setup_logger
 import config
 
 # Import our refactored modules
+from src import __version__
 from src.emby_client import EmbyClient
 from src.party_manager import PartyManager
 from src.routes import init_routes
 from src.socket_handlers import init_socket_handlers
-
-# Application version
-VERSION = "1.2.0"
 
 # =============================================================================
 # Application Setup
@@ -49,7 +47,7 @@ logger = setup_logger(
 )
 
 logger.info(f"=" * 80)
-logger.info(f"Emby Watch Party v{VERSION} - Refactored Architecture")
+logger.info(f"Emby Watch Party v{__version__} - Refactored Architecture")
 logger.info(f"=" * 80)
 
 # Separate logger for SocketIO/EngineIO
