@@ -601,6 +601,12 @@ function selectVideo(item) {
 
 // Video player controls
 videoElement.addEventListener('play', () => {
+    // Don't broadcast play if video has ended (prevents old timestamps from carrying over during autoplay)
+    if (videoElement.ended) {
+        console.log('Video has ended, not broadcasting play event');
+        return;
+    }
+
     if (!isSyncing && !isUserSeeking) {
         const now = Date.now();
         if (now - lastPlayBroadcast > playPauseThrottle) {
@@ -614,6 +620,12 @@ videoElement.addEventListener('play', () => {
 });
 
 videoElement.addEventListener('pause', () => {
+    // Don't broadcast pause if video has ended (prevents old timestamps from carrying over during autoplay)
+    if (videoElement.ended) {
+        console.log('Video has ended, not broadcasting pause event');
+        return;
+    }
+
     if (!isSyncing && !isUserSeeking) {
         const now = Date.now();
         if (now - lastPauseBroadcast > playPauseThrottle) {
