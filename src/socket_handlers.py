@@ -112,6 +112,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 "audio_index": party["current_video"]["audio_index"],
                 "subtitle_index": party["current_video"]["subtitle_index"],
                 "media_source_id": party["current_video"].get("media_source_id"),
+                "selected_by": party["current_video"].get("selected_by"),
             }
 
             # Add stream URL with individual token
@@ -355,6 +356,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                         "audio_index": audio_index,
                         "subtitle_index": subtitle_index,
                         "media_source_id": media_source_id,  # Needed for subtitle URLs
+                        "selected_by": request.sid,  # Track who selected this video
                     }
                 },
                 to=user_sid,
@@ -620,6 +622,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                         "audio_index": audio_index,
                         "subtitle_index": subtitle_index,
                         "media_source_id": media_source_id,
+                        "selected_by": current_video.get("selected_by"),
                     },
                     "current_time": current_time,
                 },

@@ -67,6 +67,7 @@ let currentSeriesId = null; // Current series ID
 let currentSeriesName = null; // Current series name
 let autoplayCountdownTimer = null; // Countdown timer
 let autoplayTimeoutId = null; // Timeout for auto-selecting next episode
+let videoSelectedBy = null; // Socket ID of the user who selected the current video
 
 // Library navigation state persistence
 const LIBRARY_STATE_KEY = 'emby-watchparty-library-state';
@@ -692,11 +693,15 @@ videoElement.addEventListener('ended', () => {
     });
 
     // Check if autoplay should trigger
-    if (autoplayEnabled && currentEpisodeIndex !== -1 && currentEpisodeList.length > 0) {
+    // Only the user who selected the video should trigger autoplay to avoid multiple clients selecting
+    const isVideoSelector = videoSelectedBy && videoSelectedBy === socket.id;
+
+    if (isVideoSelector && autoplayEnabled && currentEpisodeIndex !== -1 && currentEpisodeList.length > 0) {
         const nextEpisodeIndex = currentEpisodeIndex + 1;
 
         if (nextEpisodeIndex < currentEpisodeList.length) {
             // There's a next episode - start autoplay countdown
+            console.log('Video selector triggering autoplay countdown');
             startAutoplayCountdown(currentEpisodeList[nextEpisodeIndex]);
         } else {
             // No more episodes in this season
@@ -704,9 +709,15 @@ videoElement.addEventListener('ended', () => {
             addSystemMessage('🎬 Season finished - Select next content from library');
         }
     } else {
-        // Autoplay disabled or not an episode - show library
-        showLibraryAfterVideoEnd();
-        addSystemMessage('🎬 Video ended - Select next content from library');
+        // Autoplay disabled, not an episode, or not the video selector - show library
+        if (!isVideoSelector && autoplayEnabled && currentEpisodeIndex !== -1) {
+            console.log('Non-selector waiting for autoplay from selector');
+            // Other users just show library and wait for selector to trigger next video
+            showLibraryAfterVideoEnd();
+        } else {
+            showLibraryAfterVideoEnd();
+            addSystemMessage('🎬 Video ended - Select next content from library');
+        }
     }
 });
 
@@ -857,6 +868,9 @@ socket.on('sync_state', (data) => {
         // Capture arrival time immediately for accurate sync compensation
         const syncStateArrivalTime = Date.now();
 
+        // Store who selected this video (for autoplay coordination)
+        videoSelectedBy = data.current_video.selected_by;
+
         // Set isSyncing BEFORE loadVideo() to prevent MANIFEST_PARSED from resetting to 0
         if (data.playback_state && data.playback_state.time >= 0) {
             isSyncing = true;
@@ -927,6 +941,10 @@ socket.on('video_selected', (data) => {
     // - If canStopVideo is true, this user selected it, keep it true
     // - If canStopVideo is false, someone else selected it, keep it false
     // This way only the user who selected can see the stop button
+
+    // Store who selected this video (for autoplay coordination)
+    videoSelectedBy = data.video.selected_by;
+
     loadVideo(data.video);
 });
 
@@ -968,6 +986,9 @@ socket.on('video_stopped', (data) => {
 socket.on('streams_changed', (data) => {
     const wasPlaying = !videoElement.paused;
     const currentTime = videoElement.currentTime;
+
+    // Store who selected this video (for autoplay coordination)
+    videoSelectedBy = data.video.selected_by;
 
     // Update current video metadata
     if (data.video.media_source_id) {
