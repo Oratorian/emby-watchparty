@@ -79,6 +79,18 @@
                         Skip Intro ⏭️
                     </button>
 
+                    <!-- Autoplay Countdown Overlay -->
+                    <div id="autoplayCountdown" class="autoplay-countdown" style="display: none;">
+                        <div class="countdown-content">
+                            <h3 id="nextEpisodeTitle">Next Episode</h3>
+                            <p id="nextEpisodeInfo">Loading...</p>
+                            <div class="countdown-timer">
+                                <span id="countdownNumber">4</span>
+                            </div>
+                            <button id="cancelAutoplayBtn" class="btn-small btn-danger">Cancel</button>
+                        </div>
+                    </div>
+
                     <div class="video-meta">
                         <div class="video-meta-row">
                             <div class="video-info">
@@ -99,6 +111,12 @@
                                         <select id="subtitleSelect" class="stream-select">
                                             <option value="">Loading...</option>
                                         </select>
+                                    </div>
+                                    <div class="stream-control-group autoplay-toggle-group">
+                                        <label for="autoplayToggle">Play next Episode:</label>
+                                        <button id="autoplayToggle" class="btn-small autoplay-toggle" data-enabled="true" title="Automatically play next episode when current one ends">
+                                            <span class="toggle-text">ON</span>
+                                        </button>
                                     </div>
                                     <div class="stream-control-group stop-button-group">
                                         <label>&nbsp;</label>
