@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  emby-watchparty:
+    build: .
+    container_name: emby-watchparty
+    ports:
+      - "5000:5000"
+    environment:
+      # Emby Server Configuration
+      - EMBY_SERVER_URL=http://your-emby-server:8096
+      - EMBY_API_KEY=your_api_key_here
+
+      # Application Configuration
+      - FLASK_SECRET_KEY=your_secret_key_here
+      - FLASK_DEBUG=false
+
+      # Optional: Rate Limiting
+      - ENABLE_RATE_LIMITING=true
+      - RATE_LIMIT_PER_MINUTE=60
+
+      # Optional: HLS Token Validation
+      - ENABLE_HLS_TOKEN_VALIDATION=true
+      - HLS_TOKEN_EXPIRY_SECONDS=3600
+    restart: unless-stopped
+    networks:
+      - emby-network
+
+networks:
+  emby-network:
+    driver: bridge
