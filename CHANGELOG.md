@@ -5,10 +5,108 @@ All notable changes to Emby Watch Party will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 1.1.1 - 2025-10-30
-
 ### Special Thanks
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
+
+## 1.2.0 - 2025-11-05
+
+### Added
+- **Auto Next Episode Feature**: Automatic episode progression for binge-watching
+  - Toggle button to enable/disable auto-next (labeled "Auto Next Episode: ON/OFF")
+  - 4-second countdown overlay when episode ends showing next episode name
+  - Cancel button to stop autoplay during countdown
+  - Automatically plays next episode in season when countdown expires
+  - Tracks current episode position within season
+  - Shows library when reaching end of season
+  - Episode metadata now includes IndexNumber, ParentIndexNumber, SeriesId, SeasonId
+
+### Changed
+- **Episode API Enhancement**: Backend now returns additional episode metadata
+  - Added IndexNumber (episode number), ParentIndexNumber (season number)
+  - Added SeriesId and SeasonId for proper episode relationship tracking
+  - Enables accurate next episode detection for autoplay feature
+
+- **Major Code Refactoring**: Modular architecture with dependency injection
+  - Split monolithic app.py (1913 lines) into clean modular structure
+  - New app.py entry point: 161 lines (92% reduction)
+  - Replaced custom logger with rsyslog-logger for production-grade logging
+  - All components use dependency injection (no global variables)
+  - Improved maintainability and testability
+
+- **Logger Replacement**: Switched from custom logger to rsyslog-logger
+  - Production-grade logging with proper formatting
+  - Structured logs with timestamps and log levels
+  - Automatic log rotation (20MB max size, 10 backups)
+  - Both console and file output with configurable levels
+  - Made debugging significantly easier with clear error messages
+
+### Technical
+- **Client-Side (party.js):**
+  - New state variables: autoplayEnabled, currentEpisodeList, currentEpisodeIndex, currentSeasonId, currentSeriesId
+  - loadSeasonEpisodes() now stores episode list for autoplay tracking
+  - selectVideo() tracks current episode index when playing episodes
+  - Video 'ended' event handler checks for next episode and triggers countdown
+  - startAutoplayCountdown() displays 4-second timer overlay
+  - cancelAutoplay() stops countdown and shows library instead
+  - hideAutoplayCountdown() removes countdown overlay
+
+- **UI/HTML (party.html):**
+  - Added autoplay toggle button in stream controls
+  - Added countdown overlay with episode name, timer, and cancel button
+  - Countdown initially displays "4" seconds
+
+- **Styling (style.css):**
+  - Autoplay toggle button with gradient styling (cyan/purple when ON, grey when OFF)
+  - Countdown overlay with blur backdrop and centered content
+  - Animated countdown number with pulse effect (5rem font, gradient text)
+  - fadeIn animation for smooth countdown appearance
+  - Cancel button styling with proper spacing
+
+- **Backend (app.py):**
+  - Updated get_items() to include episode-specific fields in API response
+  - Fields added to Emby API request: IndexNumber, ParentIndexNumber, SeriesId, SeasonId
+
+- **Architecture Refactoring:**
+  - **src/__init__.py**: Package initialization with version tracking
+  - **src/emby_client.py** (240 lines): EmbyClient class encapsulates all Emby API interactions
+    - Logger injected as constructor parameter for testability
+    - Methods: authenticate, fetch libraries, get item details, playback info, transcoding cleanup
+  - **src/party_manager.py** (145 lines): PartyManager class for state management
+    - Replaces global watch_parties and hls_tokens dictionaries
+    - Methods: create_party, get_party, update_party, cleanup
+  - **src/utils.py** (190 lines): Helper functions with dependency injection
+    - generate_random_username, generate_party_code, generate_hls_token
+    - validate_hls_token, get_user_token
+    - All functions accept dependencies as parameters (no globals)
+  - **src/routes.py** (848 lines): All Flask HTTP routes
+    - init_routes() function wraps all route definitions
+    - Dependency injection: app, emby_client, party_manager, config, logger
+    - Routes import utilities and access party state via party_manager
+  - **src/socket_handlers.py** (624 lines): All SocketIO event handlers
+    - init_socket_handlers() function wraps all handlers
+    - Dependency injection: socketio, emby_client, party_manager, config, logger
+    - Handlers import utilities and access party state via party_manager
+  - **app.py** (161 lines): Clean entry point with dependency injection
+    - Initializes rsyslog-logger, EmbyClient, PartyManager
+    - Calls init_routes() and init_socket_handlers() with injected dependencies
+    - Reduced from 1913 lines (92% reduction)
+
+- **Dependency Injection Fixes:**
+  - Fixed generate_party_code() missing watch_parties parameter
+  - Fixed get_user_token() calls missing hls_tokens, config, logger parameters
+  - Fixed validate_hls_token() calls missing hls_tokens, watch_parties, config, logger, item_id
+  - Replaced all EMBY_SERVER_URL references with config.EMBY_SERVER_URL
+  - Replaced all EMBY_API_KEY references with emby_client.api_key
+
+- **rsyslog-logger Integration:**
+  - Replaced custom logger with rsyslog-logger package (user's own package)
+  - Setup: name="emby-watchparty", log_file="logs/emby-watchparty.log", log_level="INFO"
+  - Format: "rsyslog" with structured timestamps and log levels
+  - Rotation: max_size=20MB, backup_count=10
+  - Console and file output with independent log level control
+  - Made debugging significantly easier with clear structured error messages
+
+## 1.1.1 - 2025-10-30
 
 ### Added
 - **Multi-Theme System**: 6 chooseable themes with localStorage persistence

@@ -1291,3 +1291,115 @@ video::-webkit-backdrop,
 .video-player {
     position: relative;
 }
+
+/* Autoplay Toggle Button */
+.autoplay-toggle {
+    padding: 0.5rem 1rem;
+    background: linear-gradient(135deg, var(--cyber-accent), var(--cyber-primary));
+    border: 2px solid var(--cyber-primary);
+    color: var(--text-primary);
+    font-weight: 700;
+    min-width: 80px;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+}
+
+.autoplay-toggle:hover {
+    background: linear-gradient(135deg, var(--cyber-primary), var(--cyber-accent));
+    box-shadow: 0 0 25px rgba(0, 240, 255, 0.5);
+    transform: scale(1.05);
+}
+
+.autoplay-toggle[data-enabled="false"] {
+    background: var(--bg-tertiary);
+    border-color: var(--text-dim);
+    box-shadow: none;
+}
+
+.autoplay-toggle[data-enabled="false"]:hover {
+    background: var(--bg-secondary);
+    border-color: var(--text-secondary);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+}
+
+.autoplay-toggle-group {
+    min-width: 100px;
+    max-width: 120px;
+}
+
+/* Autoplay Countdown Overlay */
+.autoplay-countdown {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(10, 14, 39, 0.95);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.countdown-content {
+    text-align: center;
+    padding: 3rem;
+    background: var(--bg-secondary);
+    border-radius: 20px;
+    border: 2px solid var(--cyber-primary);
+    box-shadow: 0 0 40px rgba(0, 240, 255, 0.4), 0 0 80px rgba(255, 0, 110, 0.2);
+    max-width: 500px;
+}
+
+.countdown-content h3 {
+    background: linear-gradient(135deg, var(--cyber-primary), var(--cyber-gold));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    letter-spacing: 1px;
+}
+
+.countdown-content p {
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    margin-bottom: 2rem;
+}
+
+.countdown-timer {
+    margin: 2rem 0;
+    position: relative;
+}
+
+.countdown-timer span {
+    font-size: 5rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--cyber-gold), var(--cyber-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    display: inline-block;
+    animation: pulse 1s ease-in-out infinite;
+    text-shadow: 0 0 30px rgba(255, 190, 11, 0.5);
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+#cancelAutoplayBtn {
+    margin-top: 1rem;
+    padding: 0.75rem 2rem;
+    font-size: 1rem;
+    font-weight: 700;
+}
