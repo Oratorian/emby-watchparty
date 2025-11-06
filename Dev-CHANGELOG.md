@@ -45,8 +45,13 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 - **Configuration:**
   - `config.py.example`: Added `REQUIRE_LOGIN` and `SESSION_EXPIRY` options
-  - `docker-compose.yml.example`: Added login environment variables
+  - `docker-compose.yml.example`: Added login environment variables and clarification comment
   - `app.py`: Added session lifetime configuration
+
+- **Docker Improvements:**
+  - `Dockerfile`: Automatic `config.py` creation from `config.py.example` during build
+  - `docker-compose.yml.example`: Added comment clarifying config.py requirement
+  - Simplified Docker deployment by automating config file setup
 
 - **Boolean Config Refactoring:**
   - Updated all `ENABLE_HLS_TOKEN_VALIDATION` checks in routes.py, socket_handlers.py, utils.py
