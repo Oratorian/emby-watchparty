@@ -34,6 +34,7 @@ from src.socket_handlers import init_socket_handlers
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
+app.config['PERMANENT_SESSION_LIFETIME'] = config.SESSION_EXPIRY if hasattr(config, 'SESSION_EXPIRY') else 86400
 
 # Setup rsyslog-logger (replaces custom logger)
 logger = setup_logger(
@@ -83,7 +84,7 @@ werkzeug_custom_logger = setup_logger(
 
 # Initialize rate limiter if enabled
 limiter = None
-if config.ENABLE_RATE_LIMITING:
+if config.ENABLE_RATE_LIMITING == 'true':
     try:
         from flask_limiter import Limiter
         from flask_limiter.util import get_remote_address
@@ -152,7 +153,7 @@ if __name__ == '__main__':
             app,
             host=config.WATCH_PARTY_BIND,
             port=config.WATCH_PARTY_PORT,
-            debug=False
+            debug=True
         )
     except KeyboardInterrupt:
         logger.info("Server stopped by user")

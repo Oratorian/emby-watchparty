@@ -12,7 +12,7 @@
         <header>
             <h1>Emby Watch Party</h1>
             <p>Watch together, wherever you are</p>
-            <div style="margin-top: 1rem;">
+            <div style="margin-top: 1rem; display: flex; gap: 1rem; align-items: center; justify-content: center; flex-wrap: wrap;">
                 <select id="themeSelector" class="btn-small theme-selector">
                     <option value="cyberpunk">🎭 Cyberpunk Theater</option>
                     <option value="material">🎨 Material Random</option>
@@ -21,6 +21,9 @@
                     <option value="minimal">☀️ Minimal Light</option>
                     <option value="netflix">🎬 Netflix Red</option>
                 </select>
+                {% if require_login %}
+                <button id="logoutBtn" class="btn-small" style="background: rgba(255, 68, 68, 0.2); border-color: #ff4444;">🚪 Logout</button>
+                {% endif %}
             </div>
         </header>
 
@@ -55,6 +58,21 @@
         const joinPartyBtn = document.getElementById('joinPartyBtn');
         const partyCodeInput = document.getElementById('partyCodeInput');
         const status = document.getElementById('status');
+        const logoutBtn = document.getElementById('logoutBtn');
+
+        // Logout functionality
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', async () => {
+                try {
+                    const response = await fetch('/api/auth/logout', { method: 'POST' });
+                    if (response.ok) {
+                        window.location.href = '/login';
+                    }
+                } catch (error) {
+                    console.error('Logout error:', error);
+                }
+            });
+        }
 
         createPartyBtn.addEventListener('click', async () => {
             try {

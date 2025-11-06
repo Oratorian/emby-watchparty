@@ -117,7 +117,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
 
             # Add stream URL with individual token
             stream_url = party["current_video"]["stream_url_base"]
-            if config.ENABLE_HLS_TOKEN_VALIDATION:
+            if config.ENABLE_HLS_TOKEN_VALIDATION == 'true':
                 user_token = get_user_token(
                     party_id, request.sid, hls_tokens, config, logger
                 )
@@ -324,7 +324,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             stream_url_with_token = stream_url_base
 
             # Add individual token for this user
-            if config.ENABLE_HLS_TOKEN_VALIDATION:
+            if config.ENABLE_HLS_TOKEN_VALIDATION == 'true':
                 user_token = get_user_token(
                     party_id, user_sid, hls_tokens, config, logger
                 )
@@ -603,7 +603,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             stream_url_with_token = stream_url_base
 
             # Add individual token for this user
-            if config.ENABLE_HLS_TOKEN_VALIDATION:
+            if config.ENABLE_HLS_TOKEN_VALIDATION == 'true':
                 user_token = get_user_token(
                     party_id, user_sid, hls_tokens, config, logger
                 )

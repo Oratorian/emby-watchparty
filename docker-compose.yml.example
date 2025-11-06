@@ -22,6 +22,10 @@ services:
       - LOG_FILE=logs/emby-watchparty.log
 
       # ============== Security Configuration ==============
+      # Login gatekeeping (require Emby authentication before accessing app)
+      - REQUIRE_LOGIN=false
+      - SESSION_EXPIRY=86400  # 24 hours in seconds
+
       # Party size limits (0 = unlimited)
       - MAX_USERS_PER_PARTY=0
 
