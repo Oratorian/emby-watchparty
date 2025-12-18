@@ -31,14 +31,18 @@ CONSOLE_LOG_LEVEL = 'WARNING'  # Only show warnings/errors in console when file 
 # ============== Security Configuration ==============
 # Educational/Private Use Only - See README for deployment warnings
 
+# Login gatekeeping (require Emby authentication before accessing app)
+REQUIRE_LOGIN = os.getenv('REQUIRE_LOGIN', 'false').lower()
+SESSION_EXPIRY = int(os.getenv('SESSION_EXPIRY', '86400'))  # Default: 24 hours (in seconds)
+
 # Party size limits
 MAX_USERS_PER_PARTY = int(os.getenv('MAX_USERS_PER_PARTY', '0'))  # 0 = unlimited
 
 # HLS token validation (prevents direct stream access bypass)
-ENABLE_HLS_TOKEN_VALIDATION = os.getenv('ENABLE_HLS_TOKEN_VALIDATION', 'true').lower() == 'true'
+ENABLE_HLS_TOKEN_VALIDATION = os.getenv('ENABLE_HLS_TOKEN_VALIDATION', 'true').lower()
 HLS_TOKEN_EXPIRY = int(os.getenv('HLS_TOKEN_EXPIRY', '86400'))  # Default: 24 hours (in seconds)
 
 # Rate limiting (prevents API abuse)
-ENABLE_RATE_LIMITING = os.getenv('ENABLE_RATE_LIMITING', 'true').lower() == 'true'
+ENABLE_RATE_LIMITING = os.getenv('ENABLE_RATE_LIMITING', 'true').lower()
 RATE_LIMIT_PARTY_CREATION = os.getenv('RATE_LIMIT_PARTY_CREATION', '5 per hour')  # Max party creations per IP
 RATE_LIMIT_API_CALLS = os.getenv('RATE_LIMIT_API_CALLS', '1000 per minute')  # Max API calls per IP

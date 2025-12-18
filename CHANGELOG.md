@@ -8,6 +8,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Special Thanks
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
 
+## 1.2.1 - 2025-12-18
+
+### Added
+- **Optional Login Gatekeeping**: Authentication system for public deployments
+  - Feature idea and contribution by **[MaaHeebTrackbee](https://github.com/MaaHeebTrackbee)**
+  - `REQUIRE_LOGIN` config option (default: `false` for backward compatibility)
+  - Session-based authentication with configurable expiry (default: 24 hours)
+  - Login/logout endpoints with Emby credential validation
+  - Clean login UI matching existing theme system
+  - Automatic redirect handling when login is disabled
+  - Authentication is app-level gatekeeping, not per-user permissions
+  - All parties still use configured EMBY_USERNAME/EMBY_PASSWORD for playback
+  - Users authenticate with their own Emby credentials for access control
+  - Login can be completely disabled (default) for private deployments
+
+### Changed
+- **Configuration Storage Pattern**: Boolean configs now store string values
+  - `REQUIRE_LOGIN`, `ENABLE_HLS_TOKEN_VALIDATION`, `ENABLE_RATE_LIMITING` store `'true'`/`'false'` strings
+  - Boolean comparisons happen in code (`== 'true'`) instead of config files
+  - Improves Docker environment variable visibility and debugging
+  - Makes actual configured values visible in config object
+
+### Technical
+- **Authentication System (src/routes.py):**
+  - `@login_required` decorator protects routes when `REQUIRE_LOGIN == 'true'`
+  - `/login` route with automatic redirect when login disabled
+  - `/api/auth/login` POST endpoint validates credentials via Emby API
+  - `/api/auth/logout` POST endpoint clears session
+  - `/api/auth/status` GET endpoint returns authentication state
+  - Session management with Flask permanent sessions
+
+- **Templates:**
+  - `templates/login.html`: New login page with theme support
+  - `templates/index.html`: Added conditional logout button
+
+- **Configuration:**
+  - `config.py.example`: Added `REQUIRE_LOGIN` and `SESSION_EXPIRY` options
+  - `docker-compose.yml.example`: Added login environment variables and clarification comment
+  - `app.py`: Added session lifetime configuration
+
+- **Docker Improvements:**
+  - `Dockerfile`: Automatic `config.py` creation from `config.py.example` during build
+  - `docker-compose.yml.example`: Added comment clarifying config.py requirement
+  - Simplified Docker deployment by automating config file setup
+
+- **Boolean Config Refactoring:**
+  - Updated all `ENABLE_HLS_TOKEN_VALIDATION` checks in routes.py, socket_handlers.py, utils.py
+  - Updated `ENABLE_RATE_LIMITING` check in app.py
+  - All boolean configs now compare against `'true'` string
+
 ## 1.2.0 - 2025-11-05
 
 ### Added

@@ -3,10 +3,11 @@ Flask Routes Module
 All HTTP routes for the Emby Watch Party application
 """
 
-from flask import render_template, request, jsonify, Response
+from flask import render_template, request, jsonify, Response, session, redirect, url_for
 from datetime import datetime
 import requests
 import re
+from functools import wraps
 
 
 def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
@@ -35,12 +36,27 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
     watch_parties = party_manager.watch_parties
     hls_tokens = party_manager.hls_tokens
 
+    # Authentication decorator
+    def login_required(f):
+        """Decorator to require login if REQUIRE_LOGIN is enabled"""
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            logger.info(f"[AUTH CHECK] REQUIRE_LOGIN={config.REQUIRE_LOGIN}, authenticated={'authenticated' in session}")
+            if config.REQUIRE_LOGIN == 'true' and 'authenticated' not in session:
+                logger.info(f"[AUTH CHECK] Redirecting to login page")
+                return redirect(url_for('login'))
+            logger.info(f"[AUTH CHECK] Access granted")
+            return f(*args, **kwargs)
+        return decorated_function
+
     @app.route("/")
+    @login_required
     def index():
         """Main page - choose to create or join a watch party"""
-        return render_template("index.html")
+        return render_template("index.html", require_login=(config.REQUIRE_LOGIN == 'true'))
 
     @app.route("/party/<party_id>")
+    @login_required
     def party(party_id):
         """Watch party room page"""
         # Convert to uppercase for case-insensitive matching
@@ -55,7 +71,120 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
                 ),
                 404,
             )
-        return render_template("party.html", party_id=party_id)
+        return render_template("party.html", party_id=party_id, require_login=(config.REQUIRE_LOGIN == 'true'))
+
+    # =============================================================================
+    # Authentication Routes
+    # =============================================================================
+
+    @app.route("/login")
+    def login():
+        """Login page"""
+        # If login is not required, redirect to index
+        if config.REQUIRE_LOGIN != 'true':
+            return redirect(url_for('index'))
+        # If already authenticated, redirect to index
+        if 'authenticated' in session:
+            return redirect(url_for('index'))
+        return render_template("login.html")
+
+    @app.route("/api/auth/login", methods=["POST"])
+    def api_login():
+        """
+        Authenticate user with Emby credentials.
+
+        POST body: {"username": str, "password": str}
+
+        Returns:
+            JSON: {"success": bool, "message": str, "username": str (optional)}
+        """
+        try:
+            data = request.get_json()
+            username = data.get('username')
+            password = data.get('password')
+
+            if not username or not password:
+                return jsonify({"success": False, "message": "Username and password are required"}), 400
+
+            # Create temporary EmbyClient to authenticate
+            temp_client = type('obj', (object,), {
+                'server_url': emby_client.server_url,
+                'api_key': emby_client.api_key,
+                'logger': logger,
+                'device_id': emby_client.device_id
+            })()
+
+            # Try to authenticate
+            try:
+                url = f"{emby_client.server_url}/emby/Users/AuthenticateByName"
+                headers = {
+                    "Content-Type": "application/json",
+                    "X-Emby-Authorization": f'Emby Client="WatchParty", Device="Web", DeviceId="{emby_client.device_id}", Version="1.0"',
+                }
+                payload = {"Username": username, "Pw": password}
+
+                logger.debug(f"Attempting authentication for '{username}' at: {url}")
+                response = requests.post(url, headers=headers, json=payload, timeout=30)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    access_token = data.get("AccessToken")
+                    user_name = data.get("User", {}).get("Name", username)
+
+                    if access_token:
+                        # Store session data
+                        session['authenticated'] = True
+                        session['username'] = user_name
+                        session['access_token'] = access_token  # Store for potential future use
+                        session.permanent = True
+
+                        logger.info(f"User '{user_name}' logged in successfully")
+                        return jsonify({"success": True, "message": "Login successful", "username": user_name})
+                    else:
+                        logger.warning(f"Login attempt for '{username}' - no access token returned")
+                        return jsonify({"success": False, "message": "Authentication failed"}), 401
+                else:
+                    error_text = response.text
+                    logger.warning(f"Login attempt for '{username}' failed: {error_text}")
+                    return jsonify({"success": False, "message": error_text or "Invalid username or password"}), 401
+
+            except requests.exceptions.Timeout:
+                logger.error(f"Login timeout for user '{username}'")
+                return jsonify({"success": False, "message": "Connection to Emby server timed out"}), 504
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Login request error for '{username}': {e}")
+                return jsonify({"success": False, "message": "Unable to connect to Emby server"}), 502
+
+        except Exception as e:
+            logger.error(f"Login error: {e}")
+            return jsonify({"success": False, "message": "Internal server error"}), 500
+
+    @app.route("/api/auth/logout", methods=["POST"])
+    def api_logout():
+        """
+        Logout current user.
+
+        Returns:
+            JSON: {"success": bool, "message": str}
+        """
+        username = session.get('username', 'Unknown')
+        session.clear()
+        logger.info(f"User '{username}' logged out")
+        return jsonify({"success": True, "message": "Logged out successfully"})
+
+    @app.route("/api/auth/status")
+    def api_auth_status():
+        """
+        Check authentication status.
+
+        Returns:
+            JSON: {"authenticated": bool, "username": str (optional), "require_login": bool}
+        """
+        return jsonify({
+            "authenticated": 'authenticated' in session,
+            "username": session.get('username'),
+            "require_login": config.REQUIRE_LOGIN == 'true'
+        })
 
     # =============================================================================
     # API Routes
@@ -455,7 +584,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             import re
 
             # Validate HLS token if enabled
-            if config.ENABLE_HLS_TOKEN_VALIDATION:
+            if config.ENABLE_HLS_TOKEN_VALIDATION == 'true':
                 token = request.args.get("token")
                 logger.debug(
                     f"Master playlist request with token: {token[:16] if token else 'None'}... from {request.remote_addr}"
@@ -493,7 +622,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             # Add token to rewritten URLs if validation is enabled
             token_param = (
                 f"?token={request.args.get('token')}"
-                if config.ENABLE_HLS_TOKEN_VALIDATION and request.args.get("token")
+                if config.ENABLE_HLS_TOKEN_VALIDATION == 'true' and request.args.get("token")
                 else ""
             )
             if token_param:
@@ -590,7 +719,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             import re
 
             # Validate HLS token if enabled
-            if config.ENABLE_HLS_TOKEN_VALIDATION:
+            if config.ENABLE_HLS_TOKEN_VALIDATION == 'true':
                 token = request.args.get("token")
                 logger.debug(
                     f"Segment request for {subpath} with token: {token[:16] if token else 'None'}... from {request.remote_addr}"
@@ -635,7 +764,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
                 # Add token to rewritten URLs if validation is enabled
                 token_param = (
                     f"?token={request.args.get('token')}"
-                    if config.ENABLE_HLS_TOKEN_VALIDATION and request.args.get("token")
+                    if config.ENABLE_HLS_TOKEN_VALIDATION == 'true' and request.args.get("token")
                     else ""
                 )
 

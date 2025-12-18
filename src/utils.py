@@ -74,7 +74,7 @@ def generate_hls_token(party_id, sid, hls_tokens, config, logger):
         config: Configuration object
         logger: Logger instance
     """
-    if not config.ENABLE_HLS_TOKEN_VALIDATION:
+    if not config.ENABLE_HLS_TOKEN_VALIDATION == 'true':
         logger.debug("HLS token generation skipped - validation disabled")
         return None
 
@@ -109,7 +109,7 @@ def validate_hls_token(token, hls_tokens, watch_parties, config, logger, item_id
         logger: Logger instance
         item_id: Optional item ID for additional validation
     """
-    if not config.ENABLE_HLS_TOKEN_VALIDATION:
+    if not config.ENABLE_HLS_TOKEN_VALIDATION == 'true':
         return True  # Token validation disabled
 
     if not token:
