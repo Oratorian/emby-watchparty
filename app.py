@@ -26,7 +26,7 @@ from src import __version__
 from src.emby_client import EmbyClient
 from src.party_manager import PartyManager
 from src.routes import init_routes
-from src.socket_handlers import init_socket_handlers
+from src.socket_handlers import init_socket_handlers, check_for_updates
 
 # =============================================================================
 # Application Setup
@@ -50,6 +50,9 @@ logger = setup_logger(
 logger.info(f"=" * 80)
 logger.info(f"Emby Watch Party v{__version__} - Refactored Architecture")
 logger.info(f"=" * 80)
+
+# Check for updates on startup
+check_for_updates(logger)
 
 # Separate logger for SocketIO/EngineIO
 socketio_logger = setup_logger(
