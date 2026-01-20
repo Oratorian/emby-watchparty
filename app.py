@@ -51,9 +51,6 @@ logger.info(f"=" * 80)
 logger.info(f"Emby Watch Party v{__version__} - Refactored Architecture")
 logger.info(f"=" * 80)
 
-# Check for updates on startup
-check_for_updates(logger)
-
 # Separate logger for SocketIO/EngineIO
 socketio_logger = setup_logger(
     name="socketio",
@@ -150,6 +147,9 @@ if __name__ == '__main__':
     logger.info(f"Host: {config.WATCH_PARTY_BIND}")
     logger.info(f"Port: {config.WATCH_PARTY_PORT}")
     logger.info("=" * 80)
+
+    # Check for updates (displayed at end of startup messages)
+    check_for_updates(logger)
 
     try:
         socketio.run(
