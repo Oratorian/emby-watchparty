@@ -34,7 +34,7 @@ EMBY_PASSWORD = os.getenv('EMBY_PASSWORD', '')
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 LOG_FILE = os.getenv('LOG_FILE', 'logs/emby-watchparty.log')
 LOG_FORMAT = 'rsyslog'  # rsyslog-style formatting
-LOG_MAX_SIZE = 10 * 1024 * 1024  # 10MB
+LOG_MAX_SIZE = int(os.getenv('LOG_MAX_SIZE', '10'))  # Size in MB (rsyslog-logger 1.0.5+)
 CONSOLE_LOG_LEVEL = os.getenv('CONSOLE_LOG_LEVEL', 'WARNING')
 
 
