@@ -44,7 +44,6 @@ Thumbs.db
 # Logs
 logs/
 merge-to-main.ps1
-config.py
 *.backup
 
 # Documentations

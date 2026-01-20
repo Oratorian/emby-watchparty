@@ -19,7 +19,7 @@ import sys
 from rsyslog_logger import setup_logger
 
 # Import configuration
-import config
+from src import config
 
 # Import our refactored modules
 from src import __version__
@@ -156,7 +156,7 @@ if __name__ == '__main__':
             app,
             host=config.WATCH_PARTY_BIND,
             port=config.WATCH_PARTY_PORT,
-            debug=True
+            debug=False
         )
     except KeyboardInterrupt:
         logger.info("Server stopped by user")

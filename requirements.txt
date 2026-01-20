@@ -5,3 +5,4 @@ requests==2.31.0
 eventlet==0.33.3
 Flask-Limiter==3.5.0
 rsyslog-logger>=1.0.5
+python-dotenv>=1.0.0
