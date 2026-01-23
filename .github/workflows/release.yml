@@ -4,10 +4,24 @@ on:
   push:
     tags:
       - 'v*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
+  workflow_dispatch:
+    inputs:
+      docker_only:
+        description: 'Build Docker image only (no release)'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
 
     steps:
       - name: Checkout code
@@ -15,9 +29,15 @@ jobs:
 
       - name: Get the version
         id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "VERSION=dev" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Extract changelog for this version
+        if: github.event_name != 'workflow_dispatch'
         id: changelog
         run: |
           # Extract the changelog section for this version
@@ -49,10 +69,11 @@ jobs:
           } >> $GITHUB_OUTPUT
 
       - name: Create release archive
+        if: github.event_name != 'workflow_dispatch'
         run: |
           # Create directory with version name directly
           mkdir -p emby-watchparty-${{ steps.get_version.outputs.VERSION }}
-          
+
           # Copy application files directly to versioned directory
           rsync -a . emby-watchparty-${{ steps.get_version.outputs.VERSION }}/ \
             --exclude='.git' \
@@ -60,7 +81,7 @@ jobs:
             --exclude='__pycache__' \
             --exclude='*.pyc' \
             --exclude='logs/' \
-            --exclude='config.py' \
+            --exclude='.env' \
             --exclude='.vscode' \
             --exclude='.idea' \
             --exclude='*.swp' \
@@ -75,7 +96,40 @@ jobs:
           zip -r emby-watchparty-${{ steps.get_version.outputs.VERSION }}.zip \
             emby-watchparty-${{ steps.get_version.outputs.VERSION }}/
 
+      # Docker build and push
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}},enable=${{ github.event_name != 'workflow_dispatch' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name != 'workflow_dispatch' }}
+            type=raw,value=latest,enable=${{ github.event_name != 'workflow_dispatch' }}
+            type=raw,value=dev,enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Create Release
+        if: github.event_name != 'workflow_dispatch'
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
@@ -88,22 +142,32 @@ jobs:
             ---
 
             ### Installation
+
+            #### Option 1: Docker (Recommended)
+            ```bash
+            docker pull ghcr.io/oratorian/emby-watchparty:${{ steps.get_version.outputs.VERSION }}
+            ```
+            Or use docker-compose with the provided `docker-compose.yml.example`
+
+            #### Option 2: Manual Installation
             1. Download and extract `emby-watchparty-${{ steps.get_version.outputs.VERSION }}.zip`
-            2. Copy `config.py.example` to `config.py` and configure your Emby server details
+            2. Copy `.env.example` to `.env` and configure your Emby server details
             3. Install dependencies: `pip install -r requirements.txt`
             4. Run: `python app.py`
             5. Open browser to `http://localhost:5000`
 
             ### What's Included
             - Complete application source code
+            - Docker support with pre-built images
             - Requirements file for easy dependency installation
             - Example configuration file
             - README with full documentation
             - MIT License
 
             ### Requirements
-            - Python 3.8 or higher
-            - Emby server with user account credentials
+            - Python 3.8 or higher (manual install)
+            - Docker (container install)
+            - Emby server with API key
             - Modern web browser
 
             See [README.md](https://github.com/Oratorian/emby-watchparty/blob/main/README.md) for full documentation.
