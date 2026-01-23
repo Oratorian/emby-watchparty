@@ -1,11 +1,11 @@
 """
 Linux production entrypoint for Emby Watch Party
-Uses eventlet for production-ready async handling on Linux/Docker
+Uses gevent for production-ready async handling on Linux/Docker
 """
 
-# Eventlet monkey patching must be done before any other imports
-import eventlet
-eventlet.monkey_patch()
+# Gevent monkey patching must be done before any other imports
+from gevent import monkey
+monkey.patch_all()
 
 # Now import and run the app
 from app import app, socketio, config, logger
