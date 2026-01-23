@@ -50,5 +50,5 @@ HLS_TOKEN_EXPIRY = int(os.getenv('HLS_TOKEN_EXPIRY', '86400'))  # Default: 24 ho
 
 # Rate limiting (prevents API abuse)
 ENABLE_RATE_LIMITING = os.getenv('ENABLE_RATE_LIMITING', 'true').lower()
-RATE_LIMIT_PARTY_CREATION = os.getenv('RATE_LIMIT_PARTY_CREATION', '5 per hour')  # Max party creations per IP
-RATE_LIMIT_API_CALLS = os.getenv('RATE_LIMIT_API_CALLS', '1000 per minute')  # Max API calls per IP
+RATE_LIMIT_PARTY_CREATION = f"{os.getenv('RATE_LIMIT_PARTY_CREATION', '5')} per hour"  # Max party creations per IP per hour
+RATE_LIMIT_API_CALLS = f"{os.getenv('RATE_LIMIT_API_CALLS', '1000')} per minute"  # Max API calls per IP per minute
