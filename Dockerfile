@@ -17,5 +17,5 @@ COPY . .
 # Expose default port (configurable via WATCH_PARTY_PORT env var)
 EXPOSE 5000
 
-# Run the application
-CMD ["python", "app.py"]
+# Run the application with eventlet for production
+CMD ["python", "run_linux_production.py"]

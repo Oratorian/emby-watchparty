@@ -26,7 +26,7 @@ from src import __version__
 from src.emby_client import EmbyClient
 from src.party_manager import PartyManager
 from src.routes import init_routes
-from src.socket_handlers import init_socket_handlers, check_for_updates
+from src.socket_handlers import init_socket_handlers
 
 # =============================================================================
 # Application Setup
@@ -138,29 +138,7 @@ init_socket_handlers(socketio, emby_client, party_manager, config, logger)
 logger.info("Routes and handlers registered successfully")
 
 # =============================================================================
-# Run Application
+# Application is imported and run by platform-specific entry points:
+# - docker-entrypoint.py (Linux/Docker with eventlet)
+# - run_windows_production.py (Windows with gevent)
 # =============================================================================
-
-if __name__ == '__main__':
-    logger.info("=" * 80)
-    logger.info("Starting Emby Watch Party server...")
-    logger.info(f"Host: {config.WATCH_PARTY_BIND}")
-    logger.info(f"Port: {config.WATCH_PARTY_PORT}")
-    logger.info("=" * 80)
-
-    # Check for updates (displayed at end of startup messages)
-    check_for_updates(logger)
-
-    try:
-        socketio.run(
-            app,
-            host=config.WATCH_PARTY_BIND,
-            port=config.WATCH_PARTY_PORT,
-            debug=False,
-            allow_unsafe_werkzeug=True
-        )
-    except KeyboardInterrupt:
-        logger.info("Server stopped by user")
-    except Exception as e:
-        logger.error(f"Server error: {e}")
-        raise

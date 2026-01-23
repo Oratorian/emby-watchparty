@@ -3,6 +3,8 @@ flask-socketio==5.3.5
 python-socketio==5.10.0
 requests==2.31.0
 eventlet==0.33.3
+gevent>=23.9.0
+gevent-websocket>=0.10.1
 Flask-Limiter==3.5.0
 rsyslog-logger>=1.0.5
 python-dotenv>=1.0.0
