@@ -32,6 +32,7 @@ EMBY_PASSWORD = os.getenv('EMBY_PASSWORD', '')
 # ============== Logging Configuration ==============
 
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+LOG_TO_FILE = os.getenv('LOG_TO_FILE', 'true').lower()  # Set to 'false' for Docker (stdout only)
 LOG_FILE = os.getenv('LOG_FILE', 'logs/emby-watchparty.log')
 LOG_FORMAT = 'rsyslog'  # rsyslog-style formatting
 LOG_MAX_SIZE = int(os.getenv('LOG_MAX_SIZE', '10'))  # Size in MB (rsyslog-logger 1.0.5+)

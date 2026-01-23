@@ -37,9 +37,11 @@ app.config['SECRET_KEY'] = secrets.token_hex(16)
 app.config['PERMANENT_SESSION_LIFETIME'] = config.SESSION_EXPIRY if hasattr(config, 'SESSION_EXPIRY') else 86400
 
 # Setup rsyslog-logger (replaces custom logger)
+# Use None for log_file when LOG_TO_FILE is false (Docker stdout-only mode)
+log_file = config.LOG_FILE if config.LOG_TO_FILE == 'true' else None
 logger = setup_logger(
     name="emby-watchparty",
-    log_file=config.LOG_FILE,
+    log_file=log_file,
     log_level=config.LOG_LEVEL,
     log_format=config.LOG_FORMAT,
     console_log_level=config.CONSOLE_LOG_LEVEL,
@@ -52,9 +54,10 @@ logger.info(f"Emby Watch Party v{__version__} - Refactored Architecture")
 logger.info(f"=" * 80)
 
 # Separate logger for SocketIO/EngineIO
+socketio_log_file = "logs/socketio.log" if config.LOG_TO_FILE == 'true' else None
 socketio_logger = setup_logger(
     name="socketio",
-    log_file="logs/socketio.log",
+    log_file=socketio_log_file,
     log_level=config.LOG_LEVEL,
     log_format=config.LOG_FORMAT,
     console_log_level=config.CONSOLE_LOG_LEVEL,
@@ -72,9 +75,10 @@ socketio = SocketIO(
 # Redirect Flask/Werkzeug HTTP access logs
 werkzeug_logger = logging.getLogger('werkzeug')
 werkzeug_logger.handlers.clear()
+access_log_file = "logs/access.log" if config.LOG_TO_FILE == 'true' else None
 werkzeug_custom_logger = setup_logger(
     name="werkzeug",
-    log_file="logs/access.log",
+    log_file=access_log_file,
     log_level=config.LOG_LEVEL,
     log_format=config.LOG_FORMAT,
     console_log_level=config.CONSOLE_LOG_LEVEL,
