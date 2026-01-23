@@ -2,7 +2,7 @@
 # Original contribution by: MaaHeebTrackbee
 # https://github.com/Oratorian/emby-watchparty
 
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app
@@ -13,9 +13,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
-
-# Create config.py from example if it doesn't exist
-RUN if [ ! -f config.py ]; then cp config.py.example config.py; fi
 
 # Expose default port (configurable via WATCH_PARTY_PORT env var)
 EXPOSE 5000
