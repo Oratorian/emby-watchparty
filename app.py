@@ -156,7 +156,8 @@ if __name__ == '__main__':
             app,
             host=config.WATCH_PARTY_BIND,
             port=config.WATCH_PARTY_PORT,
-            debug=False
+            debug=False,
+            allow_unsafe_werkzeug=True
         )
     except KeyboardInterrupt:
         logger.info("Server stopped by user")
