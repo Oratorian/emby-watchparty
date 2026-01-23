@@ -60,62 +60,80 @@ Emby Watch Party works best with the following browsers:
 - Flask app must be accessible to remote users - use VPNs like Tailscale or Hamachi if port forwarding is not possible
 - **Note:** Emby server does NOT need to be exposed to the internet - the Flask app acts as a secure proxy
 
-### Installation
+### Option 1: Manual Installation
 
 1. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Configure your Emby server credentials:
+2. Configure your settings:
 
-Rename [config.example.py](config.py.example) to [config.py](config.py)
-
-Edit [config.py](config.py) or set environment variables:
-
-**Option 1: Edit config.py (Recommended)**
-```python
-EMBY_SERVER_URL = 'http://your-emby-server:8096'
-EMBY_USERNAME = 'your-username'
-EMBY_PASSWORD = 'your-password'
-EMBY_API_KEY = 'API-KEY'
+Copy `.env.example` to `.env` and edit with your settings:
+```bash
+cp .env.example .env
 ```
 
-**Option 2: Environment Variables**
+Edit `.env` with your Emby server credentials:
+```env
+# Emby Server Configuration
+EMBY_SERVER_URL=http://your-emby-server:8096
+EMBY_API_KEY=your-api-key-here
+EMBY_USERNAME=your-username
+EMBY_PASSWORD=your-password
 
-**Windows (PowerShell):**
-```powershell
-$env:EMBY_SERVER_URL="http://your-emby-server:8096"
-$env:EMBY_USERNAME="your-username"
-$env:EMBY_PASSWORD="your-password"
-$env:EMBY_API_KEY = "API-KEY"
+# Application Configuration
+WATCH_PARTY_BIND=0.0.0.0
+WATCH_PARTY_PORT=5000
 ```
 
-**Windows (Command Prompt):**
-```cmd
-set EMBY_SERVER_URL=http://your-emby-server:8096
-set EMBY_USERNAME=your-username
-set EMBY_PASSWORD=your-password
-set EMBY_API_KEY=API-KEY
+3. Run the application:
+
+**Windows:**
+```bash
+python run_windows_production.py
 ```
 
 **Linux/Mac:**
 ```bash
-export EMBY_SERVER_URL="http://your-emby-server:8096"
-export EMBY_USERNAME="your-username"
-export EMBY_PASSWORD="your-password"
-export EMBY_API_KEY="API-KEY"
-```
-
-3. Run the application:
-```bash
-python app.py
+python run_linux_production.py
 ```
 
 4. Open your browser and navigate to:
 ```
 http://localhost:5000
 ```
+
+### Option 2: Docker Installation
+
+Pull the image from GitHub Container Registry:
+```bash
+docker pull ghcr.io/oratorian/emby-watchparty:latest
+```
+
+Run with your `.env` file:
+```bash
+docker run -d \
+  --name emby-watchparty \
+  -p 5000:5000 \
+  --env-file .env \
+  ghcr.io/oratorian/emby-watchparty:latest
+```
+
+Or with inline environment variables:
+```bash
+docker run -d \
+  --name emby-watchparty \
+  -p 5000:5000 \
+  -e EMBY_SERVER_URL=http://your-emby-server:8096 \
+  -e EMBY_API_KEY=your-api-key \
+  -e EMBY_USERNAME=your-username \
+  -e EMBY_PASSWORD=your-password \
+  -e LOG_TO_FILE=false \
+  ghcr.io/oratorian/emby-watchparty:latest
+```
+
+**Note:** For Docker deployments, set `LOG_TO_FILE=false` to output logs to stdout only.
 
 ## Usage
 
@@ -143,16 +161,33 @@ http://localhost:5000
 
 ## Configuration
 
-You can configure the application in [config.py](config.py) or using environment variables:
+All configuration is done via the `.env` file. Copy `.env.example` to `.env` and customize:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `EMBY_SERVER_URL` | Your Emby server URL | `http://hostname:8096` |
-| `EMBY_USERNAME` | Your Emby username | `username` |
-| `EMBY_PASSWORD` | Your Emby password | `password` |
+| **Application** | | |
+| `WATCH_PARTY_BIND` | IP address to bind to | `0.0.0.0` |
+| `WATCH_PARTY_PORT` | Port to run on | `5000` |
+| `REQUIRE_LOGIN` | Require Emby login to access | `false` |
+| `SESSION_EXPIRY` | Session expiry in seconds | `86400` |
+| **Emby Server** | | |
+| `EMBY_SERVER_URL` | Your Emby server URL | `http://localhost:8096` |
+| `EMBY_API_KEY` | Emby API key | (required) |
+| `EMBY_USERNAME` | Your Emby username | (required) |
+| `EMBY_PASSWORD` | Your Emby password | (required) |
+| **Logging** | | |
 | `LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
+| `LOG_TO_FILE` | Enable file logging (`true`/`false`) | `true` |
 | `LOG_FILE` | Path to log file | `logs/emby-watchparty.log` |
 | `CONSOLE_LOG_LEVEL` | Console log level | `WARNING` |
+| `LOG_MAX_SIZE` | Max log file size in MB | `10` |
+| **Security** | | |
+| `MAX_USERS_PER_PARTY` | Max users per party (0 = unlimited) | `0` |
+| `ENABLE_HLS_TOKEN_VALIDATION` | Validate HLS stream tokens | `true` |
+| `HLS_TOKEN_EXPIRY` | HLS token expiry in seconds | `86400` |
+| `ENABLE_RATE_LIMITING` | Enable API rate limiting | `true` |
+| `RATE_LIMIT_PARTY_CREATION` | Max party creations per IP per hour | `5` |
+| `RATE_LIMIT_API_CALLS` | Max API calls per IP per minute | `1000` |
 
 ## Architecture
 
@@ -222,7 +257,7 @@ The application authenticates with Emby using username/password credentials to o
 
 ### Videos won't play
 - Ensure the Flask app is accessible from client browsers
-- Check that your username and password are correct in [config.py](config.py)
+- Check that your username and password are correct in `.env`
 - Verify the Emby server is reachable from the Flask app server (internal network)
 - Verify the user account has permission to access the media
 - Check the logs in `logs/emby-watchparty.log` for authentication or proxy errors
@@ -234,7 +269,7 @@ The application authenticates with Emby using username/password credentials to o
 - If seeking causes desync, check that all clients have stable network connections
 
 ### Can't browse library
-- Verify the Emby server URL is correct in [config.py](config.py)
+- Verify the Emby server URL is correct in `.env`
 - Check that your username and password are correct
 - Ensure the Emby server is running and reachable from the Flask app (internal network)
 - Verify the user account has library access permissions
@@ -244,15 +279,16 @@ The application authenticates with Emby using username/password credentials to o
 - **Proxy Architecture**: Your Emby server stays on your local network and is never exposed to the internet
 - The Flask app proxies all HLS streaming requests, acting as a security layer between users and your Emby server
 - This application authenticates with Emby using username/password credentials
-- Credentials are stored in [config.py](config.py) - **do not commit this file to public repositories**
+- Credentials are stored in `.env` - **do not commit this file to public repositories**
 - Party codes are generated using cryptographically secure random tokens
 - AccessTokens are obtained at runtime and not stored persistently
+- Built-in security features:
+  - HLS token validation (prevents direct stream access bypass)
+  - Rate limiting (prevents API abuse)
+  - Configurable party size limits
 - For production use, consider adding:
-  - HTTPS/TLS encryption (recommended if exposing Flask to internet)
-  - User authentication for watch party access
-  - Rate limiting
-  - CORS restrictions
-  - Environment variable-based credential management instead of config.py
+  - HTTPS/TLS encryption (recommended if exposing to the internet)
+  - Reverse proxy (nginx, Caddy, etc.)
 
 ## License
 
