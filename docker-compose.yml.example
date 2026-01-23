@@ -16,6 +16,8 @@ services:
     # environment:
     #   - EMBY_SERVER_URL=http://your-emby-server:8096
     #   - EMBY_API_KEY=your_api_key_here
+    #   - WATCH_PARTY_BIND=0.0.0.0
+    #   - WATCH_PARTY_PORT=5000
     volumes:
       - ./logs:/app/logs  # Persist logs
       - ./.env:/app/.env:ro  # Mount .env file (read-only)
