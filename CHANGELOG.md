@@ -8,7 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Special Thanks
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
 
-## 1.2.1 - 2025-12-18
+## [1.3.0] - 2026-01-23
+
+### Changed
+- **Configuration migrated to .env file**: All settings now loaded from `.env` file using python-dotenv
+  - Copy `.env.example` to `.env` and configure your settings
+  - Old `config.py` values no longer used directly
+- **Production server support**: Switched from Werkzeug to gevent for production deployments
+  - `run_linux_production.py` for Linux/Docker
+  - `run_windows_production.py` for Windows
+  - `app.py` no longer runs directly - use platform-specific entry points
+- **Rate limiting simplified**: Now accepts numeric values only (e.g., `RATE_LIMIT_API_CALLS=1000`)
+  - Time units added automatically (per minute for API calls, per hour for party creation)
+
+### Added
+- **LOG_TO_FILE option**: Set to `false` for Docker stdout-only logging
+- **GitHub Actions Docker build**: Automatic container builds to ghcr.io on release
+- **Version check at startup**: Displays update notification if newer version available
+
+### Fixed
+- GitHub version check now actually runs at startup
+- Rate limiter configuration error with numeric-only values
+
+### Breaking Changes
+- Configuration moved from `config.py` to `.env` file - must migrate settings
+- Application must be run via `run_linux_production.py` or `run_windows_production.py`
+- Removed eventlet dependency (deprecated), now uses gevent everywhere
+
+## [1.2.1] - 2025-12-18
 
 ### Added
 - **Optional Login Gatekeeping**: Authentication system for public deployments
