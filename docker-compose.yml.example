@@ -1,7 +1,8 @@
 version: '3.8'
 
-# IMPORTANT: Before running, copy config.py.example to config.py
-# The application requires config.py to exist (even if using environment variables)
+# Configuration options:
+# 1. Use .env file: Copy .env.example to .env and configure
+# 2. Use environment variables in this file (override .env)
 
 services:
   emby-watchparty:
@@ -9,39 +10,15 @@ services:
     container_name: emby-watchparty
     ports:
       - "5000:5000"  # Change if using custom WATCH_PARTY_PORT
-    environment:
-      # ============== Application Configuration ==============
-      - WATCH_PARTY_BIND=0.0.0.0 # Do not change for Docker deployment
-      - WATCH_PARTY_PORT=5000
-
-      # ============== Emby Server Configuration ==============
-      - EMBY_SERVER_URL=http://your-emby-server:8096
-      - EMBY_API_KEY=your_api_key_here
-      - EMBY_USERNAME=your-username
-      - EMBY_PASSWORD=your-password
-
-      # ============== Logging Configuration ==============
-      - LOG_LEVEL=INFO
-      - LOG_FILE=logs/emby-watchparty.log
-
-      # ============== Security Configuration ==============
-      # Login gatekeeping (require Emby authentication before accessing app)
-      - REQUIRE_LOGIN=false
-      - SESSION_EXPIRY=86400  # 24 hours in seconds
-
-      # Party size limits (0 = unlimited)
-      - MAX_USERS_PER_PARTY=0
-
-      # HLS token validation (prevents direct stream access bypass)
-      - ENABLE_HLS_TOKEN_VALIDATION=true
-      - HLS_TOKEN_EXPIRY=86400  # 24 hours in seconds
-
-      # Rate limiting (prevents API abuse)
-      - ENABLE_RATE_LIMITING=true
-      - RATE_LIMIT_PARTY_CREATION=5 per hour
-      - RATE_LIMIT_API_CALLS=1000 per minute
+    env_file:
+      - .env  # Load configuration from .env file
+    # Uncomment below to override .env settings:
+    # environment:
+    #   - EMBY_SERVER_URL=http://your-emby-server:8096
+    #   - EMBY_API_KEY=your_api_key_here
     volumes:
       - ./logs:/app/logs  # Persist logs
+      - ./.env:/app/.env:ro  # Mount .env file (read-only)
     restart: unless-stopped
     networks:
       - emby-network
