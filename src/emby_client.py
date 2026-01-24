@@ -99,12 +99,20 @@ class EmbyClient:
             self.logger.warning("Some API features may not work without user context")
 
     def get_libraries(self):
-        """Get all media libraries"""
+        """Get media libraries accessible to the authenticated user"""
         try:
-            url = f"{self.server_url}/emby/Library/MediaFolders"
-            response = requests.get(url, headers=self.headers)
-            response.raise_for_status()
-            return response.json()
+            # Use user-specific endpoint to only get libraries the user has access to
+            if self.user_id:
+                url = f"{self.server_url}/emby/Users/{self.user_id}/Views"
+                response = requests.get(url, headers=self.headers)
+                response.raise_for_status()
+                return response.json()
+            else:
+                # Fallback to all media folders if no user context
+                url = f"{self.server_url}/emby/Library/MediaFolders"
+                response = requests.get(url, headers=self.headers)
+                response.raise_for_status()
+                return response.json()
         except Exception as e:
             self.logger.error(f"Error fetching libraries: {e}")
             return {"Items": []}
