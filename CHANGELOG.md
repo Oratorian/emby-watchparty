@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Special Thanks
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
 
+## [1.3.1] - 2026-01-24
+
+### Fixed
+- **Library filtering by user permissions**: Libraries now filtered based on authenticated user's access
+  - Feature suggestion by **[Spexor](https://emby.media/community/index.php?/profile/1352631-spexor/)**
+  - Uses `/emby/Users/{user_id}/Views` endpoint instead of `/emby/Library/MediaFolders`
+  - Restricted users only see libraries they have permission to access
+  - Prevents "No items found" errors when clicking inaccessible libraries
+
 ## [1.3.0] - 2026-01-23
 
 ### Changed

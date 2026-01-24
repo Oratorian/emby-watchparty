@@ -6,7 +6,7 @@ Description: A Flask-based web application that allows multiple users to watch
              Emby media in sync with real-time chat and playback synchronization.
              Supports HLS streaming with proper authentication.
 
-Version: 1.3.0 (Production Server with .env Configuration)
+Version: 1.3.1 (Production Server with .env Configuration)
 """
 
 from flask import Flask
