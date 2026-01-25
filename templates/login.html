@@ -133,9 +133,12 @@
                 });
 
                 const data = await response.json();
+                console.log('Login response:', response.status, data);
 
                 if (response.ok && data.success) {
                     // Login successful, redirect to index
+                    console.log('Login successful, redirecting to:', appPrefix + '/');
+                    submitButton.textContent = 'Redirecting...';
                     window.location.href = appPrefix + '/';
                 } else {
                     // Show error message
