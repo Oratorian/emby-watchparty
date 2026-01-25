@@ -6,7 +6,7 @@ Description: A Flask-based web application that allows multiple users to watch
              Emby media in sync with real-time chat and playback synchronization.
              Supports HLS streaming with proper authentication.
 
-Version: 1.3.1 (Production Server with .env Configuration)
+Version: 1.4.0-alpha (Production Server with .env Configuration)
 """
 
 from flask import Flask
@@ -35,6 +35,18 @@ from src.socket_handlers import init_socket_handlers
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
 app.config['PERMANENT_SESSION_LIFETIME'] = config.SESSION_EXPIRY if hasattr(config, 'SESSION_EXPIRY') else 86400
+
+# Configure session cookie for reverse proxy deployments
+# When APP_PREFIX is set (e.g., /watchparty), the session cookie must use that path
+# Otherwise the cookie won't be sent with requests to the prefixed routes
+if config.APP_PREFIX:
+    app.config['SESSION_COOKIE_PATH'] = config.APP_PREFIX
+else:
+    app.config['SESSION_COOKIE_PATH'] = '/'
+
+# SameSite=Lax allows the cookie to be sent with same-site requests and top-level navigations
+# This is needed for the redirect after login to work correctly
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 # Setup rsyslog-logger (replaces custom logger)
 # Use None for log_file when LOG_TO_FILE is false (Docker stdout-only mode)
