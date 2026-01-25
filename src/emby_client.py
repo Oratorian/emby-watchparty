@@ -242,3 +242,140 @@ class EmbyClient:
         except Exception as e:
             self.logger.warning(f"Failed to stop active encodings: {e}")
             return False
+
+    # =========================================================================
+    # Playback Progress Reporting
+    # =========================================================================
+
+    def _seconds_to_ticks(self, seconds):
+        """Convert seconds to Emby ticks (100-nanosecond intervals)"""
+        return int(seconds * 10_000_000)
+
+    def _build_playback_payload(self, item_id, media_source_id, play_session_id,
+                                  position_seconds, is_paused, audio_index=None,
+                                  subtitle_index=None, run_time_seconds=None):
+        """Build the common payload for playback reporting"""
+        payload = {
+            "ItemId": item_id,
+            "MediaSourceId": media_source_id,
+            "PlaySessionId": play_session_id,
+            "PositionTicks": self._seconds_to_ticks(position_seconds),
+            "IsPaused": is_paused,
+            "CanSeek": True,
+            "PlayMethod": "Transcode",  # Watch party always uses HLS transcoding
+            "QueueableMediaTypes": ["Video"],
+        }
+
+        if audio_index is not None:
+            payload["AudioStreamIndex"] = audio_index
+
+        if subtitle_index is not None:
+            payload["SubtitleStreamIndex"] = subtitle_index
+
+        if run_time_seconds is not None:
+            payload["RunTimeTicks"] = self._seconds_to_ticks(run_time_seconds)
+
+        return payload
+
+    def report_playback_start(self, item_id, media_source_id, play_session_id,
+                               position_seconds=0, audio_index=None,
+                               subtitle_index=None, run_time_seconds=None):
+        """
+        Report playback start to Emby server.
+        Call this when a video begins playing.
+
+        Args:
+            item_id: Emby item ID
+            media_source_id: Media source ID from PlaybackInfo
+            play_session_id: Play session ID from PlaybackInfo
+            position_seconds: Starting position in seconds (default 0)
+            audio_index: Selected audio stream index
+            subtitle_index: Selected subtitle stream index (-1 for none)
+            run_time_seconds: Total runtime in seconds
+        """
+        try:
+            url = f"{self.server_url}/emby/Sessions/Playing"
+            payload = self._build_playback_payload(
+                item_id, media_source_id, play_session_id,
+                position_seconds, is_paused=False,
+                audio_index=audio_index, subtitle_index=subtitle_index,
+                run_time_seconds=run_time_seconds
+            )
+
+            response = requests.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            self.logger.info(f"Reported playback start for item {item_id} at {position_seconds:.1f}s")
+            return True
+        except Exception as e:
+            self.logger.warning(f"Failed to report playback start: {e}")
+            return False
+
+    def report_playback_progress(self, item_id, media_source_id, play_session_id,
+                                  position_seconds, is_paused, event_name="TimeUpdate",
+                                  audio_index=None, subtitle_index=None,
+                                  run_time_seconds=None):
+        """
+        Report playback progress to Emby server.
+        Call this periodically during playback and on play/pause/seek events.
+
+        Args:
+            item_id: Emby item ID
+            media_source_id: Media source ID from PlaybackInfo
+            play_session_id: Play session ID from PlaybackInfo
+            position_seconds: Current position in seconds
+            is_paused: Whether playback is paused
+            event_name: Event type - "TimeUpdate", "Pause", "Unpause", "AudioTrackChange", "SubtitleTrackChange"
+            audio_index: Selected audio stream index
+            subtitle_index: Selected subtitle stream index (-1 for none)
+            run_time_seconds: Total runtime in seconds
+        """
+        try:
+            url = f"{self.server_url}/emby/Sessions/Playing/Progress"
+            payload = self._build_playback_payload(
+                item_id, media_source_id, play_session_id,
+                position_seconds, is_paused,
+                audio_index=audio_index, subtitle_index=subtitle_index,
+                run_time_seconds=run_time_seconds
+            )
+            payload["EventName"] = event_name
+
+            response = requests.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            self.logger.debug(f"Reported playback progress: {event_name} at {position_seconds:.1f}s (paused={is_paused})")
+            return True
+        except Exception as e:
+            self.logger.warning(f"Failed to report playback progress: {e}")
+            return False
+
+    def report_playback_stopped(self, item_id, media_source_id, play_session_id,
+                                 position_seconds, run_time_seconds=None):
+        """
+        Report playback stopped to Emby server.
+        Call this when playback ends or is stopped.
+
+        Args:
+            item_id: Emby item ID
+            media_source_id: Media source ID from PlaybackInfo
+            play_session_id: Play session ID from PlaybackInfo
+            position_seconds: Final position in seconds
+            run_time_seconds: Total runtime in seconds
+        """
+        try:
+            url = f"{self.server_url}/emby/Sessions/Playing/Stopped"
+            payload = {
+                "ItemId": item_id,
+                "MediaSourceId": media_source_id,
+                "PlaySessionId": play_session_id,
+                "PositionTicks": self._seconds_to_ticks(position_seconds),
+            }
+
+            if run_time_seconds is not None:
+                payload["RunTimeTicks"] = self._seconds_to_ticks(run_time_seconds)
+
+            response = requests.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            self.logger.info(f"Reported playback stopped for item {item_id} at {position_seconds:.1f}s")
+            return True
+        except Exception as e:
+            self.logger.warning(f"Failed to report playback stopped: {e}")
+            return False
