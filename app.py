@@ -66,7 +66,8 @@ socketio_logger = setup_logger(
 )
 
 # Determine Socket.IO path based on APP_PREFIX
-socketio_path = f"{config.APP_PREFIX}/socket.io" if config.APP_PREFIX else "socket.io"
+# Always include leading slash for socket.io path (required by socket.io client)
+socketio_path = f"{config.APP_PREFIX}/socket.io" if config.APP_PREFIX else "/socket.io"
 
 socketio = SocketIO(
     app,

@@ -58,6 +58,7 @@ let seekSettleTimer = null;
 let hls = null; // HLS.js instance
 let canStopVideo = false; // Track if current user can stop the video
 let periodicSyncInterval = null; // Periodic sync check interval
+let progressReportInterval = null; // Interval for reporting progress to Emby
 let currentPartyState = null; // Store current party playback state for periodic sync
 let playbackStartTime = null; // Track when playback started for drift calculation
 let introData = null; // Store intro timing data for current video
@@ -687,6 +688,9 @@ videoElement.addEventListener('ended', () => {
     currentPartyState = null;
     playbackStartTime = null;
 
+    // Stop progress reporting since video has ended
+    stopProgressReporting();
+
     // Exit fullscreen if active
     if (document.fullscreenElement || document.webkitFullscreenElement ||
         document.mozFullScreenElement || document.msFullscreenElement) {
@@ -993,8 +997,9 @@ socket.on('video_stopped', (data) => {
     currentItemId = null;
     currentPartyState = null;
 
-    // Stop periodic sync check
+    // Stop periodic sync check and progress reporting
     stopPeriodicSync();
+    stopProgressReporting();
 
     // Show message in chat
     addSystemMessage(data.message);
@@ -1602,6 +1607,9 @@ function loadVideo(video) {
 
     // Load intro data for this video
     loadIntroData(video.item_id);
+
+    // Start progress reporting to Emby (only host reports)
+    startProgressReporting();
 }
 
 // Load intro timing data for a video
@@ -1802,6 +1810,46 @@ function stopPeriodicSync() {
     if (periodicSyncInterval) {
         clearInterval(periodicSyncInterval);
         periodicSyncInterval = null;
+    }
+}
+
+// Progress reporting to Emby - reports playback position every 10 seconds
+// Only the user who selected the video should report progress
+function startProgressReporting() {
+    // Clear any existing interval
+    if (progressReportInterval) {
+        clearInterval(progressReportInterval);
+    }
+
+    // Report progress every 10 seconds (as recommended by Emby API)
+    progressReportInterval = setInterval(() => {
+        // Only report if we selected the video (canStopVideo = true means we selected it)
+        if (!canStopVideo) {
+            return;
+        }
+
+        // Only report if we have a video loaded
+        if (!videoElement.src || videoElement.readyState < 2) {
+            return;
+        }
+
+        // Only report if video is playing (not paused)
+        if (videoElement.paused) {
+            return;
+        }
+
+        // Report current progress to server
+        socket.emit('report_progress', {
+            party_id: partyId,
+            time: videoElement.currentTime
+        });
+    }, 10000); // Report every 10 seconds
+}
+
+function stopProgressReporting() {
+    if (progressReportInterval) {
+        clearInterval(progressReportInterval);
+        progressReportInterval = null;
     }
 }
 

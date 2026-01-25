@@ -302,6 +302,10 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
         if watch_parties[party_id].get("current_video"):
             emby_client.stop_active_encodings()
 
+        # Get runtime in seconds from media source (RunTimeTicks is in 100-nanosecond units)
+        run_time_ticks = media_source.get("RunTimeTicks", 0)
+        run_time_seconds = run_time_ticks / 10_000_000 if run_time_ticks else None
+
         # Store base URL without token in party data
         watch_parties[party_id]["current_video"] = {
             "item_id": item_id,
@@ -311,8 +315,21 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             "audio_index": audio_index,
             "subtitle_index": subtitle_index,
             "media_source_id": media_source_id,  # Needed for subtitle URLs
+            "play_session_id": play_session_id,  # Needed for playback progress reporting
+            "run_time_seconds": run_time_seconds,  # Total duration for progress reporting
             "selected_by": request.sid,  # Track who selected this video
         }
+
+        # Report playback start to Emby so progress is tracked
+        emby_client.report_playback_start(
+            item_id=item_id,
+            media_source_id=media_source_id,
+            play_session_id=play_session_id,
+            position_seconds=0,
+            audio_index=audio_index,
+            subtitle_index=subtitle_index if subtitle_index != -1 else None,
+            run_time_seconds=run_time_seconds
+        )
 
         watch_parties[party_id]["playback_state"] = {
             "playing": False,
@@ -410,6 +427,18 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
         # Clear the video and reset playback state
         video_title = party["current_video"].get("title", "Unknown")
         username = party["users"].get(request.sid, "Unknown")
+        current_video = party["current_video"]
+        current_time = party["playback_state"].get("time", 0)
+
+        # Report playback stopped to Emby before clearing
+        if current_video.get("play_session_id"):
+            emby_client.report_playback_stopped(
+                item_id=current_video["item_id"],
+                media_source_id=current_video["media_source_id"],
+                play_session_id=current_video["play_session_id"],
+                position_seconds=current_time,
+                run_time_seconds=current_video.get("run_time_seconds")
+            )
 
         # Stop any active transcoding sessions on Emby server
         emby_client.stop_active_encodings()
@@ -447,6 +476,21 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 "last_update": datetime.now().isoformat(),
             }
 
+            # Report play (unpause) event to Emby
+            current_video = watch_parties[party_id].get("current_video")
+            if current_video and current_video.get("play_session_id"):
+                emby_client.report_playback_progress(
+                    item_id=current_video["item_id"],
+                    media_source_id=current_video["media_source_id"],
+                    play_session_id=current_video["play_session_id"],
+                    position_seconds=current_time,
+                    is_paused=False,
+                    event_name="Unpause",
+                    audio_index=current_video.get("audio_index"),
+                    subtitle_index=current_video.get("subtitle_index") if current_video.get("subtitle_index") != -1 else None,
+                    run_time_seconds=current_video.get("run_time_seconds")
+                )
+
             emit("play", {"time": current_time}, room=party_id, skip_sid=request.sid)
 
     @socketio.on("pause")
@@ -463,6 +507,21 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 "time": current_time,
                 "last_update": datetime.now().isoformat(),
             }
+
+            # Report pause event to Emby
+            current_video = watch_parties[party_id].get("current_video")
+            if current_video and current_video.get("play_session_id"):
+                emby_client.report_playback_progress(
+                    item_id=current_video["item_id"],
+                    media_source_id=current_video["media_source_id"],
+                    play_session_id=current_video["play_session_id"],
+                    position_seconds=current_time,
+                    is_paused=True,
+                    event_name="Pause",
+                    audio_index=current_video.get("audio_index"),
+                    subtitle_index=current_video.get("subtitle_index") if current_video.get("subtitle_index") != -1 else None,
+                    run_time_seconds=current_video.get("run_time_seconds")
+                )
 
             emit("pause", {"time": current_time}, room=party_id, skip_sid=request.sid)
 
@@ -485,6 +544,21 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             watch_parties[party_id]["playback_state"][
                 "last_update"
             ] = datetime.now().isoformat()
+
+            # Report seek (time update) to Emby
+            current_video = watch_parties[party_id].get("current_video")
+            if current_video and current_video.get("play_session_id"):
+                emby_client.report_playback_progress(
+                    item_id=current_video["item_id"],
+                    media_source_id=current_video["media_source_id"],
+                    play_session_id=current_video["play_session_id"],
+                    position_seconds=seek_time,
+                    is_paused=not was_playing,
+                    event_name="TimeUpdate",
+                    audio_index=current_video.get("audio_index"),
+                    subtitle_index=current_video.get("subtitle_index") if current_video.get("subtitle_index") != -1 else None,
+                    run_time_seconds=current_video.get("run_time_seconds")
+                )
 
             # If video was playing, force pause everyone (including seeker) for better buffering
             if was_playing:
@@ -668,6 +742,19 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
         if party_id in watch_parties:
             logger.info(f"Video ended in party {party_id}")
 
+            # Report playback stopped to Emby (video completed)
+            current_video = watch_parties[party_id].get("current_video")
+            if current_video and current_video.get("play_session_id"):
+                # Use run_time_seconds as the final position (video completed)
+                final_position = current_video.get("run_time_seconds", 0)
+                emby_client.report_playback_stopped(
+                    item_id=current_video["item_id"],
+                    media_source_id=current_video["media_source_id"],
+                    play_session_id=current_video["play_session_id"],
+                    position_seconds=final_position,
+                    run_time_seconds=current_video.get("run_time_seconds")
+                )
+
             # Reset playback state to prevent position carry-over to next video
             watch_parties[party_id]["playback_state"] = {
                 "playing": False,
@@ -681,6 +768,48 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 {"party_id": party_id, "timestamp": datetime.now().isoformat()},
                 room=party_id,
             )
+
+    @socketio.on("report_progress")
+    def handle_report_progress(data):
+        """
+        Handle periodic progress reports from the host client.
+        Called every 10 seconds to report playback progress to Emby.
+        Only the user who selected the video should call this.
+        """
+        party_id = data.get("party_id", "").strip().upper()
+        current_time = data.get("time", 0)
+
+        if party_id not in watch_parties:
+            return
+
+        party = watch_parties[party_id]
+        current_video = party.get("current_video")
+
+        # Only report if there's a video and it has a play session
+        if not current_video or not current_video.get("play_session_id"):
+            return
+
+        # Only accept progress reports from the user who selected the video
+        if current_video.get("selected_by") != request.sid:
+            return
+
+        # Update local playback state time
+        party["playback_state"]["time"] = current_time
+        party["playback_state"]["last_update"] = datetime.now().isoformat()
+
+        # Report progress to Emby
+        is_playing = party["playback_state"].get("playing", False)
+        emby_client.report_playback_progress(
+            item_id=current_video["item_id"],
+            media_source_id=current_video["media_source_id"],
+            play_session_id=current_video["play_session_id"],
+            position_seconds=current_time,
+            is_paused=not is_playing,
+            event_name="TimeUpdate",
+            audio_index=current_video.get("audio_index"),
+            subtitle_index=current_video.get("subtitle_index") if current_video.get("subtitle_index") != -1 else None,
+            run_time_seconds=current_video.get("run_time_seconds")
+        )
 
     @socketio.on("toggle_library")
     def handle_toggle_library(data):
