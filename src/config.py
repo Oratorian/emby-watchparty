@@ -17,6 +17,10 @@ load_dotenv(env_path)
 WATCH_PARTY_BIND = os.getenv('WATCH_PARTY_BIND', '0.0.0.0')
 WATCH_PARTY_PORT = int(os.getenv('WATCH_PARTY_PORT', '5000'))
 
+# Base URL prefix for reverse proxy deployments (e.g., '/watchparty')
+# Leave empty for root deployment
+APP_PREFIX = os.getenv('APP_PREFIX', '').rstrip('/')
+
 REQUIRE_LOGIN = os.getenv('REQUIRE_LOGIN', 'false').lower()
 SESSION_EXPIRY = int(os.getenv('SESSION_EXPIRY', '86400'))  # Default: 24 hours (in seconds)
 

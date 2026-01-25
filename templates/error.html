@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Watch Party Not Found</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('main.static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="container">
@@ -22,7 +22,7 @@
                 <p style="color: #888; margin-bottom: 2rem;">
                     Party Code: <strong style="color: #333; font-family: monospace;">{{ party_id }}</strong>
                 </p>
-                <a href="/" class="btn btn-primary" style="text-decoration: none; display: inline-block;">
+                <a href="{{ app_prefix }}/" class="btn btn-primary" style="text-decoration: none; display: inline-block;">
                     Return to Home
                 </a>
             </div>

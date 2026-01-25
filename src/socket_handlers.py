@@ -290,7 +290,9 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 logger.debug("No subtitles selected - omitting subtitle parameters")
 
             # Use Flask proxy URL to keep Emby internal (WITHOUT token)
-            stream_url_base = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"
+            # Include APP_PREFIX for reverse proxy deployments
+            app_prefix = getattr(config, 'APP_PREFIX', '')
+            stream_url_base = f"{app_prefix}/hls/{item_id}/master.m3u8?{'&'.join(params)}"
         else:
             logger.error(f"Could not get playback info for item {item_id}")
             emit("error", {"message": "Failed to load video"})
@@ -587,7 +589,9 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 logger.debug("No subtitles selected - omitting subtitle parameters")
 
             # Use Flask proxy URL to keep Emby internal (WITHOUT token)
-            stream_url_base = f"/hls/{item_id}/master.m3u8?{'&'.join(params)}"
+            # Include APP_PREFIX for reverse proxy deployments
+            app_prefix = getattr(config, 'APP_PREFIX', '')
+            stream_url_base = f"{app_prefix}/hls/{item_id}/master.m3u8?{'&'.join(params)}"
         else:
             logger.error(f"Could not get playback info for item {item_id}")
             emit("error", {"message": "Failed to change streams"})

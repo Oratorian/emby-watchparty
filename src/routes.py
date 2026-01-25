@@ -3,7 +3,7 @@ Flask Routes Module
 All HTTP routes for the Emby Watch Party application
 """
 
-from flask import render_template, request, jsonify, Response, session, redirect, url_for
+from flask import render_template, request, jsonify, Response, session, redirect, url_for, Blueprint
 from datetime import datetime
 import requests
 import re
@@ -36,6 +36,26 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
     watch_parties = party_manager.watch_parties
     hls_tokens = party_manager.hls_tokens
 
+    # Get APP_PREFIX for URL building
+    app_prefix = getattr(config, 'APP_PREFIX', '')
+
+    # Create a blueprint with the APP_PREFIX as url_prefix
+    # This makes all routes respond at /prefix/route instead of /route
+    bp = Blueprint(
+        'main',
+        __name__,
+        url_prefix=app_prefix if app_prefix else None,
+        static_folder='../static',
+        static_url_path='/static'
+    )
+
+    # Helper function to build URLs with APP_PREFIX (for redirects)
+    def prefixed_url(path):
+        """Build URL with APP_PREFIX"""
+        if app_prefix:
+            return f"{app_prefix}{path}"
+        return path
+
     # Authentication decorator
     def login_required(f):
         """Decorator to require login if REQUIRE_LOGIN is enabled"""
@@ -44,18 +64,18 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             logger.info(f"[AUTH CHECK] REQUIRE_LOGIN={config.REQUIRE_LOGIN}, authenticated={'authenticated' in session}")
             if config.REQUIRE_LOGIN == 'true' and 'authenticated' not in session:
                 logger.info(f"[AUTH CHECK] Redirecting to login page")
-                return redirect(url_for('login'))
+                return redirect(prefixed_url('/login'))
             logger.info(f"[AUTH CHECK] Access granted")
             return f(*args, **kwargs)
         return decorated_function
 
-    @app.route("/")
+    @bp.route("/")
     @login_required
     def index():
         """Main page - choose to create or join a watch party"""
         return render_template("index.html", require_login=(config.REQUIRE_LOGIN == 'true'))
 
-    @app.route("/party/<party_id>")
+    @bp.route("/party/<party_id>")
     @login_required
     def party(party_id):
         """Watch party room page"""
@@ -77,18 +97,18 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
     # Authentication Routes
     # =============================================================================
 
-    @app.route("/login")
+    @bp.route("/login")
     def login():
         """Login page"""
         # If login is not required, redirect to index
         if config.REQUIRE_LOGIN != 'true':
-            return redirect(url_for('index'))
+            return redirect(prefixed_url('/'))
         # If already authenticated, redirect to index
         if 'authenticated' in session:
-            return redirect(url_for('index'))
+            return redirect(prefixed_url('/'))
         return render_template("login.html")
 
-    @app.route("/api/auth/login", methods=["POST"])
+    @bp.route("/api/auth/login", methods=["POST"])
     def api_login():
         """
         Authenticate user with Emby credentials.
@@ -159,7 +179,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             logger.error(f"Login error: {e}")
             return jsonify({"success": False, "message": "Internal server error"}), 500
 
-    @app.route("/api/auth/logout", methods=["POST"])
+    @bp.route("/api/auth/logout", methods=["POST"])
     def api_logout():
         """
         Logout current user.
@@ -172,7 +192,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         logger.info(f"User '{username}' logged out")
         return jsonify({"success": True, "message": "Logged out successfully"})
 
-    @app.route("/api/auth/status")
+    @bp.route("/api/auth/status")
     def api_auth_status():
         """
         Check authentication status.
@@ -212,7 +232,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         GET  /hls/<id>/<path>          - HLS segments/playlists
     """
 
-    @app.route("/api/libraries")
+    @bp.route("/api/libraries")
     def api_libraries():
         """
         Get all media libraries from Emby server.
@@ -234,7 +254,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         libraries = emby_client.get_libraries()
         return jsonify(libraries)
 
-    @app.route("/api/items")
+    @bp.route("/api/items")
     def api_items():
         """
         Get items from a library (movies, series, episodes, seasons).
@@ -268,7 +288,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         items = emby_client.get_items(parent_id, item_type, recursive)
         return jsonify(items)
 
-    @app.route("/api/search")
+    @bp.route("/api/search")
     def api_search():
         """
         Search for movies and TV series by name.
@@ -301,7 +321,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         results = emby_client.search_items(query)
         return jsonify(results)
 
-    @app.route("/api/item/<item_id>")
+    @bp.route("/api/item/<item_id>")
     def api_item_details(item_id):
         """
         Get detailed information for a specific item.
@@ -330,7 +350,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             return jsonify(details)
         return jsonify({"error": "Item not found"}), 404
 
-    @app.route("/api/item/<item_id>/streams")
+    @bp.route("/api/item/<item_id>/streams")
     def api_item_streams(item_id):
         """
         Get available audio and subtitle streams for a media item.
@@ -503,7 +523,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             }
         )
 
-    @app.route("/api/intro/<item_id>", methods=["GET"])
+    @bp.route("/api/intro/<item_id>", methods=["GET"])
     def get_intro_info(item_id):
         """
         Get intro timing information for a specific item.
@@ -575,7 +595,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             logger.error(f"Error fetching intro info for item {item_id}: {e}")
             return jsonify({"hasIntro": False})
 
-    @app.route("/hls/<item_id>/master.m3u8")
+    @bp.route("/hls/<item_id>/master.m3u8")
     def proxy_hls_master(item_id):
         """Lightweight HLS master playlist proxy - keeps Emby internal"""
         emby_url = None  # Initialize for error handling
@@ -631,21 +651,21 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
                 logger.debug("No token parameter (validation disabled or no token)")
 
             # Replace absolute Emby URLs with proxy URLs
-            # Pattern: http://server/emby/Videos/ITEMID/path → /hls/ITEMID/path?token=...
+            # Pattern: http://server/emby/Videos/ITEMID/path → /prefix/hls/ITEMID/path?token=...
             before_rewrite = playlist_content
             playlist_content = re.sub(
                 rf"{re.escape(config.EMBY_SERVER_URL)}/emby/Videos/{item_id}/",
-                f"/hls/{item_id}/",
+                f"{app_prefix}/hls/{item_id}/",
                 playlist_content,
             )
             if before_rewrite != playlist_content:
                 logger.debug("Rewrote absolute Emby URLs to proxy URLs")
 
             # Also handle relative URLs that might start with just the path
-            # Pattern: /emby/Videos/ITEMID/path → /hls/ITEMID/path?token=...
+            # Pattern: /emby/Videos/ITEMID/path → /prefix/hls/ITEMID/path?token=...
             before_rewrite = playlist_content
             playlist_content = re.sub(
-                rf"/emby/Videos/{item_id}/", f"/hls/{item_id}/", playlist_content
+                rf"/emby/Videos/{item_id}/", f"{app_prefix}/hls/{item_id}/", playlist_content
             )
             if before_rewrite != playlist_content:
                 logger.debug("Rewrote relative Emby URLs to proxy URLs")
@@ -710,7 +730,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             logger.error(f"  Traceback: {traceback.format_exc()}")
             return jsonify({"error": "Internal server error"}), 500
 
-    @app.route("/hls/<item_id>/<path:subpath>")
+    @bp.route("/hls/<item_id>/<path:subpath>")
     def proxy_hls_segment(item_id, subpath):
         """Lightweight HLS segment/playlist proxy - keeps Emby internal"""
         emby_url = None  # Initialize for error handling
@@ -771,13 +791,13 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
                 # Replace absolute Emby URLs with proxy URLs
                 playlist_content = re.sub(
                     rf"{re.escape(config.EMBY_SERVER_URL)}/emby/Videos/{item_id}/",
-                    f"/hls/{item_id}/",
+                    f"{app_prefix}/hls/{item_id}/",
                     playlist_content,
                 )
 
                 # Also handle relative URLs
                 playlist_content = re.sub(
-                    rf"/emby/Videos/{item_id}/", f"/hls/{item_id}/", playlist_content
+                    rf"/emby/Videos/{item_id}/", f"{app_prefix}/hls/{item_id}/", playlist_content
                 )
 
                 # Add token parameter to segment URLs if needed
@@ -844,7 +864,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             logger.error(f"  Traceback: {traceback.format_exc()}")
             return jsonify({"error": "Internal server error"}), 500
 
-    @app.route("/api/image/<item_id>")
+    @bp.route("/api/image/<item_id>")
     def api_image(item_id):
         """
         Get poster/thumbnail image for a media item.
@@ -888,7 +908,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             logger.error(f"Error fetching image: {e}")
             return "", 404
 
-    @app.route("/api/subtitles/<item_id>/<media_source_id>/<int:subtitle_index>")
+    @bp.route("/api/subtitles/<item_id>/<media_source_id>/<int:subtitle_index>")
     def api_subtitles(item_id, media_source_id, subtitle_index):
         """
         Get subtitle file for a media item in WebVTT format.
@@ -934,7 +954,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             logger.error(f"Error fetching subtitle: {e}")
             return "", 404
 
-    @app.route("/api/party/create", methods=["POST"])
+    @bp.route("/api/party/create", methods=["POST"])
     def create_party():
         """
         Create a new watch party room.
@@ -968,13 +988,13 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             },
         }
 
-        return jsonify({"party_id": party_id, "url": f"/party/{party_id}"})
+        return jsonify({"party_id": party_id, "url": prefixed_url(f"/party/{party_id}")})
 
     # Apply rate limiting to party creation if enabled
     if limiter:
         create_party = limiter.limit(config.RATE_LIMIT_PARTY_CREATION)(create_party)
 
-    @app.route("/api/party/<party_id>/info")
+    @bp.route("/api/party/<party_id>/info")
     def party_info(party_id):
         """
         Get current state and information about a watch party.
@@ -1065,3 +1085,6 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         chat_message         - Chat message broadcast
         error                - Error message
     """
+
+    # Register the blueprint with the app
+    app.register_blueprint(bp)

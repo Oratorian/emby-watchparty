@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Emby Watch Party</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('main.static', filename='css/style.css') }}">
+    <script src="{{ url_for('main.static', filename='js/theme.js') }}"></script>
     <style>
         .login-container {
             max-width: 400px;
@@ -105,6 +105,9 @@
     </div>
 
     <script>
+        // App prefix for URL building
+        const appPrefix = '{{ app_prefix }}';
+
         const loginForm = document.getElementById('loginForm');
         const errorMessage = document.getElementById('errorMessage');
         const submitButton = loginForm.querySelector('button[type="submit"]');
@@ -121,7 +124,7 @@
             errorMessage.style.display = 'none';
 
             try {
-                const response = await fetch('/api/auth/login', {
+                const response = await fetch(appPrefix + '/api/auth/login', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -133,7 +136,7 @@
 
                 if (response.ok && data.success) {
                     // Login successful, redirect to index
-                    window.location.href = '/';
+                    window.location.href = appPrefix + '/';
                 } else {
                     // Show error message
                     errorMessage.textContent = data.message || 'Login failed. Please try again.';

@@ -1,8 +1,13 @@
-// Get party ID from URL
-const partyId = window.location.pathname.split('/').pop();
+// Get party ID from URL (handle prefix in URL)
+const pathParts = window.location.pathname.split('/').filter(p => p);
+const partyId = pathParts[pathParts.length - 1];
 
-// Initialize Socket.IO
-const socket = io();
+// App prefix (set by template, defaults to empty string)
+const appPrefix = (typeof APP_PREFIX !== 'undefined') ? APP_PREFIX : '';
+
+// Initialize Socket.IO with custom path if prefix is set
+const socketPath = (typeof SOCKETIO_PATH !== 'undefined' && SOCKETIO_PATH) ? SOCKETIO_PATH : '/socket.io';
+const socket = io({ path: socketPath });
 
 // DOM elements
 const usernameModal = document.getElementById('usernameModal');
@@ -208,7 +213,7 @@ function fallbackCopyToClipboard(text) {
 leavePartyBtn.addEventListener('click', () => {
     if (confirm('Are you sure you want to leave the party?')) {
         socket.emit('leave_party', { party_id: partyId });
-        window.location.href = '/';
+        window.location.href = appPrefix + '/';
     }
 });
 
@@ -291,7 +296,7 @@ async function loadLibraries() {
         // Clear saved library state when returning to library root
         clearLibraryState();
 
-        const response = await fetch('/api/libraries');
+        const response = await fetch(appPrefix + '/api/libraries');
         const data = await response.json();
 
         if (data.Items && data.Items.length > 0) {
@@ -322,7 +327,7 @@ async function loadItemsFromLibrary(parentId) {
             libraryId: parentId
         });
 
-        const response = await fetch(`/api/items?parentId=${parentId}&recursive=true`);
+        const response = await fetch(appPrefix + `/api/items?parentId=${parentId}&recursive=true`);
         const data = await response.json();
 
         displayItems(data.Items, 'library');
@@ -344,7 +349,7 @@ async function loadSeriesSeasons(seriesId, seriesName) {
         });
 
         // Get seasons (non-recursive to get only direct children)
-        const response = await fetch(`/api/items?parentId=${seriesId}&recursive=false`);
+        const response = await fetch(appPrefix + `/api/items?parentId=${seriesId}&recursive=false`);
         const data = await response.json();
 
         // Add a back button
@@ -400,7 +405,7 @@ async function loadSeasonEpisodes(seasonId, seasonName, seriesName, seriesId = n
             seriesName: seriesName
         });
 
-        const response = await fetch(`/api/items?parentId=${seasonId}&recursive=false`);
+        const response = await fetch(appPrefix + `/api/items?parentId=${seasonId}&recursive=false`);
         const data = await response.json();
 
         // Store episode list for autoplay
@@ -411,7 +416,7 @@ async function loadSeasonEpisodes(seasonId, seasonName, seriesName, seriesId = n
         // If series ID not provided, fetch it from the season
         if (!seriesId) {
             try {
-                const seasonResponse = await fetch(`/api/item/${seasonId}`);
+                const seasonResponse = await fetch(appPrefix + `/api/item/${seasonId}`);
                 const seasonData = await seasonResponse.json();
                 currentSeriesId = seasonData.SeriesId || null;
             } catch (e) {
@@ -436,7 +441,7 @@ async function loadSeasonEpisodes(seasonId, seasonName, seriesName, seriesId = n
         `;
         backBtn.addEventListener('click', () => {
             // Go back to season view - need to get series ID from season
-            fetch(`/api/item/${seasonId}`)
+            fetch(appPrefix + `/api/item/${seasonId}`)
                 .then(res => res.json())
                 .then(season => {
                     if (season.SeriesId) {
@@ -469,7 +474,7 @@ async function loadItems(itemType) {
     try {
         libraryContent.innerHTML = '<p>Loading items...</p>';
 
-        const response = await fetch(`/api/items?type=${itemType}&recursive=true`);
+        const response = await fetch(appPrefix + `/api/items?type=${itemType}&recursive=true`);
         const data = await response.json();
 
         displayItems(data.Items);
@@ -531,7 +536,7 @@ function createLibraryItem(item, onClick, showImage = false) {
 
     if (showImage && item.Id) {
         const img = document.createElement('img');
-        img.src = `/api/image/${item.Id}?type=Primary`;
+        img.src = appPrefix + `/api/image/${item.Id}?type=Primary`;
         img.onerror = () => {
             img.style.display = 'none';
         };
@@ -1308,7 +1313,7 @@ function handleSeekSync(targetTime, shouldPlay = false, bufferDelay = 500) {
 
 async function loadAvailableStreams(itemId) {
     try {
-        const response = await fetch(`/api/item/${itemId}/streams`);
+        const response = await fetch(appPrefix + `/api/item/${itemId}/streams`);
         const data = await response.json();
 
         availableStreams = data;
@@ -1401,7 +1406,7 @@ function loadSubtitleTrack(subtitleIndex) {
         track.kind = 'subtitles';
         track.label = subtitle.displayLanguage || subtitle.language || 'Unknown';
         track.srclang = subtitle.language || 'und';
-        track.src = `/api/subtitles/${currentItemId}/${currentMediaSourceId}/${subtitleIndex}`;
+        track.src = appPrefix + `/api/subtitles/${currentItemId}/${currentMediaSourceId}/${subtitleIndex}`;
         track.default = true;
 
         track.addEventListener('load', function() {
@@ -1435,7 +1440,7 @@ function loadAllTextSubtitles() {
         track.kind = 'subtitles';
         track.label = subtitle.displayLanguage || subtitle.language || 'Unknown';
         track.srclang = subtitle.language || 'und';
-        track.src = `/api/subtitles/${currentItemId}/${currentMediaSourceId}/${subtitle.index}`;
+        track.src = appPrefix + `/api/subtitles/${currentItemId}/${currentMediaSourceId}/${subtitle.index}`;
 
         // Start with all tracks hidden - user must click CC button to choose
         track.mode = 'hidden';
@@ -1602,7 +1607,7 @@ function loadVideo(video) {
 // Load intro timing data for a video
 async function loadIntroData(itemId) {
     try {
-        const response = await fetch(`/api/intro/${itemId}`);
+        const response = await fetch(appPrefix + `/api/intro/${itemId}`);
         const data = await response.json();
 
         if (data.hasIntro) {
@@ -1848,7 +1853,7 @@ async function performSearch(query) {
     try {
         libraryContent.innerHTML = '<p>Searching...</p>';
 
-        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const response = await fetch(appPrefix + `/api/search?q=${encodeURIComponent(query)}`);
         const data = await response.json();
 
         libraryContent.innerHTML = '';

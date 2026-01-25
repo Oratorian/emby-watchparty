@@ -65,11 +65,15 @@ socketio_logger = setup_logger(
     backup_count=5
 )
 
+# Determine Socket.IO path based on APP_PREFIX
+socketio_path = f"{config.APP_PREFIX}/socket.io" if config.APP_PREFIX else "socket.io"
+
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
     logger=socketio_logger,
-    engineio_logger=socketio_logger
+    engineio_logger=socketio_logger,
+    path=socketio_path
 )
 
 # Redirect Flask/Werkzeug HTTP access logs
@@ -125,7 +129,21 @@ emby_client = EmbyClient(
 party_manager = PartyManager()
 
 logger.info(f"Emby Server: {config.EMBY_SERVER_URL}")
+if config.APP_PREFIX:
+    logger.info(f"App Prefix: {config.APP_PREFIX}")
 logger.info("Components initialized successfully")
+
+# =============================================================================
+# Template Context Processor - Inject APP_PREFIX into all templates
+# =============================================================================
+
+@app.context_processor
+def inject_app_prefix():
+    """Make APP_PREFIX available to all templates"""
+    return {
+        'app_prefix': config.APP_PREFIX,
+        'socketio_path': socketio_path
+    }
 
 # =============================================================================
 # Register Routes and Socket Handlers
