@@ -1,6 +1,6 @@
 """
-Linux production entrypoint for Emby Watch Party
-Uses gevent for production-ready async handling on Linux/Docker
+Production entrypoint for Emby Watch Party
+Uses gevent for production-ready async handling
 """
 
 # Gevent monkey patching must be done before any other imports

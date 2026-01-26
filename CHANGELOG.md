@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Special Thanks
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
 
+## [1.4.0] - 2026-01-26
+
+### Added
+- **APP_PREFIX support for reverse proxy deployments**: Deploy at a URL path prefix (e.g., `/watchparty`)
+  - New `APP_PREFIX` config option for path-based reverse proxy setups
+  - Uses Flask Blueprint with dynamic url_prefix for native route handling
+  - Socket.IO path automatically configured for prefixed deployments
+  - All templates and API calls updated to respect prefix
+- **Playback progress sync with Emby server**: Watch progress now syncs back to Emby
+  - Reports playback start, progress, and stop events to Emby
+  - Periodic progress reporting every 10 seconds
+  - Resume watching from where you left off on any Emby client
+- **Pre-release support in GitHub Actions**: Release workflow now handles alpha/beta/rc versions
+  - Auto-detects pre-release tags and sets GitHub release flag accordingly
+  - Skips `latest` and `major.minor` Docker tags for pre-releases
+
+### Changed
+- **Unified production entrypoint**: Consolidated `run_linux_production.py` and `run_windows_production.py` into single `run_production.py`
+  - Both platforms now use gevent, eliminating need for separate files
+  - Simpler deployment with single command: `python run_production.py`
+
+### Fixed
+- **Session cookie for reverse proxy deployments**: Login now works correctly when using APP_PREFIX behind a reverse proxy
+  - Added `SESSION_COOKIE_PATH` configuration to match APP_PREFIX
+  - Added `SESSION_COOKIE_SAMESITE='Lax'` for proper redirect handling after login
+  - Fixes issue where session cookie wasn't sent with prefixed routes
+
 ## [1.3.1] - 2026-01-24
 
 ### Fixed
@@ -41,7 +68,7 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 ### Breaking Changes
 - Configuration moved from `config.py` to `.env` file - must migrate settings
-- Application must be run via `run_linux_production.py` or `run_windows_production.py`
+- Application must be run via `run_production.py` (unified entrypoint)
 - Removed eventlet dependency (deprecated), now uses gevent everywhere
 
 ## [1.2.1] - 2025-12-18

@@ -89,14 +89,8 @@ WATCH_PARTY_PORT=5000
 
 3. Run the application:
 
-**Windows:**
 ```bash
-python run_windows_production.py
-```
-
-**Linux/Mac:**
-```bash
-python run_linux_production.py
+python run_production.py
 ```
 
 4. Open your browser and navigate to:
