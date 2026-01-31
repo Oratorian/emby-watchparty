@@ -16,6 +16,11 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 ---
 
+### Discord for more personal support
+https://discord.gg/RWUpxq9xsA
+
+---
+
 ## Features
 
 - **Secure Proxy Architecture**: Emby server stays on your local network - never exposed to the internet
