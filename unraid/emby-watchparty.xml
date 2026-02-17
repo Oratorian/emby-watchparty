@@ -11,7 +11,7 @@
   <Overview>A synchronized watch party application for Emby media servers. Watch videos together with friends in real-time, no matter where you are! All media streaming is proxied through the Flask app, keeping your Emby server safely on your internal network.</Overview>
   <Category>MediaApp:Video Status:Stable</Category>
   <WebUI>http://[IP]:[PORT:5000]</WebUI>
-  <TemplateURL/>
+   <TemplateURL>https://raw.githubusercontent.com/Oratorian/emby-watchparty/refs/heads/main/unraid/emby-watchparty.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Oratorian/emby-watchparty/main/static/favicon.ico</Icon>
   <ExtraParams/>
   <PostArgs/>
