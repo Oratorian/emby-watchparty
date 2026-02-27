@@ -536,6 +536,7 @@ function createLibraryItem(item, onClick, showImage = false) {
     if (showImage && item.Id) {
         const img = document.createElement('img');
         img.src = appPrefix + `/api/image/${item.Id}?type=Primary`;
+        img.loading = 'lazy';
         img.onerror = () => {
             img.style.display = 'none';
         };
