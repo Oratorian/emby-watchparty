@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Special Thanks
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
 
-## [1.4.1-alpha1] - 2026-02-27
+## [1.4.1-alpha] - 2026-02-27
 
 ### Added
 - **UI collapse toggles**: Collapse header, chat, and video info to maximise video real estate
