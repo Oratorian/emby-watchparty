@@ -6,6 +6,10 @@ on:
       - 'v*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
   workflow_dispatch:
     inputs:
+      version:
+        description: 'Docker image tag (e.g. 1.4.1-alpha1)'
+        required: false
+        default: 'dev'
       docker_only:
         description: 'Build Docker image only (no release)'
         required: false
@@ -31,8 +35,13 @@ jobs:
         id: get_version
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "VERSION=dev" >> $GITHUB_OUTPUT
-            echo "IS_PRERELEASE=false" >> $GITHUB_OUTPUT
+            VERSION="${{ github.event.inputs.version }}"
+            echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+            if [[ "$VERSION" =~ (alpha|beta|rc|dev) ]]; then
+              echo "IS_PRERELEASE=true" >> $GITHUB_OUTPUT
+            else
+              echo "IS_PRERELEASE=false" >> $GITHUB_OUTPUT
+            fi
           else
             VERSION="${GITHUB_REF#refs/tags/v}"
             echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
@@ -125,7 +134,7 @@ jobs:
             type=semver,pattern={{version}},enable=${{ github.event_name != 'workflow_dispatch' }}
             type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name != 'workflow_dispatch' && steps.get_version.outputs.IS_PRERELEASE != 'true' }}
             type=raw,value=latest,enable=${{ github.event_name != 'workflow_dispatch' && steps.get_version.outputs.IS_PRERELEASE != 'true' }}
-            type=raw,value=dev,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=${{ steps.get_version.outputs.VERSION }},enable=${{ github.event_name == 'workflow_dispatch' }}
             type=raw,value=${{ steps.get_version.outputs.VERSION }},enable=${{ steps.get_version.outputs.IS_PRERELEASE == 'true' }}
 
       - name: Build and push Docker image
