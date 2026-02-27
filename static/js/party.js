@@ -57,10 +57,8 @@ let isUserSeeking = false;
 let seekSettleTimer = null;
 let hls = null; // HLS.js instance
 let canStopVideo = false; // Track if current user can stop the video
-let periodicSyncInterval = null; // Periodic sync check interval
 let progressReportInterval = null; // Interval for reporting progress to Emby
 let currentPartyState = null; // Store current party playback state for periodic sync
-let playbackStartTime = null; // Track when playback started for drift calculation
 let introData = null; // Store intro timing data for current video
 let introCheckInterval = null; // Interval for checking if we're in intro
 
@@ -686,7 +684,6 @@ videoElement.addEventListener('ended', () => {
 
     // Reset playback state to prevent position carry-over to next video
     currentPartyState = null;
-    playbackStartTime = null;
 
     // Stop progress reporting since video has ended
     stopProgressReporting();
@@ -933,7 +930,6 @@ socket.on('sync_state', (data) => {
                 videoElement.currentTime = compensatedTime;
 
                 if (data.playback_state.playing) {
-                    playbackStartTime = Date.now();
                     videoElement.play().then(() => {
                         setTimeout(() => {
                             isSyncing = false;
@@ -997,8 +993,7 @@ socket.on('video_stopped', (data) => {
     currentItemId = null;
     currentPartyState = null;
 
-    // Stop periodic sync check and progress reporting
-    stopPeriodicSync();
+    // Stop progress reporting
     stopProgressReporting();
 
     // Show message in chat
@@ -1145,9 +1140,7 @@ socket.on('play', (data) => {
     lastSyncedTime = data.time;
     lastSyncType = 'play';
 
-    // Update party state for periodic sync
     currentPartyState = { time: data.time, playing: true };
-    playbackStartTime = Date.now(); // Track when playback started
 
     processSyncCommand({ type: 'play', time: data.time });
 });
@@ -1161,9 +1154,7 @@ socket.on('pause', (data) => {
     lastSyncedTime = data.time;
     lastSyncType = 'pause';
 
-    // Update party state for periodic sync
     currentPartyState = { time: data.time, playing: false };
-    playbackStartTime = null; // Clear playback start time when paused
 
     processSyncCommand({ type: 'pause', time: data.time });
 });
@@ -1184,15 +1175,7 @@ socket.on('seek', (data) => {
     lastSyncedTime = data.time;
     lastSyncType = 'seek';
 
-    // Update party state for periodic sync
     currentPartyState = { time: data.time, playing: data.playing || false };
-
-    // Reset playback start time if resuming after seek
-    if (data.playing) {
-        playbackStartTime = Date.now();
-    } else {
-        playbackStartTime = null;
-    }
 
     processSyncCommand({
         type: 'seek',
@@ -1751,67 +1734,6 @@ if (chatResizeHandle && chatContainer) {
     });
 }
 
-// Periodic sync check to correct drift over time
-function startPeriodicSync() {
-    // Clear any existing interval
-    if (periodicSyncInterval) {
-        clearInterval(periodicSyncInterval);
-    }
-
-    // Check sync every 5 seconds
-    periodicSyncInterval = setInterval(() => {
-        // Only sync if we have a video loaded and party state
-        if (!currentPartyState || !videoElement.src) {
-            return;
-        }
-
-        // Don't sync if user is actively seeking
-        if (isUserSeeking || isSyncing) {
-            return;
-        }
-
-        // Only sync when party state says we should be playing
-        if (!currentPartyState.playing) {
-            return;
-        }
-
-        // Only sync when video is actually playing locally
-        if (videoElement.paused) {
-            return;
-        }
-
-        // Calculate expected time based on when playback started
-        let expectedTime = currentPartyState.time;
-        if (playbackStartTime) {
-            const elapsedSeconds = (Date.now() - playbackStartTime) / 1000;
-            expectedTime = currentPartyState.time + elapsedSeconds;
-        }
-
-        // Calculate time difference against expected time (not static party state)
-        const timeDiff = Math.abs(videoElement.currentTime - expectedTime);
-
-        // If drift is significant, correct it
-        if (timeDiff > syncThreshold) {
-            console.log(`Periodic sync: correcting ${timeDiff.toFixed(2)}s drift (expected: ${expectedTime.toFixed(2)}, actual: ${videoElement.currentTime.toFixed(2)})`);
-            isSyncing = true;
-            videoElement.currentTime = expectedTime;
-
-            // Resume playing after sync
-            videoElement.play().then(() => {
-                setTimeout(() => { isSyncing = false; }, 300);
-            }).catch(() => {
-                setTimeout(() => { isSyncing = false; }, 300);
-            });
-        }
-    }, 5000); // Check every 5 seconds
-}
-
-function stopPeriodicSync() {
-    if (periodicSyncInterval) {
-        clearInterval(periodicSyncInterval);
-        periodicSyncInterval = null;
-    }
-}
 
 // Progress reporting to Emby - reports playback position every 10 seconds
 // Only the user who selected the video should report progress
@@ -1998,3 +1920,41 @@ function hideAutoplayCountdown() {
         autoplayCountdown.style.display = 'none';
     }
 }
+
+// --- UI Collapse Toggles ---
+
+const collapseHeaderBtn = document.getElementById('collapseHeaderBtn');
+const expandHeaderBtn = document.getElementById('expandHeaderBtn');
+const partyHeader = document.getElementById('partyHeader');
+
+collapseHeaderBtn.addEventListener('click', () => {
+    partyHeader.classList.add('collapsed');
+    expandHeaderBtn.style.display = 'block';
+});
+
+expandHeaderBtn.addEventListener('click', () => {
+    partyHeader.classList.remove('collapsed');
+    expandHeaderBtn.style.display = 'none';
+});
+
+const collapseChatBtn = document.getElementById('collapseChatBtn');
+const expandChatBtn = document.getElementById('expandChatBtn');
+
+collapseChatBtn.addEventListener('click', () => {
+    chatContainer.classList.add('collapsed');
+    expandChatBtn.style.display = 'block';
+});
+
+expandChatBtn.addEventListener('click', () => {
+    chatContainer.classList.remove('collapsed');
+    expandChatBtn.style.display = 'none';
+});
+
+const collapseFooterBtn = document.getElementById('collapseFooterBtn');
+const videoMeta = document.getElementById('videoMeta');
+
+collapseFooterBtn.addEventListener('click', () => {
+    videoMeta.classList.toggle('collapsed');
+    collapseFooterBtn.classList.toggle('collapsed');
+    collapseFooterBtn.title = videoMeta.classList.contains('collapsed') ? 'Expand info' : 'Collapse info';
+});

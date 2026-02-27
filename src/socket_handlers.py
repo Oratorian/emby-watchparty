@@ -244,6 +244,8 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 "BreakOnNonKeyFrames=True",  # Allow seeking to any point
                 "VideoCodec=h264",  # Force H.264 for maximum browser compatibility
                 "MaxAudioChannels=2",  # Downmix to stereo for TrueHD/multi-channel audio
+                "MaxWidth=1920",   # Limit resolution to 1080p max
+                "MaxHeight=1080",  # Limit resolution to 1080p max
             ]
 
             # Add audio stream index to select specific audio track
@@ -617,6 +619,8 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 "BreakOnNonKeyFrames=True",  # Allow seeking to any point
                 "VideoCodec=h264",  # Force H.264 for maximum browser compatibility
                 "MaxAudioChannels=2",  # Downmix to stereo for TrueHD/multi-channel audio
+                "MaxWidth=1920",   # Limit resolution to 1080p max
+                "MaxHeight=1080",  # Limit resolution to 1080p max
             ]
 
             # Add audio stream index to select specific audio track

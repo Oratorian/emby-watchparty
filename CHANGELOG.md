@@ -8,6 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Special Thanks
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
 
+## [1.4.1-alpha1] - 2026-02-27
+
+### Added
+- **UI collapse toggles**: Collapse header, chat, and video info to maximise video real estate
+  - Header collapses to a thin strip with a restore button
+  - Chat collapses to a narrow sidebar button, click to expand
+  - Video metadata/controls footer can be toggled independently
+  - Feature request by **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)**
+
+### Fixed
+- **Video desync on mid-session selection**: Selecting a new video while a session was active caused all clients to start at the previous video's playback position instead of 0:00
+  - Stale `currentPartyState` was being used as HLS `startPosition` for the new video
+  - Fixed by resetting party state before loading a new video
+  - Reported by **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)**
+
+### Changed
+- **Stream capped to 1080p max**: HLS transcode now enforces `MaxWidth=1920` and `MaxHeight=1080`
+  - Prevents buffering and sync issues for remote viewers streaming 4K content over limited connections
+  - Applies to both initial video selection and stream changes
+  - Reported by **[wlowen](https://github.com/wlowen)**
+
+### Removed
+- **Dead periodic sync code**: Removed `startPeriodicSync`, `stopPeriodicSync`, `periodicSyncInterval`, and `playbackStartTime` variables left as dead code since their removal in v1.2
+
 ## [1.4.0] - 2026-01-26
 
 ### Added

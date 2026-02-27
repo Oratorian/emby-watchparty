@@ -12,7 +12,7 @@
 <body class="party-page">
     <div class="party-container">
         <!-- Header -->
-        <header class="party-header">
+        <header class="party-header" id="partyHeader">
             <div>
                 <h1>Watch Party</h1>
                 <div class="party-code">
@@ -32,8 +32,10 @@
                     <option value="netflix">🎬 Netflix Red</option>
                 </select>
                 <button id="leavePartyBtn" class="btn-small btn-danger">Leave</button>
+                <button id="collapseHeaderBtn" class="btn-small" title="Collapse header">▲</button>
             </div>
         </header>
+        <button id="expandHeaderBtn" class="expand-header-btn" title="Expand header" style="display: none;">▼ Show Header</button>
 
         <!-- Main content -->
         <div class="party-content">
@@ -91,7 +93,8 @@
                         </div>
                     </div>
 
-                    <div class="video-meta">
+                    <button id="collapseFooterBtn" class="collapse-footer-btn" title="Collapse footer">▼</button>
+                    <div class="video-meta" id="videoMeta">
                         <div class="video-meta-row">
                             <div class="video-info">
                                 <h2 id="videoTitle">Video Title</h2>
@@ -129,10 +132,12 @@
                 </div>
 
                 <!-- Chat -->
+                <button id="expandChatBtn" class="expand-chat-btn" title="Expand chat" style="display: none;">◀ Chat</button>
                 <div class="chat-container" id="chatContainer">
                     <div class="chat-resize-handle" id="chatResizeHandle"></div>
                     <div class="chat-header">
                         <h3>Chat</h3>
+                        <button id="collapseChatBtn" class="btn-small" title="Collapse chat">▶</button>
                     </div>
                     <div id="chatMessages" class="chat-messages"></div>
                     <div class="chat-input">
