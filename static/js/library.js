@@ -3,6 +3,47 @@
     'use strict';
     var S = window.PartyState;
 
+    var PAGE_SIZE = 10;
+    var paginationState = {
+        parentId: null,
+        startIndex: 0,
+        totalItems: 0,
+        isLoading: false
+    };
+    var scrollObserver = null;
+    var imageObserver = null;
+
+    function resetPagination() {
+        paginationState.parentId = null;
+        paginationState.startIndex = 0;
+        paginationState.totalItems = 0;
+        paginationState.isLoading = false;
+        if (scrollObserver) {
+            scrollObserver.disconnect();
+            scrollObserver = null;
+        }
+    }
+
+    function setupImageObserver() {
+        if (imageObserver) return;
+        imageObserver = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (entry.isIntersecting) {
+                    var img = entry.target;
+                    var src = img.getAttribute('data-src');
+                    if (src) {
+                        img.src = src;
+                        img.removeAttribute('data-src');
+                    }
+                    imageObserver.unobserve(img);
+                }
+            });
+        }, {
+            root: S.dom.libraryContent,
+            rootMargin: '200px'
+        });
+    }
+
     function saveLibraryState(state) {
         try {
             localStorage.setItem(S.LIBRARY_STATE_KEY, JSON.stringify(state));
@@ -57,6 +98,7 @@
 
     async function loadLibraries() {
         try {
+            resetPagination();
             S.dom.libraryContent.innerHTML = '<p>Loading libraries...</p>';
             clearLibraryState();
 
@@ -81,19 +123,121 @@
 
     async function loadItemsFromLibrary(parentId) {
         try {
+            resetPagination();
             S.dom.libraryContent.innerHTML = '<p>Loading items...</p>';
             saveLibraryState({ type: 'library', libraryId: parentId });
 
-            var response = await fetch(S.appPrefix + '/api/items?parentId=' + parentId + '&recursive=true');
+            paginationState.parentId = parentId;
+            paginationState.startIndex = 0;
+
+            var response = await fetch(S.appPrefix + '/api/items?parentId=' + parentId + '&recursive=true&startIndex=0&limit=' + PAGE_SIZE);
             var data = await response.json();
-            displayItems(data.Items, 'library');
+
+            paginationState.totalItems = data.TotalRecordCount || 0;
+
+            S.dom.libraryContent.innerHTML = '';
+            appendItems(data.Items, 'library');
+            paginationState.startIndex = PAGE_SIZE;
+
+            setupScrollSentinel();
         } catch (error) {
             S.dom.libraryContent.innerHTML = '<p>Error loading items</p>';
         }
     }
 
+    async function loadMoreItems() {
+        if (paginationState.isLoading) return;
+        if (paginationState.startIndex >= paginationState.totalItems) return;
+
+        paginationState.isLoading = true;
+        var sentinel = S.dom.libraryContent.querySelector('.load-more-sentinel');
+        if (sentinel) sentinel.textContent = 'Loading more...';
+
+        try {
+            var response = await fetch(
+                S.appPrefix + '/api/items?parentId=' + paginationState.parentId +
+                '&recursive=true&startIndex=' + paginationState.startIndex +
+                '&limit=' + PAGE_SIZE
+            );
+            var data = await response.json();
+
+            // Remove old sentinel before appending
+            if (sentinel) sentinel.remove();
+
+            appendItems(data.Items, 'library');
+            paginationState.startIndex += PAGE_SIZE;
+
+            // Re-add sentinel if there are more items
+            setupScrollSentinel();
+        } catch (error) {
+            console.error('Error loading more items:', error);
+            if (sentinel) sentinel.textContent = 'Error loading items. Scroll to retry.';
+        } finally {
+            paginationState.isLoading = false;
+        }
+    }
+
+    function setupScrollSentinel() {
+        // Don't add sentinel if all items are loaded
+        if (paginationState.startIndex >= paginationState.totalItems) return;
+
+        if (scrollObserver) scrollObserver.disconnect();
+
+        var sentinel = document.createElement('div');
+        sentinel.className = 'load-more-sentinel';
+        sentinel.style.padding = '1rem';
+        sentinel.style.textAlign = 'center';
+        sentinel.style.color = '#aaa';
+        sentinel.textContent = 'Loading more...';
+        S.dom.libraryContent.appendChild(sentinel);
+
+        scrollObserver = new IntersectionObserver(function(entries) {
+            if (entries[0].isIntersecting) {
+                loadMoreItems();
+            }
+        }, {
+            root: S.dom.libraryContent,
+            rootMargin: '300px'
+        });
+
+        scrollObserver.observe(sentinel);
+    }
+
+    function appendItems(items, context, seriesName) {
+        if (!items || items.length === 0) return;
+
+        var displayableItems;
+        if (context === 'library') {
+            displayableItems = items.filter(function(item) {
+                return item.Type === 'Movie' || item.Type === 'Series' || item.Type === 'Video';
+            });
+        } else if (context === 'seasons') {
+            displayableItems = items.filter(function(item) {
+                return item.Type === 'Season';
+            });
+        } else {
+            displayableItems = items.filter(function(item) {
+                return item.Type === 'Movie' || item.Type === 'Episode' || item.Type === 'Video';
+            });
+        }
+
+        displayableItems.forEach(function(item) {
+            var itemEl = createLibraryItem(item, function() {
+                if (item.Type === 'Series') {
+                    loadSeriesSeasons(item.Id, item.Name);
+                } else if (item.Type === 'Season') {
+                    loadSeasonEpisodes(item.Id, item.Name, seriesName);
+                } else {
+                    selectVideo(item);
+                }
+            }, true);
+            S.dom.libraryContent.appendChild(itemEl);
+        });
+    }
+
     async function loadSeriesSeasons(seriesId, seriesName) {
         try {
+            resetPagination();
             S.dom.libraryContent.innerHTML = '<p>Loading seasons...</p>';
             saveLibraryState({ type: 'seasons', seriesId: seriesId, seriesName: seriesName });
 
@@ -133,6 +277,7 @@
 
     async function loadSeasonEpisodes(seasonId, seasonName, seriesName, seriesId) {
         try {
+            resetPagination();
             S.dom.libraryContent.innerHTML = '<p>Loading episodes...</p>';
             saveLibraryState({ type: 'episodes', seasonId: seasonId, seasonName: seasonName, seriesName: seriesName });
 
@@ -192,6 +337,7 @@
 
     async function loadItems(itemType) {
         try {
+            resetPagination();
             S.dom.libraryContent.innerHTML = '<p>Loading items...</p>';
             var response = await fetch(S.appPrefix + '/api/items?type=' + itemType + '&recursive=true');
             var data = await response.json();
@@ -204,36 +350,10 @@
     function displayItems(items, context, seriesName) {
         if (items && items.length > 0) {
             S.dom.libraryContent.innerHTML = '';
+            appendItems(items, context, seriesName);
 
-            var displayableItems;
-            if (context === 'library') {
-                displayableItems = items.filter(function(item) {
-                    return item.Type === 'Movie' || item.Type === 'Series' || item.Type === 'Video';
-                });
-            } else if (context === 'seasons') {
-                displayableItems = items.filter(function(item) {
-                    return item.Type === 'Season';
-                });
-            } else {
-                displayableItems = items.filter(function(item) {
-                    return item.Type === 'Movie' || item.Type === 'Episode' || item.Type === 'Video';
-                });
-            }
-
-            if (displayableItems.length > 0) {
-                displayableItems.forEach(function(item) {
-                    var itemEl = createLibraryItem(item, function() {
-                        if (item.Type === 'Series') {
-                            loadSeriesSeasons(item.Id, item.Name);
-                        } else if (item.Type === 'Season') {
-                            loadSeasonEpisodes(item.Id, item.Name, seriesName);
-                        } else {
-                            selectVideo(item);
-                        }
-                    }, true);
-                    S.dom.libraryContent.appendChild(itemEl);
-                });
-            } else {
+            // Show "no items" if all were filtered out
+            if (!S.dom.libraryContent.querySelector('.library-item')) {
                 S.dom.libraryContent.innerHTML = '<p>No items found</p>';
             }
         } else {
@@ -248,12 +368,14 @@
 
         if (showImage && item.Id) {
             var img = document.createElement('img');
-            img.src = S.appPrefix + '/api/image/' + item.Id + '?type=Primary';
-            img.loading = 'lazy';
+            img.setAttribute('data-src', S.appPrefix + '/api/image/' + item.Id + '?type=Primary');
             img.onerror = function() {
                 img.style.display = 'none';
             };
             div.appendChild(img);
+
+            setupImageObserver();
+            imageObserver.observe(img);
         }
 
         var info = document.createElement('div');
@@ -313,6 +435,7 @@
 
     async function performSearch(query) {
         try {
+            resetPagination();
             S.dom.libraryContent.innerHTML = '<p>Searching...</p>';
 
             var response = await fetch(S.appPrefix + '/api/search?q=' + encodeURIComponent(query));

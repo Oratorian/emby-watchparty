@@ -52,17 +52,42 @@
     window.PartyUI.init();
     window.PartyVideo.init();
 
-    // --- Join flow ---
-    S.dom.usernameModal.style.display = 'flex';
+    // --- Join flow with localStorage persistence ---
+    var STORAGE_KEY = 'emby-watchparty-username';
+    var savedName = null;
+    try { savedName = localStorage.getItem(STORAGE_KEY); } catch(e) {}
 
-    S.dom.joinBtn.addEventListener('click', function() {
-        S.username = S.dom.usernameInput.value.trim();
+    function joinWithName(name) {
+        S.username = name;
         S.dom.usernameModal.style.display = 'none';
         S.socket.emit('join_party', {
             party_id: S.partyId,
             username: S.username
         });
+        if (name) {
+            try { localStorage.setItem(STORAGE_KEY, name); } catch(e) {}
+        }
         window.PartyLibrary.restoreLibraryState();
+    }
+
+    // Save server-assigned name (e.g. random name when user left input blank)
+    S.socket.on('user_joined', function saveAssignedName(data) {
+        if (!S.username && data.username && data.users.includes(data.username)) {
+            // This is our join event with a server-assigned name
+            try { localStorage.setItem(STORAGE_KEY, data.username); } catch(e) {}
+        }
+    });
+
+    if (savedName) {
+        // Auto-join with saved username
+        joinWithName(savedName);
+    } else {
+        // Show modal for first-time users
+        S.dom.usernameModal.style.display = 'flex';
+    }
+
+    S.dom.joinBtn.addEventListener('click', function() {
+        joinWithName(S.dom.usernameInput.value.trim());
     });
 
     S.dom.usernameInput.addEventListener('keypress', function(e) {

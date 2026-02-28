@@ -232,12 +232,14 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             # Don't auto-select default subtitles - let users opt-in
             # (Removed automatic default subtitle selection)
 
-            # Detect source video codec to decide if transcoding is needed
+            # Detect source video codec and bitrate to decide if transcoding is needed
             source_video_codec = None
+            source_video_bitrate = None
             for stream in media_source.get("MediaStreams", []):
                 if stream.get("Type") == "Video":
                     source_video_codec = (stream.get("Codec") or "").lower()
-                    logger.debug(f"Source video codec: {source_video_codec}")
+                    source_video_bitrate = stream.get("BitRate")
+                    logger.debug(f"Source video codec: {source_video_codec}, bitrate: {source_video_bitrate}")
                     break
 
             # Build direct Emby HLS URL with authentication
@@ -255,14 +257,20 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 "MaxHeight=1080",  # Limit resolution to 1080p max
             ]
 
-            # Only force h264 transcoding when the source isn't already h264
-            # h264 sources can be direct-streamed/remuxed without expensive transcoding
+            max_bitrate = 10_000_000  # 10 Mbps cap
+
             if source_video_codec != "h264":
+                # Non-h264 sources need full transcoding
                 params.append("VideoCodec=h264")
-                params.append("VideoBitrate=10000000")  # Cap at 10Mbps to prevent runaway bitrates
-                logger.debug(f"Source is {source_video_codec}, transcoding to h264 at max 10Mbps")
+                params.append(f"VideoBitrate={max_bitrate}")
+                logger.debug(f"Source is {source_video_codec}, transcoding to h264 at max {max_bitrate // 1_000_000}Mbps")
+            elif source_video_bitrate and source_video_bitrate > max_bitrate:
+                # h264 but bitrate too high (e.g. Blu-ray remux at 24Mbps) - transcode to cap bitrate
+                params.append("VideoCodec=h264")
+                params.append(f"VideoBitrate={max_bitrate}")
+                logger.debug(f"Source is h264 but bitrate {source_video_bitrate // 1_000_000}Mbps exceeds cap, transcoding at max {max_bitrate // 1_000_000}Mbps")
             else:
-                logger.debug("Source is h264, allowing direct stream/remux")
+                logger.debug(f"Source is h264 at {(source_video_bitrate or 0) // 1_000_000}Mbps, allowing direct stream/remux")
 
             # Add audio stream index to select specific audio track
             # This is important for videos with multiple audio tracks (different languages)
@@ -633,12 +641,14 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             play_session_id = playback_info.get("PlaySessionId")
             media_source = playback_info["MediaSources"][0]
 
-            # Detect source video codec to decide if transcoding is needed
+            # Detect source video codec and bitrate to decide if transcoding is needed
             source_video_codec = None
+            source_video_bitrate = None
             for stream in media_source.get("MediaStreams", []):
                 if stream.get("Type") == "Video":
                     source_video_codec = (stream.get("Codec") or "").lower()
-                    logger.debug(f"Source video codec: {source_video_codec}")
+                    source_video_bitrate = stream.get("BitRate")
+                    logger.debug(f"Source video codec: {source_video_codec}, bitrate: {source_video_bitrate}")
                     break
 
             # Build direct Emby HLS URL with authentication
@@ -656,13 +666,20 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 "MaxHeight=1080",  # Limit resolution to 1080p max
             ]
 
-            # Only force h264 transcoding when the source isn't already h264
+            max_bitrate = 10_000_000  # 10 Mbps cap
+
             if source_video_codec != "h264":
+                # Non-h264 sources need full transcoding
                 params.append("VideoCodec=h264")
-                params.append("VideoBitrate=10000000")  # Cap at 10Mbps to prevent runaway bitrates
-                logger.debug(f"Source is {source_video_codec}, transcoding to h264 at max 10Mbps")
+                params.append(f"VideoBitrate={max_bitrate}")
+                logger.debug(f"Source is {source_video_codec}, transcoding to h264 at max {max_bitrate // 1_000_000}Mbps")
+            elif source_video_bitrate and source_video_bitrate > max_bitrate:
+                # h264 but bitrate too high (e.g. Blu-ray remux at 24Mbps) - transcode to cap bitrate
+                params.append("VideoCodec=h264")
+                params.append(f"VideoBitrate={max_bitrate}")
+                logger.debug(f"Source is h264 but bitrate {source_video_bitrate // 1_000_000}Mbps exceeds cap, transcoding at max {max_bitrate // 1_000_000}Mbps")
             else:
-                logger.debug("Source is h264, allowing direct stream/remux")
+                logger.debug(f"Source is h264 at {(source_video_bitrate or 0) // 1_000_000}Mbps, allowing direct stream/remux")
 
             # Add audio stream index to select specific audio track
             # This is important for videos with multiple audio tracks (different languages)

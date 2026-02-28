@@ -6,7 +6,7 @@ Description: A Flask-based web application that allows multiple users to watch
              Emby media in sync with real-time chat and playback synchronization.
              Supports HLS streaming with proper authentication.
 
-Version: 1.4.0-alpha (Production Server with .env Configuration)
+Version: 1.4.1-alpha-4 (Production Server with .env Configuration)
 """
 
 from flask import Flask
@@ -66,6 +66,9 @@ logger.info(f"Emby Watch Party v{__version__} - Refactored Architecture")
 logger.info(f"=" * 80)
 
 # Separate logger for SocketIO/EngineIO
+# Reset rotation flag so each log file gets rotated independently on startup
+import rsyslog_logger.logger as _rl
+_rl._log_rotated = False
 socketio_log_file = "logs/socketio.log" if config.LOG_TO_FILE == 'true' else None
 socketio_logger = setup_logger(
     name="socketio",
@@ -92,6 +95,7 @@ socketio = SocketIO(
 # Redirect Flask/Werkzeug HTTP access logs
 werkzeug_logger = logging.getLogger('werkzeug')
 werkzeug_logger.handlers.clear()
+_rl._log_rotated = False
 access_log_file = "logs/access.log" if config.LOG_TO_FILE == 'true' else None
 werkzeug_custom_logger = setup_logger(
     name="werkzeug",
@@ -139,11 +143,31 @@ emby_client = EmbyClient(
 )
 
 # Initialize party manager
-party_manager = PartyManager()
+party_manager = PartyManager(
+    static_party_id=config.STATIC_SESSION_ID if config.STATIC_SESSION_ENABLED == 'true' else None
+)
 
 logger.info(f"Emby Server: {config.EMBY_SERVER_URL}")
 if config.APP_PREFIX:
     logger.info(f"App Prefix: {config.APP_PREFIX}")
+
+# Create static party on startup if enabled
+if config.STATIC_SESSION_ENABLED == 'true':
+    from datetime import datetime
+    static_id = config.STATIC_SESSION_ID
+    party_manager.watch_parties[static_id] = {
+        "id": static_id,
+        "created_at": datetime.now().isoformat(),
+        "users": {},
+        "current_video": None,
+        "playback_state": {
+            "playing": False,
+            "time": 0,
+            "last_update": datetime.now().isoformat(),
+        },
+    }
+    logger.info(f"Static session mode: {static_id}")
+
 logger.info("Components initialized successfully")
 
 # =============================================================================
@@ -155,7 +179,9 @@ def inject_app_prefix():
     """Make APP_PREFIX available to all templates"""
     return {
         'app_prefix': config.APP_PREFIX,
-        'socketio_path': socketio_path
+        'socketio_path': socketio_path,
+        'static_session': config.STATIC_SESSION_ENABLED == 'true',
+        'static_session_id': config.STATIC_SESSION_ID if config.STATIC_SESSION_ENABLED == 'true' else None
     }
 
 # =============================================================================

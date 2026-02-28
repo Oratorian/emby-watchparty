@@ -117,7 +117,7 @@ class EmbyClient:
             self.logger.error(f"Error fetching libraries: {e}")
             return {"Items": []}
 
-    def get_items(self, parent_id=None, item_type=None, recursive=False):
+    def get_items(self, parent_id=None, item_type=None, recursive=False, start_index=None, limit=None):
         """Get items from library"""
         try:
             url = f"{self.server_url}/emby/Items"
@@ -132,12 +132,18 @@ class EmbyClient:
             if item_type:
                 params["IncludeItemTypes"] = item_type
 
+            if start_index is not None:
+                params["StartIndex"] = start_index
+
+            if limit is not None:
+                params["Limit"] = limit
+
             response = requests.get(url, headers=self.headers, params=params)
             response.raise_for_status()
             return response.json()
         except Exception as e:
             self.logger.error(f"Error fetching items: {e}")
-            return {"Items": []}
+            return {"Items": [], "TotalRecordCount": 0}
 
     def get_item_details(self, item_id):
         """Get detailed information about a specific item"""

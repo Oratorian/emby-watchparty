@@ -73,6 +73,9 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
     @login_required
     def index():
         """Main page - choose to create or join a watch party"""
+        # Static session mode: redirect straight to the persistent party
+        if config.STATIC_SESSION_ENABLED == 'true':
+            return redirect(prefixed_url(f'/party/{config.STATIC_SESSION_ID}'))
         return render_template("index.html", require_login=(config.REQUIRE_LOGIN == 'true'))
 
     @bp.route("/party/<party_id>")
@@ -83,14 +86,29 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         party_id = party_id.upper()
 
         if party_id not in watch_parties:
-            return (
-                render_template(
-                    "error.html",
-                    party_id=party_id,
-                    message="The watch party you're looking for doesn't exist or has ended.",
-                ),
-                404,
-            )
+            # Recreate static party if it was somehow deleted
+            if config.STATIC_SESSION_ENABLED == 'true' and party_id == config.STATIC_SESSION_ID:
+                watch_parties[party_id] = {
+                    "id": party_id,
+                    "created_at": datetime.now().isoformat(),
+                    "users": {},
+                    "current_video": None,
+                    "playback_state": {
+                        "playing": False,
+                        "time": 0,
+                        "last_update": datetime.now().isoformat(),
+                    },
+                }
+                logger.info(f"Recreated static party: {party_id}")
+            else:
+                return (
+                    render_template(
+                        "error.html",
+                        party_id=party_id,
+                        message="The watch party you're looking for doesn't exist or has ended.",
+                    ),
+                    404,
+                )
         return render_template("party.html", party_id=party_id, require_login=(config.REQUIRE_LOGIN == 'true'))
 
     # =============================================================================
@@ -284,8 +302,10 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         parent_id = request.args.get("parentId")
         item_type = request.args.get("type")
         recursive = request.args.get("recursive", "false").lower() == "true"
+        start_index = request.args.get("startIndex", type=int)
+        limit = request.args.get("limit", type=int)
 
-        items = emby_client.get_items(parent_id, item_type, recursive)
+        items = emby_client.get_items(parent_id, item_type, recursive, start_index, limit)
         return jsonify(items)
 
     @bp.route("/api/search")

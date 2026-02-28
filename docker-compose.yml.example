@@ -14,10 +14,21 @@ services:
       - .env  # Load configuration from .env file
     # Uncomment below to override .env settings:
     # environment:
+    #   # Application
     #   - EMBY_SERVER_URL=http://your-emby-server:8096
     #   - EMBY_API_KEY=your_api_key_here
+    #   - EMBY_USERNAME=your-username
+    #   - EMBY_PASSWORD=your-password
     #   - WATCH_PARTY_BIND=0.0.0.0
     #   - WATCH_PARTY_PORT=5000
+    #   - LOG_TO_FILE=false
+    #   # Reverse proxy prefix (e.g. /watchparty)
+    #   - APP_PREFIX=
+    #   # Require Emby login to access
+    #   - REQUIRE_LOGIN=false
+    #   # Static session mode - persistent party, no create/join page
+    #   - STATIC_SESSION_ENABLED=false
+    #   - STATIC_SESSION_ID=PARTY
     volumes:
       - ./logs:/app/logs  # Persist logs
       - ./.env:/app/.env:ro  # Mount .env file (read-only)

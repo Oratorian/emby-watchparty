@@ -1268,6 +1268,11 @@ video::-webkit-backdrop,
     transform: rotate(180deg);
 }
 
+/* When description is collapsed, let the video expand into the freed space */
+.video-player:has(.video-meta.collapsed) #videoElement {
+    max-height: 90vh;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
     .video-area {
