@@ -13,40 +13,40 @@ Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https:/
 ## [1.4.1-alpha-4] - 2026-02-28
 
 ### Added
-- **Static session mode**: Single persistent party that auto-creates on startup with a fixed ID
+- **Static session mode**: Single persistent party that should auto-create on startup with a fixed ID
   - New `STATIC_SESSION_ENABLED` and `STATIC_SESSION_ID` env vars
-  - Users navigating to `/` are redirected straight into the party (no create/join page)
-  - Party persists when all users disconnect and is recreated if somehow deleted
+  - Users navigating to `/` should be redirected straight into the party (no create/join page)
+  - Party should persist when all users disconnect and be recreated if somehow deleted
   - Useful for home servers with a small group of regulars
   - Feature request [#10](https://github.com/Oratorian/emby-watchparty/issues/10)
-- **Persistent usernames via localStorage**: Returning users skip the username modal and auto-join with their saved name
+- **Persistent usernames via localStorage**: Returning users should skip the username modal and auto-join with their saved name
   - First visit: username modal shown as before
-  - Subsequent visits: auto-join with saved name from `localStorage`
-  - Server-assigned random names are also saved for next visit
+  - Subsequent visits: should auto-join with saved name from `localStorage`
+  - Server-assigned random names should also be saved for next visit
   - Works in both static session and normal party mode
-- **Server-side library pagination**: Library browsing now fetches items in pages instead of all at once
-  - Prevents hammering the Emby API with thousands of simultaneous image requests
+- **Server-side library pagination**: Library browsing should now fetch items in pages instead of all at once
+  - Should prevent hammering the Emby API with thousands of simultaneous image requests
   - Infinite scroll with sentinel-based loading for seamless browsing
   - `IntersectionObserver` for image lazy loading within scrollable containers (replaces native `loading="lazy"` which only works with main document viewport)
   - Feature request [#15](https://github.com/Oratorian/emby-watchparty/issues/15)
 
 ### Fixed
 - **High-bitrate h264 sources causing buffering**: Previously only non-h264 codecs were transcoded; h264 Blu-ray remuxes (e.g. 24 Mbps) were direct-streamed at full bitrate
-  - Now caps all streams at 10 Mbps regardless of codec
-  - h264 sources under 10 Mbps are still direct-streamed
+  - It should now cap all streams at 10 Mbps regardless of codec
+  - h264 sources under 10 Mbps should still be direct-streamed
   - Related to [#14](https://github.com/Oratorian/emby-watchparty/issues/14)
-- **Description panel collapse direction**: Now collapses downward so the video player viewport expands into the freed space (CSS `:has()` rule increases `max-height` from 70vh to 90vh)
-- **Log rotation for socketio.log and access.log**: `rsyslog_logger` uses a single module-level `_log_rotated` flag, so only the first `setup_logger` call triggered rotation — subsequent loggers for socketio and access logs were skipped
+- **Description panel collapse direction**: Should now collapse downward so the video player viewport expands into the freed space (CSS `:has()` rule increases `max-height` from 70vh to 90vh)
+- **Log rotation for socketio.log and access.log**: `rsyslog_logger` uses a single module-level `_log_rotated` flag, so only the first `setup_logger` call triggered rotation, subsequent loggers for socketio and access logs were skipped
   - Workaround: reset `_log_rotated` before each `setup_logger` call
 
 ### Changed
 - **Documentation updated**: README config table, `.env.example`, and `docker-compose.yml.example` now include all env vars (`APP_PREFIX`, `STATIC_SESSION_ENABLED`, `STATIC_SESSION_ID`)
 
-## [1.4.1-alpha-3] - 2026-02-28
+## [1.4.1-alpha-3] - Internal testing, not released
 
 ### Fixed
 - **Buffering/stutter with HEVC content**: Forcing `VideoCodec=h264` without a bitrate cap caused Emby to transcode HEVC sources at uncapped bitrates, producing streams far larger than the source
-  - It now should detect the source video codec — h264 sources should be direct-streamed/remuxed (no transcode)
+  - It now should detect the source video codec, h264 sources should be direct-streamed/remuxed (no transcode)
   - Non-h264 sources (HEVC, etc.) should now transcode to h264 with a 10 Mbps bitrate cap
   - Reported by **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)**
 - **Playback state not reset when switching videos**: Old video's playback session wasn't properly stopped on the server before starting a new one
