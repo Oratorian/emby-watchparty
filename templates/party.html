@@ -77,7 +77,7 @@
                     </video>
 
                     <!-- Skip Intro Button -->
-                    <button id="skipIntroBtn" class="skip-intro-button" onclick="skipIntro()" style="display: none;">
+                    <button id="skipIntroBtn" class="skip-intro-button" style="display: none;">
                         Skip Intro ⏭️
                     </button>
 
@@ -157,7 +157,7 @@
             <input type="text" id="usernameInput" placeholder="Your name (optional)" />
             <button id="joinBtn" class="btn btn-primary">Join</button>
             <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 0.85rem; opacity: 0.7; text-align: center;">
-                Special thanks to <a href="https://emby.media/community/index.php?/profile/1658172-quackmasterdan/" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none; font-weight: bold;">QuackMasterDan</a> for dedication in testing! 🎉
+                Special thanks to <a href="https://emby.media/community/index.php?/profile/1658172-quackmasterdan/" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none; font-weight: bold;">QuackMasterDan</a>, <a href="https://github.com/wlowen" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none; font-weight: bold;">wlowen</a> &amp; <a href="https://github.com/JeslynMcKenzie" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none; font-weight: bold;">JeslynMcKenzie</a> for dedication in testing! 🎉
             </div>
         </div>
     </div>
@@ -167,6 +167,12 @@
         const APP_PREFIX = '{{ app_prefix }}';
         const SOCKETIO_PATH = '{{ socketio_path }}';
     </script>
+    <script src="{{ url_for('main.static', filename='js/state.js') }}"></script>
+    <script src="{{ url_for('main.static', filename='js/chat.js') }}"></script>
+    <script src="{{ url_for('main.static', filename='js/sync.js') }}"></script>
+    <script src="{{ url_for('main.static', filename='js/library.js') }}"></script>
+    <script src="{{ url_for('main.static', filename='js/video.js') }}"></script>
+    <script src="{{ url_for('main.static', filename='js/ui.js') }}"></script>
     <script src="{{ url_for('main.static', filename='js/party.js') }}"></script>
 </body>
 </html>

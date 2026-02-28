@@ -232,6 +232,14 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             # Don't auto-select default subtitles - let users opt-in
             # (Removed automatic default subtitle selection)
 
+            # Detect source video codec to decide if transcoding is needed
+            source_video_codec = None
+            for stream in media_source.get("MediaStreams", []):
+                if stream.get("Type") == "Video":
+                    source_video_codec = (stream.get("Codec") or "").lower()
+                    logger.debug(f"Source video codec: {source_video_codec}")
+                    break
+
             # Build direct Emby HLS URL with authentication
             params = [
                 f"MediaSourceId={media_source_id}",
@@ -242,11 +250,19 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 "TranscodingMaxAudioChannels=2",  # Ensure audio is included
                 "AudioCodec=aac,mp3",  # Support AAC and MP3 for better compatibility (handles TrueHD, FLAC, etc.)
                 "BreakOnNonKeyFrames=True",  # Allow seeking to any point
-                "VideoCodec=h264",  # Force H.264 for maximum browser compatibility
                 "MaxAudioChannels=2",  # Downmix to stereo for TrueHD/multi-channel audio
                 "MaxWidth=1920",   # Limit resolution to 1080p max
                 "MaxHeight=1080",  # Limit resolution to 1080p max
             ]
+
+            # Only force h264 transcoding when the source isn't already h264
+            # h264 sources can be direct-streamed/remuxed without expensive transcoding
+            if source_video_codec != "h264":
+                params.append("VideoCodec=h264")
+                params.append("VideoBitrate=10000000")  # Cap at 10Mbps to prevent runaway bitrates
+                logger.debug(f"Source is {source_video_codec}, transcoding to h264 at max 10Mbps")
+            else:
+                logger.debug("Source is h264, allowing direct stream/remux")
 
             # Add audio stream index to select specific audio track
             # This is important for videos with multiple audio tracks (different languages)
@@ -300,8 +316,18 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             emit("error", {"message": "Failed to load video"})
             return
 
-        # Stop any active transcoding for previous video (if changing videos)
+        # Stop any active playback/transcoding for previous video (if changing videos)
         if watch_parties[party_id].get("current_video"):
+            prev_video = watch_parties[party_id]["current_video"]
+            if prev_video.get("play_session_id"):
+                prev_time = watch_parties[party_id]["playback_state"].get("time", 0)
+                emby_client.report_playback_stopped(
+                    item_id=prev_video["item_id"],
+                    media_source_id=prev_video["media_source_id"],
+                    play_session_id=prev_video["play_session_id"],
+                    position_seconds=prev_time,
+                    run_time_seconds=prev_video.get("run_time_seconds")
+                )
             emby_client.stop_active_encodings()
 
         # Get runtime in seconds from media source (RunTimeTicks is in 100-nanosecond units)
@@ -607,6 +633,14 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             play_session_id = playback_info.get("PlaySessionId")
             media_source = playback_info["MediaSources"][0]
 
+            # Detect source video codec to decide if transcoding is needed
+            source_video_codec = None
+            for stream in media_source.get("MediaStreams", []):
+                if stream.get("Type") == "Video":
+                    source_video_codec = (stream.get("Codec") or "").lower()
+                    logger.debug(f"Source video codec: {source_video_codec}")
+                    break
+
             # Build direct Emby HLS URL with authentication
             params = [
                 f"MediaSourceId={media_source_id}",
@@ -617,11 +651,18 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 "TranscodingMaxAudioChannels=2",  # Ensure audio is included
                 "AudioCodec=aac,mp3",  # Support AAC and MP3 for better compatibility (handles TrueHD, FLAC, etc.)
                 "BreakOnNonKeyFrames=True",  # Allow seeking to any point
-                "VideoCodec=h264",  # Force H.264 for maximum browser compatibility
                 "MaxAudioChannels=2",  # Downmix to stereo for TrueHD/multi-channel audio
                 "MaxWidth=1920",   # Limit resolution to 1080p max
                 "MaxHeight=1080",  # Limit resolution to 1080p max
             ]
+
+            # Only force h264 transcoding when the source isn't already h264
+            if source_video_codec != "h264":
+                params.append("VideoCodec=h264")
+                params.append("VideoBitrate=10000000")  # Cap at 10Mbps to prevent runaway bitrates
+                logger.debug(f"Source is {source_video_codec}, transcoding to h264 at max 10Mbps")
+            else:
+                logger.debug("Source is h264, allowing direct stream/remux")
 
             # Add audio stream index to select specific audio track
             # This is important for videos with multiple audio tracks (different languages)

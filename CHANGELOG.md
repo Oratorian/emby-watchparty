@@ -8,7 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Special Thanks
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
 
-## [1.4.1-alpha] - 2026-02-27
+Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
+
+## [1.4.1-alpha-3] - 2026-02-28
+
+### Fixed
+- **Buffering/stutter with HEVC content**: Forcing `VideoCodec=h264` without a bitrate cap caused Emby to transcode HEVC sources at uncapped bitrates, producing streams far larger than the source
+  - It now should detect the source video codec — h264 sources should be direct-streamed/remuxed (no transcode)
+  - Non-h264 sources (HEVC, etc.) should now transcode to h264 with a 10 Mbps bitrate cap
+  - Reported by **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)**
+- **Playback state not reset when switching videos**: Old video's playback session wasn't properly stopped on the server before starting a new one
+  - It now should call `report_playback_stopped()` for the previous video before starting a new stream
+  - Reported by **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)**
+
+### Changed
+- **Split `party.js` into modules**: Refactored the ~1965-line monolithic file into 7 focused modules
+  - `state.js` - shared state container and socket init
+  - `chat.js` - chat messaging and system messages
+  - `sync.js` - playback synchronization (play/pause/seek)
+  - `library.js` - library browsing, search, video selection
+  - `video.js` - HLS loading, streams, subtitles, intro skip, progress reporting
+  - `ui.js` - collapse toggles, resize, fullscreen, autoplay countdown
+  - `party.js` - slim orchestrator (~140 lines)
+
+## [1.4.1-alpha-2] - 2026-02-27
 
 ### Added
 - **UI collapse toggles**: Collapse header, chat, and video info to maximise video real estate
@@ -31,6 +54,8 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 ### Removed
 - **Dead periodic sync code**: Removed `startPeriodicSync`, `stopPeriodicSync`, `periodicSyncInterval`, and `playbackStartTime` variables left as dead code since their removal in v1.2
+
+## [1.4.1-alpha-1] - Internal testing, not released
 
 ## [1.4.0] - 2026-01-26
 
