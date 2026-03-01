@@ -62,7 +62,7 @@ logger = setup_logger(
 )
 
 logger.info(f"=" * 80)
-logger.info(f"Emby Watch Party v{__version__} - Refactored Architecture")
+logger.info(f"Emby Watch Party v{__version__} - \"Toasted Pretzel\"")
 logger.info(f"=" * 80)
 
 # Separate logger for SocketIO/EngineIO

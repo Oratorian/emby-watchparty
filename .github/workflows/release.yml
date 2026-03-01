@@ -165,8 +165,14 @@ jobs:
             ### Installation
 
             #### Option 1: Docker (Recommended)
+
+            Version specific:
             ```bash
             docker pull ghcr.io/oratorian/emby-watchparty:${{ steps.get_version.outputs.VERSION }}
+            ```
+            Or always latest ${{ steps.get_version.outputs.IS_PRERELEASE == 'true' && 'pre-release' || 'stable' }} version:
+            ```bash
+            docker pull ghcr.io/oratorian/emby-watchparty:${{ steps.get_version.outputs.IS_PRERELEASE == 'true' && 'devel' || 'latest' }}
             ```
             Or use docker-compose with the provided `docker-compose.yml.example`
 
