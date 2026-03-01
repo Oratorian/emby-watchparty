@@ -6,7 +6,7 @@ Description: A Flask-based web application that allows multiple users to watch
              Emby media in sync with real-time chat and playback synchronization.
              Supports HLS streaming with proper authentication.
 
-Version: 1.4.1-alpha-5 (Production Server with .env Configuration)
+Version: 1.4.1-alpha-6 (Production Server with .env Configuration)
 """
 
 from flask import Flask
@@ -22,7 +22,7 @@ from rsyslog_logger import setup_logger
 from src import config
 
 # Import our refactored modules
-from src import __version__
+from src import __version__, __codename__
 from src.emby_client import EmbyClient
 from src.party_manager import PartyManager
 from src.routes import init_routes
@@ -62,7 +62,7 @@ logger = setup_logger(
 )
 
 logger.info(f"=" * 80)
-logger.info(f"Emby Watch Party v{__version__} - \"Toasted Pretzel\"")
+logger.info(f"Emby Watch Party v{__version__} - \"{__codename__}\"")
 logger.info(f"=" * 80)
 
 # Separate logger for SocketIO/EngineIO

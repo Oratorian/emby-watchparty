@@ -14,12 +14,15 @@
         <!-- Header -->
         <header class="party-header" id="partyHeader">
             <div>
-                <h1>Watch Party</h1>
                 <div class="party-code">
                     Party Code: <strong id="partyCode">{{ party_id }}</strong>
                     <button id="copyCodeBtn" class="btn-small">Copy</button>
                     <button id="showLibraryBtn" class="btn-small" style="display: none;">Show Library</button>
                 </div>
+            </div>
+            <div>
+            <h1>Watch Party</h1>
+            <a href="#" class="version-watermark" onclick="document.getElementById('versionModal').style.display='flex';fetchVersionCheck();return false;">v{{ current_version }} {{codename }}</a>
             </div>
             <div class="user-info">
                 <span id="userCount">0 users</span>
@@ -172,10 +175,89 @@
         </div>
     </div>
 
+    <!-- Version modal -->
+    <div id="versionModal" class="modal" style="display: none;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content" style="max-width: 650px; text-align: left;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 style="margin: 0;">About</h2>
+                <button class="btn-small" onclick="document.getElementById('versionModal').style.display='none'" style="font-size: 1.2rem; line-height: 1; padding: 0.2rem 0.5rem;">&#10005;</button>
+            </div>
+
+            <div style="margin-bottom: 1.5rem;">
+                <div style="font-size: 1.5rem; font-weight: bold; font-family: monospace; color: var(--text-primary);">v{{ current_version }}</div>
+                <div style="color: var(--cyber-gold); font-size: 0.95rem;">"{{ codename }}"</div>
+                <div id="versionUpdateStatus" style="margin-top: 0.5rem;">
+                    <span style="font-size: 0.85rem; color: var(--text-secondary, #aaa);">Checking for updates...</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 1.5rem;">
+                <h3 style="font-size: 1rem; color: var(--cyber-primary); margin: 0 0 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid rgba(255,255,255,0.1);">Software & Licenses</h3>
+                <p style="margin: 0 0 0.5rem; font-size: 0.8rem; color: var(--text-secondary, #888);">
+                    Emby Watch Party is open source under the <strong style="color: var(--text-primary);">MIT License</strong>
+                </p>
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                    <tbody>
+                        <tr><td style="padding: 0.25rem 0;"><a href="https://flask.palletsprojects.com/" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none;">Flask 3.0.0</a></td><td style="text-align: right;"><span style="background: rgba(255,255,255,0.08); padding: 0.1rem 0.4rem; border-radius: 8px; font-size: 0.75rem; color: var(--text-secondary, #aaa);">BSD-3-Clause</span></td></tr>
+                        <tr><td style="padding: 0.25rem 0;"><a href="https://github.com/miguelgrinberg/Flask-SocketIO" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none;">Flask-SocketIO 5.3.5</a></td><td style="text-align: right;"><span style="background: rgba(255,255,255,0.08); padding: 0.1rem 0.4rem; border-radius: 8px; font-size: 0.75rem; color: var(--text-secondary, #aaa);">MIT</span></td></tr>
+                        <tr><td style="padding: 0.25rem 0;"><a href="https://github.com/miguelgrinberg/python-socketio" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none;">python-socketio 5.10.0</a></td><td style="text-align: right;"><span style="background: rgba(255,255,255,0.08); padding: 0.1rem 0.4rem; border-radius: 8px; font-size: 0.75rem; color: var(--text-secondary, #aaa);">MIT</span></td></tr>
+                        <tr><td style="padding: 0.25rem 0;"><a href="https://github.com/psf/requests" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none;">requests 2.31.0</a></td><td style="text-align: right;"><span style="background: rgba(255,255,255,0.08); padding: 0.1rem 0.4rem; border-radius: 8px; font-size: 0.75rem; color: var(--text-secondary, #aaa);">Apache-2.0</span></td></tr>
+                        <tr><td style="padding: 0.25rem 0;"><a href="https://www.gevent.org/" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none;">gevent</a></td><td style="text-align: right;"><span style="background: rgba(255,255,255,0.08); padding: 0.1rem 0.4rem; border-radius: 8px; font-size: 0.75rem; color: var(--text-secondary, #aaa);">MIT</span></td></tr>
+                        <tr><td style="padding: 0.25rem 0;"><a href="https://gitlab.com/noppo/gevent-websocket" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none;">gevent-websocket</a></td><td style="text-align: right;"><span style="background: rgba(255,255,255,0.08); padding: 0.1rem 0.4rem; border-radius: 8px; font-size: 0.75rem; color: var(--text-secondary, #aaa);">Apache-2.0</span></td></tr>
+                        <tr><td style="padding: 0.25rem 0;"><a href="https://github.com/alisaifee/flask-limiter" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none;">Flask-Limiter 3.5.0</a></td><td style="text-align: right;"><span style="background: rgba(255,255,255,0.08); padding: 0.1rem 0.4rem; border-radius: 8px; font-size: 0.75rem; color: var(--text-secondary, #aaa);">MIT</span></td></tr>
+                        <tr><td style="padding: 0.25rem 0;"><a href="https://pypi.org/project/rsyslog-logger/" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none;">rsyslog-logger</a></td><td style="text-align: right;"><span style="background: rgba(255,255,255,0.08); padding: 0.1rem 0.4rem; border-radius: 8px; font-size: 0.75rem; color: var(--text-secondary, #aaa);">MIT</span></td></tr>
+                        <tr><td style="padding: 0.25rem 0;"><a href="https://github.com/theskumar/python-dotenv" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none;">python-dotenv</a></td><td style="text-align: right;"><span style="background: rgba(255,255,255,0.08); padding: 0.1rem 0.4rem; border-radius: 8px; font-size: 0.75rem; color: var(--text-secondary, #aaa);">BSD-3-Clause</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-bottom: 1.5rem;">
+                <h3 style="font-size: 1rem; color: var(--cyber-primary); margin: 0 0 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid rgba(255,255,255,0.1);">Special Thanks</h3>
+                <div style="font-size: 0.85rem; line-height: 1.8;">
+                    <a href="https://emby.media/community/index.php?/profile/1658172-quackmasterdan/" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none; font-weight: bold;">QuackMasterDan</a> -- Dedicated testing and feedback<br>
+                    <a href="https://github.com/wlowen" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none; font-weight: bold;">wlowen</a> -- Testing, bug reports, mediainfo<br>
+                    <a href="https://github.com/JeslynMcKenzie" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none; font-weight: bold;">JeslynMcKenzie</a> -- Testing and bug reports<br>
+                    <a href="https://github.com/daniilkopylov" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none; font-weight: bold;">daniilkopylov</a> -- Feature requests and testing
+                </div>
+            </div>
+
+            <div>
+                <h3 style="font-size: 1rem; color: var(--cyber-primary); margin: 0 0 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid rgba(255,255,255,0.1);">Support & Community</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    <a href="https://github.com/Oratorian/emby-watchparty/issues" target="_blank" rel="noopener noreferrer" style="padding: 0.4rem 0.8rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: var(--text-primary); text-decoration: none; font-size: 0.85rem;">GitHub Issues</a>
+                    <a href="https://discord.gg/RWUpxq9xsA" target="_blank" rel="noopener noreferrer" style="padding: 0.4rem 0.8rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: var(--text-primary); text-decoration: none; font-size: 0.85rem;">Discord</a>
+                    <a href="https://emby.media/community/index.php?/topic/143565-emby-watch-party-synchronized-viewing-for-friends-family/" target="_blank" rel="noopener noreferrer" style="padding: 0.4rem 0.8rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: var(--text-primary); text-decoration: none; font-size: 0.85rem;">Emby Forums</a>
+                    <a href="https://github.com/Oratorian/emby-watchparty" target="_blank" rel="noopener noreferrer" style="padding: 0.4rem 0.8rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: var(--text-primary); text-decoration: none; font-size: 0.85rem;">Source Code</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Configuration passed from server
         const APP_PREFIX = '{{ app_prefix }}';
         const SOCKETIO_PATH = '{{ socketio_path }}';
+
+        var _versionChecked = false;
+        function fetchVersionCheck() {
+            if (_versionChecked) return;
+            _versionChecked = true;
+            fetch(APP_PREFIX + '/api/version')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    var el = document.getElementById('versionUpdateStatus');
+                    if (d.update_available) {
+                        el.innerHTML = '<span style="display:inline-block;padding:0.2rem 0.6rem;border-radius:12px;font-size:0.85rem;background:rgba(255,190,11,0.2);color:var(--cyber-gold);border:1px solid rgba(255,190,11,0.3);">Update available: <a href="' + d.release_url + '" target="_blank" rel="noopener noreferrer" style="color:var(--cyber-gold);text-decoration:underline;">v' + d.latest_version + '</a></span>';
+                    } else if (d.latest_version) {
+                        el.innerHTML = '<span style="display:inline-block;padding:0.2rem 0.6rem;border-radius:12px;font-size:0.85rem;background:rgba(72,187,120,0.2);color:#48bb78;border:1px solid rgba(72,187,120,0.3);">Up to date</span>';
+                    } else {
+                        el.innerHTML = '<span style="font-size:0.85rem;color:var(--text-secondary,#888);">Could not check for updates</span>';
+                    }
+                })
+                .catch(function() {
+                    document.getElementById('versionUpdateStatus').innerHTML = '<span style="font-size:0.85rem;color:var(--text-secondary,#888);">Could not check for updates</span>';
+                });
+        }
     </script>
     <script src="{{ url_for('main.static', filename='js/state.js') }}"></script>
     <script src="{{ url_for('main.static', filename='js/chat.js') }}"></script>

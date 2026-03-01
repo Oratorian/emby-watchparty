@@ -739,6 +739,18 @@ header p::after {
     justify-content: center;
 }
 
+.version-watermark {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-secondary, #888);
+    text-decoration: none;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+.version-watermark:hover {
+    opacity: 1;
+}
+
 .placeholder {
     text-align: center;
     color: var(--text-dim);
@@ -1194,12 +1206,7 @@ video::-webkit-backdrop,
 
 /* Collapse toggles */
 .party-header.collapsed {
-    padding-top: 0;
-    padding-bottom: 0;
-    overflow: hidden;
-    max-height: 0;
-    border-bottom: none;
-    box-shadow: none;
+    display: none;
 }
 
 .expand-header-btn {

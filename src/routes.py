@@ -109,7 +109,8 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
                     ),
                     404,
                 )
-        return render_template("party.html", party_id=party_id, require_login=(config.REQUIRE_LOGIN == 'true'))
+        from src import __version__, __codename__
+        return render_template("party.html", party_id=party_id, require_login=(config.REQUIRE_LOGIN == 'true'), current_version=__version__, codename=__codename__)
 
     # =============================================================================
     # Authentication Routes
@@ -125,6 +126,41 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         if 'authenticated' in session:
             return redirect(prefixed_url('/'))
         return render_template("login.html")
+
+    @bp.route("/version")
+    @login_required
+    def version():
+        """Version and about page"""
+        from src import __version__, __codename__
+        return render_template("version.html",
+                               current_version=__version__,
+                               codename=__codename__,
+                               require_login=(config.REQUIRE_LOGIN == 'true'))
+
+    @bp.route("/api/version")
+    @login_required
+    def api_version():
+        """Check current version and available updates"""
+        from src import __version__, __codename__
+        result = {
+            "current_version": __version__,
+            "codename": __codename__,
+            "latest_version": None,
+            "update_available": False,
+            "release_url": None
+        }
+        try:
+            github_api_url = "https://api.github.com/repos/Oratorian/emby-watchparty/releases/latest"
+            response = requests.get(github_api_url, timeout=5)
+            if response.status_code == 200:
+                release = response.json()
+                latest = release.get("tag_name", "").lstrip("v")
+                result["latest_version"] = latest
+                result["update_available"] = bool(latest and latest != __version__)
+                result["release_url"] = release.get("html_url")
+        except Exception:
+            pass
+        return jsonify(result)
 
     @bp.route("/api/auth/login", methods=["POST"])
     def api_login():
