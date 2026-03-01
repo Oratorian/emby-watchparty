@@ -10,6 +10,21 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
+## [1.4.1-alpha-5] - 2026-03-01
+
+### Fixed
+- **TV Shows button not displaying results**: The API returned Series items correctly, but the client-side display filter only allowed Movie, Episode, and Video types through, silently dropping all Series items
+- **User count incrementing on page refresh**: Race condition where the new WebSocket connects and joins the party before the server processes the old socket's disconnect event, causing the same username to appear under two socket IDs
+  - Server now evicts stale sessions when the same username rejoins, transferring video control to the new session
+  - Reported by **[daniilkopylov](https://github.com/daniilkopylov)**
+
+### Changed
+- **Improved log levels across the codebase**: Promoted meaningful debug logs to info/warning for better operational visibility without needing debug mode
+  - Codec detection, transcoding decisions, subtitle handling, and token assignment now log at INFO
+  - Silent error paths (party not found, no video playing) now log at WARNING
+  - AUTH CHECK logs demoted to DEBUG to reduce per-request noise
+  - Party creation now logged at INFO
+
 ## [1.4.1-alpha-4] - 2026-02-28
 
 ### Added

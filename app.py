@@ -6,7 +6,7 @@ Description: A Flask-based web application that allows multiple users to watch
              Emby media in sync with real-time chat and playback synchronization.
              Supports HLS streaming with proper authentication.
 
-Version: 1.4.1-alpha-4 (Production Server with .env Configuration)
+Version: 1.4.1-alpha-5 (Production Server with .env Configuration)
 """
 
 from flask import Flask
@@ -197,9 +197,3 @@ init_routes(app, emby_client, party_manager, config, logger, limiter)
 init_socket_handlers(socketio, emby_client, party_manager, config, logger)
 
 logger.info("Routes and handlers registered successfully")
-
-# =============================================================================
-# Application is imported and run by platform-specific entry points:
-# - docker-entrypoint.py (Linux/Docker with eventlet)
-# - run_windows_production.py (Windows with gevent)
-# =============================================================================

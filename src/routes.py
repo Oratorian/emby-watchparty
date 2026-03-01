@@ -61,11 +61,11 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         """Decorator to require login if REQUIRE_LOGIN is enabled"""
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            logger.info(f"[AUTH CHECK] REQUIRE_LOGIN={config.REQUIRE_LOGIN}, authenticated={'authenticated' in session}")
+            logger.debug(f"[AUTH CHECK] REQUIRE_LOGIN={config.REQUIRE_LOGIN}, authenticated={'authenticated' in session}")
             if config.REQUIRE_LOGIN == 'true' and 'authenticated' not in session:
-                logger.info(f"[AUTH CHECK] Redirecting to login page")
+                logger.debug(f"[AUTH CHECK] Redirecting to login page")
                 return redirect(prefixed_url('/login'))
-            logger.info(f"[AUTH CHECK] Access granted")
+            logger.debug(f"[AUTH CHECK] Access granted")
             return f(*args, **kwargs)
         return decorated_function
 
@@ -408,7 +408,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
         Example:
             GET /api/item/<item_id>/streams
         """
-        logger.debug(f"Fetching streams for item ID: {item_id}")
+        logger.info(f"Fetching streams for item ID: {item_id}")
 
         # Try multiple approaches to get stream information
         playback_info = None
@@ -626,7 +626,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             # Validate HLS token if enabled
             if config.ENABLE_HLS_TOKEN_VALIDATION == 'true':
                 token = request.args.get("token")
-                logger.debug(
+                logger.info(
                     f"Master playlist request with token: {token[:16] if token else 'None'}... from {request.remote_addr}"
                 )
                 if not validate_hls_token(
@@ -1008,6 +1008,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None):
             },
         }
 
+        logger.info(f"Created new watch party: {party_id}")
         return jsonify({"party_id": party_id, "url": prefixed_url(f"/party/{party_id}")})
 
     # Apply rate limiting to party creation if enabled

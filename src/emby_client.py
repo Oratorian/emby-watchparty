@@ -243,7 +243,7 @@ class EmbyClient:
             params = {"DeviceId": self.device_id, "api_key": self.api_key}
             response = requests.delete(url, headers=self.headers, params=params)
             response.raise_for_status()
-            self.logger.debug(f"Stopped active encodings for device {self.device_id}")
+            self.logger.info(f"Stopped active encodings for device {self.device_id}")
             return True
         except Exception as e:
             self.logger.warning(f"Failed to stop active encodings: {e}")

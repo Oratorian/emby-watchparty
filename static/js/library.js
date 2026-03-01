@@ -341,7 +341,7 @@
             S.dom.libraryContent.innerHTML = '<p>Loading items...</p>';
             var response = await fetch(S.appPrefix + '/api/items?type=' + itemType + '&recursive=true');
             var data = await response.json();
-            displayItems(data.Items);
+            displayItems(data.Items, 'library');
         } catch (error) {
             S.dom.libraryContent.innerHTML = '<p>Error loading items</p>';
         }

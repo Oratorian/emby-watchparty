@@ -68,11 +68,30 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             logger.info(f"Generated random username: {username}")
 
         if party_id not in watch_parties:
+            logger.warning(f"Join failed: party {party_id} not found (user: {username})")
             emit("error", {"message": "Watch party not found"})
             return
 
-        # Check max users per party limit
-        if config.MAX_USERS_PER_PARTY > 0:
+        # Evict stale SID if same username is already in the party (e.g. page refresh)
+        old_sid = None
+        for sid, existing_username in list(watch_parties[party_id]["users"].items()):
+            if existing_username == username and sid != request.sid:
+                old_sid = sid
+                del watch_parties[party_id]["users"][sid]
+                leave_room(party_id, sid=sid)
+                logger.info(
+                    f"Evicted stale session {sid} for user {username} in party {party_id}"
+                )
+                # Transfer video control so refreshed user can still stop/report progress
+                if (
+                    watch_parties[party_id]["current_video"]
+                    and watch_parties[party_id]["current_video"].get("selected_by") == sid
+                ):
+                    watch_parties[party_id]["current_video"]["selected_by"] = request.sid
+                break
+
+        # Check max users per party limit (skip if this is a rejoin)
+        if config.MAX_USERS_PER_PARTY > 0 and old_sid is None:
             current_user_count = len(watch_parties[party_id]["users"])
             if current_user_count >= config.MAX_USERS_PER_PARTY:
                 logger.warning(
@@ -199,6 +218,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
         subtitle_index = data.get("subtitle_index")
 
         if party_id not in watch_parties:
+            logger.warning(f"Video selection failed: party {party_id} not found")
             emit("error", {"message": "Watch party not found"})
             return
 
@@ -239,7 +259,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 if stream.get("Type") == "Video":
                     source_video_codec = (stream.get("Codec") or "").lower()
                     source_video_bitrate = stream.get("BitRate")
-                    logger.debug(f"Source video codec: {source_video_codec}, bitrate: {source_video_bitrate}")
+                    logger.info(f"Source video codec: {source_video_codec}, bitrate: {source_video_bitrate}")
                     break
 
             # Build direct Emby HLS URL with authentication
@@ -263,14 +283,14 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 # Non-h264 sources need full transcoding
                 params.append("VideoCodec=h264")
                 params.append(f"VideoBitrate={max_bitrate}")
-                logger.debug(f"Source is {source_video_codec}, transcoding to h264 at max {max_bitrate // 1_000_000}Mbps")
+                logger.info(f"Source is {source_video_codec}, transcoding to h264 at max {max_bitrate // 1_000_000}Mbps")
             elif source_video_bitrate and source_video_bitrate > max_bitrate:
                 # h264 but bitrate too high (e.g. Blu-ray remux at 24Mbps) - transcode to cap bitrate
                 params.append("VideoCodec=h264")
                 params.append(f"VideoBitrate={max_bitrate}")
-                logger.debug(f"Source is h264 but bitrate {source_video_bitrate // 1_000_000}Mbps exceeds cap, transcoding at max {max_bitrate // 1_000_000}Mbps")
+                logger.info(f"Source is h264 but bitrate {source_video_bitrate // 1_000_000}Mbps exceeds cap, transcoding at max {max_bitrate // 1_000_000}Mbps")
             else:
-                logger.debug(f"Source is h264 at {(source_video_bitrate or 0) // 1_000_000}Mbps, allowing direct stream/remux")
+                logger.info(f"Source is h264 at {(source_video_bitrate or 0) // 1_000_000}Mbps, allowing direct stream/remux")
 
             # Add audio stream index to select specific audio track
             # This is important for videos with multiple audio tracks (different languages)
@@ -303,12 +323,12 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                     # Burn-in PGS subtitles for perfect quality (image-based)
                     params.append(f"SubtitleStreamIndex={subtitle_index}")
                     params.append("SubtitleMethod=Encode")  # Force burn-in
-                    logger.debug(f"Burning in PGS subtitle track {subtitle_index}")
+                    logger.info(f"Burning in PGS subtitle track {subtitle_index}")
                 else:
                     # Text-based subtitles: load separately as VTT for better control
                     # Don't add SubtitleStreamIndex parameter - let Emby ignore subtitles
-                    logger.debug(
-                        f"Text subtitle {subtitle_index} will be loaded separately as VTT (not burning)"
+                    logger.info(
+                        f"Text subtitle {subtitle_index} will be loaded separately as VTT"
                     )
             else:
                 # No subtitles selected - don't add any subtitle parameters
@@ -374,7 +394,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
         }
 
         # Send video to each user with their own individual token
-        logger.debug(
+        logger.info(
             f"Sending video to {len(watch_parties[party_id]['users'])} users in party {party_id}"
         )
         for user_sid in watch_parties[party_id]["users"].keys():
@@ -388,7 +408,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 )
                 if user_token:
                     stream_url_with_token += f"&token={user_token}"
-                    logger.debug(
+                    logger.info(
                         f"Assigned token {user_token[:16]}... to user {username} (sid={user_sid})"
                     )
                 else:
@@ -396,7 +416,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                         f"Failed to get token for user {username} (sid={user_sid})"
                     )
             else:
-                logger.debug(
+                logger.info(
                     f"Sending video to user {username} without token (validation disabled)"
                 )
 
@@ -440,6 +460,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
         )  # Convert to uppercase for case-insensitive matching
 
         if not party_id or party_id not in watch_parties:
+            logger.warning(f"Stop video failed: party {party_id} not found")
             emit("error", {"message": "Party not found"})
             return
 
@@ -447,6 +468,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
 
         # Check if there's a current video
         if not party.get("current_video"):
+            logger.warning(f"Stop video failed: no video playing in party {party_id}")
             emit("error", {"message": "No video is currently playing"})
             return
 
@@ -598,7 +620,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
 
             # If video was playing, force pause everyone (including seeker) for better buffering
             if was_playing:
-                logger.debug(
+                logger.info(
                     f"Seek during playback - pausing all clients (including seeker) first for buffering"
                 )
                 # First, pause everyone INCLUDING the seeking client
@@ -627,6 +649,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             party_id not in watch_parties
             or not watch_parties[party_id]["current_video"]
         ):
+            logger.warning(f"Stream change requested but no video playing in party {party_id}")
             emit("error", {"message": "No video currently playing"})
             return
 
@@ -648,7 +671,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 if stream.get("Type") == "Video":
                     source_video_codec = (stream.get("Codec") or "").lower()
                     source_video_bitrate = stream.get("BitRate")
-                    logger.debug(f"Source video codec: {source_video_codec}, bitrate: {source_video_bitrate}")
+                    logger.info(f"Source video codec: {source_video_codec}, bitrate: {source_video_bitrate}")
                     break
 
             # Build direct Emby HLS URL with authentication
@@ -672,14 +695,14 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 # Non-h264 sources need full transcoding
                 params.append("VideoCodec=h264")
                 params.append(f"VideoBitrate={max_bitrate}")
-                logger.debug(f"Source is {source_video_codec}, transcoding to h264 at max {max_bitrate // 1_000_000}Mbps")
+                logger.info(f"Source is {source_video_codec}, transcoding to h264 at max {max_bitrate // 1_000_000}Mbps")
             elif source_video_bitrate and source_video_bitrate > max_bitrate:
                 # h264 but bitrate too high (e.g. Blu-ray remux at 24Mbps) - transcode to cap bitrate
                 params.append("VideoCodec=h264")
                 params.append(f"VideoBitrate={max_bitrate}")
-                logger.debug(f"Source is h264 but bitrate {source_video_bitrate // 1_000_000}Mbps exceeds cap, transcoding at max {max_bitrate // 1_000_000}Mbps")
+                logger.info(f"Source is h264 but bitrate {source_video_bitrate // 1_000_000}Mbps exceeds cap, transcoding at max {max_bitrate // 1_000_000}Mbps")
             else:
-                logger.debug(f"Source is h264 at {(source_video_bitrate or 0) // 1_000_000}Mbps, allowing direct stream/remux")
+                logger.info(f"Source is h264 at {(source_video_bitrate or 0) // 1_000_000}Mbps, allowing direct stream/remux")
 
             # Add audio stream index to select specific audio track
             # This is important for videos with multiple audio tracks (different languages)
@@ -712,12 +735,12 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                     # Burn-in PGS subtitles for perfect quality (image-based)
                     params.append(f"SubtitleStreamIndex={subtitle_index}")
                     params.append("SubtitleMethod=Encode")  # Force burn-in
-                    logger.debug(f"Burning in PGS subtitle track {subtitle_index}")
+                    logger.info(f"Burning in PGS subtitle track {subtitle_index}")
                 else:
                     # Text-based subtitles: load separately as VTT for better control
                     # Don't add SubtitleStreamIndex parameter - let Emby ignore subtitles
-                    logger.debug(
-                        f"Text subtitle {subtitle_index} will be loaded separately as VTT (not burning)"
+                    logger.info(
+                        f"Text subtitle {subtitle_index} will be loaded separately as VTT"
                     )
             else:
                 # No subtitles selected - don't add any subtitle parameters
