@@ -118,6 +118,14 @@
             window.location.href = appPrefix + `/party/${partyCode}`;
         });
 
+        // Reset button state when page is restored from back/forward cache
+        window.addEventListener('pageshow', (e) => {
+            if (e.persisted) {
+                createPartyBtn.disabled = false;
+                status.textContent = '';
+            }
+        });
+
         partyCodeInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 joinPartyBtn.click();
