@@ -33,7 +33,7 @@ Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https:/
   - Users navigating to `/` should be redirected straight into the party (no create/join page)
   - Party should persist when all users disconnect and be recreated if somehow deleted
   - Useful for home servers with a small group of regulars
-  - Feature request [#10](https://github.com/Oratorian/emby-watchparty/issues/10)
+  - Feature request [#10](https://github.com/Oratorian/emby-watchparty/issues/10) by **[daniilkopylov](https://github.com/daniilkopylov)**
 - **Persistent usernames via localStorage**: Returning users should skip the username modal and auto-join with their saved name
   - First visit: username modal shown as before
   - Subsequent visits: should auto-join with saved name from `localStorage`
