@@ -178,6 +178,9 @@
         if (video.subtitle_index !== undefined) {
             S.dom.subtitleSelect.value = video.subtitle_index === null ? 'none' : video.subtitle_index;
         }
+        if (video.quality) {
+            S.dom.qualitySelect.value = video.quality;
+        }
 
         // Video ready handler
         ve.onloadedmetadata = function() {
@@ -363,7 +366,7 @@
             S.dom.skipIntroBtn.addEventListener('click', skipIntro);
         }
 
-        // Audio/subtitle dropdown change listeners
+        // Audio/subtitle/quality dropdown change listeners
         S.dom.audioSelect.addEventListener('change', function() {
             var audioIndex = S.dom.audioSelect.value === 'none' ? null : parseInt(S.dom.audioSelect.value);
             var subtitleIndex = S.dom.subtitleSelect.value === 'none' ? null : parseInt(S.dom.subtitleSelect.value);
@@ -371,7 +374,8 @@
             S.socket.emit('change_streams', {
                 party_id: S.partyId,
                 audio_index: audioIndex,
-                subtitle_index: subtitleIndex
+                subtitle_index: subtitleIndex,
+                quality: S.dom.qualitySelect.value
             });
         });
 
@@ -386,9 +390,22 @@
                 S.socket.emit('change_streams', {
                     party_id: S.partyId,
                     audio_index: audioIndex,
-                    subtitle_index: subtitleIndex
+                    subtitle_index: subtitleIndex,
+                    quality: S.dom.qualitySelect.value
                 });
             }
+        });
+
+        S.dom.qualitySelect.addEventListener('change', function() {
+            var audioIndex = S.dom.audioSelect.value === 'none' ? null : parseInt(S.dom.audioSelect.value);
+            var subtitleIndex = S.dom.subtitleSelect.value === 'none' ? null : parseInt(S.dom.subtitleSelect.value);
+
+            S.socket.emit('change_streams', {
+                party_id: S.partyId,
+                audio_index: audioIndex,
+                subtitle_index: subtitleIndex,
+                quality: S.dom.qualitySelect.value
+            });
         });
 
         // Video ended listener
@@ -619,6 +636,9 @@
             }
             if (data.video.subtitle_index !== undefined) {
                 S.dom.subtitleSelect.value = data.video.subtitle_index === null ? 'none' : data.video.subtitle_index;
+            }
+            if (data.video.quality) {
+                S.dom.qualitySelect.value = data.video.quality;
             }
 
             window.PartyChat.addSystemMessage('Stream settings changed');

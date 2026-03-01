@@ -71,6 +71,8 @@ class EmbyClient:
                 else "No access token"
             )
 
+            self._register_device_capabilities()
+
         except Exception as e:
             self.logger.error(f"Error authenticating user: {e}")
             self.logger.warning("Falling back to API key authentication")
@@ -94,9 +96,55 @@ class EmbyClient:
                 )
             else:
                 self.logger.warning("No Emby users found, some features may not work")
+
+            self._register_device_capabilities()
+
         except Exception as e:
             self.logger.error(f"Error fetching user ID: {e}")
             self.logger.warning("Some API features may not work without user context")
+
+    def _register_device_capabilities(self):
+        """Register device capabilities with Emby so it produces correct transcodes"""
+        capabilities = {
+            "PlayableMediaTypes": ["Video", "Audio"],
+            "SupportedCommands": [],
+            "SupportsMediaControl": False,
+            "SupportsPersistentIdentifier": False,
+            "DeviceProfile": {
+                "MaxStreamingBitrate": 10_000_000,
+                "TranscodingProfiles": [
+                    {
+                        "Container": "ts",
+                        "Type": "Video",
+                        "VideoCodec": "h264",
+                        "AudioCodec": "aac,mp3",
+                        "Protocol": "hls"
+                    }
+                ],
+                "DirectPlayProfiles": [
+                    {
+                        "Container": "mp4,mkv",
+                        "Type": "Video",
+                        "VideoCodec": "h264",
+                        "AudioCodec": "aac,mp3"
+                    }
+                ],
+                "SubtitleProfiles": [
+                    {"Format": "vtt", "Method": "External"},
+                    {"Format": "srt", "Method": "External"},
+                    {"Format": "pgs", "Method": "Encode"},
+                    {"Format": "pgssub", "Method": "Encode"},
+                    {"Format": "dvdsub", "Method": "Encode"}
+                ]
+            }
+        }
+        try:
+            url = f"{self.server_url}/emby/Sessions/Capabilities/Full"
+            response = requests.post(url, headers=self.headers, json=capabilities)
+            response.raise_for_status()
+            self.logger.info("Registered device capabilities with Emby")
+        except Exception as e:
+            self.logger.warning(f"Failed to register device capabilities: {e}")
 
     def get_libraries(self):
         """Get media libraries accessible to the authenticated user"""

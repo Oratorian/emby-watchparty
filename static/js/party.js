@@ -27,6 +27,7 @@
         sendChatBtn: document.getElementById('sendChatBtn'),
         audioSelect: document.getElementById('audioSelect'),
         subtitleSelect: document.getElementById('subtitleSelect'),
+        qualitySelect: document.getElementById('qualitySelect'),
         searchInput: document.getElementById('searchInput'),
         clearSearchBtn: document.getElementById('clearSearchBtn'),
         stopVideoBtn: document.getElementById('stopVideoBtn'),
