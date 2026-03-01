@@ -12,6 +12,119 @@ import requests
 from src import __version__
 
 
+QUALITY_PRESETS = {
+    "1080p-high": {"max_width": 1920, "max_height": 1080, "bitrate": 10_000_000, "label": "1080p (10 Mbps)"},
+    "1080p":      {"max_width": 1920, "max_height": 1080, "bitrate": 8_000_000,  "label": "1080p (8 Mbps)"},
+    "720p":       {"max_width": 1280, "max_height": 720,  "bitrate": 4_000_000,  "label": "720p (4 Mbps)"},
+    "480p":       {"max_width": 854,  "max_height": 480,  "bitrate": 1_500_000,  "label": "480p (1.5 Mbps)"},
+    "360p":       {"max_width": 640,  "max_height": 360,  "bitrate": 500_000,    "label": "360p (0.5 Mbps)"},
+}
+DEFAULT_QUALITY = "1080p-high"
+
+
+def build_stream_params(emby_client, media_source, media_source_id, play_session_id,
+                        audio_index, subtitle_index, quality, logger):
+    """
+    Build HLS stream URL parameters for Emby.
+
+    Args:
+        emby_client: EmbyClient instance (for device_id, api_key)
+        media_source: MediaSource dict from Emby PlaybackInfo
+        media_source_id: MediaSource ID string
+        play_session_id: PlaySession ID string
+        audio_index: Audio stream index (int or None)
+        subtitle_index: Subtitle stream index (int or None)
+        quality: Quality preset key (e.g. "1080p", "720p")
+        logger: Logger instance
+
+    Returns:
+        list of URL parameter strings
+    """
+    preset = QUALITY_PRESETS.get(quality, QUALITY_PRESETS[DEFAULT_QUALITY])
+    max_width = preset["max_width"]
+    max_height = preset["max_height"]
+    max_bitrate = preset["bitrate"]
+
+    # Detect source video codec and bitrate
+    source_video_codec = None
+    source_video_bitrate = None
+    for stream in media_source.get("MediaStreams", []):
+        if stream.get("Type") == "Video":
+            source_video_codec = (stream.get("Codec") or "").lower()
+            source_video_bitrate = stream.get("BitRate")
+            logger.info(f"Source video codec: {source_video_codec}, bitrate: {source_video_bitrate}")
+            break
+
+    params = [
+        f"MediaSourceId={media_source_id}",
+        f"PlaySessionId={play_session_id}",
+        f"DeviceId={emby_client.device_id}",
+        f"api_key={emby_client.api_key}",
+        "SegmentContainer=ts",
+        "TranscodingMaxAudioChannels=2",
+        "AudioCodec=aac,mp3",
+        "BreakOnNonKeyFrames=True",
+        "MaxAudioChannels=2",
+        f"MaxWidth={max_width}",
+        f"MaxHeight={max_height}",
+    ]
+
+    # Determine if transcoding is needed
+    source_width = None
+    for stream in media_source.get("MediaStreams", []):
+        if stream.get("Type") == "Video":
+            source_width = stream.get("Width")
+            break
+
+    needs_downscale = source_width and source_width > max_width
+
+    if source_video_codec != "h264" or needs_downscale:
+        params.append("VideoCodec=h264")
+        params.append(f"VideoBitrate={max_bitrate}")
+        if source_video_codec != "h264":
+            logger.info(f"Source is {source_video_codec}, transcoding to h264 at {preset['label']}")
+        else:
+            logger.info(f"Downscaling from {source_width}px to {max_width}px at {preset['label']}")
+    elif source_video_bitrate and source_video_bitrate > max_bitrate:
+        params.append("VideoCodec=h264")
+        params.append(f"VideoBitrate={max_bitrate}")
+        logger.info(f"Source is h264 but bitrate {source_video_bitrate // 1_000_000}Mbps exceeds cap, transcoding at {preset['label']}")
+    else:
+        logger.info(f"Source is h264 at {(source_video_bitrate or 0) // 1_000_000}Mbps, quality preset {preset['label']}")
+
+    # Audio stream selection
+    if audio_index is not None:
+        params.append(f"AudioStreamIndex={audio_index}")
+        logger.debug(f"Using audio stream index: {audio_index}")
+    else:
+        logger.debug("No audio stream index specified, Emby will use default")
+
+    # Subtitle handling
+    if subtitle_index is not None and subtitle_index != -1:
+        is_pgs = False
+        for stream in media_source["MediaStreams"]:
+            if (
+                stream.get("Type") == "Subtitle"
+                and stream.get("Index") == subtitle_index
+            ):
+                codec = stream.get("Codec", "").lower()
+                is_pgs = codec in [
+                    "pgssub", "pgs", "dvd_subtitle", "dvdsub", "vobsub",
+                ]
+                break
+
+        if is_pgs:
+            params.append(f"SubtitleStreamIndex={subtitle_index}")
+            params.append("SubtitleMethod=Encode")
+            logger.info(f"Burning in PGS subtitle track {subtitle_index}")
+        else:
+            logger.info(f"Text subtitle {subtitle_index} will be loaded separately as VTT")
+    else:
+        logger.debug("No subtitles selected - omitting subtitle parameters")
+
+    return params
+
+
 def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
     """
     Initialize all SocketIO event handlers with dependency injection
@@ -135,6 +248,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                 "subtitle_index": party["current_video"]["subtitle_index"],
                 "media_source_id": party["current_video"].get("media_source_id"),
                 "selected_by": party["current_video"].get("selected_by"),
+                "quality": party["current_video"].get("quality", DEFAULT_QUALITY),
             }
 
             # Add stream URL with individual token
@@ -252,91 +366,15 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             # Don't auto-select default subtitles - let users opt-in
             # (Removed automatic default subtitle selection)
 
-            # Detect source video codec and bitrate to decide if transcoding is needed
-            source_video_codec = None
-            source_video_bitrate = None
-            for stream in media_source.get("MediaStreams", []):
-                if stream.get("Type") == "Video":
-                    source_video_codec = (stream.get("Codec") or "").lower()
-                    source_video_bitrate = stream.get("BitRate")
-                    logger.info(f"Source video codec: {source_video_codec}, bitrate: {source_video_bitrate}")
-                    break
+            # Build HLS stream URL using quality preset
+            quality = data.get("quality")
+            if not quality or quality not in QUALITY_PRESETS:
+                quality = DEFAULT_QUALITY
+            params = build_stream_params(
+                emby_client, media_source, media_source_id, play_session_id,
+                audio_index, subtitle_index, quality, logger
+            )
 
-            # Build direct Emby HLS URL with authentication
-            params = [
-                f"MediaSourceId={media_source_id}",
-                f"PlaySessionId={play_session_id}",
-                f"DeviceId={emby_client.device_id}",
-                f"api_key={emby_client.api_key}",
-                "SegmentContainer=ts",
-                "TranscodingMaxAudioChannels=2",  # Ensure audio is included
-                "AudioCodec=aac,mp3",  # Support AAC and MP3 for better compatibility (handles TrueHD, FLAC, etc.)
-                "BreakOnNonKeyFrames=True",  # Allow seeking to any point
-                "MaxAudioChannels=2",  # Downmix to stereo for TrueHD/multi-channel audio
-                "MaxWidth=1920",   # Limit resolution to 1080p max
-                "MaxHeight=1080",  # Limit resolution to 1080p max
-            ]
-
-            max_bitrate = 10_000_000  # 10 Mbps cap
-
-            if source_video_codec != "h264":
-                # Non-h264 sources need full transcoding
-                params.append("VideoCodec=h264")
-                params.append(f"VideoBitrate={max_bitrate}")
-                logger.info(f"Source is {source_video_codec}, transcoding to h264 at max {max_bitrate // 1_000_000}Mbps")
-            elif source_video_bitrate and source_video_bitrate > max_bitrate:
-                # h264 but bitrate too high (e.g. Blu-ray remux at 24Mbps) - transcode to cap bitrate
-                params.append("VideoCodec=h264")
-                params.append(f"VideoBitrate={max_bitrate}")
-                logger.info(f"Source is h264 but bitrate {source_video_bitrate // 1_000_000}Mbps exceeds cap, transcoding at max {max_bitrate // 1_000_000}Mbps")
-            else:
-                logger.info(f"Source is h264 at {(source_video_bitrate or 0) // 1_000_000}Mbps, allowing direct stream/remux")
-
-            # Add audio stream index to select specific audio track
-            # This is important for videos with multiple audio tracks (different languages)
-            if audio_index is not None:
-                params.append(f"AudioStreamIndex={audio_index}")
-                logger.debug(f"Using audio stream index: {audio_index}")
-            else:
-                logger.debug("No audio stream index specified, Emby will use default")
-
-            # Handle subtitle burning based on subtitle type
-            if subtitle_index is not None and subtitle_index != -1:
-                # Check if this is a PGS/image-based subtitle that needs burn-in
-                is_pgs = False
-                for stream in media_source["MediaStreams"]:
-                    if (
-                        stream.get("Type") == "Subtitle"
-                        and stream.get("Index") == subtitle_index
-                    ):
-                        codec = stream.get("Codec", "").lower()
-                        is_pgs = codec in [
-                            "pgssub",
-                            "pgs",
-                            "dvd_subtitle",
-                            "dvdsub",
-                            "vobsub",
-                        ]
-                        break
-
-                if is_pgs:
-                    # Burn-in PGS subtitles for perfect quality (image-based)
-                    params.append(f"SubtitleStreamIndex={subtitle_index}")
-                    params.append("SubtitleMethod=Encode")  # Force burn-in
-                    logger.info(f"Burning in PGS subtitle track {subtitle_index}")
-                else:
-                    # Text-based subtitles: load separately as VTT for better control
-                    # Don't add SubtitleStreamIndex parameter - let Emby ignore subtitles
-                    logger.info(
-                        f"Text subtitle {subtitle_index} will be loaded separately as VTT"
-                    )
-            else:
-                # No subtitles selected - don't add any subtitle parameters
-                # This prevents Emby from auto-selecting default/forced subtitles
-                logger.debug("No subtitles selected - omitting subtitle parameters")
-
-            # Use Flask proxy URL to keep Emby internal (WITHOUT token)
-            # Include APP_PREFIX for reverse proxy deployments
             app_prefix = getattr(config, 'APP_PREFIX', '')
             stream_url_base = f"{app_prefix}/hls/{item_id}/master.m3u8?{'&'.join(params)}"
         else:
@@ -374,6 +412,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             "play_session_id": play_session_id,  # Needed for playback progress reporting
             "run_time_seconds": run_time_seconds,  # Total duration for progress reporting
             "selected_by": request.sid,  # Track who selected this video
+            "quality": quality,  # Current quality preset
         }
 
         # Report playback start to Emby so progress is tracked
@@ -435,6 +474,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                         "subtitle_index": subtitle_index,
                         "media_source_id": media_source_id,  # Needed for subtitle URLs
                         "selected_by": request.sid,  # Track who selected this video
+                        "quality": quality,
                     }
                 },
                 to=user_sid,
@@ -638,12 +678,13 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
 
     @socketio.on("change_streams")
     def handle_change_streams(data):
-        """Handle audio/subtitle stream changes"""
+        """Handle audio/subtitle/quality stream changes"""
         party_id = (
             data.get("party_id", "").strip().upper()
         )  # Convert to uppercase for case-insensitive matching
         audio_index = data.get("audio_index")
         subtitle_index = data.get("subtitle_index")
+        quality = data.get("quality")
 
         if (
             party_id not in watch_parties
@@ -656,6 +697,10 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
         current_video = watch_parties[party_id]["current_video"]
         item_id = current_video["item_id"]
 
+        # Use provided quality or fall back to current party quality
+        if not quality or quality not in QUALITY_PRESETS:
+            quality = current_video.get("quality", DEFAULT_QUALITY)
+
         # Get PlaybackInfo for new stream parameters
         playback_info = emby_client.get_playback_info(item_id)
 
@@ -664,91 +709,12 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             play_session_id = playback_info.get("PlaySessionId")
             media_source = playback_info["MediaSources"][0]
 
-            # Detect source video codec and bitrate to decide if transcoding is needed
-            source_video_codec = None
-            source_video_bitrate = None
-            for stream in media_source.get("MediaStreams", []):
-                if stream.get("Type") == "Video":
-                    source_video_codec = (stream.get("Codec") or "").lower()
-                    source_video_bitrate = stream.get("BitRate")
-                    logger.info(f"Source video codec: {source_video_codec}, bitrate: {source_video_bitrate}")
-                    break
+            # Build HLS stream URL using quality preset
+            params = build_stream_params(
+                emby_client, media_source, media_source_id, play_session_id,
+                audio_index, subtitle_index, quality, logger
+            )
 
-            # Build direct Emby HLS URL with authentication
-            params = [
-                f"MediaSourceId={media_source_id}",
-                f"PlaySessionId={play_session_id}",
-                f"DeviceId={emby_client.device_id}",
-                f"api_key={emby_client.api_key}",
-                "SegmentContainer=ts",
-                "TranscodingMaxAudioChannels=2",  # Ensure audio is included
-                "AudioCodec=aac,mp3",  # Support AAC and MP3 for better compatibility (handles TrueHD, FLAC, etc.)
-                "BreakOnNonKeyFrames=True",  # Allow seeking to any point
-                "MaxAudioChannels=2",  # Downmix to stereo for TrueHD/multi-channel audio
-                "MaxWidth=1920",   # Limit resolution to 1080p max
-                "MaxHeight=1080",  # Limit resolution to 1080p max
-            ]
-
-            max_bitrate = 10_000_000  # 10 Mbps cap
-
-            if source_video_codec != "h264":
-                # Non-h264 sources need full transcoding
-                params.append("VideoCodec=h264")
-                params.append(f"VideoBitrate={max_bitrate}")
-                logger.info(f"Source is {source_video_codec}, transcoding to h264 at max {max_bitrate // 1_000_000}Mbps")
-            elif source_video_bitrate and source_video_bitrate > max_bitrate:
-                # h264 but bitrate too high (e.g. Blu-ray remux at 24Mbps) - transcode to cap bitrate
-                params.append("VideoCodec=h264")
-                params.append(f"VideoBitrate={max_bitrate}")
-                logger.info(f"Source is h264 but bitrate {source_video_bitrate // 1_000_000}Mbps exceeds cap, transcoding at max {max_bitrate // 1_000_000}Mbps")
-            else:
-                logger.info(f"Source is h264 at {(source_video_bitrate or 0) // 1_000_000}Mbps, allowing direct stream/remux")
-
-            # Add audio stream index to select specific audio track
-            # This is important for videos with multiple audio tracks (different languages)
-            if audio_index is not None:
-                params.append(f"AudioStreamIndex={audio_index}")
-                logger.debug(f"Using audio stream index: {audio_index}")
-            else:
-                logger.debug("No audio stream index specified, Emby will use default")
-
-            # Handle subtitle burning based on subtitle type
-            if subtitle_index is not None and subtitle_index != -1:
-                # Check if this is a PGS/image-based subtitle that needs burn-in
-                is_pgs = False
-                for stream in media_source["MediaStreams"]:
-                    if (
-                        stream.get("Type") == "Subtitle"
-                        and stream.get("Index") == subtitle_index
-                    ):
-                        codec = stream.get("Codec", "").lower()
-                        is_pgs = codec in [
-                            "pgssub",
-                            "pgs",
-                            "dvd_subtitle",
-                            "dvdsub",
-                            "vobsub",
-                        ]
-                        break
-
-                if is_pgs:
-                    # Burn-in PGS subtitles for perfect quality (image-based)
-                    params.append(f"SubtitleStreamIndex={subtitle_index}")
-                    params.append("SubtitleMethod=Encode")  # Force burn-in
-                    logger.info(f"Burning in PGS subtitle track {subtitle_index}")
-                else:
-                    # Text-based subtitles: load separately as VTT for better control
-                    # Don't add SubtitleStreamIndex parameter - let Emby ignore subtitles
-                    logger.info(
-                        f"Text subtitle {subtitle_index} will be loaded separately as VTT"
-                    )
-            else:
-                # No subtitles selected - don't add any subtitle parameters
-                # This prevents Emby from auto-selecting default/forced subtitles
-                logger.debug("No subtitles selected - omitting subtitle parameters")
-
-            # Use Flask proxy URL to keep Emby internal (WITHOUT token)
-            # Include APP_PREFIX for reverse proxy deployments
             app_prefix = getattr(config, 'APP_PREFIX', '')
             stream_url_base = f"{app_prefix}/hls/{item_id}/master.m3u8?{'&'.join(params)}"
         else:
@@ -756,14 +722,40 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
             emit("error", {"message": "Failed to change streams"})
             return
 
+        # Stop old transcode and report new playback session to Emby
+        # This updates Emby's dashboard to show the current quality/bitrate
+        old_play_session_id = current_video.get("play_session_id")
+        if old_play_session_id:
+            current_time = watch_parties[party_id]["playback_state"]["time"]
+            emby_client.report_playback_stopped(
+                item_id=item_id,
+                media_source_id=current_video.get("media_source_id"),
+                play_session_id=old_play_session_id,
+                position_seconds=current_time,
+                run_time_seconds=current_video.get("run_time_seconds")
+            )
+
         # Update the video info with base URL (no token)
         current_video["stream_url_base"] = stream_url_base
         current_video["audio_index"] = audio_index
         current_video["subtitle_index"] = subtitle_index
         current_video["media_source_id"] = media_source_id
+        current_video["play_session_id"] = play_session_id
+        current_video["quality"] = quality
+
+        # Report new playback start so Emby dashboard reflects current quality
+        current_time = watch_parties[party_id]["playback_state"]["time"]
+        emby_client.report_playback_start(
+            item_id=item_id,
+            media_source_id=media_source_id,
+            play_session_id=play_session_id,
+            position_seconds=current_time,
+            audio_index=audio_index,
+            subtitle_index=subtitle_index if subtitle_index != -1 else None,
+            run_time_seconds=current_video.get("run_time_seconds")
+        )
 
         # Send stream change to each user with their individual token
-        current_time = watch_parties[party_id]["playback_state"]["time"]
 
         for user_sid in watch_parties[party_id]["users"].keys():
             stream_url_with_token = stream_url_base
@@ -789,6 +781,7 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
                         "subtitle_index": subtitle_index,
                         "media_source_id": media_source_id,
                         "selected_by": current_video.get("selected_by"),
+                        "quality": quality,
                     },
                     "current_time": current_time,
                 },

@@ -10,6 +10,20 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
+## [1.4.1-alpha-6] - 2026-03-01
+
+### Added
+- **Quality selection**: Users can choose stream quality from a dropdown (1080p 10Mbps, 1080p 8Mbps, 720p 4Mbps, 480p 1.5Mbps, 360p 0.5Mbps)
+  - Quality is party-wide (shared transcode session), persists across media changes and audio/subtitle switches
+  - Late-joining users sync to the current party quality
+  - Pre-selectable before picking a video
+  - Feature request [#14](https://github.com/Oratorian/emby-watchparty/issues/14) by **[wlowen](https://github.com/wlowen)**
+- **Device profile registration**: WatchParty now registers its codec/container capabilities with Emby on startup for correct transcode behavior
+- **Emby dashboard sync on quality change**: Changing quality mid-playback now stops the old session and starts a new one so Emby's dashboard reflects the actual transcode settings (Needed so Emby actually transcodes to our selected Quality)
+
+### Changed
+- **Refactored stream parameter building**: Extracted duplicated ~80-line param-building blocks from `select_video` and `change_streams` into a shared `build_stream_params()` helper
+
 ## [1.4.1-alpha-5] - 2026-03-01
 
 ### Fixed

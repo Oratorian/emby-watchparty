@@ -427,7 +427,8 @@
             party_id: S.partyId,
             item_id: item.Id,
             item_name: item.Name,
-            item_overview: item.Overview || ''
+            item_overview: item.Overview || '',
+            quality: S.dom.qualitySelect ? S.dom.qualitySelect.value : undefined
         });
 
         S.canStopVideo = true;
