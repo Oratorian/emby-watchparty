@@ -10,6 +10,22 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
+## [1.4.1-alpha-7] - 2026-03-01
+
+### Changed
+- **Split routes into package**: Refactored monolithic `src/routes.py` (~1150 lines) into `src/routes/` package with 6 focused modules (pages, auth, library, media, hls, party_api)
+- **Split socket handlers into package**: Refactored monolithic `src/socket_handlers.py` (~940 lines) into `src/socket_handlers/` package with 7 focused modules (connection, party, playback, sync, chat, quality, updates)
+- Both packages use a shared deps dict pattern for dependency injection, keeping the same public API (`init_routes`, `init_socket_handlers`, `check_for_updates`)
+
+### Added
+- **Version info page**: Dedicated `/version` page showing current version, update check, dependency licenses, credits, and support links
+- **Version modal in party view**: Version info accessible from party header without interrupting video playback
+- **Codename system**: Each release gets a fun codename (current: "Toasted Pretzel"), shown in startup banner and version page
+
+### Fixed
+- **Create party button stuck after browser back**: `pageshow` event listener re-enables the button when the page is restored from bfcache -- [#18](https://github.com/Oratorian/emby-watchparty/issues/18) by **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)**
+- **Header collapse leaving black bar**: Changed from `max-height: 0` to `display: none` to fully hide the collapsed header
+
 ## [1.4.1-alpha-6] - 2026-03-01
 
 ### Added
