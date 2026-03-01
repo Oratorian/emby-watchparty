@@ -136,6 +136,8 @@ jobs:
             type=raw,value=latest,enable=${{ github.event_name != 'workflow_dispatch' && steps.get_version.outputs.IS_PRERELEASE != 'true' }}
             type=raw,value=${{ steps.get_version.outputs.VERSION }},enable=${{ github.event_name == 'workflow_dispatch' }}
             type=raw,value=${{ steps.get_version.outputs.VERSION }},enable=${{ steps.get_version.outputs.IS_PRERELEASE == 'true' }}
+            type=raw,value=nightly,enable=${{ steps.get_version.outputs.IS_PRERELEASE == 'true' }}
+            type=raw,value=devel,enable=${{ steps.get_version.outputs.IS_PRERELEASE == 'true' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
