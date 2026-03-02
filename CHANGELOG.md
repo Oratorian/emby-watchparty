@@ -14,8 +14,7 @@ Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https:/
 
 ### Fixed
 - **Regex injection in HLS proxy**: Route parameter `item_id` is now escaped with `re.escape()` before interpolation into regex patterns
-- **Reflected XSS in image proxy**: Content-Type header from upstream is now whitelisted to `image/*` types only
-- **Reflected XSS in subtitle/image proxy**: Added `X-Content-Type-Options: nosniff` header to all proxy responses (images, subtitles, HLS)
+- **Reflected XSS in image/subtitle proxy**: Proxy responses now use explicit `flask.Response` objects with whitelisted Content-Type and `X-Content-Type-Options: nosniff` headers
 - **DOM XSS in party code input**: Party code is now sanitized to alphanumeric characters and URL-encoded before navigation
 
 ### Changed
