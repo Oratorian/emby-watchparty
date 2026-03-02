@@ -108,14 +108,14 @@
         });
 
         joinPartyBtn.addEventListener('click', () => {
-            const partyCode = partyCodeInput.value.trim();
+            const partyCode = partyCodeInput.value.trim().replace(/[^a-zA-Z0-9]/g, '');
 
             if (!partyCode) {
-                status.textContent = 'Please enter a party code';
+                status.textContent = 'Please enter a valid party code';
                 return;
             }
 
-            window.location.href = appPrefix + `/party/${partyCode}`;
+            window.location.href = appPrefix + `/party/${encodeURIComponent(partyCode)}`;
         });
 
         // Reset button state when page is restored from back/forward cache

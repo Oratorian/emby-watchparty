@@ -114,13 +114,16 @@ def register(deps):
         try:
             response = requests.get(image_url, headers=emby_client.headers)
             if response.status_code == 200:
+                # Whitelist Content-Type to image types only
+                upstream_ct = response.headers.get("Content-Type", "image/jpeg")
+                if not upstream_ct.startswith("image/"):
+                    upstream_ct = "image/jpeg"
                 return (
                     response.content,
                     200,
                     {
-                        "Content-Type": response.headers.get(
-                            "Content-Type", "image/jpeg"
-                        )
+                        "Content-Type": upstream_ct,
+                        "X-Content-Type-Options": "nosniff",
                     },
                 )
             else:
@@ -164,7 +167,11 @@ def register(deps):
                 return (
                     response.content,
                     200,
-                    {"Content-Type": "text/vtt", "Access-Control-Allow-Origin": "*"},
+                    {
+                        "Content-Type": "text/vtt",
+                        "Access-Control-Allow-Origin": "*",
+                        "X-Content-Type-Options": "nosniff",
+                    },
                 )
             else:
                 logger.warning(

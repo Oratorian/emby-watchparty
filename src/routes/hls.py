@@ -73,8 +73,9 @@ def register(deps):
             # Replace absolute Emby URLs with proxy URLs
             # Pattern: http://server/emby/Videos/ITEMID/path -> /prefix/hls/ITEMID/path?token=...
             before_rewrite = playlist_content
+            escaped_id = re.escape(item_id)
             playlist_content = re.sub(
-                rf"{re.escape(config.EMBY_SERVER_URL)}/emby/Videos/{item_id}/",
+                rf"{re.escape(config.EMBY_SERVER_URL)}/emby/Videos/{escaped_id}/",
                 f"{app_prefix}/hls/{item_id}/",
                 playlist_content,
             )
@@ -85,7 +86,7 @@ def register(deps):
             # Pattern: /emby/Videos/ITEMID/path -> /prefix/hls/ITEMID/path?token=...
             before_rewrite = playlist_content
             playlist_content = re.sub(
-                rf"/emby/Videos/{item_id}/", f"{app_prefix}/hls/{item_id}/", playlist_content
+                rf"/emby/Videos/{escaped_id}/", f"{app_prefix}/hls/{item_id}/", playlist_content
             )
             if before_rewrite != playlist_content:
                 logger.debug("Rewrote relative Emby URLs to proxy URLs")
@@ -128,6 +129,7 @@ def register(deps):
             response.headers["Access-Control-Allow-Origin"] = "*"
             response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Range"
+            response.headers["X-Content-Type-Options"] = "nosniff"
 
             return response
 
@@ -206,15 +208,16 @@ def register(deps):
                 )
 
                 # Replace absolute Emby URLs with proxy URLs
+                escaped_id = re.escape(item_id)
                 playlist_content = re.sub(
-                    rf"{re.escape(config.EMBY_SERVER_URL)}/emby/Videos/{item_id}/",
+                    rf"{re.escape(config.EMBY_SERVER_URL)}/emby/Videos/{escaped_id}/",
                     f"{app_prefix}/hls/{item_id}/",
                     playlist_content,
                 )
 
                 # Also handle relative URLs
                 playlist_content = re.sub(
-                    rf"/emby/Videos/{item_id}/", f"{app_prefix}/hls/{item_id}/", playlist_content
+                    rf"/emby/Videos/{escaped_id}/", f"{app_prefix}/hls/{item_id}/", playlist_content
                 )
 
                 # Add token parameter to segment URLs if needed
@@ -254,6 +257,7 @@ def register(deps):
             response.headers["Access-Control-Allow-Origin"] = "*"
             response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Range"
+            response.headers["X-Content-Type-Options"] = "nosniff"
 
             return response
 

@@ -10,6 +10,17 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
+## [1.5.1] - 2026-03-02
+
+### Fixed
+- **Regex injection in HLS proxy**: Route parameter `item_id` is now escaped with `re.escape()` before interpolation into regex patterns
+- **Reflected XSS in image proxy**: Content-Type header from upstream is now whitelisted to `image/*` types only
+- **Reflected XSS in subtitle/image proxy**: Added `X-Content-Type-Options: nosniff` header to all proxy responses (images, subtitles, HLS)
+- **DOM XSS in party code input**: Party code is now sanitized to alphanumeric characters and URL-encoded before navigation
+
+### Changed
+- **Updated dependencies**: Flask 3.0.0 to >=3.1.3, python-socketio 5.10.0 to 5.14.0, requests 2.31.0 to >=2.32.4
+
 ## [1.5.0] - 2026-03-02
 
 ### Added
