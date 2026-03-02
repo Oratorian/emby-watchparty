@@ -3,7 +3,7 @@ Media Routes - Intro info, images, subtitles
 Routes: /api/intro/<id>, /api/image/<id>, /api/subtitles/<id>/<msid>/<idx>
 """
 
-from flask import request, jsonify
+from flask import request, jsonify, Response
 import requests
 
 
@@ -112,20 +112,15 @@ def register(deps):
         image_url = emby_client.get_image_url(item_id, image_type)
 
         try:
-            response = requests.get(image_url, headers=emby_client.headers)
-            if response.status_code == 200:
+            emby_resp = requests.get(image_url, headers=emby_client.headers)
+            if emby_resp.status_code == 200:
                 # Whitelist Content-Type to image types only
-                upstream_ct = response.headers.get("Content-Type", "image/jpeg")
+                upstream_ct = emby_resp.headers.get("Content-Type", "image/jpeg")
                 if not upstream_ct.startswith("image/"):
                     upstream_ct = "image/jpeg"
-                return (
-                    response.content,
-                    200,
-                    {
-                        "Content-Type": upstream_ct,
-                        "X-Content-Type-Options": "nosniff",
-                    },
-                )
+                resp = Response(emby_resp.content, mimetype=upstream_ct)
+                resp.headers["X-Content-Type-Options"] = "nosniff"
+                return resp
             else:
                 return "", 404
         except Exception as e:
@@ -162,20 +157,15 @@ def register(deps):
 
             logger.debug(f"Fetching subtitle: {subtitle_url}")
 
-            response = requests.get(subtitle_url, headers=emby_client.headers)
-            if response.status_code == 200:
-                return (
-                    response.content,
-                    200,
-                    {
-                        "Content-Type": "text/vtt",
-                        "Access-Control-Allow-Origin": "*",
-                        "X-Content-Type-Options": "nosniff",
-                    },
-                )
+            emby_resp = requests.get(subtitle_url, headers=emby_client.headers)
+            if emby_resp.status_code == 200:
+                resp = Response(emby_resp.content, mimetype="text/vtt")
+                resp.headers["Access-Control-Allow-Origin"] = "*"
+                resp.headers["X-Content-Type-Options"] = "nosniff"
+                return resp
             else:
                 logger.warning(
-                    f"Subtitle not found: {subtitle_url} (status: {response.status_code})"
+                    f"Subtitle not found: {subtitle_url} (status: {emby_resp.status_code})"
                 )
                 return "", 404
         except Exception as e:
