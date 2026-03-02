@@ -48,7 +48,10 @@
 
         <footer style="text-align: center; padding: 2rem 1rem 1rem; margin-top: 2rem; border-top: 1px solid var(--cyber-primary); opacity: 0.8;">
             <p style="font-size: 0.9rem; margin: 0;">
-                Special thanks to <a href="https://emby.media/community/index.php?/profile/1658172-quackmasterdan/" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none; font-weight: bold;">QuackMasterDan</a> for dedication in testing! 🎉
+                Special thanks to <a href="https://emby.media/community/index.php?/profile/1658172-quackmasterdan/" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none; font-weight: bold;">QuackMasterDan</a>, <a href="https://github.com/wlowen" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none; font-weight: bold;">wlowen</a> &amp; <a href="https://github.com/JeslynMcKenzie" target="_blank" rel="noopener noreferrer" style="color: var(--cyber-primary); text-decoration: none; font-weight: bold;">JeslynMcKenzie</a> for dedication in testing! 🎉
+            </p>
+            <p style="font-size: 0.8rem; margin: 0.5rem 0 0;">
+                <a href="{{ app_prefix }}/version" style="color: var(--text-secondary, #888); text-decoration: none;">Version Info</a>
             </p>
         </footer>
     </div>
@@ -113,6 +116,14 @@
             }
 
             window.location.href = appPrefix + `/party/${partyCode}`;
+        });
+
+        // Reset button state when page is restored from back/forward cache
+        window.addEventListener('pageshow', (e) => {
+            if (e.persisted) {
+                createPartyBtn.disabled = false;
+                status.textContent = '';
+            }
         });
 
         partyCodeInput.addEventListener('keypress', (e) => {

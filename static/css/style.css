@@ -739,6 +739,18 @@ header p::after {
     justify-content: center;
 }
 
+.version-watermark {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-secondary, #888);
+    text-decoration: none;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+.version-watermark:hover {
+    opacity: 1;
+}
+
 .placeholder {
     text-align: center;
     color: var(--text-dim);
@@ -1190,6 +1202,82 @@ video::-webkit-backdrop,
 ::-webkit-scrollbar-thumb:hover {
     background: linear-gradient(135deg, var(--cyber-accent), var(--cyber-secondary));
     box-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+}
+
+/* Collapse toggles */
+.party-header.collapsed {
+    display: none;
+}
+
+.expand-header-btn {
+    width: 100%;
+    padding: 0.2rem;
+    background: var(--bg-secondary);
+    border: none;
+    border-bottom: 1px solid var(--cyber-gold);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    cursor: pointer;
+    text-align: center;
+    letter-spacing: 1px;
+}
+
+.expand-header-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.chat-container.collapsed {
+    display: none;
+}
+
+.expand-chat-btn {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    padding: 0.5rem 0.2rem;
+    background: var(--bg-secondary);
+    border: none;
+    border-left: 1px solid var(--cyber-primary);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    cursor: pointer;
+    letter-spacing: 1px;
+    flex-shrink: 0;
+}
+
+.expand-chat-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+
+.collapse-footer-btn {
+    width: 100%;
+    padding: 0.2rem;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    cursor: pointer;
+    text-align: center;
+    transition: color 0.2s;
+}
+
+.collapse-footer-btn:hover {
+    color: var(--text-primary);
+}
+
+.video-meta.collapsed {
+    display: none;
+}
+
+.collapse-footer-btn.collapsed {
+    transform: rotate(180deg);
+}
+
+/* When description is collapsed, let the video expand into the freed space */
+.video-player:has(.video-meta.collapsed) #videoElement {
+    max-height: 90vh;
 }
 
 /* Responsive */

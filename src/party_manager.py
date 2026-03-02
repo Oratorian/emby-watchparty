@@ -36,10 +36,11 @@ class PartyManager:
     }
     """
 
-    def __init__(self):
+    def __init__(self, static_party_id=None):
         """Initialize party manager with empty state"""
         self.watch_parties = {}
         self.hls_tokens = {}
+        self.static_party_id = static_party_id
 
     def create_party(self):
         """
@@ -81,8 +82,8 @@ class PartyManager:
             if socket_id in self.watch_parties[party_id]["users"]:
                 del self.watch_parties[party_id]["users"][socket_id]
 
-            # Clean up empty parties
-            if len(self.watch_parties[party_id]["users"]) == 0:
+            # Clean up empty parties (but never delete the static party)
+            if len(self.watch_parties[party_id]["users"]) == 0 and party_id != self.static_party_id:
                 del self.watch_parties[party_id]
                 return True  # Party was deleted
         return False

@@ -1,6 +1,7 @@
 """
 Emby Watch Party - Source Modules
-Version: 1.4.0
+Version: 1.4.1-alpha-7
 """
 
-__version__ = "1.4.0"
+__version__ = "1.4.1-alpha-7"
+__codename__ = "Toasted Pretzel"

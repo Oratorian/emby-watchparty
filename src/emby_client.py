@@ -71,6 +71,8 @@ class EmbyClient:
                 else "No access token"
             )
 
+            self._register_device_capabilities()
+
         except Exception as e:
             self.logger.error(f"Error authenticating user: {e}")
             self.logger.warning("Falling back to API key authentication")
@@ -94,9 +96,55 @@ class EmbyClient:
                 )
             else:
                 self.logger.warning("No Emby users found, some features may not work")
+
+            self._register_device_capabilities()
+
         except Exception as e:
             self.logger.error(f"Error fetching user ID: {e}")
             self.logger.warning("Some API features may not work without user context")
+
+    def _register_device_capabilities(self):
+        """Register device capabilities with Emby so it produces correct transcodes"""
+        capabilities = {
+            "PlayableMediaTypes": ["Video", "Audio"],
+            "SupportedCommands": [],
+            "SupportsMediaControl": False,
+            "SupportsPersistentIdentifier": False,
+            "DeviceProfile": {
+                "MaxStreamingBitrate": 10_000_000,
+                "TranscodingProfiles": [
+                    {
+                        "Container": "ts",
+                        "Type": "Video",
+                        "VideoCodec": "h264",
+                        "AudioCodec": "aac,mp3",
+                        "Protocol": "hls"
+                    }
+                ],
+                "DirectPlayProfiles": [
+                    {
+                        "Container": "mp4,mkv",
+                        "Type": "Video",
+                        "VideoCodec": "h264",
+                        "AudioCodec": "aac,mp3"
+                    }
+                ],
+                "SubtitleProfiles": [
+                    {"Format": "vtt", "Method": "External"},
+                    {"Format": "srt", "Method": "External"},
+                    {"Format": "pgs", "Method": "Encode"},
+                    {"Format": "pgssub", "Method": "Encode"},
+                    {"Format": "dvdsub", "Method": "Encode"}
+                ]
+            }
+        }
+        try:
+            url = f"{self.server_url}/emby/Sessions/Capabilities/Full"
+            response = requests.post(url, headers=self.headers, json=capabilities)
+            response.raise_for_status()
+            self.logger.info("Registered device capabilities with Emby")
+        except Exception as e:
+            self.logger.warning(f"Failed to register device capabilities: {e}")
 
     def get_libraries(self):
         """Get media libraries accessible to the authenticated user"""
@@ -117,7 +165,7 @@ class EmbyClient:
             self.logger.error(f"Error fetching libraries: {e}")
             return {"Items": []}
 
-    def get_items(self, parent_id=None, item_type=None, recursive=False):
+    def get_items(self, parent_id=None, item_type=None, recursive=False, start_index=None, limit=None):
         """Get items from library"""
         try:
             url = f"{self.server_url}/emby/Items"
@@ -132,12 +180,18 @@ class EmbyClient:
             if item_type:
                 params["IncludeItemTypes"] = item_type
 
+            if start_index is not None:
+                params["StartIndex"] = start_index
+
+            if limit is not None:
+                params["Limit"] = limit
+
             response = requests.get(url, headers=self.headers, params=params)
             response.raise_for_status()
             return response.json()
         except Exception as e:
             self.logger.error(f"Error fetching items: {e}")
-            return {"Items": []}
+            return {"Items": [], "TotalRecordCount": 0}
 
     def get_item_details(self, item_id):
         """Get detailed information about a specific item"""
@@ -237,7 +291,7 @@ class EmbyClient:
             params = {"DeviceId": self.device_id, "api_key": self.api_key}
             response = requests.delete(url, headers=self.headers, params=params)
             response.raise_for_status()
-            self.logger.debug(f"Stopped active encodings for device {self.device_id}")
+            self.logger.info(f"Stopped active encodings for device {self.device_id}")
             return True
         except Exception as e:
             self.logger.warning(f"Failed to stop active encodings: {e}")

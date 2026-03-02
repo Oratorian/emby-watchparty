@@ -14,6 +14,8 @@ A synchronized watch party application for Emby media servers. Watch videos toge
 
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
 
+Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
+
 ---
 
 ### Discord for more personal support
@@ -167,8 +169,11 @@ All configuration is done via the `.env` file. Copy `.env.example` to `.env` and
 | **Application** | | |
 | `WATCH_PARTY_BIND` | IP address to bind to | `0.0.0.0` |
 | `WATCH_PARTY_PORT` | Port to run on | `5000` |
+| `APP_PREFIX` | URL prefix for reverse proxy deployments (e.g. `/watchparty`) | (empty) |
 | `REQUIRE_LOGIN` | Require Emby login to access | `false` |
 | `SESSION_EXPIRY` | Session expiry in seconds | `86400` |
+| `STATIC_SESSION_ENABLED` | Single persistent party that auto-creates on startup | `false` |
+| `STATIC_SESSION_ID` | Fixed party ID for static session mode | `PARTY` |
 | **Emby Server** | | |
 | `EMBY_SERVER_URL` | Your Emby server URL | `http://localhost:8096` |
 | `EMBY_API_KEY` | Emby API key | (required) |
@@ -306,3 +311,5 @@ Contributions are welcome! Feel free to submit issues or pull requests.
 ### Special Thanks
 
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
+
+Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issue!

@@ -24,6 +24,10 @@ APP_PREFIX = os.getenv('APP_PREFIX', '').rstrip('/')
 REQUIRE_LOGIN = os.getenv('REQUIRE_LOGIN', 'false').lower()
 SESSION_EXPIRY = int(os.getenv('SESSION_EXPIRY', '86400'))  # Default: 24 hours (in seconds)
 
+# Static session mode - single persistent party that auto-creates on startup
+STATIC_SESSION_ENABLED = os.getenv('STATIC_SESSION_ENABLED', 'false').lower()
+STATIC_SESSION_ID = os.getenv('STATIC_SESSION_ID', 'PARTY').upper()
+
 
 # ============== Emby Server Configuration ==============
 
