@@ -1,7 +1,7 @@
-Flask==3.0.0
+flask>=3.1.3
 flask-socketio==5.3.5
-python-socketio==5.10.0
-requests==2.31.0
+python-socketio==5.14.0
+requests>=2.32.4
 gevent>=25.9.1
 gevent-websocket>=0.10.1
 Flask-Limiter==3.5.0
