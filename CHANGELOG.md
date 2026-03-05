@@ -10,6 +10,14 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
+## [1.5.2] - 2026-03-05
+
+### Fixed
+- **SocketIO crash on connect with Flask 3.1+**: `flask-socketio` 5.3.5 set `RequestContext.session` which became a read-only property in Flask 3.1; bumped to >=5.4.0
+
+### Changed
+- **Updated dependencies**: flask-socketio 5.3.5 to >=5.4.0
+
 ## [1.5.1] - 2026-03-02
 
 ### Fixed
