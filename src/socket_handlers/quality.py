@@ -55,6 +55,7 @@ def build_stream_params(emby_client, media_source, media_source_id, play_session
         "SegmentContainer=ts",
         "TranscodingMaxAudioChannels=2",
         "AudioCodec=aac,mp3",
+        "AudioBitrate=384000",
         "BreakOnNonKeyFrames=True",
         "MaxAudioChannels=2",
         f"MaxWidth={max_width}",
