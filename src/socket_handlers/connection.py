@@ -28,6 +28,8 @@ def register(deps):
             if request.sid in party["users"]:
                 username = party["users"][request.sid]
                 del party["users"][request.sid]
+                if "drift_strikes" in party and request.sid in party["drift_strikes"]:
+                    del party["drift_strikes"][request.sid]
                 emit(
                     "user_left",
                     {"username": username, "users": list(party["users"].values())},
