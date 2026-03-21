@@ -44,7 +44,8 @@ def register(deps):
                     run_time_seconds=current_video.get("run_time_seconds")
                 )
 
-            emit("play", {"time": current_time}, room=party_id, skip_sid=request.sid)
+            username = watch_parties[party_id]["users"].get(request.sid, "Someone")
+            emit("play", {"time": current_time, "username": username}, room=party_id, skip_sid=request.sid)
 
     @socketio.on("pause")
     def handle_pause(data):
@@ -76,7 +77,8 @@ def register(deps):
                     run_time_seconds=current_video.get("run_time_seconds")
                 )
 
-            emit("pause", {"time": current_time}, room=party_id, skip_sid=request.sid)
+            username = watch_parties[party_id]["users"].get(request.sid, "Someone")
+            emit("pause", {"time": current_time, "username": username}, room=party_id, skip_sid=request.sid)
 
     @socketio.on("seek")
     def handle_seek(data):
@@ -85,12 +87,9 @@ def register(deps):
             data.get("party_id", "").strip().upper()
         )  # Convert to uppercase for case-insensitive matching
         seek_time = data.get("time", 0)
+        was_playing = data.get("was_playing", False)
 
         if party_id in watch_parties:
-            # Get current playing state before seek
-            was_playing = watch_parties[party_id]["playback_state"].get(
-                "playing", False
-            )
 
             # Update playback state
             watch_parties[party_id]["playback_state"]["time"] = seek_time
@@ -113,20 +112,19 @@ def register(deps):
                     run_time_seconds=current_video.get("run_time_seconds")
                 )
 
+            username = watch_parties[party_id]["users"].get(request.sid, "Someone")
+
             # If video was playing, force pause everyone (including seeker) for better buffering
             if was_playing:
                 logger.info(
                     f"Seek during playback - pausing all clients (including seeker) first for buffering"
                 )
-                # First, pause everyone INCLUDING the seeking client
                 emit("force_pause_before_seek", {"time": seek_time}, room=party_id)
 
-                # Then send seek command with playing flag and longer buffer delay to ALL
                 emit(
                     "seek",
-                    {"time": seek_time, "playing": True, "buffer_delay": 1500},
+                    {"time": seek_time, "playing": True, "buffer_delay": 1500, "username": username},
                     room=party_id,
                 )
             else:
-                # Video was already paused, just seek normally for everyone
-                emit("seek", {"time": seek_time, "playing": False}, room=party_id)
+                emit("seek", {"time": seek_time, "playing": False, "username": username}, room=party_id)

@@ -3,6 +3,14 @@
     'use strict';
     var S = window.PartyState;
 
+    function formatSeekTime(seconds) {
+        var h = Math.floor(seconds / 3600);
+        var m = Math.floor((seconds % 3600) / 60);
+        var s = Math.floor(seconds % 60);
+        var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+        return h > 0 ? h + ':' + pad(m) + ':' + pad(s) : pad(m) + ':' + pad(s);
+    }
+
     function processSyncCommand(command) {
         var timeDiff = Math.abs(S.dom.videoElement.currentTime - command.time);
         var needsSeek = timeDiff > S.syncThreshold;
@@ -25,6 +33,7 @@
                 setTimeout(function() { S.isSyncing = false; }, 500);
             }).catch(function() {
                 setTimeout(function() { S.isSyncing = false; }, 500);
+                window.PartyChat.addSystemMessage('Autoplay blocked by browser - click the video to resume');
             });
         } else {
             S.isSyncing = true;
@@ -32,6 +41,7 @@
                 setTimeout(function() { S.isSyncing = false; }, 300);
             }).catch(function() {
                 setTimeout(function() { S.isSyncing = false; }, 300);
+                window.PartyChat.addSystemMessage('Autoplay blocked by browser - click the video to resume');
             });
         }
     }
@@ -68,6 +78,7 @@
                         setTimeout(function() { S.isSyncing = false; }, 300);
                     }).catch(function() {
                         setTimeout(function() { S.isSyncing = false; }, 300);
+                        window.PartyChat.addSystemMessage('Autoplay blocked by browser - click the video to resume');
                     });
                 }, bufferDelay);
                 ve.removeEventListener('seeked', onSeeked);
@@ -86,6 +97,7 @@
         // Local playback control -> emit to server
         ve.addEventListener('play', function() {
             if (ve.ended) return;
+            S.wasPlayingBeforeSeek = true;
             if (!S.isSyncing && !S.isUserSeeking) {
                 var now = Date.now();
                 if (now - S.lastPlayBroadcast > S.playPauseThrottle) {
@@ -94,6 +106,7 @@
                         party_id: S.partyId,
                         time: ve.currentTime
                     });
+                    window.PartyChat.addSystemMessage(S.username + ' resumed playback');
                 }
             }
         });
@@ -104,10 +117,12 @@
                 var now = Date.now();
                 if (now - S.lastPauseBroadcast > S.playPauseThrottle) {
                     S.lastPauseBroadcast = now;
+                    S.wasPlayingBeforeSeek = false;
                     S.socket.emit('pause', {
                         party_id: S.partyId,
                         time: ve.currentTime
                     });
+                    window.PartyChat.addSystemMessage(S.username + ' paused playback');
                 }
             }
         });
@@ -121,10 +136,14 @@
                     S.seekSettleTimer = setTimeout(function() {
                         S.isUserSeeking = false;
                         S.seekSettleTimer = null;
+                        var seekTime = ve.currentTime;
+                        var wasPlaying = S.wasPlayingBeforeSeek || false;
                         S.socket.emit('seek', {
                             party_id: S.partyId,
-                            time: ve.currentTime
+                            time: seekTime,
+                            was_playing: wasPlaying
                         });
+                        window.PartyChat.addSystemMessage(S.username + ' seeked to ' + formatSeekTime(seekTime));
                     }, 500);
                 }
             }
@@ -145,6 +164,7 @@
             S.lastSyncedTime = data.time;
             S.lastSyncType = 'play';
             S.currentPartyState = { time: data.time, playing: true };
+            if (data.username) window.PartyChat.addSystemMessage(data.username + ' resumed playback');
             processSyncCommand({ type: 'play', time: data.time });
         });
 
@@ -153,6 +173,7 @@
             S.lastSyncedTime = data.time;
             S.lastSyncType = 'pause';
             S.currentPartyState = { time: data.time, playing: false };
+            if (data.username) window.PartyChat.addSystemMessage(data.username + ' paused playback');
             processSyncCommand({ type: 'pause', time: data.time });
         });
 
@@ -167,6 +188,7 @@
             S.lastSyncedTime = data.time;
             S.lastSyncType = 'seek';
             S.currentPartyState = { time: data.time, playing: data.playing || false };
+            if (data.username) window.PartyChat.addSystemMessage(data.username + ' seeked to ' + formatSeekTime(data.time));
             processSyncCommand({
                 type: 'seek',
                 time: data.time,

@@ -34,6 +34,7 @@
         lastSyncType: '',
         isUserSeeking: false,
         seekSettleTimer: null,
+        wasPlayingBeforeSeek: false,
 
         // Video / stream state
         hls: null,
