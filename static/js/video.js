@@ -356,6 +356,10 @@
             clearInterval(S.progressReportInterval);
             S.progressReportInterval = null;
         }
+        if (S.heartbeatInterval) {
+            clearInterval(S.heartbeatInterval);
+            S.heartbeatInterval = null;
+        }
     }
 
     function init() {

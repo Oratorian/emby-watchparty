@@ -35,6 +35,7 @@
         isUserSeeking: false,
         seekSettleTimer: null,
         wasPlayingBeforeSeek: false,
+        heartbeatInterval: null,
 
         // Video / stream state
         hls: null,
