@@ -13,6 +13,8 @@
         showLibraryBtn: document.getElementById('showLibraryBtn'),
         hideLibraryBtn: document.getElementById('hideLibraryBtn'),
         userCountEl: document.getElementById('userCount'),
+        participantList: document.getElementById('participantList'),
+        participantListItems: document.getElementById('participantListItems'),
         leavePartyBtn: document.getElementById('leavePartyBtn'),
         libraryContent: document.getElementById('libraryContent'),
         navBtns: document.querySelectorAll('.nav-btn'),

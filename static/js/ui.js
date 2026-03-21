@@ -89,7 +89,38 @@
         }
     }
 
+    function renderParticipantList() {
+        var list = S.dom.participantListItems;
+        list.innerHTML = '';
+        S.currentUsers.forEach(function(username) {
+            var li = document.createElement('li');
+            li.textContent = username;
+            if (username === S.username) {
+                li.textContent += ' (you)';
+                li.classList.add('participant-self');
+            }
+            list.appendChild(li);
+        });
+    }
+
     function init() {
+        // Participant list toggle
+        S.dom.userCountEl.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var pl = S.dom.participantList;
+            pl.classList.toggle('hidden');
+            if (!pl.classList.contains('hidden')) {
+                renderParticipantList();
+            }
+        });
+
+        document.addEventListener('click', function(e) {
+            var pl = S.dom.participantList;
+            if (!pl.classList.contains('hidden') && !pl.contains(e.target)) {
+                pl.classList.add('hidden');
+            }
+        });
+
         // Socket handlers
         S.socket.on('user_joined', function(data) {
             S.currentUsers = data.users;
@@ -100,6 +131,7 @@
             }
 
             window.PartyChat.addSystemMessage(data.username + ' joined the party');
+            if (!S.dom.participantList.classList.contains('hidden')) renderParticipantList();
         });
 
         S.socket.on('user_left', function(data) {
@@ -108,6 +140,7 @@
                 updateUserCount();
             }
             window.PartyChat.addSystemMessage(data.username + ' left the party');
+            if (!S.dom.participantList.classList.contains('hidden')) renderParticipantList();
         });
 
         S.socket.on('video_ended', function(data) {

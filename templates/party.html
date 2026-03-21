@@ -25,7 +25,10 @@
             <a href="#" class="version-watermark" onclick="document.getElementById('versionModal').style.display='flex';fetchVersionCheck();return false;">v{{ current_version }} {{codename }}</a>
             </div>
             <div class="user-info">
-                <span id="userCount">0 users</span>
+                <span id="userCount" class="user-count-toggle" title="Click to see participants">0 users</span>
+                <div id="participantList" class="participant-list hidden">
+                    <ul id="participantListItems"></ul>
+                </div>
                 <select id="themeSelector" class="btn-small theme-selector">
                     <option value="cyberpunk">🎭 Cyberpunk Theater</option>
                     <option value="material">🎨 Material Random</option>
