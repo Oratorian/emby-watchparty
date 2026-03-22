@@ -1,8 +1,8 @@
 """
 Emby Watch Party - Source Modules
 Version: 1.6.0
-Codename: Toasted Pretzel
+Codename: Synced Popcorn
 """
 
 __version__ = "1.6.0"
-__codename__ = "Toasted Pretzel"
+__codename__ = "Synced Popcorn"
