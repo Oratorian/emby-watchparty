@@ -75,9 +75,9 @@
             ve.addEventListener('seeked', function onSeeked() {
                 setTimeout(function() {
                     ve.play().then(function() {
-                        setTimeout(function() { S.isSyncing = false; }, 300);
+                        setTimeout(function() { S.isSyncing = false; }, 2000);
                     }).catch(function() {
-                        setTimeout(function() { S.isSyncing = false; }, 300);
+                        setTimeout(function() { S.isSyncing = false; }, 2000);
                         window.PartyChat.addSystemMessage('Autoplay blocked by browser - click the video to resume');
                     });
                 }, bufferDelay);
@@ -85,7 +85,7 @@
             }, { once: true });
         } else {
             ve.addEventListener('seeked', function onSeeked() {
-                setTimeout(function() { S.isSyncing = false; }, 300);
+                setTimeout(function() { S.isSyncing = false; }, 2000);
                 ve.removeEventListener('seeked', onSeeked);
             }, { once: true });
         }
@@ -180,7 +180,7 @@
         S.socket.on('force_pause_before_seek', function(data) {
             S.isSyncing = true;
             ve.pause();
-            setTimeout(function() { S.isSyncing = false; }, 300);
+            setTimeout(function() { S.isSyncing = false; }, 2000);
         });
 
         S.socket.on('seek', function(data) {
@@ -208,7 +208,7 @@
 
             S.isSyncing = true;
             ve.currentTime = data.time;
-            setTimeout(function() { S.isSyncing = false; }, 500);
+            setTimeout(function() { S.isSyncing = false; }, 2000);
         });
 
         // Heartbeat - all clients report position every 5s for drift detection
