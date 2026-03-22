@@ -1,21 +1,19 @@
-# Emby Watch Party - Dockerfile
-# Original contribution by: MaaHeebTrackbee
-# https://github.com/Oratorian/emby-watchparty
+# Emby Watch Party 2.0 - Multi-stage build
+# Stage 1: Build Vue frontend
+FROM node:20-alpine AS frontend-build
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
 
+# Stage 2: Python backend
 FROM python:3.12-slim
-
-# Set working directory
 WORKDIR /app
-
-# Install dependencies first (better layer caching)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY . .
-
-# Expose default port (configurable via WATCH_PARTY_PORT env var)
+COPY backend/ ./backend/
+COPY --from=frontend-build /app/backend/static ./backend/static/
+COPY .env* config.json* ./
 EXPOSE 5000
-
-# Run the application with gevent for production
-CMD ["python", "app.py"]
+CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "5000"]

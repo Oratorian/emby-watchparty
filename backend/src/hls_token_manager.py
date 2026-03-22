@@ -1,0 +1,121 @@
+"""
+HLS Token Manager
+Generates and validates time-limited tokens for HLS stream access
+"""
+
+import logging
+import secrets
+import time
+from datetime import datetime
+from typing import Dict, Optional
+
+from backend.src.config import Config
+
+
+class HLSTokenManager:
+    """Manages HLS stream access tokens"""
+
+    def __init__(self, config: Config, logger: logging.Logger):
+        self._tokens: Dict[str, dict] = {}
+        self._config = config
+        self._logger = logger
+
+    @property
+    def enabled(self) -> bool:
+        return self._config.ENABLE_HLS_TOKEN_VALIDATION
+
+    def generate(self, party_id: str, sid: str) -> Optional[str]:
+        """Generate a new time-limited token for HLS access"""
+        if not self.enabled:
+            self._logger.debug("HLS token generation skipped - validation disabled")
+            return None
+
+        token = secrets.token_urlsafe(32)
+        expires = time.time() + self._config.HLS_TOKEN_EXPIRY
+        expires_dt = datetime.fromtimestamp(expires).isoformat()
+
+        self._tokens[token] = {
+            'party_id': party_id,
+            'sid': sid,
+            'expires': expires,
+        }
+
+        self._logger.debug(
+            f"Generated HLS token: {token[:16]}... for party={party_id}, sid={sid}, expires={expires_dt}"
+        )
+        self._logger.debug(f"Total active tokens: {len(self._tokens)}")
+
+        self._cleanup_expired()
+        return token
+
+    def validate(self, token: str, party_exists_fn, user_in_party_fn) -> bool:
+        """
+        Validate an HLS token.
+
+        Args:
+            token: Token string to validate
+            party_exists_fn: Callable(party_id) -> bool
+            user_in_party_fn: Callable(party_id, sid) -> bool
+        """
+        if not self.enabled:
+            return True
+
+        if not token:
+            self._logger.debug("Token validation failed: No token provided")
+            return False
+
+        if token not in self._tokens:
+            self._logger.debug(f"Token validation failed: Token not found: {token[:16]}...")
+            self._logger.debug(
+                f"Available tokens: {[t[:16] + '...' for t in list(self._tokens.keys())[:5]]}"
+            )
+            return False
+
+        data = self._tokens[token]
+
+        if time.time() > data['expires']:
+            self._logger.debug("Token validation failed: Token expired")
+            del self._tokens[token]
+            return False
+
+        party_id = data['party_id']
+        sid = data['sid']
+
+        if not party_exists_fn(party_id):
+            self._logger.debug(f"Token validation failed: Party {party_id} not found")
+            return False
+
+        if not user_in_party_fn(party_id, sid):
+            self._logger.debug(
+                f"Token validation failed: User sid {sid} not in party {party_id}"
+            )
+            return False
+
+        self._logger.debug(f"Token validation successful for party {party_id}, user {sid}")
+        return True
+
+    def get_or_create(self, party_id: str, sid: str) -> Optional[str]:
+        """Get existing valid token for user or generate a new one"""
+        for token, data in self._tokens.items():
+            if data['party_id'] == party_id and data['sid'] == sid:
+                if time.time() <= data['expires']:
+                    self._logger.debug(f"Reusing existing token for party {party_id}, sid {sid}")
+                    return token
+
+        new_token = self.generate(party_id, sid)
+        if new_token:
+            self._logger.debug(f"Generated new token for party {party_id}, sid {sid}: {new_token[:16]}...")
+        return new_token
+
+    def _cleanup_expired(self):
+        """Remove expired tokens"""
+        now = time.time()
+        expired = [t for t, d in self._tokens.items() if now > d['expires']]
+        if expired:
+            self._logger.debug(f"Cleaning up {len(expired)} expired HLS tokens")
+            for token in expired:
+                self._logger.debug(
+                    f"Removed expired token: {token[:16]}... "
+                    f"(party={self._tokens[token]['party_id']}, sid={self._tokens[token]['sid']})"
+                )
+                del self._tokens[token]
