@@ -313,3 +313,11 @@ Contributions are welcome! Feel free to submit issues or pull requests.
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issue!
+
+---
+
+### Support the Project
+
+If you enjoy Emby Watch Party and want to support its development, consider buying me a coffee!
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/jedziah)
