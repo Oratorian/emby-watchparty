@@ -8,9 +8,19 @@
     <script src="{{ url_for('main.static', filename='js/theme.js') }}"></script>
     <style>
         .admin-container {
-            max-width: 700px;
+            max-width: 1100px;
             margin: 1.5rem auto;
             padding: 0 1rem;
+        }
+        .admin-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+        @media (max-width: 768px) {
+            .admin-grid {
+                grid-template-columns: 1fr;
+            }
         }
         .admin-header {
             display: flex;
@@ -28,7 +38,6 @@
             background: var(--bg-secondary);
             border-radius: 8px;
             padding: 1.25rem;
-            margin-bottom: 1rem;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
             overflow: hidden;
         }
@@ -157,9 +166,10 @@
     <div class="container">
         <div class="admin-container">
             <div class="admin-header">
-                <h1>Admin Panel</h1>
+                <h1>Admin Panel <span style="font-size: 0.75rem; font-weight: normal; color: var(--text-secondary, #888);">{{ admin_username }}</span></h1>
                 <div>
                     <a href="{{ app_prefix }}/">Back to WatchParty</a>
+                    <button id="adminLogoutBtn" class="btn-small" style="margin-left: 0.5rem; background: rgba(255,68,68,0.2); border-color: #ff4444; color: #ff4444;">Logout</button>
                     <select id="themeSelector" class="btn-small theme-selector" style="margin-left: 0.5rem;">
                         <option value="cyberpunk">Cyberpunk</option>
                         <option value="material">Material</option>
@@ -170,6 +180,8 @@
                     </select>
                 </div>
             </div>
+
+            <div class="admin-grid">
 
             <div class="admin-section">
                 <h2>Logging</h2>
@@ -256,6 +268,8 @@
                     <div class="setting-input"><input type="text" id="STATIC_SESSION_ID" style="text-transform: uppercase;"></div>
                 </div>
             </div>
+
+            </div><!-- /admin-grid -->
 
             <div class="save-bar">
                 <span id="saveStatus" class="save-status"></span>
@@ -353,6 +367,12 @@
                 btn.disabled = false;
                 btn.textContent = 'Save Settings';
             });
+        });
+
+        // Admin logout
+        document.getElementById('adminLogoutBtn').addEventListener('click', function() {
+            fetch(APP_PREFIX + '/api/admin/logout', { method: 'POST' })
+                .then(function() { window.location.href = APP_PREFIX + '/admin/login'; });
         });
     </script>
 </body>

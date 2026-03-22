@@ -1,10 +1,11 @@
 """
 Admin Routes - Settings management panel
-Routes: /admin, /api/admin/config
-Requires Emby administrator account (IsAdministrator policy)
+Routes: /admin, /admin/login, /api/admin/login, /api/admin/config
+Always requires Emby administrator credentials (IsAdministrator policy)
 """
 
 import logging
+import requests as http_requests
 from flask import render_template, request, jsonify, session, redirect
 from functools import wraps
 
@@ -12,20 +13,76 @@ from functools import wraps
 def register(deps):
     bp = deps['bp']
     config = deps['config']
+    emby_client = deps['emby_client']
     logger = deps['logger']
     prefixed_url = deps['prefixed_url']
 
     def admin_required(f):
-        """Protect admin routes -- require Emby admin when login is enabled, open otherwise"""
+        """Always require authenticated Emby administrator"""
         @wraps(f)
         def decorated(*args, **kwargs):
-            if config.REQUIRE_LOGIN:
-                if 'authenticated' not in session:
-                    return redirect(prefixed_url('/login'))
-                if not session.get('is_admin', False):
-                    return jsonify({"error": "Administrator access required"}), 403
+            if not session.get('admin_authenticated', False):
+                return redirect(prefixed_url('/admin/login'))
             return f(*args, **kwargs)
         return decorated
+
+    @bp.route("/admin/login", methods=["GET"])
+    def admin_login_page():
+        """Admin login page"""
+        if session.get('admin_authenticated'):
+            return redirect(prefixed_url('/admin'))
+        from src import __version__, __codename__
+        return render_template(
+            "admin_login.html",
+            current_version=__version__,
+            codename=__codename__,
+        )
+
+    @bp.route("/api/admin/login", methods=["POST"])
+    def admin_login():
+        """Authenticate with Emby and verify IsAdministrator"""
+        data = request.get_json()
+        username = (data or {}).get('username', '')
+        password = (data or {}).get('password', '')
+
+        if not username or not password:
+            return jsonify({"success": False, "message": "Username and password are required"}), 400
+
+        try:
+            url = f"{emby_client.server_url}/emby/Users/AuthenticateByName"
+            headers = {
+                "Content-Type": "application/json",
+                "X-Emby-Authorization": f'Emby Client="WatchParty", Device="Web", DeviceId="{emby_client.device_id}", Version="1.0"',
+            }
+            resp = http_requests.post(url, headers=headers, json={"Username": username, "Pw": password}, timeout=15)
+
+            if resp.status_code != 200:
+                return jsonify({"success": False, "message": "Invalid credentials"}), 401
+
+            auth_data = resp.json()
+            is_admin = auth_data.get("User", {}).get("Policy", {}).get("IsAdministrator", False)
+
+            if not is_admin:
+                logger.warning(f"Admin login denied for '{username}' -- not an Emby administrator")
+                return jsonify({"success": False, "message": "This account does not have administrator privileges"}), 403
+
+            session['admin_authenticated'] = True
+            session['admin_username'] = auth_data.get("User", {}).get("Name", username)
+            logger.info(f"Admin login: '{session['admin_username']}'")
+            return jsonify({"success": True})
+
+        except http_requests.exceptions.Timeout:
+            return jsonify({"success": False, "message": "Emby server connection timed out"}), 504
+        except http_requests.exceptions.RequestException as e:
+            logger.error(f"Admin login error: {e}")
+            return jsonify({"success": False, "message": "Unable to connect to Emby server"}), 502
+
+    @bp.route("/api/admin/logout", methods=["POST"])
+    def admin_logout():
+        """Logout from admin panel"""
+        session.pop('admin_authenticated', None)
+        session.pop('admin_username', None)
+        return jsonify({"success": True})
 
     @bp.route("/admin")
     @admin_required
@@ -36,7 +93,7 @@ def register(deps):
             "admin.html",
             current_version=__version__,
             codename=__codename__,
-            require_login=config.REQUIRE_LOGIN,
+            admin_username=session.get('admin_username', 'Admin'),
         )
 
     @bp.route("/api/admin/config", methods=["GET"])

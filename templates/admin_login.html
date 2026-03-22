@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - Emby Watch Party</title>
+    <link rel="stylesheet" href="{{ url_for('main.static', filename='css/style.css') }}">
+    <script src="{{ url_for('main.static', filename='js/theme.js') }}"></script>
+    <style>
+        .login-container {
+            max-width: 400px;
+            margin: 3rem auto;
+            padding: 2rem;
+        }
+        .login-card {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--cyber-primary);
+            border-radius: 4px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--cyber-secondary);
+            box-shadow: 0 0 0 3px rgba(0, 255, 255, 0.1);
+        }
+        .error-message {
+            color: #ff4444;
+            background: rgba(255, 68, 68, 0.1);
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+        .login-btn {
+            width: 100%;
+            padding: 0.75rem;
+            margin-top: 1rem;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .login-header p {
+            color: var(--text-secondary, #888);
+            font-size: 0.9rem;
+        }
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 1.5rem;
+            color: var(--text-secondary, #888);
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+        .back-link:hover { color: var(--cyber-primary); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="login-container">
+            <div class="login-header">
+                <h1>Admin Panel</h1>
+                <p>Sign in with an Emby administrator account</p>
+            </div>
+
+            <div class="login-card">
+                <div id="errorMessage" class="error-message"></div>
+
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" autocomplete="username" required autofocus>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" autocomplete="current-password" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary login-btn">Sign In</button>
+                </form>
+
+                <a href="{{ app_prefix }}/" class="back-link">Back to Watch Party</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var APP_PREFIX = '{{ app_prefix }}';
+        var form = document.getElementById('loginForm');
+        var errorEl = document.getElementById('errorMessage');
+        var btn = form.querySelector('button[type="submit"]');
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            btn.disabled = true;
+            btn.textContent = 'Signing in...';
+            errorEl.style.display = 'none';
+
+            fetch(APP_PREFIX + '/api/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: document.getElementById('username').value,
+                    password: document.getElementById('password').value
+                })
+            })
+            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(result) {
+                if (result.ok && result.data.success) {
+                    window.location.href = APP_PREFIX + '/admin';
+                } else {
+                    errorEl.textContent = result.data.message || 'Login failed';
+                    errorEl.style.display = 'block';
+                    btn.disabled = false;
+                    btn.textContent = 'Sign In';
+                }
+            })
+            .catch(function() {
+                errorEl.textContent = 'Unable to connect to server';
+                errorEl.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Sign In';
+            });
+        });
+    </script>
+</body>
+</html>
