@@ -110,7 +110,9 @@ def create_app(config: Config = None):
     logger.info("=" * 80)
 
     # Flask app
-    app = Flask(__name__)
+    from pathlib import Path
+    root_dir = str(Path(__file__).parent.parent)
+    app = Flask(__name__, template_folder=f"{root_dir}/templates", static_folder=f"{root_dir}/static")
     app.config['SECRET_KEY'] = secrets.token_hex(16)
     app.config['PERMANENT_SESSION_LIFETIME'] = config.SESSION_EXPIRY
     app.config['SESSION_COOKIE_PATH'] = config.APP_PREFIX if config.APP_PREFIX else '/'
