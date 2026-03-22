@@ -10,7 +10,7 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
-## [1.6.0-alpha-1] - 2026-03-22
+## [1.6.0] - 2026-03-22
 
 ### Added
 - **Continuous sync / drift correction** ([#13](https://github.com/Oratorian/emby-watchparty/issues/13)): Heartbeat-based system that detects and corrects playback drift. Only corrects the drifted client without disrupting others. Requires 3+ seconds of drift over 2 consecutive heartbeats to avoid false positives
