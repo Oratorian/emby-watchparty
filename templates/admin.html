@@ -30,6 +30,7 @@
             padding: 1.25rem;
             margin-bottom: 1rem;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
         }
         .admin-section h2 {
             margin: 0 0 1rem 0;
@@ -59,7 +60,9 @@
         .setting-input {
             flex: 0 0 auto;
             min-width: 140px;
-            text-align: right;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
         }
         .setting-input input[type="text"],
         .setting-input input[type="number"] {
@@ -71,6 +74,14 @@
             color: var(--text-primary);
             font-size: 0.85rem;
             text-align: right;
+        }
+        .setting-input input[type="number"]::-webkit-inner-spin-button,
+        .setting-input input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .setting-input input[type="number"] {
+            -moz-appearance: textfield;
         }
         .setting-input input:focus {
             outline: none;
