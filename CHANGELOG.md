@@ -10,6 +10,17 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
+## [1.6.0-alpha-1] - 2026-03-22
+
+### Added
+- **Continuous sync / drift correction** ([#13](https://github.com/Oratorian/emby-watchparty/issues/13)): Heartbeat-based system that detects and corrects playback drift. Only corrects the drifted client without disrupting others. Requires 3+ seconds of drift over 2 consecutive heartbeats to avoid false positives
+- **Playback action chat messages** ([#22](https://github.com/Oratorian/emby-watchparty/issues/22)): Play, pause, and seek actions now show in chat with the username of who performed them
+- **Participant list** ([#23](https://github.com/Oratorian/emby-watchparty/issues/23)): Collapsible participant list in the chat sidebar showing who is currently in the party
+- **Autoplay blocked detection**: System message warns users when the browser blocks autoplay and they need to interact with the page
+
+### Fixed
+- **Seek resume bug**: Seek events now send the client-side playing state instead of relying on server state, which was stale due to browser pause event ordering during seeks
+
 ## [1.5.2] - 2026-03-05
 
 ### Fixed

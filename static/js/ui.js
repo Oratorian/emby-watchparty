@@ -101,23 +101,20 @@
             }
             list.appendChild(li);
         });
+        if (S.dom.participantCount) {
+            S.dom.participantCount.textContent = S.currentUsers.length;
+        }
     }
 
     function init() {
-        // Participant list toggle
-        S.dom.userCountEl.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var pl = S.dom.participantList;
-            pl.classList.toggle('hidden');
-            if (!pl.classList.contains('hidden')) {
+        // Participant list collapsible toggle
+        S.dom.participantToggle.addEventListener('click', function() {
+            var items = S.dom.participantListItems;
+            var chevron = S.dom.participantChevron;
+            items.classList.toggle('hidden');
+            chevron.classList.toggle('collapsed');
+            if (!items.classList.contains('hidden')) {
                 renderParticipantList();
-            }
-        });
-
-        document.addEventListener('click', function(e) {
-            var pl = S.dom.participantList;
-            if (!pl.classList.contains('hidden') && !pl.contains(e.target)) {
-                pl.classList.add('hidden');
             }
         });
 
@@ -131,7 +128,7 @@
             }
 
             window.PartyChat.addSystemMessage(data.username + ' joined the party');
-            if (!S.dom.participantList.classList.contains('hidden')) renderParticipantList();
+            renderParticipantList();
         });
 
         S.socket.on('user_left', function(data) {
@@ -140,7 +137,7 @@
                 updateUserCount();
             }
             window.PartyChat.addSystemMessage(data.username + ' left the party');
-            if (!S.dom.participantList.classList.contains('hidden')) renderParticipantList();
+            renderParticipantList();
         });
 
         S.socket.on('video_ended', function(data) {

@@ -25,10 +25,7 @@
             <a href="#" class="version-watermark" onclick="document.getElementById('versionModal').style.display='flex';fetchVersionCheck();return false;">v{{ current_version }} {{codename }}</a>
             </div>
             <div class="user-info">
-                <span id="userCount" class="user-count-toggle" title="Click to see participants">0 users</span>
-                <div id="participantList" class="participant-list hidden">
-                    <ul id="participantListItems"></ul>
-                </div>
+                <span id="userCount">0 users</span>
                 <select id="themeSelector" class="btn-small theme-selector">
                     <option value="cyberpunk">🎭 Cyberpunk Theater</option>
                     <option value="material">🎨 Material Random</option>
@@ -154,6 +151,13 @@
                     <div class="chat-header">
                         <h3>Chat</h3>
                         <button id="collapseChatBtn" class="btn-small" title="Collapse chat">▶</button>
+                    </div>
+                    <div id="participantList" class="participant-section">
+                        <div class="participant-header" id="participantToggle">
+                            <span>Participants (<span id="participantCount">0</span>)</span>
+                            <span class="participant-chevron" id="participantChevron">▼</span>
+                        </div>
+                        <ul id="participantListItems" class="participant-items"></ul>
                     </div>
                     <div id="chatMessages" class="chat-messages"></div>
                     <div class="chat-input">
