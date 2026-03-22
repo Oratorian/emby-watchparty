@@ -76,7 +76,7 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None,
             token_manager.validate(
                 token,
                 party_exists_fn=party_manager.exists,
-                user_in_party_fn=lambda pid, sid: party_manager.get(pid) is not None and sid in party_manager.get(pid).users,
+                user_in_party_fn=lambda pid, sid: party_manager.get(pid) is not None and sid in party_manager.get(pid)["users"],
             )
         )
         deps['get_user_token'] = lambda pid, sid, ht, cfg, lg: token_manager.get_or_create(pid, sid)
