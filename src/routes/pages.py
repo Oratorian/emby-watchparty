@@ -11,6 +11,7 @@ def register(deps):
     bp = deps['bp']
     config = deps['config']
     logger = deps['logger']
+    party_manager = deps['party_manager']
     watch_parties = deps['watch_parties']
     prefixed_url = deps['prefixed_url']
     login_required = deps['login_required']
@@ -20,9 +21,9 @@ def register(deps):
     def index():
         """Main page - choose to create or join a watch party"""
         # Static session mode: redirect straight to the persistent party
-        if config.STATIC_SESSION_ENABLED == 'true':
+        if config.STATIC_SESSION_ENABLED:
             return redirect(prefixed_url(f'/party/{config.STATIC_SESSION_ID}'))
-        return render_template("index.html", require_login=(config.REQUIRE_LOGIN == 'true'))
+        return render_template("index.html", require_login=(config.REQUIRE_LOGIN))
 
     @bp.route("/party/<party_id>")
     @login_required
@@ -33,19 +34,8 @@ def register(deps):
 
         if party_id not in watch_parties:
             # Recreate static party if it was somehow deleted
-            if config.STATIC_SESSION_ENABLED == 'true' and party_id == config.STATIC_SESSION_ID:
-                watch_parties[party_id] = {
-                    "id": party_id,
-                    "created_at": datetime.now().isoformat(),
-                    "users": {},
-                    "current_video": None,
-                    "playback_state": {
-                        "playing": False,
-                        "time": 0,
-                        "last_update": datetime.now().isoformat(),
-                    },
-                }
-                logger.info(f"Recreated static party: {party_id}")
+            if config.STATIC_SESSION_ENABLED and party_id == config.STATIC_SESSION_ID:
+                party_manager.ensure_static_party()
             else:
                 return (
                     render_template(
@@ -56,4 +46,4 @@ def register(deps):
                     404,
                 )
         from src import __version__, __codename__
-        return render_template("party.html", party_id=party_id, require_login=(config.REQUIRE_LOGIN == 'true'), current_version=__version__, codename=__codename__)
+        return render_template("party.html", party_id=party_id, require_login=(config.REQUIRE_LOGIN), current_version=__version__, codename=__codename__)

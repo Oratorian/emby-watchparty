@@ -141,7 +141,7 @@ def register(deps):
             stream_url_with_token = stream_url_base
 
             # Add individual token for this user
-            if config.ENABLE_HLS_TOKEN_VALIDATION == 'true':
+            if config.ENABLE_HLS_TOKEN_VALIDATION:
                 user_token = get_user_token(
                     party_id, user_sid, hls_tokens, config, logger
                 )
@@ -344,7 +344,7 @@ def register(deps):
             stream_url_with_token = stream_url_base
 
             # Add individual token for this user
-            if config.ENABLE_HLS_TOKEN_VALIDATION == 'true':
+            if config.ENABLE_HLS_TOKEN_VALIDATION:
                 user_token = get_user_token(
                     party_id, user_sid, hls_tokens, config, logger
                 )

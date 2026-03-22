@@ -24,7 +24,7 @@ def register(deps):
         emby_url = None  # Initialize for error handling
         try:
             # Validate HLS token if enabled
-            if config.ENABLE_HLS_TOKEN_VALIDATION == 'true':
+            if config.ENABLE_HLS_TOKEN_VALIDATION:
                 token = request.args.get("token")
                 logger.info(
                     f"Master playlist request with token: {token[:16] if token else 'None'}... from {request.remote_addr}"
@@ -62,7 +62,7 @@ def register(deps):
             # Add token to rewritten URLs if validation is enabled
             token_param = (
                 f"?token={request.args.get('token')}"
-                if config.ENABLE_HLS_TOKEN_VALIDATION == 'true' and request.args.get("token")
+                if config.ENABLE_HLS_TOKEN_VALIDATION and request.args.get("token")
                 else ""
             )
             if token_param:
@@ -158,7 +158,7 @@ def register(deps):
         emby_url = None  # Initialize for error handling
         try:
             # Validate HLS token if enabled
-            if config.ENABLE_HLS_TOKEN_VALIDATION == 'true':
+            if config.ENABLE_HLS_TOKEN_VALIDATION:
                 token = request.args.get("token")
                 logger.debug(
                     f"Segment request for {subpath} with token: {token[:16] if token else 'None'}... from {request.remote_addr}"
@@ -203,7 +203,7 @@ def register(deps):
                 # Add token to rewritten URLs if validation is enabled
                 token_param = (
                     f"?token={request.args.get('token')}"
-                    if config.ENABLE_HLS_TOKEN_VALIDATION == 'true' and request.args.get("token")
+                    if config.ENABLE_HLS_TOKEN_VALIDATION and request.args.get("token")
                     else ""
                 )
 

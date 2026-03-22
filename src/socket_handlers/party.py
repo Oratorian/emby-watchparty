@@ -105,7 +105,7 @@ def register(deps):
 
             # Add stream URL with individual token
             stream_url = party["current_video"]["stream_url_base"]
-            if config.ENABLE_HLS_TOKEN_VALIDATION == 'true':
+            if config.ENABLE_HLS_TOKEN_VALIDATION:
                 user_token = get_user_token(
                     party_id, request.sid, hls_tokens, config, logger
                 )

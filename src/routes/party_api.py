@@ -12,9 +12,9 @@ def register(deps):
     logger = deps['logger']
     config = deps['config']
     limiter = deps['limiter']
+    party_manager = deps['party_manager']
     watch_parties = deps['watch_parties']
     prefixed_url = deps['prefixed_url']
-    generate_party_code = deps['generate_party_code']
 
     @bp.route("/api/party/create", methods=["POST"])
     def create_party():
@@ -36,20 +36,7 @@ def register(deps):
             POST /api/party/create
             Response: {"party_id": "A3B7K", "url": "/party/A3B7K"}
         """
-        party_id = generate_party_code(watch_parties)
-
-        watch_parties[party_id] = {
-            "id": party_id,
-            "created_at": datetime.now().isoformat(),
-            "users": {},
-            "current_video": None,
-            "playback_state": {
-                "playing": False,
-                "time": 0,
-                "last_update": datetime.now().isoformat(),
-            },
-        }
-
+        party_id = party_manager.create_party()
         logger.info(f"Created new watch party: {party_id}")
         return jsonify({"party_id": party_id, "url": prefixed_url(f"/party/{party_id}")})
 

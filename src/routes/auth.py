@@ -19,7 +19,7 @@ def register(deps):
     def login():
         """Login page"""
         # If login is not required, redirect to index
-        if config.REQUIRE_LOGIN != 'true':
+        if not config.REQUIRE_LOGIN:
             return redirect(prefixed_url('/'))
         # If already authenticated, redirect to index
         if 'authenticated' in session:
@@ -34,7 +34,7 @@ def register(deps):
         return render_template("version.html",
                                current_version=__version__,
                                codename=__codename__,
-                               require_login=(config.REQUIRE_LOGIN == 'true'))
+                               require_login=(config.REQUIRE_LOGIN))
 
     @bp.route("/api/version")
     @login_required
@@ -156,5 +156,5 @@ def register(deps):
         return jsonify({
             "authenticated": 'authenticated' in session,
             "username": session.get('username'),
-            "require_login": config.REQUIRE_LOGIN == 'true'
+            "require_login": config.REQUIRE_LOGIN
         })

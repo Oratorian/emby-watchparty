@@ -42,9 +42,8 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None,
     def login_required(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            require_login = config.REQUIRE_LOGIN if isinstance(config.REQUIRE_LOGIN, bool) else config.REQUIRE_LOGIN == 'true'
-            logger.debug(f"[AUTH CHECK] REQUIRE_LOGIN={require_login}, authenticated={'authenticated' in session}")
-            if require_login and 'authenticated' not in session:
+            logger.debug(f"[AUTH CHECK] REQUIRE_LOGIN={config.REQUIRE_LOGIN}, authenticated={'authenticated' in session}")
+            if config.REQUIRE_LOGIN and 'authenticated' not in session:
                 logger.debug("[AUTH CHECK] Redirecting to login page")
                 return redirect(prefixed_url('/login'))
             logger.debug("[AUTH CHECK] Access granted")
