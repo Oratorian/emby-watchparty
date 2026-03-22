@@ -7,7 +7,7 @@ from flask_socketio import emit
 from flask import request
 from datetime import datetime
 
-from src.socket_handlers.quality import QUALITY_PRESETS, DEFAULT_QUALITY, build_stream_params
+from src.stream_builder import QUALITY_PRESETS, DEFAULT_QUALITY, build_stream_params
 
 
 def register(deps):

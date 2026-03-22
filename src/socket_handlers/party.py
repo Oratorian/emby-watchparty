@@ -7,7 +7,7 @@ from flask_socketio import emit, join_room, leave_room
 from flask import request
 from datetime import datetime
 
-from src.socket_handlers.quality import DEFAULT_QUALITY
+from src.stream_builder import DEFAULT_QUALITY
 
 
 def register(deps):

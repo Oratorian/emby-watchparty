@@ -157,3 +157,13 @@ class StreamBuilder:
         param_string = "&".join(params)
         prefix = app_prefix or ""
         return f"{prefix}/hls/{item_id}/master.m3u8?{param_string}"
+
+
+def build_stream_params(emby_client, media_source, media_source_id, play_session_id,
+                        audio_index, subtitle_index, quality, logger):
+    """Standalone shim for backward compatibility with old handler code."""
+    builder = StreamBuilder(emby_client, logger)
+    return builder.build_params(
+        media_source, media_source_id, play_session_id,
+        audio_index, subtitle_index, quality,
+    )
