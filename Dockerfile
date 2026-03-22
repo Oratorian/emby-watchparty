@@ -18,4 +18,4 @@ COPY . .
 EXPOSE 5000
 
 # Run the application with gevent for production
-CMD ["python", "run_production.py"]
+CMD ["python", "app.py"]
