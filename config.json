@@ -1,0 +1,16 @@
+{
+  "LOG_LEVEL": "INFO",
+  "LOG_TO_FILE": true,
+  "LOG_FILE": "logs/emby-watchparty.log",
+  "LOG_FORMAT": "rsyslog",
+  "LOG_MAX_SIZE": 10,
+  "CONSOLE_LOG_LEVEL": "WARNING",
+  "MAX_USERS_PER_PARTY": 0,
+  "ENABLE_HLS_TOKEN_VALIDATION": true,
+  "HLS_TOKEN_EXPIRY": 86400,
+  "ENABLE_RATE_LIMITING": true,
+  "RATE_LIMIT_PARTY_CREATION": "5 per hour",
+  "RATE_LIMIT_API_CALLS": "1000 per minute",
+  "STATIC_SESSION_ENABLED": false,
+  "STATIC_SESSION_ID": "PARTY"
+}

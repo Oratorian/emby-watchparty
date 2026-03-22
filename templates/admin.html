@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Emby Watch Party</title>
+    <link rel="stylesheet" href="{{ url_for('main.static', filename='css/style.css') }}">
+    <script src="{{ url_for('main.static', filename='js/theme.js') }}"></script>
+    <style>
+        .admin-container {
+            max-width: 700px;
+            margin: 1.5rem auto;
+            padding: 0 1rem;
+        }
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        .admin-header h1 { margin: 0; font-size: 1.5rem; }
+        .admin-header a {
+            color: var(--cyber-primary);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .admin-section {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        .admin-section h2 {
+            margin: 0 0 1rem 0;
+            font-size: 1.1rem;
+            color: var(--cyber-gold);
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--cyber-border);
+        }
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .setting-row:last-child { border-bottom: none; }
+        .setting-label {
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            flex: 1;
+        }
+        .setting-desc {
+            color: var(--text-secondary, #888);
+            font-size: 0.75rem;
+            margin-top: 0.15rem;
+        }
+        .setting-input {
+            flex: 0 0 auto;
+            min-width: 140px;
+            text-align: right;
+        }
+        .setting-input input[type="text"],
+        .setting-input input[type="number"] {
+            width: 140px;
+            padding: 0.4rem 0.5rem;
+            border: 1px solid var(--cyber-primary);
+            border-radius: 4px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            text-align: right;
+        }
+        .setting-input input:focus {
+            outline: none;
+            border-color: var(--cyber-secondary);
+            box-shadow: 0 0 0 2px rgba(0, 255, 255, 0.1);
+        }
+        .setting-input select {
+            padding: 0.4rem 0.5rem;
+            border: 1px solid var(--cyber-primary);
+            border-radius: 4px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 0.85rem;
+        }
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            cursor: pointer;
+        }
+        .toggle-switch input { display: none; }
+        .toggle-slider {
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,0.15);
+            border-radius: 12px;
+            transition: background 0.2s;
+        }
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            left: 3px;
+            top: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+        .toggle-switch input:checked + .toggle-slider {
+            background: var(--cyber-primary);
+        }
+        .toggle-switch input:checked + .toggle-slider::before {
+            transform: translateX(20px);
+        }
+        .save-bar {
+            position: sticky;
+            bottom: 0;
+            background: var(--bg-secondary);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.3);
+        }
+        .save-status {
+            font-size: 0.85rem;
+            color: var(--text-secondary, #888);
+        }
+        .save-status.success { color: #48bb78; }
+        .save-status.error { color: #ff4444; }
+        .version-info {
+            text-align: center;
+            margin-top: 1rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary, #666);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="admin-container">
+            <div class="admin-header">
+                <h1>Admin Panel</h1>
+                <div>
+                    <a href="{{ app_prefix }}/">Back to WatchParty</a>
+                    <select id="themeSelector" class="btn-small theme-selector" style="margin-left: 0.5rem;">
+                        <option value="cyberpunk">Cyberpunk</option>
+                        <option value="material">Material</option>
+                        <option value="emby">Emby</option>
+                        <option value="classic">Classic</option>
+                        <option value="minimal">Minimal</option>
+                        <option value="netflix">Netflix</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="admin-section">
+                <h2>Logging</h2>
+                <div class="setting-row">
+                    <div class="setting-label">Log Level<div class="setting-desc">Application log verbosity</div></div>
+                    <div class="setting-input">
+                        <select id="LOG_LEVEL">
+                            <option value="DEBUG">DEBUG</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARNING">WARNING</option>
+                            <option value="ERROR">ERROR</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">Console Log Level<div class="setting-desc">Terminal output verbosity</div></div>
+                    <div class="setting-input">
+                        <select id="CONSOLE_LOG_LEVEL">
+                            <option value="DEBUG">DEBUG</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARNING">WARNING</option>
+                            <option value="ERROR">ERROR</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">Log to File<div class="setting-desc">Write logs to disk (disable for Docker stdout-only)</div></div>
+                    <div class="setting-input">
+                        <label class="toggle-switch"><input type="checkbox" id="LOG_TO_FILE"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">Log File<div class="setting-desc">Path to log file</div></div>
+                    <div class="setting-input"><input type="text" id="LOG_FILE"></div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">Max Log Size (MB)<div class="setting-desc">Log file rotation size</div></div>
+                    <div class="setting-input"><input type="number" id="LOG_MAX_SIZE" min="1" max="100"></div>
+                </div>
+            </div>
+
+            <div class="admin-section">
+                <h2>Security</h2>
+                <div class="setting-row">
+                    <div class="setting-label">Max Users per Party<div class="setting-desc">0 = unlimited</div></div>
+                    <div class="setting-input"><input type="number" id="MAX_USERS_PER_PARTY" min="0"></div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">HLS Token Validation<div class="setting-desc">Prevent direct stream access bypass</div></div>
+                    <div class="setting-input">
+                        <label class="toggle-switch"><input type="checkbox" id="ENABLE_HLS_TOKEN_VALIDATION"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">HLS Token Expiry (seconds)<div class="setting-desc">Token lifetime (default: 86400 = 24h)</div></div>
+                    <div class="setting-input"><input type="number" id="HLS_TOKEN_EXPIRY" min="300"></div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">Rate Limiting<div class="setting-desc">Requires restart to take effect</div></div>
+                    <div class="setting-input">
+                        <label class="toggle-switch"><input type="checkbox" id="ENABLE_RATE_LIMITING"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">Party Creation Limit<div class="setting-desc">Max per IP (requires restart)</div></div>
+                    <div class="setting-input"><input type="text" id="RATE_LIMIT_PARTY_CREATION"></div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">API Rate Limit<div class="setting-desc">Max per IP (requires restart)</div></div>
+                    <div class="setting-input"><input type="text" id="RATE_LIMIT_API_CALLS"></div>
+                </div>
+            </div>
+
+            <div class="admin-section">
+                <h2>Session</h2>
+                <div class="setting-row">
+                    <div class="setting-label">Static Session Mode<div class="setting-desc">Single persistent party that auto-creates on startup</div></div>
+                    <div class="setting-input">
+                        <label class="toggle-switch"><input type="checkbox" id="STATIC_SESSION_ENABLED"><span class="toggle-slider"></span></label>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">Static Session ID<div class="setting-desc">Party code for static session</div></div>
+                    <div class="setting-input"><input type="text" id="STATIC_SESSION_ID" style="text-transform: uppercase;"></div>
+                </div>
+            </div>
+
+            <div class="save-bar">
+                <span id="saveStatus" class="save-status"></span>
+                <button id="saveBtn" class="btn btn-primary">Save Settings</button>
+            </div>
+
+            <div class="version-info">
+                v{{ current_version }} "{{ codename }}"
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const APP_PREFIX = '{{ app_prefix }}';
+        const fields = [
+            'LOG_LEVEL', 'CONSOLE_LOG_LEVEL', 'LOG_TO_FILE', 'LOG_FILE', 'LOG_MAX_SIZE',
+            'MAX_USERS_PER_PARTY', 'ENABLE_HLS_TOKEN_VALIDATION', 'HLS_TOKEN_EXPIRY',
+            'ENABLE_RATE_LIMITING', 'RATE_LIMIT_PARTY_CREATION', 'RATE_LIMIT_API_CALLS',
+            'STATIC_SESSION_ENABLED', 'STATIC_SESSION_ID'
+        ];
+        const boolFields = ['LOG_TO_FILE', 'ENABLE_HLS_TOKEN_VALIDATION', 'ENABLE_RATE_LIMITING', 'STATIC_SESSION_ENABLED'];
+        const numFields = ['LOG_MAX_SIZE', 'MAX_USERS_PER_PARTY', 'HLS_TOKEN_EXPIRY'];
+
+        function populateForm(config) {
+            fields.forEach(function(key) {
+                var el = document.getElementById(key);
+                if (!el) return;
+                if (boolFields.indexOf(key) !== -1) {
+                    el.checked = !!config[key];
+                } else {
+                    el.value = config[key];
+                }
+            });
+        }
+
+        function collectForm() {
+            var data = {};
+            fields.forEach(function(key) {
+                var el = document.getElementById(key);
+                if (!el) return;
+                if (boolFields.indexOf(key) !== -1) {
+                    data[key] = el.checked;
+                } else if (numFields.indexOf(key) !== -1) {
+                    data[key] = parseInt(el.value, 10) || 0;
+                } else {
+                    data[key] = el.value;
+                }
+            });
+            return data;
+        }
+
+        // Load current config
+        fetch(APP_PREFIX + '/api/admin/config')
+            .then(function(r) { return r.json(); })
+            .then(populateForm)
+            .catch(function(e) {
+                document.getElementById('saveStatus').textContent = 'Failed to load settings';
+                document.getElementById('saveStatus').className = 'save-status error';
+            });
+
+        // Save
+        document.getElementById('saveBtn').addEventListener('click', function() {
+            var btn = this;
+            var status = document.getElementById('saveStatus');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+            status.textContent = '';
+
+            fetch(APP_PREFIX + '/api/admin/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(collectForm())
+            })
+            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+            .then(function(result) {
+                if (result.ok && result.data.success) {
+                    var changed = result.data.changed || [];
+                    status.textContent = changed.length > 0
+                        ? 'Saved: ' + changed.join(', ')
+                        : 'No changes';
+                    status.className = 'save-status success';
+                    populateForm(result.data.config);
+                } else {
+                    status.textContent = result.data.error || 'Save failed';
+                    status.className = 'save-status error';
+                }
+                btn.disabled = false;
+                btn.textContent = 'Save Settings';
+            })
+            .catch(function(e) {
+                status.textContent = 'Connection error';
+                status.className = 'save-status error';
+                btn.disabled = false;
+                btn.textContent = 'Save Settings';
+            });
+        });
+    </script>
+</body>
+</html>

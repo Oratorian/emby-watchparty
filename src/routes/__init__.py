@@ -12,6 +12,7 @@ from src.routes.library import register as register_library
 from src.routes.media import register as register_media
 from src.routes.hls import register as register_hls
 from src.routes.party_api import register as register_party_api
+from src.routes.admin import register as register_admin
 
 
 def init_routes(app, emby_client, party_manager, config, logger, limiter=None,
@@ -93,5 +94,6 @@ def init_routes(app, emby_client, party_manager, config, logger, limiter=None,
     register_media(deps)
     register_hls(deps)
     register_party_api(deps)
+    register_admin(deps)
 
     app.register_blueprint(bp)

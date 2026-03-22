@@ -108,10 +108,11 @@ def register(deps):
                         # Store session data
                         session['authenticated'] = True
                         session['username'] = user_name
-                        session['access_token'] = access_token  # Store for potential future use
+                        session['access_token'] = access_token
+                        session['is_admin'] = data.get("User", {}).get("Policy", {}).get("IsAdministrator", False)
                         session.permanent = True
 
-                        logger.info(f"User '{user_name}' logged in successfully")
+                        logger.info(f"User '{user_name}' logged in successfully (admin={session['is_admin']})")
                         return jsonify({"success": True, "message": "Login successful", "username": user_name})
                     else:
                         logger.warning(f"Login attempt for '{username}' - no access token returned")
