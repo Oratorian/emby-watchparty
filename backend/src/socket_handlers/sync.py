@@ -17,6 +17,13 @@ def register(ctx):
         if not party:
             return
 
+        # Only the video selector can update server playback state
+        current_video = party.get("current_video")
+        if current_video and current_video.get("selected_by") != sid:
+            username = party["users"].get(sid, "Someone")
+            logger.debug(f"Ignoring play from {username} - not the selector")
+            return
+
         party["playback_state"] = {
             "playing": True, "time": current_time,
             "last_update": datetime.now().isoformat(),
@@ -44,6 +51,13 @@ def register(ctx):
         current_time = data.get("time", 0)
         party = party_manager.get(party_id)
         if not party:
+            return
+
+        # Only the video selector can update server playback state
+        current_video = party.get("current_video")
+        if current_video and current_video.get("selected_by") != sid:
+            username = party["users"].get(sid, "Someone")
+            logger.debug(f"Ignoring pause from {username} - not the selector")
             return
 
         party["playback_state"] = {
@@ -74,6 +88,13 @@ def register(ctx):
         was_playing = data.get("was_playing", False)
         party = party_manager.get(party_id)
         if not party:
+            return
+
+        # Only the video selector can update server playback state
+        current_video = party.get("current_video")
+        if current_video and current_video.get("selected_by") != sid:
+            username = party["users"].get(sid, "Someone")
+            logger.debug(f"Ignoring seek from {username} - not the selector")
             return
 
         party["playback_state"]["time"] = seek_time

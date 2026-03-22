@@ -32,7 +32,7 @@ def register(ctx):
         for old_sid, existing_name in list(party["users"].items()):
             if existing_name == username and old_sid != sid:
                 del party["users"][old_sid]
-                sio.leave_room(old_sid, party_id)
+                await sio.leave_room(old_sid, party_id)
                 logger.info(f"Evicted stale session {old_sid} for {username}")
                 if party["current_video"] and party["current_video"].get("selected_by") == old_sid:
                     party["current_video"]["selected_by"] = sid
@@ -44,7 +44,7 @@ def register(ctx):
             await sio.emit("error", {"message": f"Party is full (max {config.MAX_USERS_PER_PARTY} users)"}, to=sid)
             return
 
-        sio.enter_room(sid, party_id)
+        await sio.enter_room(sid, party_id)
         party["users"][sid] = username
 
         await sio.emit("user_joined", {

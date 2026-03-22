@@ -57,8 +57,25 @@ export const usePartyStore = defineStore('party', () => {
       playbackState.value = { playing: false, time: 0, last_update: '' }
     })
 
+    socket.on('play', (data: any) => {
+      playbackState.value.playing = true
+      if (data.time !== undefined) {
+        playbackState.value.time = data.time
+      }
+    })
+
+    socket.on('pause', (data: any) => {
+      playbackState.value.playing = false
+      if (data.time !== undefined) {
+        playbackState.value.time = data.time
+      }
+    })
+
     socket.on('streams_changed', (data: any) => {
       currentVideo.value = data.video
+      if (data.current_time !== undefined) {
+        playbackState.value.time = data.current_time
+      }
     })
   }
 
