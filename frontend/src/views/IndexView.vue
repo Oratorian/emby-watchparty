@@ -28,73 +28,159 @@ function joinParty() {
 </script>
 
 <template>
-  <div class="index-container">
-    <header>
+  <div class="index-page">
+    <div class="hero">
+      <div class="hero-badge badge badge-primary">Watch Party 2.0</div>
       <h1>Emby Watch Party</h1>
-      <p>Watch together, wherever you are</p>
-    </header>
+      <p class="hero-tagline">Watch together, wherever you are</p>
+    </div>
 
     <main class="action-cards">
-      <div class="card">
-        <h2>Create Watch Party</h2>
+      <div class="action-card card card-interactive" @click="createParty">
+        <div class="card-icon">+</div>
+        <h2>Create Party</h2>
         <p>Start a new watch party and invite friends to join</p>
-        <button @click="createParty" class="btn btn-primary">Create Party</button>
+        <button class="btn btn-primary">Create Party</button>
       </div>
 
-      <div class="card">
-        <h2>Join Watch Party</h2>
+      <div class="action-card card">
+        <div class="card-icon">#</div>
+        <h2>Join Party</h2>
         <p>Enter a party code to join an existing watch party</p>
-        <input v-model="partyCode" @keypress.enter="joinParty" placeholder="Enter party code" />
-        <button @click="joinParty" class="btn btn-secondary">Join Party</button>
+        <div class="join-form">
+          <input
+            v-model="partyCode"
+            @keypress.enter="joinParty"
+            placeholder="Enter party code"
+            type="text"
+          />
+          <button @click="joinParty" class="btn btn-secondary">Join</button>
+        </div>
       </div>
     </main>
 
-    <div v-if="status" class="status">{{ status }}</div>
+    <div v-if="status" class="status-msg">{{ status }}</div>
 
-    <footer>
+    <footer class="index-footer">
       <router-link to="/version">Version Info</router-link>
-      &middot;
-      <a href="https://ko-fi.com/jedziah" target="_blank">Support on Ko-fi</a>
+      <span class="dot">&middot;</span>
+      <a href="https://ko-fi.com/jedziah" target="_blank" rel="noopener">Support on Ko-fi</a>
     </footer>
   </div>
 </template>
 
 <style scoped>
-.index-container {
-  max-width: 800px;
-  margin: 2rem auto;
-  text-align: center;
-  padding: 0 1rem;
+.index-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-xl);
 }
+
+.hero {
+  text-align: center;
+  margin-bottom: var(--space-2xl);
+}
+
+.hero-badge {
+  margin-bottom: var(--space-md);
+}
+
+.hero h1 {
+  font-size: 2.5rem;
+  letter-spacing: -0.03em;
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-tagline {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  margin-top: var(--space-sm);
+}
+
 .action-cards {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-  margin: 2rem 0;
-}
-@media (max-width: 600px) {
-  .action-cards { grid-template-columns: 1fr; }
-}
-.card {
-  background: var(--bg-secondary, #1a1a2e);
-  border-radius: 8px;
-  padding: 2rem;
-}
-.card input {
+  gap: var(--space-lg);
+  max-width: 700px;
   width: 100%;
-  padding: 0.75rem;
-  margin-bottom: 1rem;
-  box-sizing: border-box;
-  border: 1px solid var(--cyber-primary, #6c63ff);
-  border-radius: 4px;
-  background: var(--bg-primary, #0f0f23);
-  color: var(--text-primary, #fff);
 }
-footer {
-  margin-top: 2rem;
-  opacity: 0.7;
+
+.action-card {
+  text-align: center;
+  padding: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.card-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  background: var(--accent-primary-dim);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-sm);
+}
+
+.action-card h2 {
+  font-size: 1.2rem;
+}
+
+.action-card p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-sm);
+}
+
+.join-form {
+  display: flex;
+  gap: var(--space-sm);
+  width: 100%;
+}
+
+.join-form input {
+  flex: 1;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 600;
+}
+
+.status-msg {
+  margin-top: var(--space-lg);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.index-footer {
+  margin-top: var(--space-2xl);
   font-size: 0.85rem;
+  color: var(--text-muted);
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
 }
-footer a { color: var(--cyber-primary, #6c63ff); text-decoration: none; }
-.status { margin-top: 1rem; color: var(--text-secondary, #888); }
+
+.dot { opacity: 0.4; }
+
+@media (max-width: 600px) {
+  .action-cards {
+    grid-template-columns: 1fr;
+  }
+  .hero h1 {
+    font-size: 1.8rem;
+  }
+}
 </style>

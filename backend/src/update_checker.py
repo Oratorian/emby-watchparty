@@ -7,7 +7,7 @@ import logging
 
 import requests
 
-from src import __version__
+from backend.src import __version__
 
 
 def check_for_updates(logger: logging.Logger):
