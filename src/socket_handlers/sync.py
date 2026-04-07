@@ -23,13 +23,6 @@ def register(deps):
         current_time = data.get("time", 0)
 
         if party_id in watch_parties:
-            # Only the video selector can update server playback state
-            current_video = watch_parties[party_id].get("current_video")
-            if current_video and current_video.get("selected_by") != request.sid:
-                username = watch_parties[party_id]["users"].get(request.sid, "Someone")
-                logger.debug(f"Ignoring play from {username} - not the selector")
-                return
-
             watch_parties[party_id]["playback_state"] = {
                 "playing": True,
                 "time": current_time,

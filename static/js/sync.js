@@ -197,31 +197,6 @@
             });
         });
 
-        // Drift correction - receive targeted correction from server
-        S.socket.on('drift_correction', function(data) {
-            var ve = S.dom.videoElement;
-            if (!ve.src || ve.readyState < 2) return;
-            if (S.isSyncing || S.isUserSeeking) return;
-
-            var drift = Math.abs(ve.currentTime - data.time);
-            if (drift < 1.0) return;
-
-            S.isSyncing = true;
-            ve.currentTime = data.time;
-            setTimeout(function() { S.isSyncing = false; }, 2000);
-        });
-
-        // Heartbeat - all clients report position every 5s for drift detection
-        S.heartbeatInterval = setInterval(function() {
-            var ve = S.dom.videoElement;
-            if (!ve.src || ve.readyState < 2 || ve.paused || ve.ended) return;
-            if (S.isSyncing || S.isUserSeeking) return;
-
-            S.socket.emit('heartbeat', {
-                party_id: S.partyId,
-                time: ve.currentTime
-            });
-        }, 5000);
     }
 
     window.PartySync = {
