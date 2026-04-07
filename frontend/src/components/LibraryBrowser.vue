@@ -113,7 +113,7 @@ async function goToCrumb(index: number) {
   breadcrumbs.value = breadcrumbs.value.slice(0, index + 1)
   isSearching.value = false
   searchQuery.value = ''
-  await fetchItems(crumb.id)
+  await fetchItems(crumb!.id)
 }
 
 async function fetchLibraries() {

@@ -43,7 +43,8 @@ Thumbs.db
 
 # Logs
 logs/
-old_src_and_templates
+old160
+old152
 merge-to-main.ps1
 *.backup
 

@@ -19,7 +19,7 @@ const apiLimitUnit = ref('per minute')
 
 function parseRateLimit(str: string): { value: number; unit: string } {
   const match = (str || '').match(/^(\d+)\s*(per\s+\w+)$/i)
-  if (match) return { value: parseInt(match[1]), unit: match[2].toLowerCase() }
+  if (match) return { value: parseInt(match[1]!), unit: match[2]!.toLowerCase() }
   return { value: 0, unit: 'per minute' }
 }
 

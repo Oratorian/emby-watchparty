@@ -278,20 +278,25 @@ class EmbyClient:
             # Fallback to trying to get item details which may have MediaStreams
             return self.get_item_details(item_id)
 
-    def stop_active_encodings(self):
+    def stop_active_encodings(self, play_session_id=None):
         """
-        Stop all active HLS transcoding sessions for this device.
-        Should be called when playback stops to free up server resources.
+        Stop active HLS transcoding sessions for this device.
 
-        Per Emby API: After playback is complete, it is necessary to inform
-        the server to stop any related HLS transcoding.
+        Args:
+            play_session_id: If provided, stop only this session's encoding.
+                             If None, stop ALL encodings for the device.
         """
         try:
             url = f"{self.server_url}/emby/Videos/ActiveEncodings"
             params = {"DeviceId": self.device_id, "api_key": self.api_key}
+            if play_session_id:
+                params["PlaySessionId"] = play_session_id
             response = requests.delete(url, headers=self.headers, params=params)
             response.raise_for_status()
-            self.logger.info(f"Stopped active encodings for device {self.device_id}")
+            if play_session_id:
+                self.logger.info(f"Stopped encoding for session {play_session_id}")
+            else:
+                self.logger.info(f"Stopped all active encodings for device {self.device_id}")
             return True
         except Exception as e:
             self.logger.warning(f"Failed to stop active encodings: {e}")

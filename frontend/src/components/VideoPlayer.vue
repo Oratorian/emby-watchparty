@@ -16,6 +16,7 @@ const emit = defineEmits<{
   seeked: [currentTime: number]
   timeupdate: [currentTime: number]
   ended: []
+  ready: []
   'autoplay-blocked': []
 }>()
 
@@ -55,7 +56,8 @@ function attachStream(url: string) {
     }
     // Late joiner: tell HLS.js to start buffering from the
     // party's current position instead of segment 0
-    if (props.startTime && props.startTime > 1) {
+    const hasStartPos = props.startTime && props.startTime > 1
+    if (hasStartPos) {
       hlsConfig.startPosition = props.startTime
     }
     hls = new Hls(hlsConfig)
@@ -65,12 +67,33 @@ function attachStream(url: string) {
     })
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       isBuffering.value = false
-      if (props.playing) {
-        video.play().catch(() => {
-          emit('autoplay-blocked')
-        })
+      // Match v1.5.2: only reset to 0 when NOT a late joiner
+      if (!isSyncing.value && !hasStartPos) {
+        video.currentTime = 0
       }
+      if (isSyncing.value) {
+        isSyncing.value = false
+      }
+      emit('ready')
     })
+    // Late joiner: seek to exact position after metadata is available
+    // This is separate from MANIFEST_PARSED (matching v1.5.2 flow)
+    if (hasStartPos) {
+      isSyncing.value = true
+      video.addEventListener('loadedmetadata', () => {
+        video.currentTime = props.startTime!
+        if (props.playing) {
+          video.play().then(() => {
+            setTimeout(() => { isSyncing.value = false }, 100)
+          }).catch(() => {
+            setTimeout(() => { isSyncing.value = false }, 100)
+            emit('autoplay-blocked')
+          })
+        } else {
+          setTimeout(() => { isSyncing.value = false }, 100)
+        }
+      }, { once: true })
+    }
     hls.on(Hls.Events.ERROR, (_event, data) => {
       if (data.fatal) {
         switch (data.type) {

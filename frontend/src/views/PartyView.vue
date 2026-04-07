@@ -46,14 +46,20 @@ onMounted(async () => {
     })
   })
 
-  // Playback sync handlers
+  // Playback sync handlers -- matching v1.6.0 deduplication
+  let lastSyncedTime = 0
+  let lastSyncType = ''
+
   socket.on('play', (data: any) => {
+    if (Math.abs(data.time - lastSyncedTime) < 0.1 && lastSyncType === 'play') return
+    lastSyncedTime = data.time
+    lastSyncType = 'play'
     const vp = videoPlayer.value
     if (!vp) return
     vp.isSyncing = true
     const ve = vp.videoEl
     if (ve) {
-      if (Math.abs(ve.currentTime - data.time) > 1) ve.currentTime = data.time
+      if (Math.abs(ve.currentTime - data.time) > 0.3) ve.currentTime = data.time
       ve.play().catch(() => {
         addSystemMessage('Autoplay blocked by browser - click the video to resume')
       })
@@ -63,74 +69,84 @@ onMounted(async () => {
   })
 
   socket.on('pause', (data: any) => {
+    if (Math.abs(data.time - lastSyncedTime) < 0.1 && lastSyncType === 'pause') return
+    lastSyncedTime = data.time
+    lastSyncType = 'pause'
     const vp = videoPlayer.value
     if (!vp) return
     vp.isSyncing = true
     const ve = vp.videoEl
     if (ve) {
       ve.pause()
-      if (Math.abs(ve.currentTime - data.time) > 1) ve.currentTime = data.time
+      if (Math.abs(ve.currentTime - data.time) > 0.3) ve.currentTime = data.time
     }
     setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
     if (data.username) addSystemMessage(`${data.username} paused playback`)
   })
 
   socket.on('seek', (data: any) => {
+    if (Math.abs(data.time - lastSyncedTime) < 0.1 && lastSyncType === 'seek') return
+    lastSyncedTime = data.time
+    lastSyncType = 'seek'
     const vp = videoPlayer.value
     if (!vp) return
     vp.isSyncing = true
     const ve = vp.videoEl
     if (ve) {
       ve.currentTime = data.time
-      if (data.playing) {
-        const bufferDelay = data.buffer_delay || 500
-        const onSeeked = () => {
-          setTimeout(() => {
-            ve.play().catch(() => {
-              addSystemMessage('Autoplay blocked by browser - click the video to resume')
-            })
-            setTimeout(() => { if (vp) vp.isSyncing = false }, 2000)
-          }, bufferDelay)
-          ve.removeEventListener('seeked', onSeeked)
+      if (data.playing && data.wait_for_ready) {
+        // Wait for buffer, then signal ready -- all_ready will trigger play
+        const signalReady = () => {
+          if (party.partyId) {
+            socket.emit('stream_ready', { party_id: party.partyId })
+          }
         }
-        ve.addEventListener('seeked', onSeeked)
+        // Already buffered (seeker) -- signal immediately
+        if (ve.readyState >= 3) {
+          signalReady()
+        } else {
+          ve.addEventListener('canplay', signalReady, { once: true })
+        }
+      } else if (data.playing) {
+        setTimeout(() => {
+          ve.play().then(() => {
+            if (vp) vp.isSyncing = false
+          }).catch(() => {
+            if (vp) vp.isSyncing = false
+            addSystemMessage('Autoplay blocked by browser - click the video to resume')
+          })
+        }, 500)
       } else {
         ve.pause()
-        setTimeout(() => { if (vp) vp.isSyncing = false }, 2000)
+        setTimeout(() => { if (vp) vp.isSyncing = false }, 300)
       }
     }
     if (data.username) addSystemMessage(`${data.username} seeked to ${formatTime(data.time)}`)
   })
 
-  socket.on('force_pause_before_seek', (data: any) => {
+  socket.on('force_pause_before_seek', () => {
     const vp = videoPlayer.value
     if (!vp) return
     isForcePausing = true
     vp.isSyncing = true
     const ve = vp.videoEl
     if (ve) ve.pause()
+    // Only reset isForcePausing; let the seek handler own isSyncing
     setTimeout(() => { isForcePausing = false }, 2000)
   })
 
   socket.on('drift_correction', (data: any) => {
     const vp = videoPlayer.value
     if (!vp) return
-    vp.isSyncing = true
     const ve = vp.videoEl
-    const hlsInstance = vp.getHls?.()
-    if (ve && hlsInstance) {
-      hlsInstance.stopLoad()
-      ve.currentTime = data.time
-      hlsInstance.startLoad(data.time)
-      if (data.playing) {
-        ve.play().catch(() => {})
-      }
-    } else if (ve) {
-      ve.currentTime = data.time
-      if (data.playing) {
-        ve.play().catch(() => {})
-      }
-    }
+    if (!ve || !ve.src || ve.readyState < 2) return
+    if (vp.isSyncing || isUserSeeking) return
+
+    const drift = Math.abs(ve.currentTime - data.time)
+    if (drift < 1.0) return
+
+    vp.isSyncing = true
+    ve.currentTime = data.time
     setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
   })
 
@@ -138,13 +154,31 @@ onMounted(async () => {
   const heartbeatInterval = setInterval(() => {
     const vp = videoPlayer.value
     const ve = vp?.videoEl
-    if (ve && party.partyId && !ve.paused && ve.readyState >= 2) {
+    if (!ve || !ve.src || ve.readyState < 2 || ve.paused || ve.ended) return
+    if (vp.isSyncing || isUserSeeking) return
+    if (party.partyId) {
       socket.emit('heartbeat', { party_id: party.partyId, time: ve.currentTime })
     }
   }, 5000)
 
   onUnmounted(() => {
     clearInterval(heartbeatInterval)
+  })
+
+  // All users buffered after a seek -- resume playback together
+  socket.on('all_ready', () => {
+    const vp = videoPlayer.value
+    if (!vp) return
+    const ve = vp.videoEl
+    if (ve) {
+      ve.play().then(() => {
+        if (vp) vp.isSyncing = false
+      }).catch(() => {
+        if (vp) vp.isSyncing = false
+        addSystemMessage('Autoplay blocked by browser - click the video to resume')
+      })
+    }
+    isForcePausing = false
   })
 
   // Handle late joiner sync -- suppress emits during initial load
@@ -197,7 +231,7 @@ watch(() => party.currentVideo, async (video) => {
       track.label = sub.displayLanguage || sub.language || 'Unknown'
       track.srclang = sub.language || 'und'
       track.src = `/api/subtitles/${video.item_id}/${video.media_source_id}/${sub.index}`
-      track.mode = 'hidden'
+      ;(track as any).mode = 'hidden'
       ve.appendChild(track)
     })
   } catch { /* ignore */ }
@@ -279,15 +313,28 @@ function selectVideo(item: any) {
 let wasPlayingBeforeSeek = false
 
 let isForcePausing = false
-let isUserSeeking = false
+let isUserSeeking: boolean = false
 let hasStarted = false
 let isInitialSync = false
+
+// Throttling -- matching v1.6.0
+let lastPlayBroadcast = 0
+let lastPauseBroadcast = 0
+const PLAY_PAUSE_THROTTLE = 300
+let seekSettleTimer: ReturnType<typeof setTimeout> | null = null
 
 function onVideoPlay() {
   if (!party.partyId || isForcePausing || isInitialSync) return
   const ve = videoPlayer.value?.videoEl
+  if (!ve || ve.ended) return
+  if (videoPlayer.value?.isSyncing || isUserSeeking) return
+
+  const now = Date.now()
+  if (now - lastPlayBroadcast < PLAY_PAUSE_THROTTLE) return
+  lastPlayBroadcast = now
+
   wasPlayingBeforeSeek = true
-  socket.emit('play', { party_id: party.partyId, time: ve?.currentTime || 0 })
+  socket.emit('play', { party_id: party.partyId, time: ve.currentTime })
   if (!hasStarted) {
     addSystemMessage(`${party.username || 'You'} started playback`)
     hasStarted = true
@@ -298,20 +345,42 @@ function onVideoPlay() {
 
 function onVideoPause() {
   if (!party.partyId || isForcePausing || isUserSeeking || isInitialSync) return
+  const ve = videoPlayer.value?.videoEl
+  if (!ve || ve.ended) return
+  if (videoPlayer.value?.isSyncing) return
+
+  const now = Date.now()
+  if (now - lastPauseBroadcast < PLAY_PAUSE_THROTTLE) return
+  lastPauseBroadcast = now
+
   wasPlayingBeforeSeek = false
-  socket.emit('pause', { party_id: party.partyId, time: videoPlayer.value?.videoEl?.currentTime || 0 })
+  socket.emit('pause', { party_id: party.partyId, time: ve.currentTime })
   addSystemMessage(`${party.username || 'You'} paused playback`)
+}
+
+function onVideoSeeking() {
+  isUserSeeking = true
 }
 
 function onVideoSeeked(time: number) {
   if (!party.partyId || isInitialSync) return
-  isUserSeeking = false
-  socket.emit('seek', {
-    party_id: party.partyId,
-    time,
-    was_playing: wasPlayingBeforeSeek,
-  })
-  addSystemMessage(`${party.username || 'You'} seeked to ${formatTime(time)}`)
+  if (videoPlayer.value?.isSyncing) return
+
+  // Seek settle timer -- wait 500ms for rapid seeks to settle
+  if (seekSettleTimer) clearTimeout(seekSettleTimer)
+  seekSettleTimer = setTimeout(() => {
+    isUserSeeking = false
+    seekSettleTimer = null
+    const ve = videoPlayer.value?.videoEl
+    if (!ve) return
+
+    socket.emit('seek', {
+      party_id: party.partyId,
+      time: ve.currentTime,
+      was_playing: wasPlayingBeforeSeek,
+    })
+    addSystemMessage(`${party.username || 'You'} seeked to ${formatTime(ve.currentTime)}`)
+  }, 500)
 }
 
 let lastProgressReport = 0
@@ -320,11 +389,18 @@ const PROGRESS_INTERVAL = 10000 // 10 seconds
 function onVideoTimeUpdate(time: number) {
   currentTime.value = time
   if (!party.partyId || isInitialSync) return
+  const ve = videoPlayer.value?.videoEl
+  if (!ve || !ve.src || ve.readyState < 2 || ve.paused) return
   const now = Date.now()
   if (now - lastProgressReport >= PROGRESS_INTERVAL) {
     lastProgressReport = now
     socket.emit('report_progress', { party_id: party.partyId, time })
   }
+}
+
+function onStreamReady() {
+  if (!party.partyId) return
+  socket.emit('stream_ready', { party_id: party.partyId })
 }
 
 function stopVideo() {
@@ -364,7 +440,7 @@ function onChangeTextSubtitle(payload: { index: number; url: string | null }) {
 
   // Activate the track
   if (ve.textTracks.length > 0) {
-    ve.textTracks[0].mode = 'showing'
+    ;(ve.textTracks[0] as any).mode = 'showing'
   }
 }
 
@@ -441,23 +517,34 @@ function toggleLibrary() {
           <button @click="toggleLibrary" class="btn btn-primary">Browse Library</button>
         </div>
         <div v-else class="video-wrapper">
+          <div v-if="party.readyCheckActive" class="ready-check-overlay">
+            <div class="ready-check-box">
+              <span class="spinner" />
+              <p>Waiting for everyone to load...</p>
+              <ul>
+                <li v-for="u in party.waitingUsers" :key="u" class="waiting">{{ u }}</li>
+                <li v-for="u in party.readyUsers" :key="u" class="ready">{{ u }}</li>
+              </ul>
+            </div>
+          </div>
           <VideoPlayer
             ref="videoPlayer"
-            :stream-url="party.currentVideo.stream_url"
+            :stream-url="party.myStreamUrl || ''"
             :title="party.currentVideo.title"
             :playing="party.playbackState.playing"
             :start-time="party.playbackState.time"
             @play="onVideoPlay"
             @pause="onVideoPause"
-            @seeking="isUserSeeking = true"
+            @seeking="onVideoSeeking"
             @seeked="onVideoSeeked"
             @timeupdate="onVideoTimeUpdate"
             @ended="() => {}"
+            @ready="onStreamReady"
           />
           <VideoControls
             :party-id="party.partyId!"
             :item-id="party.currentVideo.item_id"
-            :stream-url="party.currentVideo.stream_url"
+            :stream-url="party.myStreamUrl || ''"
             :quality="party.currentVideo.quality || '1080p-high'"
             :current-time="currentTime"
             :media-source-id="party.currentVideo.media_source_id"
@@ -717,10 +804,51 @@ function toggleLibrary() {
 }
 
 .video-wrapper {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
 }
+
+.ready-check-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.ready-check-box {
+  text-align: center;
+  color: #fff;
+  padding: var(--space-lg);
+}
+
+.ready-check-box .spinner {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: var(--space-sm);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.ready-check-box ul {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-sm);
+}
+
+.ready-check-box li.ready { color: var(--success, #4caf50); }
+.ready-check-box li.waiting { color: var(--text-muted, #999); }
 
 .video-info {
   padding: var(--space-sm) var(--space-md);

@@ -1,11 +1,23 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 
 const router = useRouter()
 const partyCode = ref('')
 const status = ref('')
+
+onMounted(async () => {
+  try {
+    const res = await fetch('/api/party/static-session')
+    const data = await res.json()
+    if (data.party_id) {
+      router.replace(`/party/${data.party_id}`)
+    }
+  } catch {
+    // No static session or error, show normal index
+  }
+})
 
 async function createParty() {
   status.value = 'Creating party...'

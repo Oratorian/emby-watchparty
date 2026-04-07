@@ -1,7 +1,7 @@
-"""Playback handlers: select_video, stop_video, change_streams, video_ended, report_progress"""
+"""Playback handlers: select_video, stop_video, change_streams, video_ended, report_progress, stream_ready"""
 
 from datetime import datetime
-from backend.src.stream_builder import QUALITY_PRESETS, DEFAULT_QUALITY, build_stream_params
+from backend.src.stream_builder import QUALITY_PRESETS, DEFAULT_QUALITY
 
 
 def register(ctx):
@@ -12,14 +12,130 @@ def register(ctx):
     party_manager = ctx['party_manager']
     token_manager = ctx['token_manager']
 
+    def _default_audio_index(media_source):
+        """Find the default audio track index from a media source."""
+        if "MediaStreams" not in media_source:
+            return None
+        for stream in media_source["MediaStreams"]:
+            if stream.get("Type") == "Audio" and stream.get("IsDefault"):
+                return stream.get("Index")
+        for stream in media_source["MediaStreams"]:
+            if stream.get("Type") == "Audio":
+                return stream.get("Index")
+        return None
+
+    def _create_user_stream(party, party_id, sid, item_id, media_source,
+                            audio_index, subtitle_index, quality, start_seconds=0):
+        """Create a per-user Emby stream (own PlaySessionId and transcode).
+
+        Returns the stream info dict, or None on failure.
+        """
+        playback_info = emby_client.get_playback_info(item_id)
+        if not playback_info or "MediaSources" not in playback_info:
+            logger.warning(f"Failed to get playback info for user stream (sid={sid})")
+            return None
+
+        user_media_source = playback_info["MediaSources"][0]
+        media_source_id = user_media_source["Id"]
+        play_session_id = playback_info.get("PlaySessionId")
+
+        start_ticks = int(start_seconds * 10_000_000) if start_seconds > 0 else None
+
+        from backend.src.stream_builder import StreamBuilder
+        builder = StreamBuilder(emby_client, logger)
+        stream_url_base = builder.build_stream_url(
+            item_id=item_id,
+            app_prefix=config.APP_PREFIX,
+            media_source=user_media_source,
+            media_source_id=media_source_id,
+            play_session_id=play_session_id,
+            audio_index=audio_index,
+            subtitle_index=subtitle_index,
+            quality=quality,
+            start_time_ticks=start_ticks,
+        )
+
+        stream_info = {
+            "play_session_id": play_session_id,
+            "media_source_id": media_source_id,
+            "stream_url_base": stream_url_base,
+            "audio_index": audio_index,
+            "subtitle_index": subtitle_index,
+            "quality": quality,
+            "ready": False,
+        }
+
+        party.setdefault("user_streams", {})[sid] = stream_info
+
+        run_time_seconds = party.get("current_video", {}).get("run_time_seconds")
+        emby_client.report_playback_start(
+            item_id=item_id, media_source_id=media_source_id,
+            play_session_id=play_session_id, position_seconds=start_seconds,
+            audio_index=audio_index,
+            subtitle_index=subtitle_index if subtitle_index != -1 else None,
+            run_time_seconds=run_time_seconds,
+        )
+
+        logger.info(f"Created user stream for {party['users'].get(sid, sid)}: "
+                     f"session={play_session_id}, start={start_seconds:.1f}s")
+        return stream_info
+
+    def _stop_user_stream(party, sid, position_seconds=0):
+        """Stop a single user's Emby transcode and clean up."""
+        user_streams = party.get("user_streams", {})
+        stream = user_streams.pop(sid, None)
+        if not stream or not stream.get("play_session_id"):
+            return
+
+        current_video = party.get("current_video")
+        if current_video:
+            emby_client.report_playback_stopped(
+                item_id=current_video["item_id"],
+                media_source_id=stream["media_source_id"],
+                play_session_id=stream["play_session_id"],
+                position_seconds=position_seconds,
+                run_time_seconds=current_video.get("run_time_seconds"),
+            )
+        emby_client.stop_active_encodings(play_session_id=stream["play_session_id"])
+
+    def _stop_all_user_streams(party, position_seconds=0):
+        """Stop all per-user transcodes."""
+        for sid in list(party.get("user_streams", {}).keys()):
+            _stop_user_stream(party, sid, position_seconds)
+
+    def _start_ready_check(party, party_id):
+        """Start a ready check for all users in the party."""
+        expected = set(party["users"].keys())
+        party["ready_check"] = {
+            "active": True,
+            "expected_sids": expected,
+            "ready_sids": set(),
+        }
+        logger.debug(f"Ready check started for party {party_id}: expecting {len(expected)} users")
+
+    async def _check_all_ready(party, party_id):
+        """Check if all users are ready and emit all_ready if so."""
+        rc = party.get("ready_check")
+        if not rc or not rc.get("active"):
+            return
+
+        if rc["ready_sids"] >= rc["expected_sids"]:
+            party["ready_check"] = None
+            logger.info(f"All users ready in party {party_id}")
+            await sio.emit("all_ready", {}, room=party_id)
+        else:
+            ready_names = [party["users"].get(s, "?") for s in rc["ready_sids"]]
+            waiting_names = [party["users"].get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]
+            await sio.emit("ready_check_update", {
+                "ready": ready_names, "waiting": waiting_names,
+            }, room=party_id)
+
     @sio.on("select_video")
     async def handle_select_video(sid, data):
         party_id = data.get("party_id", "").strip().upper()
         item_id = data.get("item_id")
         item_name = data.get("item_name", "Unknown")
         item_overview = data.get("item_overview", "")
-        audio_index = data.get("audio_index")
-        subtitle_index = data.get("subtitle_index")
 
         if not party_manager.exists(party_id):
             await sio.emit("error", {"message": "Watch party not found"}, to=sid)
@@ -27,76 +143,42 @@ def register(ctx):
 
         party = party_manager.get(party_id)
 
+        # Fetch media info once to get metadata
         playback_info = emby_client.get_playback_info(item_id)
         if not playback_info or "MediaSources" not in playback_info:
             await sio.emit("error", {"message": "Failed to load video"}, to=sid)
             return
 
         media_source = playback_info["MediaSources"][0]
-        media_source_id = media_source["Id"]
-        play_session_id = playback_info.get("PlaySessionId")
-
-        # Default audio track
-        if audio_index is None and "MediaStreams" in media_source:
-            for stream in media_source["MediaStreams"]:
-                if stream.get("Type") == "Audio" and stream.get("IsDefault"):
-                    audio_index = stream.get("Index")
-                    break
-            if audio_index is None:
-                for stream in media_source["MediaStreams"]:
-                    if stream.get("Type") == "Audio":
-                        audio_index = stream.get("Index")
-                        break
-
-        quality = data.get("quality")
-        if not quality or quality not in QUALITY_PRESETS:
-            quality = DEFAULT_QUALITY
-
-        params = build_stream_params(
-            emby_client, media_source, media_source_id, play_session_id,
-            audio_index, subtitle_index, quality, logger,
-        )
-        app_prefix = config.APP_PREFIX
-        stream_url_base = f"{app_prefix}/hls/{item_id}/master.m3u8?{'&'.join(params)}"
-
-        # Stop previous video
-        if party.get("current_video") and party["current_video"].get("play_session_id"):
-            prev = party["current_video"]
-            prev_time = party["playback_state"].get("time", 0)
-            emby_client.report_playback_stopped(
-                item_id=prev["item_id"], media_source_id=prev["media_source_id"],
-                play_session_id=prev["play_session_id"], position_seconds=prev_time,
-                run_time_seconds=prev.get("run_time_seconds"),
-            )
-            emby_client.stop_active_encodings()
-
+        default_audio = _default_audio_index(media_source)
         run_time_ticks = media_source.get("RunTimeTicks", 0)
         run_time_seconds = run_time_ticks / 10_000_000 if run_time_ticks else None
 
+        # Stop all previous user streams
+        prev_time = party["playback_state"].get("time", 0)
+        _stop_all_user_streams(party, prev_time)
+
+        # Store shared video info (no per-user fields)
         party["current_video"] = {
             "item_id": item_id, "title": item_name, "overview": item_overview,
-            "stream_url_base": stream_url_base, "audio_index": audio_index,
-            "subtitle_index": subtitle_index, "media_source_id": media_source_id,
-            "play_session_id": play_session_id, "run_time_seconds": run_time_seconds,
-            "selected_by": sid, "quality": quality,
+            "run_time_seconds": run_time_seconds, "selected_by": sid,
         }
-
-        emby_client.report_playback_start(
-            item_id=item_id, media_source_id=media_source_id,
-            play_session_id=play_session_id, position_seconds=0,
-            audio_index=audio_index,
-            subtitle_index=subtitle_index if subtitle_index != -1 else None,
-            run_time_seconds=run_time_seconds,
-        )
 
         party["playback_state"] = {
             "playing": False, "time": 0, "last_update": datetime.now().isoformat(),
         }
 
-        # Send video to each user with individual token
+        # Create per-user streams and emit individually
         for user_sid in list(party["users"].keys()):
-            username = party["users"][user_sid]
-            stream_url = stream_url_base
+            stream = _create_user_stream(
+                party, party_id, user_sid, item_id, media_source,
+                audio_index=default_audio, subtitle_index=None,
+                quality=DEFAULT_QUALITY, start_seconds=0,
+            )
+            if not stream:
+                continue
+
+            stream_url = stream["stream_url_base"]
             if config.ENABLE_HLS_TOKEN_VALIDATION:
                 user_token = token_manager.get_or_create(party_id, user_sid)
                 if user_token:
@@ -105,9 +187,9 @@ def register(ctx):
             await sio.emit("video_selected", {
                 "video": {
                     "item_id": item_id, "title": item_name, "overview": item_overview,
-                    "stream_url": stream_url, "audio_index": audio_index,
-                    "subtitle_index": subtitle_index, "media_source_id": media_source_id,
-                    "selected_by": sid, "quality": quality,
+                    "stream_url": stream_url,
+                    "audio_index": default_audio, "subtitle_index": None,
+                    "selected_by": sid, "quality": DEFAULT_QUALITY,
                 }
             }, to=user_sid)
 
@@ -124,20 +206,12 @@ def register(ctx):
 
         video_title = party["current_video"].get("title", "Unknown")
         username = party["users"].get(sid, "Unknown")
-        current_video = party["current_video"]
         current_time = party["playback_state"].get("time", 0)
 
-        if current_video.get("play_session_id"):
-            emby_client.report_playback_stopped(
-                item_id=current_video["item_id"],
-                media_source_id=current_video["media_source_id"],
-                play_session_id=current_video["play_session_id"],
-                position_seconds=current_time,
-                run_time_seconds=current_video.get("run_time_seconds"),
-            )
-        emby_client.stop_active_encodings()
+        _stop_all_user_streams(party, current_time)
 
         party["current_video"] = None
+        party["ready_check"] = None
         party["playback_state"] = {
             "playing": False, "time": 0, "last_update": datetime.now().isoformat(),
         }
@@ -149,6 +223,7 @@ def register(ctx):
 
     @sio.on("change_streams")
     async def handle_change_streams(sid, data):
+        """Per-user stream change (audio/subtitle/quality). Only affects the requesting user."""
         party_id = data.get("party_id", "").strip().upper()
         audio_index = data.get("audio_index")
         subtitle_index = data.get("subtitle_index")
@@ -162,64 +237,48 @@ def register(ctx):
         item_id = current_video["item_id"]
 
         if not quality or quality not in QUALITY_PRESETS:
-            quality = current_video.get("quality", DEFAULT_QUALITY)
+            old_stream = party.get("user_streams", {}).get(sid, {})
+            quality = old_stream.get("quality", DEFAULT_QUALITY)
 
+        # Stop this user's old transcode
+        current_time = party["playback_state"].get("time", 0)
+        _stop_user_stream(party, sid, current_time)
+
+        # Get fresh media info for new PlaySessionId
         playback_info = emby_client.get_playback_info(item_id)
         if not playback_info or "MediaSources" not in playback_info:
             return
 
         media_source = playback_info["MediaSources"][0]
-        media_source_id = media_source["Id"]
-        play_session_id = playback_info.get("PlaySessionId")
 
-        params = build_stream_params(
-            emby_client, media_source, media_source_id, play_session_id,
-            audio_index, subtitle_index, quality, logger,
+        # Create new stream at current position
+        stream = _create_user_stream(
+            party, party_id, sid, item_id, media_source,
+            audio_index=audio_index, subtitle_index=subtitle_index,
+            quality=quality, start_seconds=current_time,
         )
-        app_prefix = config.APP_PREFIX
-        stream_url_base = f"{app_prefix}/hls/{item_id}/master.m3u8?{'&'.join(params)}"
+        if not stream:
+            return
 
-        # Stop old transcode
-        if current_video.get("play_session_id"):
-            current_time = party["playback_state"]["time"]
-            emby_client.report_playback_stopped(
-                item_id=item_id, media_source_id=current_video.get("media_source_id"),
-                play_session_id=current_video["play_session_id"],
-                position_seconds=current_time, run_time_seconds=current_video.get("run_time_seconds"),
-            )
+        stream_url = stream["stream_url_base"]
+        if config.ENABLE_HLS_TOKEN_VALIDATION:
+            user_token = token_manager.get_or_create(party_id, sid)
+            if user_token:
+                stream_url += f"&token={user_token}"
 
-        current_video["stream_url_base"] = stream_url_base
-        current_video["audio_index"] = audio_index
-        current_video["subtitle_index"] = subtitle_index
-        current_video["media_source_id"] = media_source_id
-        current_video["play_session_id"] = play_session_id
-        current_video["quality"] = quality
+        # Only emit to the requesting user
+        await sio.emit("streams_changed", {
+            "video": {
+                "item_id": item_id, "title": current_video["title"],
+                "overview": current_video["overview"], "stream_url": stream_url,
+                "audio_index": audio_index, "subtitle_index": subtitle_index,
+                "selected_by": current_video.get("selected_by"), "quality": quality,
+            },
+            "current_time": current_time,
+        }, to=sid)
 
-        current_time = party["playback_state"]["time"]
-        emby_client.report_playback_start(
-            item_id=item_id, media_source_id=media_source_id,
-            play_session_id=play_session_id, position_seconds=current_time,
-            audio_index=audio_index,
-            subtitle_index=subtitle_index if subtitle_index != -1 else None,
-            run_time_seconds=current_video.get("run_time_seconds"),
-        )
-
-        for user_sid in list(party["users"].keys()):
-            stream_url = stream_url_base
-            if config.ENABLE_HLS_TOKEN_VALIDATION:
-                user_token = token_manager.get_or_create(party_id, user_sid)
-                if user_token:
-                    stream_url += f"&token={user_token}"
-            await sio.emit("streams_changed", {
-                "video": {
-                    "item_id": item_id, "title": current_video["title"],
-                    "overview": current_video["overview"], "stream_url": stream_url,
-                    "audio_index": audio_index, "subtitle_index": subtitle_index,
-                    "media_source_id": media_source_id,
-                    "selected_by": current_video.get("selected_by"), "quality": quality,
-                },
-                "current_time": current_time,
-            }, to=user_sid)
+        username = party["users"].get(sid, "Unknown")
+        logger.info(f"Stream changed for {username}: audio={audio_index}, sub={subtitle_index}, quality={quality}")
 
     @sio.on("video_ended")
     async def handle_video_ended(sid, data):
@@ -229,20 +288,13 @@ def register(ctx):
             return
 
         logger.info(f"Video ended in party {party_id}")
-        current_video = party.get("current_video")
-        if current_video and current_video.get("play_session_id"):
-            final_pos = current_video.get("run_time_seconds", 0)
-            emby_client.report_playback_stopped(
-                item_id=current_video["item_id"],
-                media_source_id=current_video["media_source_id"],
-                play_session_id=current_video["play_session_id"],
-                position_seconds=final_pos,
-                run_time_seconds=current_video.get("run_time_seconds"),
-            )
+        final_pos = party.get("current_video", {}).get("run_time_seconds", 0)
+        _stop_all_user_streams(party, final_pos)
 
         party["playback_state"] = {
             "playing": False, "time": 0, "last_update": datetime.now().isoformat(),
         }
+        party["ready_check"] = None
         await sio.emit("video_ended", {
             "party_id": party_id, "timestamp": datetime.now().isoformat(),
         }, room=party_id)
@@ -252,25 +304,46 @@ def register(ctx):
         party_id = data.get("party_id", "").strip().upper()
         current_time = data.get("time", 0)
         party = party_manager.get(party_id)
-        if not party:
+        if not party or not party.get("current_video"):
             return
 
-        current_video = party.get("current_video")
-        if not current_video or not current_video.get("play_session_id"):
-            return
-        if current_video.get("selected_by") != sid:
+        user_stream = party.get("user_streams", {}).get(sid)
+        if not user_stream or not user_stream.get("play_session_id"):
             return
 
-        party["playback_state"]["time"] = current_time
-        party["playback_state"]["last_update"] = datetime.now().isoformat()
+        # Only the selector updates the authoritative party clock
+        current_video = party["current_video"]
+        if current_video.get("selected_by") == sid:
+            party["playback_state"]["time"] = current_time
+            party["playback_state"]["last_update"] = datetime.now().isoformat()
 
+        # Every user reports progress to Emby for their own session
         is_playing = party["playback_state"].get("playing", False)
         emby_client.report_playback_progress(
             item_id=current_video["item_id"],
-            media_source_id=current_video["media_source_id"],
-            play_session_id=current_video["play_session_id"],
+            media_source_id=user_stream["media_source_id"],
+            play_session_id=user_stream["play_session_id"],
             position_seconds=current_time, is_paused=not is_playing, event_name="TimeUpdate",
-            audio_index=current_video.get("audio_index"),
-            subtitle_index=current_video.get("subtitle_index") if current_video.get("subtitle_index") != -1 else None,
+            audio_index=user_stream.get("audio_index"),
+            subtitle_index=user_stream.get("subtitle_index") if user_stream.get("subtitle_index") != -1 else None,
             run_time_seconds=current_video.get("run_time_seconds"),
         )
+
+    @sio.on("stream_ready")
+    async def handle_stream_ready(sid, data):
+        """Client signals their HLS stream is loaded and ready to play."""
+        party_id = data.get("party_id", "").strip().upper()
+        party = party_manager.get(party_id)
+        if not party:
+            return
+
+        user_stream = party.get("user_streams", {}).get(sid)
+        if user_stream:
+            user_stream["ready"] = True
+
+        rc = party.get("ready_check")
+        if rc and rc.get("active"):
+            rc["ready_sids"].add(sid)
+            username = party["users"].get(sid, "Unknown")
+            logger.debug(f"{username} stream ready in party {party_id}")
+            await _check_all_ready(party, party_id)

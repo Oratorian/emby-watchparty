@@ -9,6 +9,36 @@ def register(ctx):
     logger = ctx['logger']
     party_manager = ctx['party_manager']
 
+    def _get_server_time(party):
+        """Get the server's best estimate of current playback position."""
+        ps = party["playback_state"]
+        server_time = ps.get("time", 0)
+        if ps.get("playing") and ps.get("last_update"):
+            try:
+                last = datetime.fromisoformat(ps["last_update"])
+                elapsed = (datetime.now() - last).total_seconds()
+                if 0 < elapsed < 30:
+                    server_time += elapsed
+            except Exception:
+                pass
+        return server_time
+
+    def _report_emby_progress(party, sid, position, is_paused, event_name):
+        """Report playback progress to Emby for a specific user's stream."""
+        current_video = party.get("current_video")
+        user_stream = party.get("user_streams", {}).get(sid)
+        if not current_video or not user_stream or not user_stream.get("play_session_id"):
+            return
+        emby_client.report_playback_progress(
+            item_id=current_video["item_id"],
+            media_source_id=user_stream["media_source_id"],
+            play_session_id=user_stream["play_session_id"],
+            position_seconds=position, is_paused=is_paused, event_name=event_name,
+            audio_index=user_stream.get("audio_index"),
+            subtitle_index=user_stream.get("subtitle_index") if user_stream.get("subtitle_index") != -1 else None,
+            run_time_seconds=current_video.get("run_time_seconds"),
+        )
+
     @sio.on("play")
     async def handle_play(sid, data):
         party_id = data.get("party_id", "").strip().upper()
@@ -17,29 +47,20 @@ def register(ctx):
         if not party:
             return
 
-        # Only the video selector can update server playback state
         current_video = party.get("current_video")
-        if current_video and current_video.get("selected_by") != sid:
-            username = party["users"].get(sid, "Someone")
-            logger.debug(f"Ignoring play from {username} - not the selector")
-            return
+        is_selector = current_video and current_video.get("selected_by") == sid
+
+        # Everyone can toggle play, but only the selector's time is trusted
+        if not is_selector:
+            current_time = _get_server_time(party)
 
         party["playback_state"] = {
             "playing": True, "time": current_time,
             "last_update": datetime.now().isoformat(),
         }
 
-        current_video = party.get("current_video")
-        if current_video and current_video.get("play_session_id"):
-            emby_client.report_playback_progress(
-                item_id=current_video["item_id"],
-                media_source_id=current_video["media_source_id"],
-                play_session_id=current_video["play_session_id"],
-                position_seconds=current_time, is_paused=False, event_name="Unpause",
-                audio_index=current_video.get("audio_index"),
-                subtitle_index=current_video.get("subtitle_index") if current_video.get("subtitle_index") != -1 else None,
-                run_time_seconds=current_video.get("run_time_seconds"),
-            )
+        # Report to Emby for the user who triggered play
+        _report_emby_progress(party, sid, current_time, is_paused=False, event_name="Unpause")
 
         username = party["users"].get(sid, "Someone")
         await sio.emit("play", {"time": current_time, "username": username},
@@ -53,29 +74,18 @@ def register(ctx):
         if not party:
             return
 
-        # Only the video selector can update server playback state
         current_video = party.get("current_video")
-        if current_video and current_video.get("selected_by") != sid:
-            username = party["users"].get(sid, "Someone")
-            logger.debug(f"Ignoring pause from {username} - not the selector")
-            return
+        is_selector = current_video and current_video.get("selected_by") == sid
+
+        if not is_selector:
+            current_time = _get_server_time(party)
 
         party["playback_state"] = {
             "playing": False, "time": current_time,
             "last_update": datetime.now().isoformat(),
         }
 
-        current_video = party.get("current_video")
-        if current_video and current_video.get("play_session_id"):
-            emby_client.report_playback_progress(
-                item_id=current_video["item_id"],
-                media_source_id=current_video["media_source_id"],
-                play_session_id=current_video["play_session_id"],
-                position_seconds=current_time, is_paused=True, event_name="Pause",
-                audio_index=current_video.get("audio_index"),
-                subtitle_index=current_video.get("subtitle_index") if current_video.get("subtitle_index") != -1 else None,
-                run_time_seconds=current_video.get("run_time_seconds"),
-            )
+        _report_emby_progress(party, sid, current_time, is_paused=True, event_name="Pause")
 
         username = party["users"].get(sid, "Someone")
         await sio.emit("pause", {"time": current_time, "username": username},
@@ -90,37 +100,37 @@ def register(ctx):
         if not party:
             return
 
-        # Only the video selector can update server playback state
-        current_video = party.get("current_video")
-        if current_video and current_video.get("selected_by") != sid:
-            username = party["users"].get(sid, "Someone")
-            logger.debug(f"Ignoring seek from {username} - not the selector")
-            return
-
         party["playback_state"]["time"] = seek_time
         party["playback_state"]["last_update"] = datetime.now().isoformat()
 
-        current_video = party.get("current_video")
-        if current_video and current_video.get("play_session_id"):
-            emby_client.report_playback_progress(
-                item_id=current_video["item_id"],
-                media_source_id=current_video["media_source_id"],
-                play_session_id=current_video["play_session_id"],
-                position_seconds=seek_time, is_paused=not was_playing, event_name="TimeUpdate",
-                audio_index=current_video.get("audio_index"),
-                subtitle_index=current_video.get("subtitle_index") if current_video.get("subtitle_index") != -1 else None,
-                run_time_seconds=current_video.get("run_time_seconds"),
-            )
+        _report_emby_progress(party, sid, seek_time, is_paused=not was_playing, event_name="TimeUpdate")
 
         username = party["users"].get(sid, "Someone")
 
         if was_playing:
             logger.info("Seek during playback - pausing all clients first for buffering")
-            await sio.emit("force_pause_before_seek", {"time": seek_time}, room=party_id)
+
+            # Start a ready check so everyone buffers before resuming
+            expected = set(party["users"].keys())
+            party["ready_check"] = {
+                "active": True,
+                "expected_sids": expected,
+                "ready_sids": set(),
+            }
+
+            waiting_names = [party["users"].get(s, "?") for s in expected]
+
+            # Pause everyone, show overlay, then seek
+            await sio.emit("force_pause_before_seek", {"time": seek_time},
+                            room=party_id)
+            await sio.emit("ready_check_update", {
+                "ready": [], "waiting": waiting_names,
+            }, room=party_id)
             await sio.emit("seek", {
-                "time": seek_time, "playing": True, "buffer_delay": 1500, "username": username,
+                "time": seek_time, "playing": True, "username": username,
+                "wait_for_ready": True,
             }, room=party_id)
         else:
             await sio.emit("seek", {
                 "time": seek_time, "playing": False, "username": username,
-            }, room=party_id)
+            }, room=party_id, skip_sid=sid)

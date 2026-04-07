@@ -34,6 +34,7 @@ class StreamBuilder:
         audio_index: Optional[int],
         subtitle_index: Optional[int],
         quality: str,
+        start_time_ticks: Optional[int] = None,
     ) -> list:
         """
         Build HLS URL parameters for Emby.
@@ -136,6 +137,10 @@ class StreamBuilder:
         else:
             self._logger.debug("No subtitles selected - omitting subtitle parameters")
 
+        if start_time_ticks is not None and start_time_ticks > 0:
+            params.append(f"StartTimeTicks={start_time_ticks}")
+            self._logger.debug(f"Starting transcode at {start_time_ticks / 10_000_000:.1f}s")
+
         return params
 
     def build_stream_url(
@@ -148,11 +153,12 @@ class StreamBuilder:
         audio_index: Optional[int],
         subtitle_index: Optional[int],
         quality: str,
+        start_time_ticks: Optional[int] = None,
     ) -> str:
         """Build the full relative HLS stream URL"""
         params = self.build_params(
             media_source, media_source_id, play_session_id,
-            audio_index, subtitle_index, quality,
+            audio_index, subtitle_index, quality, start_time_ticks,
         )
         param_string = "&".join(params)
         prefix = app_prefix or ""

@@ -97,13 +97,13 @@ class PartyManager:
 
         # Create static party on startup if configured
         if config.STATIC_SESSION_ENABLED:
-            self._create_party_dict(party_id=config.STATIC_SESSION_ID)
-            self._logger.info(f"Static session mode: {config.STATIC_SESSION_ID}")
+            self._create_party_dict(party_id=config.STATIC_SESSION_ID.upper())
+            self._logger.info(f"Static session mode: {config.STATIC_SESSION_ID.upper()}")
 
     @property
     def static_party_id(self) -> Optional[str]:
         if self._config.STATIC_SESSION_ENABLED:
-            return self._config.STATIC_SESSION_ID
+            return self._config.STATIC_SESSION_ID.upper()
         return None
 
     def _new_party_dict(self, party_id: str) -> dict:
@@ -113,11 +113,13 @@ class PartyManager:
             "created_at": datetime.now().isoformat(),
             "users": {},
             "current_video": None,
+            "user_streams": {},
             "playback_state": {
                 "playing": False,
                 "time": 0,
                 "last_update": datetime.now().isoformat(),
             },
+            "ready_check": None,
         }
 
     def _create_party_dict(self, party_id: str) -> dict:
@@ -147,7 +149,7 @@ class PartyManager:
         """Recreate the static party if it was deleted. Returns party_id or None."""
         if not self._config.STATIC_SESSION_ENABLED:
             return None
-        pid = self._config.STATIC_SESSION_ID
+        pid = self._config.STATIC_SESSION_ID.upper()
         if pid not in self.watch_parties:
             self._create_party_dict(pid)
             self._logger.info(f"Recreated static party: {pid}")
@@ -175,6 +177,7 @@ class PartyManager:
         party["users"].pop(sid, None)
         if "drift_strikes" in party:
             party["drift_strikes"].pop(sid, None)
+        party.get("user_streams", {}).pop(sid, None)
 
         if len(party["users"]) == 0 and party_id != self.static_party_id:
             del self.watch_parties[party_id]

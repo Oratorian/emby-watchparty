@@ -1,3 +1,5 @@
+/* eslint-disable */
+// @ts-nocheck
 /**
  * Generate a Gravatar monsterid avatar URL from a username.
  * Uses MD5 hash of the lowercase username.

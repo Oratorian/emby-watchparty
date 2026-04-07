@@ -10,6 +10,14 @@ from backend.src.schemas import CreatePartyResponse, PartyInfoResponse
 router = APIRouter(prefix="/api/party", tags=["party"])
 
 
+@router.get("/static-session")
+def static_session(config=Depends(get_config)):
+    """Return static session ID if enabled, or null."""
+    if config.STATIC_SESSION_ENABLED:
+        return {"party_id": config.STATIC_SESSION_ID.upper()}
+    return {"party_id": None}
+
+
 @router.post("/create", response_model=CreatePartyResponse)
 def create_party(config=Depends(get_config), party_manager=Depends(get_party_manager),
                  logger=Depends(get_logger)):
