@@ -37,14 +37,16 @@ def build_stream_params(emby_client, media_source, media_source_id, play_session
     max_height = preset["max_height"]
     max_bitrate = preset["bitrate"]
 
-    # Detect source video codec and bitrate
+    # Detect source video codec and bitrate (use peak if available, else average)
     source_video_codec = None
     source_video_bitrate = None
     for stream in media_source.get("MediaStreams", []):
         if stream.get("Type") == "Video":
             source_video_codec = (stream.get("Codec") or "").lower()
-            source_video_bitrate = stream.get("BitRate")
-            logger.info(f"Source video codec: {source_video_codec}, bitrate: {source_video_bitrate}")
+            peak_bitrate = stream.get("MaxBitRate") or stream.get("PeakBitrate")
+            avg_bitrate = stream.get("BitRate")
+            source_video_bitrate = peak_bitrate or avg_bitrate
+            logger.info(f"Source video codec: {source_video_codec}, avg_bitrate: {avg_bitrate}, peak_bitrate: {peak_bitrate}")
             break
 
     params = [

@@ -30,6 +30,7 @@ def register(deps):
             }
 
             # Report play (unpause) event to Emby
+            current_video = watch_parties[party_id].get("current_video")
             if current_video and current_video.get("play_session_id"):
                 emby_client.report_playback_progress(
                     item_id=current_video["item_id"],

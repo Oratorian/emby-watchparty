@@ -160,7 +160,6 @@
 
         // Remote sync commands -> apply locally
         S.socket.on('play', function(data) {
-            if (Math.abs(data.time - S.lastSyncedTime) < 0.1 && S.lastSyncType === 'play') return;
             S.lastSyncedTime = data.time;
             S.lastSyncType = 'play';
             S.currentPartyState = { time: data.time, playing: true };
@@ -169,7 +168,6 @@
         });
 
         S.socket.on('pause', function(data) {
-            if (Math.abs(data.time - S.lastSyncedTime) < 0.1 && S.lastSyncType === 'pause') return;
             S.lastSyncedTime = data.time;
             S.lastSyncType = 'pause';
             S.currentPartyState = { time: data.time, playing: false };
@@ -184,7 +182,6 @@
         });
 
         S.socket.on('seek', function(data) {
-            if (Math.abs(data.time - S.lastSyncedTime) < 0.1 && S.lastSyncType === 'seek') return;
             S.lastSyncedTime = data.time;
             S.lastSyncType = 'seek';
             S.currentPartyState = { time: data.time, playing: data.playing || false };
