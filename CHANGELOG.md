@@ -10,6 +10,16 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
+## [1.6.1] - 2026-04-10
+
+### Fixed
+- **Seek loop on high peak bitrate files** ([#25](https://github.com/Oratorian/emby-watchparty/issues/25)): Quality detection now checks `MaxBitRate` (peak) instead of only `BitRate` (average). VBR h264 files with 3-4 Mbps average but 10+ Mbps peaks were slipping through Direct Play, causing seek failures and playback resets when HLS.js requested segments Emby hadn't generated yet
+- **Random play/pause/seek event drops** ([#24](https://github.com/Oratorian/emby-watchparty/issues/24)): Removed 0.1s deduplication on incoming sync events. Clients with slightly different `currentTime` were silently dropping legitimate events, causing random failures where some clients would ignore play/pause commands
+- **NameError in play handler**: Restored missing `current_video` lookup in `handle_play` that was accidentally dropped during a refactor
+
+### Removed
+- **Drift correction ([#13](https://github.com/Oratorian/emby-watchparty/issues/13))**: Sorry buddy, drift correction failed us again. Backpaddling to not break things. The heartbeat-based system was amplifying seek failures into infinite loops on problematic media files. Will revisit with per-user streams in 2.0
+
 ## [1.6.0] - 2026-03-22
 
 ### Added
