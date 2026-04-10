@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import Hls from 'hls.js'
+import { usePartyStore } from '@/stores/party'
+
+const party = usePartyStore()
 
 const props = defineProps<{
   streamUrl: string
   title: string
   playing: boolean
-  startTime?: number
+  // Media time at which this stream begins. For late joiners the backend
+  // starts Emby transcoding at this position via StartTimeTicks, so the
+  // resulting HLS stream's currentTime=0 corresponds to media position
+  // streamOffset. HLS.js should NOT be told to seek to streamOffset --
+  // that would double-offset and land at 2x the intended position.
+  streamOffset?: number
 }>()
 
 const emit = defineEmits<{
@@ -39,6 +47,12 @@ function attachStream(url: string) {
 
   destroyHls()
   isBuffering.value = true
+  readyEmitted = false
+  // Suppress outgoing play/pause/seek events until the new stream has
+  // loaded and the media element settles. Otherwise native 'seeked'
+  // events fired during loadSource/attachMedia bubble up as user seeks
+  // and create feedback loops across clients.
+  isSyncing.value = true
 
   if (Hls.isSupported()) {
     const hlsConfig: any = {
@@ -54,12 +68,10 @@ function attachStream(url: string) {
       enableWebVTT: true,
       renderTextTracksNatively: true,
     }
-    // Late joiner: tell HLS.js to start buffering from the
-    // party's current position instead of segment 0
-    const hasStartPos = props.startTime && props.startTime > 1
-    if (hasStartPos) {
-      hlsConfig.startPosition = props.startTime
-    }
+    // For late joiners, the backend already offsets the Emby transcode via
+    // StartTimeTicks, so the stream's currentTime=0 corresponds to the
+    // correct media position. Do NOT set hls.startPosition -- that would
+    // double-apply the offset.
     hls = new Hls(hlsConfig)
     hls.attachMedia(video)
     hls.on(Hls.Events.MEDIA_ATTACHED, () => {
@@ -67,33 +79,30 @@ function attachStream(url: string) {
     })
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       isBuffering.value = false
-      // Match v1.5.2: only reset to 0 when NOT a late joiner
-      if (!isSyncing.value && !hasStartPos) {
-        video.currentTime = 0
-      }
-      if (isSyncing.value) {
-        isSyncing.value = false
-      }
-      emit('ready')
-    })
-    // Late joiner: seek to exact position after metadata is available
-    // This is separate from MANIFEST_PARSED (matching v1.5.2 flow)
-    if (hasStartPos) {
-      isSyncing.value = true
-      video.addEventListener('loadedmetadata', () => {
-        video.currentTime = props.startTime!
-        if (props.playing) {
-          video.play().then(() => {
-            setTimeout(() => { isSyncing.value = false }, 100)
-          }).catch(() => {
-            setTimeout(() => { isSyncing.value = false }, 100)
+      emitReadyOnce()
+      // Keep isSyncing true until the media element has settled after
+      // load (canplay + a short debounce to absorb native seeked events
+      // fired during initial frame decode). Also resume playback if the
+      // party is in a playing state -- the props.playing watcher doesn't
+      // fire when the value stays the same across stream reloads.
+      const releaseSync = () => {
+        // Only auto-play if the party wants to play AND there is no
+        // active ready check. During a ready check, playback is
+        // coordinated by the server via all_ready + play events; we
+        // must not jump ahead.
+        if (props.playing && !party.readyCheckActive) {
+          video.play().catch(() => {
             emit('autoplay-blocked')
           })
-        } else {
-          setTimeout(() => { isSyncing.value = false }, 100)
         }
-      }, { once: true })
-    }
+        setTimeout(() => { isSyncing.value = false }, 500)
+      }
+      if (video.readyState >= 3) {
+        releaseSync()
+      } else {
+        video.addEventListener('canplay', releaseSync, { once: true })
+      }
+    })
     hls.on(Hls.Events.ERROR, (_event, data) => {
       if (data.fatal) {
         switch (data.type) {
@@ -119,9 +128,22 @@ function attachStream(url: string) {
         if (props.playing) {
           video.play().catch(() => {})
         }
+        emitReadyOnce()
+        setTimeout(() => { isSyncing.value = false }, 500)
       },
       { once: true },
     )
+  }
+}
+
+// Fallback: emit 'ready' when the video element itself reports enough data.
+// This catches cases where HLS.js's MANIFEST_PARSED fired before listeners
+// were attached, or where the initial 'ready' emit got lost.
+let readyEmitted = false
+function emitReadyOnce() {
+  if (!readyEmitted) {
+    readyEmitted = true
+    emit('ready')
   }
 }
 
@@ -157,6 +179,10 @@ function onWaiting() {
 
 function onCanPlay() {
   isBuffering.value = false
+  // Safety net: if MANIFEST_PARSED fired before listeners were attached
+  // (or for whatever reason didn't emit), ensure ready is signaled when
+  // the video element reaches HAVE_FUTURE_DATA
+  emitReadyOnce()
 }
 
 watch(
@@ -171,6 +197,9 @@ watch(
   (shouldPlay) => {
     const video = videoEl.value
     if (!video) return
+    // Don't force play during a ready check -- the server coordinates
+    // playback via all_ready + play events, we must not jump ahead.
+    if (party.readyCheckActive) return
     if (shouldPlay) {
       video.play().catch(() => {
         emit('autoplay-blocked')

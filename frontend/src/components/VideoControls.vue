@@ -229,7 +229,7 @@ onMounted(() => {
       </select>
     </div>
 
-    <button v-if="showIntroButton" class="skip-intro-btn" @click="onSkipIntro">
+    <button v-show="showIntroButton" class="skip-intro-btn" @click="onSkipIntro">
       Skip Intro
     </button>
   </div>

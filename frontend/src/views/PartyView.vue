@@ -7,6 +7,8 @@ import LibraryBrowser from '@/components/LibraryBrowser.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 import VideoControls from '@/components/VideoControls.vue'
 import EmojiPicker from '@/components/EmojiPicker.vue'
+import JoinVoteModal from '@/components/JoinVoteModal.vue'
+import JoinWaitingRoom from '@/components/JoinWaitingRoom.vue'
 import { api } from '@/api/client'
 import { avatarUrl } from '@/utils/avatar'
 
@@ -25,6 +27,13 @@ const showVersionModal = ref(false)
 const showParticipants = ref(false)
 const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const currentTime = ref(0)
+
+// True while my own HLS stream is reloading (after change_streams). Used
+// to distinguish "I am the user whose stream changed" from "I am an
+// observer whose stream is already buffered" when a ready_check_update
+// arrives. Set by the watcher on party.myStreamUrl, cleared by
+// onStreamReady when the new stream finishes loading.
+const myStreamReloading = ref(false)
 
 const STORAGE_KEY = 'emby-watchparty-username'
 const versionInfo = ref({ version: '', codename: '' })
@@ -51,49 +60,93 @@ onMounted(async () => {
   let lastSyncType = ''
 
   socket.on('play', (data: any) => {
-    if (Math.abs(data.time - lastSyncedTime) < 0.1 && lastSyncType === 'play') return
     lastSyncedTime = data.time
     lastSyncType = 'play'
-    const vp = videoPlayer.value
-    if (!vp) return
-    vp.isSyncing = true
-    const ve = vp.videoEl
-    if (ve) {
-      if (Math.abs(ve.currentTime - data.time) > 0.3) ve.currentTime = data.time
-      ve.play().catch(() => {
-        addSystemMessage('Autoplay blocked by browser - click the video to resume')
-      })
-    }
-    setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
+    // Use nextTick to ensure the videoPlayer ref is bound. When the
+    // store's play listener fires first and updates reactive state,
+    // Vue may still be mid-render and the template ref is not yet
+    // populated. Waiting for nextTick guarantees the ref reflects
+    // the current DOM state before we call ve.play().
+    nextTick(() => {
+      const vp = videoPlayer.value
+      if (!vp) return
+      vp.isSyncing = true
+      const ve = vp.videoEl
+      const streamTime = toStreamTime(data.time)
+      if (ve) {
+        // If the server's time differs from our local position, we need
+        // to seek. With HLS.js, just setting ve.currentTime may not
+        // refresh the buffer at the new position if HLS.js has been
+        // pre-fetching segments around the old position. Use stopLoad
+        // + startLoad(new_time) to tell HLS.js to flush and reload at
+        // the target position. Without this, setting currentTime can
+        // leave the video stalled because HLS.js feeds segments for
+        // the old position while the media element waits for frames
+        // at the new one.
+        if (Math.abs(ve.currentTime - streamTime) > 0.3) {
+          const hls = vp.getHls?.()
+          if (hls) {
+            hls.stopLoad()
+            ve.currentTime = streamTime
+            hls.startLoad(streamTime)
+          } else {
+            ve.currentTime = streamTime
+          }
+        }
+        ve.play().catch(() => {
+          addSystemMessage('Autoplay blocked by browser - click the video to resume')
+        })
+
+        // Stall-recovery: some race conditions leave the video element
+        // in a "playing" state (paused=false) but with no actual frame
+        // progression. After 1s, verify that currentTime has advanced
+        // and if not, nudge HLS.js by re-seeking.
+        const checkTime = ve.currentTime
+        setTimeout(() => {
+          if (!vp || !ve) return
+          if (ve.paused) return  // user paused manually, don't touch
+          if (ve.currentTime > checkTime + 0.1) return  // playing fine
+          // Stalled -- nudge it
+          const hls = vp.getHls?.()
+          if (hls) {
+            hls.stopLoad()
+            hls.startLoad(ve.currentTime)
+          }
+          ve.play().catch(() => {})
+        }, 1000)
+      }
+      setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
+    })
     if (data.username) addSystemMessage(`${data.username} resumed playback`)
   })
 
   socket.on('pause', (data: any) => {
-    if (Math.abs(data.time - lastSyncedTime) < 0.1 && lastSyncType === 'pause') return
     lastSyncedTime = data.time
     lastSyncType = 'pause'
     const vp = videoPlayer.value
     if (!vp) return
     vp.isSyncing = true
     const ve = vp.videoEl
+    const streamTime = toStreamTime(data.time)
     if (ve) {
       ve.pause()
-      if (Math.abs(ve.currentTime - data.time) > 0.3) ve.currentTime = data.time
+      if (Math.abs(ve.currentTime - streamTime) > 0.3) ve.currentTime = streamTime
     }
     setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
     if (data.username) addSystemMessage(`${data.username} paused playback`)
   })
 
   socket.on('seek', (data: any) => {
-    if (Math.abs(data.time - lastSyncedTime) < 0.1 && lastSyncType === 'seek') return
     lastSyncedTime = data.time
     lastSyncType = 'seek'
     const vp = videoPlayer.value
     if (!vp) return
     vp.isSyncing = true
     const ve = vp.videoEl
+    // Server sends media time, convert to stream-local time for this user
+    const streamTime = toStreamTime(data.time)
     if (ve) {
-      ve.currentTime = data.time
+      ve.currentTime = streamTime
       if (data.playing && data.wait_for_ready) {
         // Wait for buffer, then signal ready -- all_ready will trigger play
         const signalReady = () => {
@@ -135,6 +188,43 @@ onMounted(async () => {
     setTimeout(() => { isForcePausing = false }, 2000)
   })
 
+  // Auto-signal ready during a ready check if our video is already
+  // buffered and we're not the user triggering a stream reload. Used
+  // for select_video (initial load) -- the target user's VideoPlayer
+  // is reloading and will emit `ready` when done, everyone else is
+  // already buffered and can signal immediately. change_streams does
+  // NOT trigger a ready check anymore (silent swap for the target user),
+  // so this only runs on select_video / vote-pass restart flows.
+  //
+  // Must be one-shot per ready-check cycle: the server broadcasts
+  // ready_check_update every time a user signals ready, so without a
+  // one-shot guard we re-emit stream_ready on every broadcast and
+  // create a spam cascade. The flag is reset when a new ready check
+  // starts (detected by readyCheckActive going from false to true).
+  let autoReadySignaled = false
+
+  watch(() => party.readyCheckActive, (active) => {
+    if (active) {
+      autoReadySignaled = false
+    }
+  })
+
+  socket.on('ready_check_update', () => {
+    if (autoReadySignaled) return
+    const vp = videoPlayer.value
+    if (!vp) return
+    const ve = vp.videoEl
+    if (!ve) return
+    // Target user: stream is currently reloading. Skip -- VideoPlayer
+    // will fire `ready` via onStreamReady when the new stream is ready.
+    if (myStreamReloading.value) return
+    // Non-target user: video already loaded, signal once and mark as done.
+    if (ve.readyState >= 3 && party.partyId) {
+      autoReadySignaled = true
+      socket.emit('stream_ready', { party_id: party.partyId })
+    }
+  })
+
   socket.on('drift_correction', (data: any) => {
     const vp = videoPlayer.value
     if (!vp) return
@@ -166,19 +256,32 @@ onMounted(async () => {
   })
 
   // All users buffered after a seek -- resume playback together
-  socket.on('all_ready', () => {
+  const resumeAfterReadyCheck = () => {
     const vp = videoPlayer.value
     if (!vp) return
     const ve = vp.videoEl
-    if (ve) {
+    // Only resume if playback is supposed to be playing (seek ready check)
+    // Initial video-selection ready check leaves the video paused at 0
+    if (ve && party.playbackState.playing) {
       ve.play().then(() => {
         if (vp) vp.isSyncing = false
       }).catch(() => {
         if (vp) vp.isSyncing = false
         addSystemMessage('Autoplay blocked by browser - click the video to resume')
       })
+    } else if (vp) {
+      vp.isSyncing = false
     }
     isForcePausing = false
+  }
+  socket.on('all_ready', resumeAfterReadyCheck)
+
+  // Safety net: if the ready check overlay is dismissed by the client
+  // timeout (15s) instead of a server all_ready, still resume playback
+  watch(() => party.readyCheckActive, (active, wasActive) => {
+    if (wasActive && !active) {
+      resumeAfterReadyCheck()
+    }
   })
 
   // Handle late joiner sync -- suppress emits during initial load
@@ -201,6 +304,24 @@ onMounted(async () => {
       return
     }
     addSystemMessage(`Error: ${msg}`)
+  })
+
+  // Late-joiner rejection: redirect home with a message
+  socket.on('join_rejected', (data: any) => {
+    const msg = data?.message || 'The party declined your request to join.'
+    alert(msg)
+    router.push('/')
+  })
+
+  // Vote resolved as fail while we were the late joiner: the store
+  // already cleared the pending state; here we just redirect.
+  socket.on('join_vote_resolved', (data: any) => {
+    // The store's listener runs first and sets pendingVote=null. We
+    // only handle the redirect case here (late joiner got rejected).
+    if (data.result === 'fail' && !party.partyId) {
+      // If the store's leave() already ran, party.partyId is null.
+      router.push('/')
+    }
   })
 
   // Auto-join with saved username
@@ -323,6 +444,19 @@ let lastPauseBroadcast = 0
 const PLAY_PAUSE_THROTTLE = 300
 let seekSettleTimer: ReturnType<typeof setTimeout> | null = null
 
+// Emby's HLS playlists already report segment times relative to the
+// full movie (even when StartTimeTicks is set, the playlist uses the
+// original segment numbering where segment N = N * segment_duration
+// seconds into the media). HLS.js's video.currentTime therefore IS
+// the media time, and we don't need any offset translation.
+function toMediaTime(streamTime: number): number {
+  return streamTime
+}
+
+function toStreamTime(mediaTime: number): number {
+  return mediaTime
+}
+
 function onVideoPlay() {
   if (!party.partyId || isForcePausing || isInitialSync) return
   const ve = videoPlayer.value?.videoEl
@@ -334,7 +468,7 @@ function onVideoPlay() {
   lastPlayBroadcast = now
 
   wasPlayingBeforeSeek = true
-  socket.emit('play', { party_id: party.partyId, time: ve.currentTime })
+  socket.emit('play', { party_id: party.partyId, time: toMediaTime(ve.currentTime) })
   if (!hasStarted) {
     addSystemMessage(`${party.username || 'You'} started playback`)
     hasStarted = true
@@ -354,7 +488,7 @@ function onVideoPause() {
   lastPauseBroadcast = now
 
   wasPlayingBeforeSeek = false
-  socket.emit('pause', { party_id: party.partyId, time: ve.currentTime })
+  socket.emit('pause', { party_id: party.partyId, time: toMediaTime(ve.currentTime) })
   addSystemMessage(`${party.username || 'You'} paused playback`)
 }
 
@@ -374,12 +508,13 @@ function onVideoSeeked(time: number) {
     const ve = videoPlayer.value?.videoEl
     if (!ve) return
 
+    const mediaTime = toMediaTime(ve.currentTime)
     socket.emit('seek', {
       party_id: party.partyId,
-      time: ve.currentTime,
+      time: mediaTime,
       was_playing: wasPlayingBeforeSeek,
     })
-    addSystemMessage(`${party.username || 'You'} seeked to ${formatTime(ve.currentTime)}`)
+    addSystemMessage(`${party.username || 'You'} seeked to ${formatTime(mediaTime)}`)
   }, 500)
 }
 
@@ -387,21 +522,44 @@ let lastProgressReport = 0
 const PROGRESS_INTERVAL = 10000 // 10 seconds
 
 function onVideoTimeUpdate(time: number) {
-  currentTime.value = time
+  // HLS.js reports currentTime as the media position directly, even
+  // for late-joiner streams with StartTimeTicks offsets.
+  //
+  // Throttle updates to the reactive ref to once per second. HLS.js
+  // emits `timeupdate` ~4-5 times per second, which causes downstream
+  // components (VideoControls with its computed showIntroButton) to
+  // re-render that often and made the quality/subtitle dropdowns
+  // flicker on some videos. We only need sub-second precision for
+  // the intro skip button, and the chat/debug UI does not care.
+  if (Math.abs(time - currentTime.value) >= 1) {
+    currentTime.value = time
+  }
   if (!party.partyId || isInitialSync) return
   const ve = videoPlayer.value?.videoEl
   if (!ve || !ve.src || ve.readyState < 2 || ve.paused) return
   const now = Date.now()
   if (now - lastProgressReport >= PROGRESS_INTERVAL) {
     lastProgressReport = now
-    socket.emit('report_progress', { party_id: party.partyId, time })
+    socket.emit('report_progress', { party_id: party.partyId, time: toMediaTime(time) })
   }
 }
 
 function onStreamReady() {
   if (!party.partyId) return
+  // Our stream finished (re)loading -- clear the reloading flag so
+  // future ready_check_update events know we are buffered.
+  myStreamReloading.value = false
   socket.emit('stream_ready', { party_id: party.partyId })
 }
+
+// Whenever myStreamUrl changes (initial load OR a change_streams reload),
+// mark our stream as reloading until onStreamReady fires. This is what
+// the ready_check_update listener uses to decide whether to auto-signal.
+watch(() => party.myStreamUrl, (newUrl, oldUrl) => {
+  if (newUrl && newUrl !== oldUrl) {
+    myStreamReloading.value = true
+  }
+})
 
 function stopVideo() {
   if (!party.partyId) return
@@ -532,7 +690,7 @@ function toggleLibrary() {
             :stream-url="party.myStreamUrl || ''"
             :title="party.currentVideo.title"
             :playing="party.playbackState.playing"
-            :start-time="party.playbackState.time"
+            :stream-offset="party.streamOffset"
             @play="onVideoPlay"
             @pause="onVideoPause"
             @seeking="onVideoSeeking"
@@ -632,6 +790,12 @@ function toggleLibrary() {
       </div>
     </div>
   </div>
+
+  <!-- Late-joiner vote modal (existing users) -->
+  <JoinVoteModal />
+
+  <!-- Late-joiner waiting room (the joiner themselves) -->
+  <JoinWaitingRoom />
 </template>
 
 <style scoped>
