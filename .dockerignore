@@ -21,6 +21,7 @@ ENV/
 
 # Config
 config.py
+config.json
 
 # Documentation
 *.md
