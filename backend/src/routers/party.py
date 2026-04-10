@@ -5,12 +5,16 @@ Party Router - Create and query parties
 from fastapi import APIRouter, Depends
 
 from backend.src.dependencies import get_config, get_party_manager, get_logger
-from backend.src.schemas import CreatePartyResponse, PartyInfoResponse
+from backend.src.schemas import (
+    CreatePartyResponse,
+    PartyInfoResponse,
+    StaticSessionResponse,
+)
 
 router = APIRouter(prefix="/api/party", tags=["party"])
 
 
-@router.get("/static-session")
+@router.get("/static-session", response_model=StaticSessionResponse)
 def static_session(config=Depends(get_config)):
     """Return static session ID if enabled, or null."""
     if config.STATIC_SESSION_ENABLED:

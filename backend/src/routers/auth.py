@@ -57,7 +57,7 @@ def api_login(body: LoginRequest, request: Request,
         return LoginResponse(success=False, message="Unable to connect to Emby server")
 
 
-@router.post("/auth/logout")
+@router.post("/auth/logout", response_model=LoginResponse)
 def api_logout(request: Request, logger=Depends(get_logger)):
     username = request.session.get("username", "Unknown")
     request.session.clear()

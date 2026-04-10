@@ -6,16 +6,21 @@ from fastapi import APIRouter, Depends, Query
 from typing import Optional
 
 from backend.src.dependencies import get_emby_client, get_logger
+from backend.src.schemas import (
+    LibraryItemsResponse,
+    ItemDetailsResponse,
+    StreamsResponse,
+)
 
 router = APIRouter(prefix="/api", tags=["library"])
 
 
-@router.get("/libraries")
+@router.get("/libraries", response_model=LibraryItemsResponse)
 def api_libraries(emby_client=Depends(get_emby_client)):
     return emby_client.get_libraries()
 
 
-@router.get("/items")
+@router.get("/items", response_model=LibraryItemsResponse)
 def api_items(
     parentId: Optional[str] = None,
     type: Optional[str] = None,
@@ -27,14 +32,14 @@ def api_items(
     return emby_client.get_items(parentId, type, recursive, startIndex, limit)
 
 
-@router.get("/search")
+@router.get("/search", response_model=LibraryItemsResponse)
 def api_search(q: str = Query(""), emby_client=Depends(get_emby_client)):
     if not q.strip():
         return {"Items": []}
     return emby_client.search_items(q.strip())
 
 
-@router.get("/item/{item_id}")
+@router.get("/item/{item_id}", response_model=ItemDetailsResponse)
 def api_item_details(item_id: str, emby_client=Depends(get_emby_client)):
     details = emby_client.get_item_details(item_id)
     if details:
@@ -42,7 +47,7 @@ def api_item_details(item_id: str, emby_client=Depends(get_emby_client)):
     return {"error": "Item not found"}
 
 
-@router.get("/item/{item_id}/streams")
+@router.get("/item/{item_id}/streams", response_model=StreamsResponse)
 def api_item_streams(item_id: str, emby_client=Depends(get_emby_client), logger=Depends(get_logger)):
     logger.info(f"Fetching streams for item ID: {item_id}")
 

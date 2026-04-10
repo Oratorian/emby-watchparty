@@ -9,12 +9,18 @@ from fastapi.responses import RedirectResponse
 import requests as http_requests
 
 from backend.src.dependencies import get_config, get_emby_client, get_logger
-from backend.src.schemas import AdminLoginRequest, ConfigUpdateResponse
+from backend.src.schemas import (
+    AdminLoginRequest,
+    AdminLoginResponse,
+    ConfigUpdateResponse,
+    RuntimeConfigResponse,
+    SuccessResponse,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
-@router.post("/login")
+@router.post("/login", response_model=AdminLoginResponse)
 def admin_login(body: AdminLoginRequest, request: Request,
                 emby_client=Depends(get_emby_client), logger=Depends(get_logger)):
     try:
@@ -54,14 +60,14 @@ def admin_login(body: AdminLoginRequest, request: Request,
         return {"success": False, "message": "Unable to connect to Emby server"}
 
 
-@router.post("/logout")
+@router.post("/logout", response_model=SuccessResponse)
 def admin_logout(request: Request):
     request.session.pop("admin_authenticated", None)
     request.session.pop("admin_username", None)
     return {"success": True}
 
 
-@router.get("/config")
+@router.get("/config", response_model=RuntimeConfigResponse)
 def get_config_values(request: Request, config=Depends(get_config)):
     if not request.session.get("admin_authenticated"):
         return {"error": "Not authenticated"}
