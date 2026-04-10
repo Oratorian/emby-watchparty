@@ -146,10 +146,12 @@ class RuntimeConfig:
     def field_metadata(cls) -> list:
         """Return field info for the admin UI"""
         sections = {
-            'Logging': ['LOG_LEVEL', 'LOG_TO_FILE', 'LOG_FILE', 'LOG_MAX_SIZE', 'CONSOLE_LOG_LEVEL'],
+            'Logging': ['LOG_LEVEL', 'LOG_TO_FILE', 'LOG_FILE', 'LOG_FORMAT', 'LOG_MAX_SIZE', 'CONSOLE_LOG_LEVEL'],
             'Security': ['MAX_USERS_PER_PARTY', 'ENABLE_HLS_TOKEN_VALIDATION', 'HLS_TOKEN_EXPIRY',
                          'ENABLE_RATE_LIMITING', 'RATE_LIMIT_PARTY_CREATION', 'RATE_LIMIT_API_CALLS'],
             'Session': ['STATIC_SESSION_ENABLED', 'STATIC_SESSION_ID'],
+            'Late Join Vote': ['LATE_JOIN_VOTE_ENABLED', 'LATE_JOIN_VOTE_TIMEOUT_SECONDS',
+                                'LATE_JOIN_VOTE_COOLDOWN_SECONDS'],
         }
         result = []
         for section, keys in sections.items():

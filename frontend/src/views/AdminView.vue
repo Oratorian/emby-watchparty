@@ -173,6 +173,16 @@ onMounted(async () => {
         </div>
         <div class="setting-row">
           <div class="setting-label">
+            <span>Log Format</span>
+            <span class="setting-hint">rsyslog or standard</span>
+          </div>
+          <select v-model="config.LOG_FORMAT">
+            <option value="rsyslog">rsyslog</option>
+            <option value="standard">standard</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">
             <span>Max Log Size (MB)</span>
             <span class="setting-hint">Log file rotation size</span>
           </div>
@@ -257,6 +267,32 @@ onMounted(async () => {
             <span class="setting-hint">Party code for static session</span>
           </div>
           <input v-model="config.STATIC_SESSION_ID" type="text" class="setting-input setting-input-sm" style="text-transform:uppercase;" />
+        </div>
+      </div>
+
+      <!-- Late Join Vote -->
+      <div class="admin-card card">
+        <h2 class="card-title">Late Join Vote</h2>
+        <div class="setting-row">
+          <div class="setting-label">
+            <span>Enable Late Join Vote</span>
+            <span class="setting-hint">Require a majority vote to admit users who join mid-playback</span>
+          </div>
+          <ToggleSwitch v-model="config.LATE_JOIN_VOTE_ENABLED" />
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">
+            <span>Vote Timeout (s)</span>
+            <span class="setting-hint">Seconds before selector tiebreak kicks in</span>
+          </div>
+          <input type="number" v-model.number="config.LATE_JOIN_VOTE_TIMEOUT_SECONDS" min="5" max="300" step="1" class="setting-input setting-input-sm" />
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">
+            <span>Post-Vote Cooldown (s)</span>
+            <span class="setting-hint">Delay after a failed vote before another join attempt is allowed (0 disables)</span>
+          </div>
+          <input type="number" v-model.number="config.LATE_JOIN_VOTE_COOLDOWN_SECONDS" min="0" max="600" step="1" class="setting-input setting-input-sm" />
         </div>
       </div>
     </div>
