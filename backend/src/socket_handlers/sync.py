@@ -100,6 +100,18 @@ def register(ctx):
         if not party:
             return
 
+        # Ignore seek events while a ready check is active. During a
+        # ready check, clients are still buffering their streams and
+        # may emit stray native `seeked` events (from HLS.js initial
+        # frame decoding or currentTime=0 resets). Treating those as
+        # real user seeks creates cascades of 00:00 seek spam across
+        # the party. Real user-initiated seeks only happen after the
+        # ready-check overlay dismisses.
+        rc = party.get("ready_check")
+        if rc and rc.get("active"):
+            logger.debug(f"Ignoring seek from {sid}: ready check active in {party_id}")
+            return
+
         party["playback_state"]["time"] = seek_time
         party["playback_state"]["last_update"] = datetime.now().isoformat()
 

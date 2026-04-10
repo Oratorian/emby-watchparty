@@ -250,7 +250,14 @@ def register(ctx):
 
     @sio.on("change_streams")
     async def handle_change_streams(sid, data):
-        """Per-user stream change (audio/subtitle/quality). Only affects the requesting user."""
+        """Per-user stream change (audio/subtitle/quality).
+
+        If the party is playing, all clients are force-paused, the target
+        user's stream is swapped, and a party-wide ready check runs. Once
+        every client reports ready, they all resume together from the
+        same position. This prevents the requesting user from desyncing
+        while they buffer the new stream.
+        """
         party_id = data.get("party_id", "").strip().upper()
         audio_index = data.get("audio_index")
         subtitle_index = data.get("subtitle_index")
@@ -267,9 +274,28 @@ def register(ctx):
             old_stream = party.get("user_streams", {}).get(sid, {})
             quality = old_stream.get("quality", DEFAULT_QUALITY)
 
-        # Stop this user's old transcode
-        current_time = party["playback_state"].get("time", 0)
-        _stop_user_stream(party, sid, current_time)
+        # Snapshot the party clock using the same elapsed-time projection
+        # the sync handlers use. This is the position the requesting user
+        # needs to resume at after their new stream loads. Other users
+        # keep playing normally -- this change does NOT disturb them.
+        ps = party["playback_state"]
+        was_playing = ps.get("playing", False)
+        snapshot_time = ps.get("time", 0)
+        if was_playing and ps.get("last_update"):
+            try:
+                last_update = datetime.fromisoformat(ps["last_update"])
+                elapsed = (datetime.now() - last_update).total_seconds()
+                if 0 < elapsed < 30:
+                    snapshot_time += elapsed
+            except Exception:
+                pass
+
+        # Stop this user's old transcode. NOTE: do NOT touch playback_state
+        # here. The party clock keeps running on last_update so non-target
+        # users and the server keep advancing while we rebuild the target's
+        # stream. If we froze it, the other users would drift out of sync
+        # from the authoritative clock.
+        _stop_user_stream(party, sid, snapshot_time)
 
         # Get fresh media info for new PlaySessionId
         playback_info = emby_client.get_playback_info(item_id)
@@ -278,7 +304,22 @@ def register(ctx):
 
         media_source = playback_info["MediaSources"][0]
 
-        # Create new stream at current position
+        # Recompute the current party time now that the Emby calls have
+        # taken their time. This is the "real" position at the moment we
+        # emit the new stream URL to the target user. Their StartTimeTicks
+        # uses this position so their fresh transcode starts where the
+        # party actually is now, not where it was when they clicked.
+        current_time = ps.get("time", 0)
+        if was_playing and ps.get("last_update"):
+            try:
+                last_update = datetime.fromisoformat(ps["last_update"])
+                elapsed = (datetime.now() - last_update).total_seconds()
+                if 0 < elapsed < 30:
+                    current_time += elapsed
+            except Exception:
+                pass
+
+        # Create new stream at the up-to-date party position
         stream = _create_user_stream(
             party, party_id, sid, item_id, media_source,
             audio_index=audio_index, subtitle_index=subtitle_index,
@@ -293,7 +334,12 @@ def register(ctx):
             if user_token:
                 stream_url += f"&token={user_token}"
 
-        # Only emit to the requesting user
+        # Emit ONLY to the requesting user. Other users are unaffected --
+        # they keep playing normally, no pause, no ready check, no overlay.
+        # The requesting user's VideoPlayer reloads with the new stream
+        # and auto-plays on MANIFEST_PARSED because their store
+        # playbackState.playing is still True (nothing touched it) and
+        # no ready check is active.
         await sio.emit("streams_changed", {
             "video": {
                 "item_id": item_id, "title": current_video["title"],
@@ -302,10 +348,14 @@ def register(ctx):
                 "selected_by": current_video.get("selected_by"), "quality": quality,
             },
             "current_time": current_time,
+            "was_playing": was_playing,
         }, to=sid)
 
         username = party["users"].get(sid, "Unknown")
-        logger.info(f"Stream changed for {username}: audio={audio_index}, sub={subtitle_index}, quality={quality}")
+        logger.info(
+            f"Stream changed for {username}: audio={audio_index}, "
+            f"sub={subtitle_index}, quality={quality}, resume_at={current_time:.1f}s"
+        )
 
     @sio.on("video_ended")
     async def handle_video_ended(sid, data):
