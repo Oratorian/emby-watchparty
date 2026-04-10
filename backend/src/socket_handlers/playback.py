@@ -130,24 +130,16 @@ def register(ctx):
                 "ready": ready_names, "waiting": waiting_names,
             }, room=party_id)
 
-    @sio.on("select_video")
-    async def handle_select_video(sid, data):
-        party_id = data.get("party_id", "").strip().upper()
-        item_id = data.get("item_id")
-        item_name = data.get("item_name", "Unknown")
-        item_overview = data.get("item_overview", "")
+    async def _restart_video_from_beginning(party, party_id, selector_sid,
+                                              item_id, item_name, item_overview):
+        """Fetch fresh media info, stop existing streams, create per-user
+        streams starting at 0, broadcast video_selected + ready_check.
 
-        if not party_manager.exists(party_id):
-            await sio.emit("error", {"message": "Watch party not found"}, to=sid)
-            return
-
-        party = party_manager.get(party_id)
-
-        # Fetch media info once to get metadata
+        Returns True on success, False on failure (caller should emit error).
+        """
         playback_info = emby_client.get_playback_info(item_id)
         if not playback_info or "MediaSources" not in playback_info:
-            await sio.emit("error", {"message": "Failed to load video"}, to=sid)
-            return
+            return False
 
         media_source = playback_info["MediaSources"][0]
         default_audio = _default_audio_index(media_source)
@@ -161,12 +153,17 @@ def register(ctx):
         # Store shared video info (no per-user fields)
         party["current_video"] = {
             "item_id": item_id, "title": item_name, "overview": item_overview,
-            "run_time_seconds": run_time_seconds, "selected_by": sid,
+            "run_time_seconds": run_time_seconds, "selected_by": selector_sid,
         }
 
         party["playback_state"] = {
             "playing": False, "time": 0, "last_update": datetime.now().isoformat(),
         }
+
+        # Start a ready check so clients show the waiting overlay until
+        # every user has loaded their stream
+        _start_ready_check(party, party_id)
+        waiting_names = [party["users"].get(s, "?") for s in party["ready_check"]["expected_sids"]]
 
         # Create per-user streams and emit individually
         for user_sid in list(party["users"].keys()):
@@ -189,9 +186,39 @@ def register(ctx):
                     "item_id": item_id, "title": item_name, "overview": item_overview,
                     "stream_url": stream_url,
                     "audio_index": default_audio, "subtitle_index": None,
-                    "selected_by": sid, "quality": DEFAULT_QUALITY,
+                    "selected_by": selector_sid, "quality": DEFAULT_QUALITY,
                 }
             }, to=user_sid)
+
+        # Tell everyone the ready check is in progress
+        await sio.emit("ready_check_update", {
+            "ready": [], "waiting": waiting_names,
+        }, room=party_id)
+
+        return True
+
+    # Expose the restart helper so party.py can reuse it for vote-pass restarts
+    ctx['restart_video_from_beginning'] = _restart_video_from_beginning
+
+    @sio.on("select_video")
+    async def handle_select_video(sid, data):
+        party_id = data.get("party_id", "").strip().upper()
+        item_id = data.get("item_id")
+        item_name = data.get("item_name", "Unknown")
+        item_overview = data.get("item_overview", "")
+
+        if not party_manager.exists(party_id):
+            await sio.emit("error", {"message": "Watch party not found"}, to=sid)
+            return
+
+        party = party_manager.get(party_id)
+
+        success = await _restart_video_from_beginning(
+            party, party_id, sid, item_id, item_name, item_overview
+        )
+        if not success:
+            await sio.emit("error", {"message": "Failed to load video"}, to=sid)
+            return
 
     @sio.on("stop_video")
     async def handle_stop_video(sid, data):

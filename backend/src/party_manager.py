@@ -120,6 +120,11 @@ class PartyManager:
                 "last_update": datetime.now().isoformat(),
             },
             "ready_check": None,
+            "pending_join": None,
+            # Unix timestamp after which a new late-joiner vote can be
+            # triggered. Set after every failed/cancelled vote to prevent
+            # spam attacks. None or 0 means no cooldown active.
+            "join_cooldown_until": 0,
         }
 
     def _create_party_dict(self, party_id: str) -> dict:

@@ -15,7 +15,17 @@ def register(ctx):
     @sio.event
     async def disconnect(sid):
         logger.info(f"Client disconnected: {sid}")
-        for party_id, party in party_manager.get_all().items():
+        handle_disconnect_from_vote = ctx.get('handle_disconnect_from_vote')
+
+        for party_id, party in list(party_manager.get_all().items()):
+            # Handle late-joiner vote cleanup (the disconnecting user may be
+            # the pending late joiner, or an eligible voter whose absence
+            # changes the majority math).
+            if party.get("pending_join") and handle_disconnect_from_vote:
+                pj = party["pending_join"]
+                if pj["sid"] == sid or sid in pj.get("eligible_voters", set()):
+                    await handle_disconnect_from_vote(party, party_id, sid)
+
             if sid in party["users"]:
                 username = party["users"][sid]
 
@@ -36,6 +46,27 @@ def register(ctx):
                 del party["users"][sid]
                 if "drift_strikes" in party and sid in party["drift_strikes"]:
                     del party["drift_strikes"][sid]
+
+                # Remove from any active ready check so we don't wait forever
+                # for a signal from a disconnected client
+                rc = party.get("ready_check")
+                if rc and rc.get("active"):
+                    rc["expected_sids"].discard(sid)
+                    rc["ready_sids"].discard(sid)
+                    if rc["ready_sids"] >= rc["expected_sids"] and rc["expected_sids"]:
+                        party["ready_check"] = None
+                        logger.info(f"All users ready in party {party_id} (after disconnect)")
+                        await sio.emit("all_ready", {}, room=party_id)
+                    elif not rc["expected_sids"]:
+                        # No one left to wait for -- cancel the check entirely
+                        party["ready_check"] = None
+                    else:
+                        ready_names = [party["users"].get(s, "?") for s in rc["ready_sids"]]
+                        waiting_names = [party["users"].get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]
+                        await sio.emit("ready_check_update", {
+                            "ready": ready_names, "waiting": waiting_names,
+                        }, room=party_id)
+
                 await sio.emit(
                     "user_left",
                     {"username": username, "users": list(party["users"].values())},

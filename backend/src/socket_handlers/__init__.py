@@ -22,8 +22,10 @@ def register_all(sio, emby_client, party_manager, token_manager, stream_builder,
         'logger': logger,
     }
     register_connection(ctx)
-    register_party(ctx)
+    # playback must register before party so the restart_video_from_beginning
+    # helper is available in ctx for the vote-pass flow in party.py
     register_playback(ctx)
+    register_party(ctx)
     register_sync(ctx)
     register_chat(ctx)
     register_drift(ctx)

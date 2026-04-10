@@ -81,6 +81,14 @@ class RuntimeConfig:
     STATIC_SESSION_ENABLED: bool = False
     STATIC_SESSION_ID: str = 'PARTY'
 
+    # Late joiner vote
+    LATE_JOIN_VOTE_ENABLED: bool = True
+    LATE_JOIN_VOTE_TIMEOUT_SECONDS: int = 20
+    # Cooldown after a failed/cancelled vote before a new late join is
+    # allowed. Prevents a malicious user from spamming the party URL to
+    # repeatedly pop vote modals on existing watchers.
+    LATE_JOIN_VOTE_COOLDOWN_SECONDS: int = 30
+
     @classmethod
     def from_file(cls, path: Path = CONFIG_JSON_PATH) -> 'RuntimeConfig':
         """Load from config.json, falling back to defaults for missing fields"""
