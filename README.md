@@ -141,28 +141,58 @@ docker run -d \
 ### Creating a Watch Party
 
 1. Click **"Create Party"** on the home page
-2. Share the party code with your friends
+2. Share the party code or URL with your friends
 3. Browse the Emby library and select a video
 4. Everyone in the room will be synchronized!
 
 ### Joining a Watch Party
 
-1. Click **"Join Watch Party"** on the home page
-2. Enter the party code you received
+1. Click **"Join Watch Party"** on the home page (or open a shared URL)
+2. Enter the party code if needed
 3. Enter your username
 4. Start watching together!
+
+If you join **before** a video has been selected, you land directly in
+the party. If you join **while a video is already playing**, the
+existing users will see a vote modal asking whether to restart the
+video from the beginning so you can join in sync. See the
+[User Guide](docs/USER_GUIDE.md#joining-a-party-that-is-already-watching)
+for full details of the late-joiner vote flow.
 
 ### Controls
 
 - **Browse Library**: Use the sidebar to browse your Emby libraries, movies, and TV shows
 - **Select Video**: Click on any video to start watching it with the group
-- **Video Controls**: The host (or any user) can play, pause, or seek - all users will sync
+- **Video Controls**: Any user can play, pause, or seek - all users will sync
+- **Audio / Quality / Subtitles**: Each user can pick their own settings
+  independently. If the party is paused, the change is silent; if the
+  party is playing, everyone briefly pauses while the new stream loads
+  so you do not desync
 - **Chat**: Use the chat box at the bottom to communicate with other viewers
 - **Leave**: Click the "Leave" button to exit the watch party
 
+### Documentation
+
+- **[User Guide](docs/USER_GUIDE.md)** - End-user guide covering the
+  full party flow, late-joiner vote, per-user streams, and the admin
+  panel
+- **[Socket.IO API](docs/SOCKET_API.md)** - Developer reference for
+  the Socket.IO event protocol
+- **REST API** - `GET /docs` or `GET /redoc` on a running instance for
+  the auto-generated OpenAPI documentation
+
 ## Configuration
 
-All configuration is done via the `.env` file. Copy `.env.example` to `.env` and customize:
+Configuration is split into two tiers:
+
+1. **Boot-essential settings** live in `.env` and require a server
+   restart to change. Copy `.env.example` to `.env` and set these
+   before starting the service.
+2. **Runtime settings** are editable from the **admin panel** at
+   `/admin` (Emby administrator credentials required) and are
+   hot-reloadable -- no restart needed.
+
+### `.env` (boot-essential, restart required)
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -172,26 +202,53 @@ All configuration is done via the `.env` file. Copy `.env.example` to `.env` and
 | `APP_PREFIX` | URL prefix for reverse proxy deployments (e.g. `/watchparty`) | (empty) |
 | `REQUIRE_LOGIN` | Require Emby login to access | `false` |
 | `SESSION_EXPIRY` | Session expiry in seconds | `86400` |
-| `STATIC_SESSION_ENABLED` | Single persistent party that auto-creates on startup | `false` |
-| `STATIC_SESSION_ID` | Fixed party ID for static session mode | `PARTY` |
 | **Emby Server** | | |
 | `EMBY_SERVER_URL` | Your Emby server URL | `http://localhost:8096` |
 | `EMBY_API_KEY` | Emby API key | (required) |
 | `EMBY_USERNAME` | Your Emby username | (required) |
 | `EMBY_PASSWORD` | Your Emby password | (required) |
-| **Logging** | | |
-| `LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
-| `LOG_TO_FILE` | Enable file logging (`true`/`false`) | `true` |
-| `LOG_FILE` | Path to log file | `logs/emby-watchparty.log` |
-| `CONSOLE_LOG_LEVEL` | Console log level | `WARNING` |
-| `LOG_MAX_SIZE` | Max log file size in MB | `10` |
-| **Security** | | |
-| `MAX_USERS_PER_PARTY` | Max users per party (0 = unlimited) | `0` |
-| `ENABLE_HLS_TOKEN_VALIDATION` | Validate HLS stream tokens | `true` |
-| `HLS_TOKEN_EXPIRY` | HLS token expiry in seconds | `86400` |
-| `ENABLE_RATE_LIMITING` | Enable API rate limiting | `true` |
-| `RATE_LIMIT_PARTY_CREATION` | Max party creations per IP per hour | `5` |
-| `RATE_LIMIT_API_CALLS` | Max API calls per IP per minute | `1000` |
+
+### Admin panel (runtime, hot-reloadable)
+
+All of the following settings are editable at `/admin`. See the
+[User Guide](docs/USER_GUIDE.md#admin-panel) for a walkthrough.
+
+**Logging**
+
+| Setting | Description | Default |
+|---|---|---|
+| Log Level | Application log verbosity (DEBUG, INFO, WARNING, ERROR) | `INFO` |
+| Console Log Level | Terminal output verbosity | `WARNING` |
+| Log to File | Write logs to disk | `true` |
+| Log File | Path to log file | `logs/emby-watchparty.log` |
+| Log Format | `rsyslog` or `standard` | `rsyslog` |
+| Max Log Size (MB) | Rotation threshold | `10` |
+
+**Security**
+
+| Setting | Description | Default |
+|---|---|---|
+| Max Users per Party | 0 = unlimited | `0` |
+| HLS Token Validation | Prevent direct stream access bypass | `true` |
+| HLS Token Expiry (s) | Token lifetime | `86400` |
+| Rate Limiting | Enable API rate limiting | `true` |
+| Party Creation Limit | Max per IP | `5 per hour` |
+| API Rate Limit | Max per IP | `1000 per minute` |
+
+**Session**
+
+| Setting | Description | Default |
+|---|---|---|
+| Static Session Mode | Auto-create a fixed party on startup | `false` |
+| Static Session ID | Party code when static mode is enabled | `PARTY` |
+
+**Late Join Vote** _(new in 2.0)_
+
+| Setting | Description | Default |
+|---|---|---|
+| Enable Late Join Vote | Require a majority vote to admit users who join mid-playback | `true` |
+| Vote Timeout (s) | Seconds before the selector tiebreak kicks in | `20` |
+| Post-Vote Cooldown (s) | Delay after a failed vote before another join attempt is allowed (0 disables) | `30` |
 
 ## Architecture
 
