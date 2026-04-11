@@ -73,19 +73,43 @@ def build_stream_params(emby_client, media_source, media_source_id, play_session
 
     needs_downscale = source_width and source_width > max_width
 
-    if source_video_codec != "h264" or needs_downscale:
-        params.append("VideoCodec=h264")
-        params.append(f"VideoBitrate={max_bitrate}")
-        if source_video_codec != "h264":
-            logger.info(f"Source is {source_video_codec}, transcoding to h264 at {preset['label']}")
-        else:
-            logger.info(f"Downscaling from {source_width}px to {max_width}px at {preset['label']}")
-    elif source_video_bitrate and source_video_bitrate > max_bitrate:
-        params.append("VideoCodec=h264")
-        params.append(f"VideoBitrate={max_bitrate}")
-        logger.info(f"Source is h264 but bitrate {source_video_bitrate // 1_000_000}Mbps exceeds cap, transcoding at {preset['label']}")
+    # Always force a video transcode, never let Emby stream-copy.
+    #
+    # The stream-copy ("direct play") HLS path remuxes the source's h264
+    # bitstream into ts segments at the SOURCE's keyframe boundaries.
+    # Emby still lists segments in the playlist with uniform #EXTINF
+    # durations even though the real data is cut on irregular VBR
+    # keyframes. When HLS.js seeks to a position that doesn't align
+    # with a real keyframe, it either hits a 404 (segment not generated
+    # yet) or plays the wrong scene -- this is the root cause of
+    # issue #25 and the general "some files can't seek" class of bugs.
+    #
+    # Forcing VideoCodec=h264 makes Emby re-encode with ffmpeg using
+    # a controlled keyframe interval, producing actually-uniform
+    # segments that seek reliably. On servers with hardware encoders
+    # (QSV/NVENC/VAAPI) this is near-zero CPU cost; on CPU-only
+    # servers this costs real cycles but is the only way to make
+    # seeking reliable with Emby's HLS output.
+    params.append("VideoCodec=h264")
+    # Cap bitrate at the quality preset's target. For h264 sources
+    # below the cap this still forces re-encoding (which is what we
+    # want for reliable seeks), just at a bitrate equal to or lower
+    # than the source.
+    target_bitrate = min(max_bitrate, source_video_bitrate or max_bitrate)
+    params.append(f"VideoBitrate={target_bitrate}")
+
+    if source_video_codec != "h264":
+        logger.info(f"Source is {source_video_codec}, transcoding to h264 at {preset['label']}")
+    elif needs_downscale:
+        logger.info(f"Downscaling from {source_width}px to {max_width}px at {preset['label']}")
     else:
-        logger.info(f"Source is h264 at {(source_video_bitrate or 0) // 1_000_000}Mbps, quality preset {preset['label']}")
+        # Common case: h264 source under cap. Force re-encode to
+        # guarantee uniform HLS segments (stream-copy path has broken
+        # seeking on some VBR files -- see issue #25).
+        logger.info(
+            f"Source is h264 at {(source_video_bitrate or 0) // 1_000_000}Mbps, "
+            f"re-encoding at {target_bitrate // 1_000_000}Mbps for reliable HLS seeking"
+        )
 
     # Audio stream selection
     if audio_index is not None:

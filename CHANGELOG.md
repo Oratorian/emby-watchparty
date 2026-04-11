@@ -10,6 +10,14 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
+## [1.6.2] - 2026-04-11
+
+### Fixed
+- **Seek failures on VBR h264 files, for real this time** ([#25](https://github.com/Oratorian/emby-watchparty/issues/25)): The actual root cause of the seek/restart bug is Emby's stream-copy HLS path, not peak bitrate. When WatchParty didn't send `VideoCodec=h264` (because the source was already h264 under the cap), Emby remuxed the source's existing bitstream into HLS segments at the source's original keyframe boundaries, while still advertising uniform 3-second segments in the playlist. HLS.js trusted the playlist timing and requested segments that didn't actually contain the expected media, causing 404s, duration jumps, and playback resetting to 0:00. The fix forces `VideoCodec=h264` on every HLS request so Emby always uses the re-encode path with controlled keyframe intervals, producing uniform segments that seek reliably. Tradeoff: Emby now transcodes every file instead of sometimes stream-copying, which is near-zero cost with a hardware encoder and measurable but bounded on CPU-only servers
+
+### Removed
+- **Peak bitrate check from v1.6.1**: Verified via direct curl tests against Emby's `PlaybackInfo` API that peak/max bitrate is not exposed under any field name. The v1.6.1 "fix" checking `stream.get("MaxBitRate")` was always reading `None` and falling through to average, making it a no-op. Removed to reduce code noise and to be honest about what's actually happening
+
 ## [1.6.1] - 2026-04-10
 
 ### Fixed
