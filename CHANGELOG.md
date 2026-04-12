@@ -10,6 +10,18 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
+## [1.6.3] - 2026-04-12
+
+### Fixed
+- **Seeking broken on all h264 files under the bitrate cap** ([#25](https://github.com/Oratorian/emby-watchparty/issues/25)): Third time's the charm. v1.6.2's `VideoCodec=h264` only told Emby "I accept h264" and did not prevent stream-copy. The actual fix is `EnableAutoStreamCopy=false` on the HLS request URL, which is Emby's proper API parameter to disable the stream-copy path. Every file now gets a real re-encode with controlled keyframe intervals via ffmpeg (using NVENC/QSV/VAAPI hardware encoding when available). Confirmed via Emby server logs: ffmpeg now uses `-c:v:0 h264_nvenc` instead of `-c:v:0 copy`, and the quality selector actually changes the output bitrate
+
+### Added
+- **Emby web client parity for PlaybackInfo**: `IsPlayback=true`, `AutoOpenLiveStream=true` (pre-starts ffmpeg so the first HLS segment is ready when requested), `MaxStreamingBitrate`, `AudioStreamIndex`, `SubtitleStreamIndex`, and `StartTimeTicks` are now sent on PlaybackInfo requests, matching what Emby's own web client sends
+- **HLS stream parameters**: `MinSegments=1` (reduces initial buffering), `h264-profile` and `h264-level` declarations, `TranscodeReasons` for Emby's transcoding pipeline, and native HLS subtitle support via `SubtitleMethod=Hls` + `ManifestSubtitles=vtt` + `SubtitleStreamIndexes`
+
+### Removed
+- **`EnableDirectPlay=false` and `EnableDirectStream=false` on PlaybackInfo**: These flags only affect Emby's playback method recommendation, not the HLS endpoint's actual transcoding decision. They were ineffective and caused 404 errors in some configurations
+
 ## [1.6.2] - 2026-04-11
 
 ### Fixed
