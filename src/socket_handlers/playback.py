@@ -36,8 +36,20 @@ def register(deps):
             emit("error", {"message": "Watch party not found"})
             return
 
-        # Get PlaybackInfo to get MediaSourceId and PlaySessionId
-        playback_info = emby_client.get_playback_info(item_id)
+        # Build HLS stream URL using quality preset
+        quality = data.get("quality")
+        if not quality or quality not in QUALITY_PRESETS:
+            quality = DEFAULT_QUALITY
+        preset = QUALITY_PRESETS[quality]
+
+        # Get PlaybackInfo with Emby web client params for better
+        # transcoding decisions and pre-started ffmpeg (AutoOpenLiveStream)
+        playback_info = emby_client.get_playback_info(
+            item_id,
+            audio_index=audio_index,
+            subtitle_index=subtitle_index,
+            max_streaming_bitrate=preset["bitrate"],
+        )
 
         if playback_info and "MediaSources" in playback_info:
             media_source_id = playback_info["MediaSources"][0]["Id"]
@@ -66,10 +78,6 @@ def register(deps):
             # Don't auto-select default subtitles - let users opt-in
             # (Removed automatic default subtitle selection)
 
-            # Build HLS stream URL using quality preset
-            quality = data.get("quality")
-            if not quality or quality not in QUALITY_PRESETS:
-                quality = DEFAULT_QUALITY
             params = build_stream_params(
                 emby_client, media_source, media_source_id, play_session_id,
                 audio_index, subtitle_index, quality, logger
@@ -283,9 +291,15 @@ def register(deps):
         # Use provided quality or fall back to current party quality
         if not quality or quality not in QUALITY_PRESETS:
             quality = current_video.get("quality", DEFAULT_QUALITY)
+        preset = QUALITY_PRESETS[quality]
 
-        # Get PlaybackInfo for new stream parameters
-        playback_info = emby_client.get_playback_info(item_id)
+        # Get PlaybackInfo with Emby web client params
+        playback_info = emby_client.get_playback_info(
+            item_id,
+            audio_index=audio_index,
+            subtitle_index=subtitle_index,
+            max_streaming_bitrate=preset["bitrate"],
+        )
 
         if playback_info and "MediaSources" in playback_info:
             media_source_id = playback_info["MediaSources"][0]["Id"]

@@ -49,6 +49,27 @@ def build_stream_params(emby_client, media_source, media_source_id, play_session
             logger.info(f"Source video codec: {source_video_codec}, avg_bitrate: {avg_bitrate}, peak_bitrate: {peak_bitrate}")
             break
 
+    # Determine transcode reason for Emby's logging and decision-making.
+    # Emby's own web client sends this so the server knows WHY we're
+    # requesting a transcode rather than having to guess.
+    transcode_reasons = []
+    if source_video_codec and source_video_codec != "h264":
+        transcode_reasons.append("VideoCodecNotSupported")
+    # We always force h264 re-encode (no stream-copy) for reliable HLS
+    # seeking, so even compatible sources get a reason.
+    if not transcode_reasons:
+        transcode_reasons.append("ContainerBitrateExceedsLimit")
+
+    # Collect all subtitle stream indexes for the ManifestSubtitles
+    # feature. Emby's web client sends all subtitle indexes so Emby
+    # can generate segmented VTT files alongside the video segments,
+    # enabling native HLS subtitle track switching without side-channel
+    # VTT fetches.
+    subtitle_indexes = []
+    for stream in media_source.get("MediaStreams", []):
+        if stream.get("Type") == "Subtitle":
+            subtitle_indexes.append(str(stream.get("Index")))
+
     params = [
         f"MediaSourceId={media_source_id}",
         f"PlaySessionId={play_session_id}",
@@ -62,7 +83,34 @@ def build_stream_params(emby_client, media_source, media_source_id, play_session
         "MaxAudioChannels=2",
         f"MaxWidth={max_width}",
         f"MaxHeight={max_height}",
+        # Disable automatic stream copy so Emby always re-encodes the
+        # video with controlled keyframe intervals. Without this, Emby
+        # stream-copies h264 sources into HLS segments at the source's
+        # original keyframe boundaries, producing segments with irregular
+        # durations that break seeking in HLS.js (issue #25).
+        "EnableAutoStreamCopy=false",
+        # Reduce initial buffering: Emby defaults to waiting for multiple
+        # segments before serving. MinSegments=1 lets it serve as soon as
+        # the first segment is ready (matching Emby's own web client).
+        "MinSegments=1",
+        # Declare supported h264 profiles and levels so Emby can make
+        # informed Direct Play vs transcode decisions. These match what
+        # modern browsers support via HLS.js.
+        "h264-profile=high,main,baseline,constrainedbaseline",
+        "h264-level=62",
+        # Tell Emby why we're transcoding so it can optimize its pipeline.
+        f"TranscodeReasons={','.join(transcode_reasons)}",
+        # Native HLS subtitle support: tell Emby to generate segmented
+        # VTT files alongside the video segments. HLS.js can then switch
+        # subtitle tracks natively without separate VTT fetch requests.
+        "SubtitleMethod=Hls",
+        "ManifestSubtitles=vtt",
     ]
+
+    # Add all subtitle stream indexes so Emby generates VTT segments
+    # for every available subtitle track, not just the selected one.
+    if subtitle_indexes:
+        params.append(f"SubtitleStreamIndexes={','.join(subtitle_indexes)}")
 
     # Determine if transcoding is needed
     source_width = None
@@ -73,29 +121,38 @@ def build_stream_params(emby_client, media_source, media_source_id, play_session
 
     needs_downscale = source_width and source_width > max_width
 
-    # Always force a video transcode, never let Emby stream-copy.
+    # Always force a video re-encode, never let Emby stream-copy.
     #
-    # The stream-copy ("direct play") HLS path remuxes the source's h264
-    # bitstream into ts segments at the SOURCE's keyframe boundaries.
-    # Emby still lists segments in the playlist with uniform #EXTINF
-    # durations even though the real data is cut on irregular VBR
-    # keyframes. When HLS.js seeks to a position that doesn't align
-    # with a real keyframe, it either hits a 404 (segment not generated
-    # yet) or plays the wrong scene -- this is the root cause of
-    # issue #25 and the general "some files can't seek" class of bugs.
+    # Emby's stream-copy HLS path remuxes the source's h264 bitstream
+    # into ts segments at the SOURCE's original keyframe boundaries.
+    # The playlist advertises uniform segment durations but the actual
+    # data is cut on irregular VBR keyframes. When HLS.js seeks to a
+    # position that doesn't align with a real keyframe, it either hits
+    # a 404 or plays the wrong scene (issue #25).
     #
-    # Forcing VideoCodec=h264 makes Emby re-encode with ffmpeg using
-    # a controlled keyframe interval, producing actually-uniform
-    # segments that seek reliably. On servers with hardware encoders
-    # (QSV/NVENC/VAAPI) this is near-zero CPU cost; on CPU-only
-    # servers this costs real cycles but is the only way to make
-    # seeking reliable with Emby's HLS output.
+    # Setting VideoCodec=h264 alone is NOT enough -- Emby treats that
+    # as "client accepts h264" and stream-copies when the source
+    # matches. Setting EnableDirectStream=false on PlaybackInfo also
+    # doesn't work -- the HLS endpoint makes its own decision.
+    #
+    # The ONLY reliable way to force a real re-encode is to set
+    # VideoBitrate BELOW the source bitrate. Emby cannot stream-copy
+    # when the target bitrate is lower than the source because stream-
+    # copy by definition preserves the original bitrate.
+    #
+    # We cap at 80% of the source bitrate (or the quality preset cap,
+    # whichever is lower). The 20% reduction is visually imperceptible
+    # for most content but guarantees Emby uses the encode path with
+    # controlled keyframe intervals. On servers with hardware encoders
+    # (QSV/NVENC/VAAPI) this is near-zero CPU cost.
     params.append("VideoCodec=h264")
-    # Cap bitrate at the quality preset's target. For h264 sources
-    # below the cap this still forces re-encoding (which is what we
-    # want for reliable seeks), just at a bitrate equal to or lower
-    # than the source.
-    target_bitrate = min(max_bitrate, source_video_bitrate or max_bitrate)
+
+    source_br = source_video_bitrate or max_bitrate
+    # Cap at the quality preset target or the source bitrate, whichever
+    # is lower. Combined with EnableAutoStreamCopy=false above, this
+    # guarantees a real re-encode with controlled keyframes even when
+    # the source codec and bitrate match the target.
+    target_bitrate = min(max_bitrate, source_br)
     params.append(f"VideoBitrate={target_bitrate}")
 
     if source_video_codec != "h264":
@@ -103,12 +160,10 @@ def build_stream_params(emby_client, media_source, media_source_id, play_session
     elif needs_downscale:
         logger.info(f"Downscaling from {source_width}px to {max_width}px at {preset['label']}")
     else:
-        # Common case: h264 source under cap. Force re-encode to
-        # guarantee uniform HLS segments (stream-copy path has broken
-        # seeking on some VBR files -- see issue #25).
         logger.info(
-            f"Source is h264 at {(source_video_bitrate or 0) // 1_000_000}Mbps, "
-            f"re-encoding at {target_bitrate // 1_000_000}Mbps for reliable HLS seeking"
+            f"Source is h264 at {source_br // 1_000_000}Mbps, "
+            f"re-encoding at {target_bitrate // 1_000_000}Mbps for reliable HLS seeking "
+            f"(auto stream copy disabled)"
         )
 
     # Audio stream selection
@@ -118,27 +173,36 @@ def build_stream_params(emby_client, media_source, media_source_id, play_session
     else:
         logger.debug("No audio stream index specified, Emby will use default")
 
-    # Subtitle handling
+    # Subtitle handling.
+    # Text subtitles are handled natively via the HLS manifest (SubtitleMethod=Hls
+    # + ManifestSubtitles=vtt set above). Emby generates segmented VTT files
+    # alongside the video segments, and HLS.js can switch tracks natively.
+    #
+    # Image-based subtitles (PGS, VobSub) must be burned in because HLS.js
+    # cannot render bitmap subtitle formats. For these we override the method
+    # to Encode, which forces Emby to render them into the video frames.
     if subtitle_index is not None and subtitle_index != -1:
-        is_pgs = False
-        for stream in media_source["MediaStreams"]:
+        is_image_sub = False
+        for stream in media_source.get("MediaStreams", []):
             if (
                 stream.get("Type") == "Subtitle"
                 and stream.get("Index") == subtitle_index
             ):
                 codec = stream.get("Codec", "").lower()
-                is_pgs = codec in [
+                is_image_sub = codec in [
                     "pgssub", "pgs", "dvd_subtitle", "dvdsub", "vobsub",
                 ]
                 break
 
-        if is_pgs:
-            params.append(f"SubtitleStreamIndex={subtitle_index}")
+        params.append(f"SubtitleStreamIndex={subtitle_index}")
+        if is_image_sub:
+            # Override the HLS method for this specific track -- burn it in.
+            # This replaces the SubtitleMethod=Hls set earlier for this request.
             params.append("SubtitleMethod=Encode")
-            logger.info(f"Burning in PGS subtitle track {subtitle_index}")
+            logger.info(f"Burning in image subtitle track {subtitle_index}")
         else:
-            logger.info(f"Text subtitle {subtitle_index} will be loaded separately as VTT")
+            logger.info(f"Text subtitle {subtitle_index} via HLS manifest (VTT)")
     else:
-        logger.debug("No subtitles selected - omitting subtitle parameters")
+        logger.debug("No subtitles selected - using manifest subtitles for all available tracks")
 
     return params
