@@ -9,7 +9,8 @@ from src.socket_handlers.party import register as register_party
 from src.socket_handlers.playback import register as register_playback
 from src.socket_handlers.sync import register as register_sync
 from src.socket_handlers.chat import register as register_chat
-from src.socket_handlers.drift import register as register_drift
+# Drift correction disabled in v1.6.1 -- caused seek loops (#24, #25)
+# from src.socket_handlers.drift import register as register_drift
 
 
 def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
@@ -52,4 +53,4 @@ def init_socket_handlers(socketio, emby_client, party_manager, config, logger):
     register_playback(deps)
     register_sync(deps)
     register_chat(deps)
-    register_drift(deps)
+    # register_drift(deps)  # Disabled in v1.6.1

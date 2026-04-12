@@ -56,6 +56,13 @@ def register(deps):
         current_time = data.get("time", 0)
 
         if party_id in watch_parties:
+            # Only the video selector can update server playback state
+            current_video = watch_parties[party_id].get("current_video")
+            if current_video and current_video.get("selected_by") != request.sid:
+                username = watch_parties[party_id]["users"].get(request.sid, "Someone")
+                logger.debug(f"Ignoring pause from {username} - not the selector")
+                return
+
             watch_parties[party_id]["playback_state"] = {
                 "playing": False,
                 "time": current_time,
@@ -63,7 +70,6 @@ def register(deps):
             }
 
             # Report pause event to Emby
-            current_video = watch_parties[party_id].get("current_video")
             if current_video and current_video.get("play_session_id"):
                 emby_client.report_playback_progress(
                     item_id=current_video["item_id"],
@@ -90,6 +96,12 @@ def register(deps):
         was_playing = data.get("was_playing", False)
 
         if party_id in watch_parties:
+            # Only the video selector can update server playback state
+            current_video = watch_parties[party_id].get("current_video")
+            if current_video and current_video.get("selected_by") != request.sid:
+                username = watch_parties[party_id]["users"].get(request.sid, "Someone")
+                logger.debug(f"Ignoring seek from {username} - not the selector")
+                return
 
             # Update playback state
             watch_parties[party_id]["playback_state"]["time"] = seek_time

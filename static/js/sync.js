@@ -75,9 +75,9 @@
             ve.addEventListener('seeked', function onSeeked() {
                 setTimeout(function() {
                     ve.play().then(function() {
-                        setTimeout(function() { S.isSyncing = false; }, 300);
+                        setTimeout(function() { S.isSyncing = false; }, 2000);
                     }).catch(function() {
-                        setTimeout(function() { S.isSyncing = false; }, 300);
+                        setTimeout(function() { S.isSyncing = false; }, 2000);
                         window.PartyChat.addSystemMessage('Autoplay blocked by browser - click the video to resume');
                     });
                 }, bufferDelay);
@@ -85,7 +85,7 @@
             }, { once: true });
         } else {
             ve.addEventListener('seeked', function onSeeked() {
-                setTimeout(function() { S.isSyncing = false; }, 300);
+                setTimeout(function() { S.isSyncing = false; }, 2000);
                 ve.removeEventListener('seeked', onSeeked);
             }, { once: true });
         }
@@ -160,7 +160,6 @@
 
         // Remote sync commands -> apply locally
         S.socket.on('play', function(data) {
-            if (Math.abs(data.time - S.lastSyncedTime) < 0.1 && S.lastSyncType === 'play') return;
             S.lastSyncedTime = data.time;
             S.lastSyncType = 'play';
             S.currentPartyState = { time: data.time, playing: true };
@@ -169,7 +168,6 @@
         });
 
         S.socket.on('pause', function(data) {
-            if (Math.abs(data.time - S.lastSyncedTime) < 0.1 && S.lastSyncType === 'pause') return;
             S.lastSyncedTime = data.time;
             S.lastSyncType = 'pause';
             S.currentPartyState = { time: data.time, playing: false };
@@ -180,11 +178,10 @@
         S.socket.on('force_pause_before_seek', function(data) {
             S.isSyncing = true;
             ve.pause();
-            setTimeout(function() { S.isSyncing = false; }, 300);
+            setTimeout(function() { S.isSyncing = false; }, 2000);
         });
 
         S.socket.on('seek', function(data) {
-            if (Math.abs(data.time - S.lastSyncedTime) < 0.1 && S.lastSyncType === 'seek') return;
             S.lastSyncedTime = data.time;
             S.lastSyncType = 'seek';
             S.currentPartyState = { time: data.time, playing: data.playing || false };
@@ -197,31 +194,6 @@
             });
         });
 
-        // Drift correction - receive targeted correction from server
-        S.socket.on('drift_correction', function(data) {
-            var ve = S.dom.videoElement;
-            if (!ve.src || ve.readyState < 2) return;
-            if (S.isSyncing || S.isUserSeeking) return;
-
-            var drift = Math.abs(ve.currentTime - data.time);
-            if (drift < 1.0) return;
-
-            S.isSyncing = true;
-            ve.currentTime = data.time;
-            setTimeout(function() { S.isSyncing = false; }, 500);
-        });
-
-        // Heartbeat - all clients report position every 5s for drift detection
-        S.heartbeatInterval = setInterval(function() {
-            var ve = S.dom.videoElement;
-            if (!ve.src || ve.readyState < 2 || ve.paused || ve.ended) return;
-            if (S.isSyncing || S.isUserSeeking) return;
-
-            S.socket.emit('heartbeat', {
-                party_id: S.partyId,
-                time: ve.currentTime
-            });
-        }, 5000);
     }
 
     window.PartySync = {

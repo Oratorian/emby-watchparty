@@ -10,7 +10,25 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
-## [1.6.0-alpha-1] - 2026-03-22
+## [1.6.2] - 2026-04-11
+
+### Fixed
+- **Seek failures on VBR h264 files, for real this time** ([#25](https://github.com/Oratorian/emby-watchparty/issues/25)): The actual root cause of the seek/restart bug is Emby's stream-copy HLS path, not peak bitrate. When WatchParty didn't send `VideoCodec=h264` (because the source was already h264 under the cap), Emby remuxed the source's existing bitstream into HLS segments at the source's original keyframe boundaries, while still advertising uniform 3-second segments in the playlist. HLS.js trusted the playlist timing and requested segments that didn't actually contain the expected media, causing 404s, duration jumps, and playback resetting to 0:00. The fix forces `VideoCodec=h264` on every HLS request so Emby always uses the re-encode path with controlled keyframe intervals, producing uniform segments that seek reliably. Tradeoff: Emby now transcodes every file instead of sometimes stream-copying, which is near-zero cost with a hardware encoder and measurable but bounded on CPU-only servers
+
+### Removed
+- **Peak bitrate check from v1.6.1**: Verified via direct curl tests against Emby's `PlaybackInfo` API that peak/max bitrate is not exposed under any field name. The v1.6.1 "fix" checking `stream.get("MaxBitRate")` was always reading `None` and falling through to average, making it a no-op. Removed to reduce code noise and to be honest about what's actually happening
+
+## [1.6.1] - 2026-04-10
+
+### Fixed
+- **Seek loop on high peak bitrate files** ([#25](https://github.com/Oratorian/emby-watchparty/issues/25)): Quality detection now checks `MaxBitRate` (peak) instead of only `BitRate` (average). VBR h264 files with 3-4 Mbps average but 10+ Mbps peaks were slipping through Direct Play, causing seek failures and playback resets when HLS.js requested segments Emby hadn't generated yet
+- **Random play/pause/seek event drops** ([#24](https://github.com/Oratorian/emby-watchparty/issues/24)): Removed 0.1s deduplication on incoming sync events. Clients with slightly different `currentTime` were silently dropping legitimate events, causing random failures where some clients would ignore play/pause commands
+- **NameError in play handler**: Restored missing `current_video` lookup in `handle_play` that was accidentally dropped during a refactor
+
+### Removed
+- **Drift correction ([#13](https://github.com/Oratorian/emby-watchparty/issues/13))**: Sorry buddy, drift correction failed us again. Backpaddling to not break things. The heartbeat-based system was amplifying seek failures into infinite loops on problematic media files. Will revisit with per-user streams in 2.0
+
+## [1.6.0] - 2026-03-22
 
 ### Added
 - **Continuous sync / drift correction** ([#13](https://github.com/Oratorian/emby-watchparty/issues/13)): Heartbeat-based system that detects and corrects playback drift. Only corrects the drifted client without disrupting others. Requires 3+ seconds of drift over 2 consecutive heartbeats to avoid false positives

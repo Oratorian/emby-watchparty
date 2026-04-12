@@ -4,9 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.5.x   | :white_check_mark: |
-| 1.4.x   | :white_check_mark: |
-| < 1.3   | :x:                |
+| 1.6.x   | :white_check_mark:                |
+| < 1.6.x | :x:                |
 
 We recommend always running the latest version for security updates and improvements.
 
@@ -35,7 +34,7 @@ When reporting a vulnerability, please include:
 
 ### Response Timeline
 
-- **Initial Response**: Within 48 hours
+- **Initial Response**: Within 72 hours
 - **Status Update**: Within 7 days
 - **Resolution Target**: Depends on severity (critical issues prioritized)
 
