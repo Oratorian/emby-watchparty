@@ -201,6 +201,91 @@ this entirely because each ffmpeg writes to its own temp directory.
 
 ---
 
+## 10. The CPU cost of `EnableAutoStreamCopy=false` is real (but mostly solved by QSV)
+
+Forcing a real re-encode is the only way to make HLS.js seek reliably,
+and it comes with a CPU cost that's significant -- but only if you're
+running on pure software encoding. Real measurements on an i9-9900K
+(8c/16t):
+
+| Mode | Polar 2019 (1.95 Mbps h264) | Bubble 2022 (5 Mbps h264) |
+|---|---|---|
+| Stream-copy (Emby's web player) | ~3% CPU | ~10% CPU |
+| Software x264 re-encode (forced) | ~50% CPU @ 10x realtime | ~50% CPU @ ~5x realtime |
+| **Intel iGPU QuickSync (UHD 630)** | **~3% CPU** | **~3% CPU** |
+| NVIDIA NVENC (dGPU) | ~3% CPU | ~3% CPU |
+
+That's a **10-16x CPU multiplier** for software encoding compared to
+stream-copy. The ratio is even worse if the source was encoded with
+heavy x264 settings (high `subme`, `b_adapt`, multiple reference
+frames, complex partition analysis) -- the decoder has to undo all
+of that work frame-by-frame, and you can't tune it down because
+those settings are baked into the bitstream.
+
+### Most users already have a hardware encoder
+
+The "buy a GPU" recommendation that early versions of this document
+made is mostly unnecessary. **Almost every Intel desktop CPU from the
+last decade has Quick Sync (QSV)** built into its iGPU, even if you've
+never used it for graphics. The UHD 630 in an i9-9900K, for example,
+isn't impressive for gaming -- but its dedicated media engine can
+transcode 4-6 simultaneous 1080p h264 streams while leaving the CPU
+cores essentially idle (~3% utilization). It's a separate silicon
+block from the CPU and from the iGPU's graphics shaders.
+
+The same applies to:
+
+- **Intel desktop / laptop CPUs**: UHD/Iris graphics → QSV
+- **AMD APUs and modern Ryzen with iGPU**: VAAPI (similar to QSV
+  but on Linux, requires a bit more setup)
+- **NVIDIA discrete GPUs**: NVENC (basically every GeForce/Quadro
+  from the GTX 600 series onward, with concurrent stream limits
+  patched out by the consumer NVENC patch on older cards)
+- **Apple Silicon**: VideoToolbox (works out of the box)
+
+If your Emby server is running on essentially any hardware made in
+the last 5-10 years that isn't a headless server CPU (Xeon without
+iGPU, dedicated CPU-only boards), you probably have hardware
+encoding available. You just need to enable it in Emby's
+transcoding settings (Settings → Transcoding → Hardware
+acceleration).
+
+### Practical capacity per encode mode
+
+On an i9-9900K class CPU:
+
+- **Stream-copy** (Emby web player only): 30+ concurrent users,
+  basically free -- but doesn't work with HLS.js
+- **Software x264 re-encode** (CPU only, no QSV/NVENC): 2-3 concurrent
+  users comfortably, 4 if you're willing to sit at 100% CPU
+- **QSV / NVENC hardware encode**: 4-6+ concurrent users with
+  basically no CPU impact, sometimes hitting decode bottlenecks
+  before encode bottlenecks
+
+x264 does scale beautifully across cores when you do fall back to
+software -- you'll see all 8/16 threads cycling through 30-50%
+utilization with no single core pinned. On a seek, expect a ~300ms
+spike to 100% all-cores while ffmpeg cold-starts the new encode at
+the seek position, then it settles back into the rotating pattern.
+
+### Why the CPU cost exists
+
+This isn't a bug we're working around -- it's a fundamental cost
+of using a generic HLS player against Emby's optimized-for-their-own-player
+HLS output. Emby's web player gets stream-copy for free because:
+
+1. Their player handles seek via direct MSE control, not playlist
+   navigation, so it doesn't trust the playlist's `#EXTINF` values
+2. They control both ends and can paper over Emby's stream-copy
+   timing inaccuracies in the player
+
+HLS.js can't do any of that -- it's a generic standard-compliant
+HLS player that has to trust the manifest. So we pay the encode cost
+as the price of compatibility. With hardware encoding the cost is
+near-zero. Without it, you get a working but more demanding setup.
+
+---
+
 ## TL;DR
 
 If you're building an HLS player against Emby's API:
@@ -212,7 +297,10 @@ If you're building an HLS player against Emby's API:
 5. Don't try to read peak bitrate from the API -- it's not there
 6. Accept that every playback will be a real transcode
 7. If you have hardware encoding, it's basically free
-8. If you don't, buy a GPU -- it's cheaper than debugging stream-copy
+8. If you don't, x264 on a modern desktop CPU handles 2-3 concurrent
+   streams comfortably, but Emby's web player will use ~10x less CPU
+   on the same content because it stream-copies. That's the price of
+   reliable seeking with HLS.js.
 
 ---
 
