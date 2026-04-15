@@ -6,113 +6,119 @@
 [![GitHub release](https://img.shields.io/github/release/Oratorian/emby-watchparty.svg)](https://github.com/Oratorian/emby-watchparty/releases)
 [![GitHub stars](https://img.shields.io/github/stars/Oratorian/emby-watchparty.svg)](https://github.com/Oratorian/emby-watchparty/stargazers)
 
-A synchronized watch party application for Emby media servers. Watch videos together with friends in real-time, no matter where you are!
+A synchronized watch party application for Emby media servers. Watch videos together with friends in real-time, no matter where you are — no Emby account required for your guests.
+
+---
+
+### Support development
+
+If Emby WatchParty has saved you from the hell of trying to coordinate "3, 2, 1, play" over Discord, consider buying me a coffee:
+
+☕ **[ko-fi.com/jedziah](https://ko-fi.com/jedziah)**
+
+Every tip helps fund the hardware and the late nights reverse-engineering Emby's HLS pipeline.
 
 ---
 
 ### 🎉 Special Thanks
 
-Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
+Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development.
 
-Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
+Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding and HLS seeking issues.
 
 ---
 
 ### Discord for more personal support
+
 https://discord.gg/RWUpxq9xsA
 
 ---
 
+## Documentation
+
+- **[Wiki](https://github.com/Oratorian/emby-watchparty/wiki)** — hardware planning, deployment guides (Docker, Unraid, TrueNAS), troubleshooting, FAQ
+- **[Emby quirks we learned the hard way](docs/Emby%20quirks%20we%20learned%20the%20hard%20way.md)** — technical findings from reverse-engineering Emby's HLS transcoding pipeline
+- **[Changelog](CHANGELOG.md)** — per-release details
+
 ## Features
 
-- **Secure Proxy Architecture**: Emby server stays on your local network - never exposed to the internet
-- **HLS Streaming**: High-quality HTTP Live Streaming with adaptive bitrate and buffering
-- **Real-time synchronization**: Watch videos together with automatic play/pause/seek synchronization
-- **Library browsing**: Browse your entire Emby library and select videos to watch
-- **Subtitle & Audio Support**: Automatic detection of default tracks with burned-in subtitle support
-- **Room system**: Create private watch party rooms with simple 5-character codes
-- **Live chat**: Chat with other viewers while watching
-- **Random usernames**: Auto-generated usernames if not provided (554,400+ combinations)
-- **Multiple users**: Support for unlimited concurrent viewers in a room
-- **Professional logging**: rsyslog-style logging with automatic rotation
-- **Responsive UI**: Modern, clean interface that works on desktop and mobile
+- **Secure proxy architecture**: Emby server stays on your local network, never exposed to the internet
+- **HLS streaming**: HTTP Live Streaming with forced re-encoding for reliable seek behavior (see the quirks doc for why this matters)
+- **Real-time sync**: play, pause, and seek events propagate to every viewer instantly
+- **Library browsing**: browse your entire Emby library and pick videos to watch together
+- **Skip Intro button**: overlay button that appears during intro segments (uses Emby's chapter/intro data)
+- **Autoplay / binge mode**: optional auto-queue of the next episode when the current one ends, with a countdown and cancel option
+- **Quality presets**: pick from 360p up to 1080p-high (10 Mbps), or let the app decide
+- **Subtitle & audio support**: native HLS manifest subtitles (VTT), automatic image-subtitle burn-in (PGS/VobSub), per-party audio track selection
+- **Room system**: 5-character party codes, no accounts needed for guests
+- **Live chat**: built-in chat alongside the video
+- **Random usernames**: 554,400+ auto-generated usernames for users who don't set one
+- **Multiple users**: unlimited concurrent viewers per party (bounded by your Emby server's hardware — see the wiki)
+- **Static session mode**: optional single-party-always-open deployment for private groups
+- **Professional logging**: rsyslog-style logging with rotation
 
-## Browser Compatibility
-
-Emby Watch Party works best with the following browsers:
+## Browser compatibility
 
 ### Desktop
-- ✅ **Chrome** - Full support (recommended)
-- ✅ **Edge** - Full support (recommended)
-- ✅ **Firefox** - Full support
-- ✅ **Safari** - Full support
-- ✅ **Brave** - Full support
+- ✅ **Chrome / Edge / Brave** — full support (recommended)
+- ✅ **Firefox** — full support
+- ✅ **Safari** — full support
 
 ### Mobile
-- ✅ **Safari (iOS)** - Full support with subtitles (recommended for iOS)
-- ✅ **Chrome (Android)** - Full support (recommended for Android)
-- ⚠️ **Brave (iOS)** - Video playback works, but subtitles do not appear in fullscreen mode
-  - **Workaround**: Use Safari on iOS if you need subtitle support
-
-### Known Issues
-- **Brave Browser on iOS**: Subtitles work in normal view but disappear when entering fullscreen mode. This is a limitation of how Brave handles native video controls on iOS. Safari is recommended for iOS users who need subtitle support.
+- ✅ **Safari (iOS)** — full support including subtitles (recommended for iOS)
+- ✅ **Chrome (Android)** — full support (recommended for Android)
+- ⚠️ **Brave (iOS)** — video plays, but subtitles don't show in fullscreen. Use Safari on iOS if you need subtitles.
 
 ## Setup
 
 ### Prerequisites
 
 - Python 3.8 or higher
-- An Emby server (can be on local/internal network only)
-- Emby user account credentials (username and password)
-- Flask app must be accessible to remote users - use VPNs like Tailscale or Hamachi if port forwarding is not possible
-- **Note:** Emby server does NOT need to be exposed to the internet - the Flask app acts as a secure proxy
+- An Emby server (stays on your local/internal network)
+- **Emby API key AND username/password** — both are required. The API key is used for admin API calls (library browsing, item lookup), and the username/password are needed to get a stream access token (Emby only serves HLS to authenticated user sessions).
+- The Flask app must be reachable by your guests. If you can't port-forward, use Tailscale, ZeroTier, or a similar overlay VPN.
+- **Emby Premiere** is required on the Emby side if you want hardware-accelerated transcoding (QSV, NVENC, VAAPI). Without it, Emby transcodes in software only.
 
-### Option 1: Manual Installation
+### Option 1: Manual installation
 
 1. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Configure your settings:
-
-Copy `.env.example` to `.env` and edit with your settings:
+2. Configure your settings — copy `.env.example` to `.env`:
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your Emby server credentials:
+3. Edit `.env`:
 ```env
 # Emby Server Configuration
 EMBY_SERVER_URL=http://your-emby-server:8096
 EMBY_API_KEY=your-api-key-here
-EMBY_USERNAME=your-username
-EMBY_PASSWORD=your-password
+EMBY_USERNAME=your-emby-username
+EMBY_PASSWORD=your-emby-password
 
 # Application Configuration
 WATCH_PARTY_BIND=0.0.0.0
 WATCH_PARTY_PORT=5000
 ```
 
-3. Run the application:
-
+4. Run:
 ```bash
 python run_production.py
 ```
 
-4. Open your browser and navigate to:
-```
-http://localhost:5000
-```
+5. Open your browser at `http://localhost:5000` (or your server's IP).
 
-### Option 2: Docker Installation
+### Option 2: Docker installation
 
-Pull the image from GitHub Container Registry:
+Pull from GitHub Container Registry:
 ```bash
 docker pull ghcr.io/oratorian/emby-watchparty:latest
 ```
 
-Run with your `.env` file:
+Run with a `.env` file:
 ```bash
 docker run -d \
   --name emby-watchparty \
@@ -128,60 +134,65 @@ docker run -d \
   -p 5000:5000 \
   -e EMBY_SERVER_URL=http://your-emby-server:8096 \
   -e EMBY_API_KEY=your-api-key \
-  -e EMBY_USERNAME=your-username \
-  -e EMBY_PASSWORD=your-password \
+  -e EMBY_USERNAME=your-emby-username \
+  -e EMBY_PASSWORD=your-emby-password \
   -e LOG_TO_FILE=false \
   ghcr.io/oratorian/emby-watchparty:latest
 ```
 
-**Note:** For Docker deployments, set `LOG_TO_FILE=false` to output logs to stdout only.
+**Note:** for Docker deployments, set `LOG_TO_FILE=false` so logs go to stdout (readable via `docker logs`).
+
+For Unraid, TrueNAS SCALE, and full-stack Docker Compose setups (including GPU passthrough for hardware-accelerated transcoding), see the **[deployment guides in the wiki](https://github.com/Oratorian/emby-watchparty/wiki)**.
 
 ## Usage
 
-### Creating a Watch Party
+### Creating a watch party
 
 1. Click **"Create Party"** on the home page
-2. Share the party code with your friends
-3. Browse the Emby library and select a video
-4. Everyone in the room will be synchronized!
+2. Share the 5-character party code with your friends
+3. Browse the Emby library and pick a video
+4. Everyone stays synchronized automatically
 
-### Joining a Watch Party
+### Joining a watch party
 
 1. Click **"Join Watch Party"** on the home page
-2. Enter the party code you received
-3. Enter your username
-4. Start watching together!
+2. Enter the party code
+3. Enter a username (or leave blank for a random one)
+4. Start watching together
 
-### Controls
+### In-party controls
 
-- **Browse Library**: Use the sidebar to browse your Emby libraries, movies, and TV shows
-- **Select Video**: Click on any video to start watching it with the group
-- **Video Controls**: The host (or any user) can play, pause, or seek - all users will sync
-- **Chat**: Use the chat box at the bottom to communicate with other viewers
-- **Leave**: Click the "Leave" button to exit the watch party
+- **Browse Library**: sidebar browser for your Emby libraries, movies, and TV shows
+- **Select Video**: click any video to start it for the whole party
+- **Video Controls**: any user can play, pause, or seek — sync happens automatically
+- **Skip Intro**: when the overlay appears, click to skip the intro segment
+- **Autoplay toggle**: enable "Autoplay: ON" to queue the next episode automatically when the current one ends (with a cancel option during the countdown)
+- **Quality selector**: pick a quality preset if automatic selection isn't what you want
+- **Chat**: bottom chat box for talking to other viewers
+- **Leave**: exit the party
 
 ## Configuration
 
-All configuration is done via the `.env` file. Copy `.env.example` to `.env` and customize:
+All configuration is via `.env`. Copy `.env.example` and customize:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | **Application** | | |
-| `WATCH_PARTY_BIND` | IP address to bind to | `0.0.0.0` |
-| `WATCH_PARTY_PORT` | Port to run on | `5000` |
+| `WATCH_PARTY_BIND` | IP to bind to | `0.0.0.0` |
+| `WATCH_PARTY_PORT` | Port to listen on | `5000` |
 | `APP_PREFIX` | URL prefix for reverse proxy deployments (e.g. `/watchparty`) | (empty) |
-| `REQUIRE_LOGIN` | Require Emby login to access | `false` |
+| `REQUIRE_LOGIN` | Require Emby login to access the web UI | `false` |
 | `SESSION_EXPIRY` | Session expiry in seconds | `86400` |
-| `STATIC_SESSION_ENABLED` | Single persistent party that auto-creates on startup | `false` |
-| `STATIC_SESSION_ID` | Fixed party ID for static session mode | `PARTY` |
+| `STATIC_SESSION_ENABLED` | Keep a single persistent party alive across restarts | `false` |
+| `STATIC_SESSION_ID` | Fixed party ID when `STATIC_SESSION_ENABLED=true` | `PARTY` |
 | **Emby Server** | | |
 | `EMBY_SERVER_URL` | Your Emby server URL | `http://localhost:8096` |
 | `EMBY_API_KEY` | Emby API key | (required) |
-| `EMBY_USERNAME` | Your Emby username | (required) |
-| `EMBY_PASSWORD` | Your Emby password | (required) |
+| `EMBY_USERNAME` | Emby username | (required) |
+| `EMBY_PASSWORD` | Emby password | (required) |
 | **Logging** | | |
-| `LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
-| `LOG_TO_FILE` | Enable file logging (`true`/`false`) | `true` |
+| `LOG_LEVEL` | DEBUG, INFO, WARNING, ERROR | `INFO` |
+| `LOG_TO_FILE` | Enable file logging | `true` |
 | `LOG_FILE` | Path to log file | `logs/emby-watchparty.log` |
 | `CONSOLE_LOG_LEVEL` | Console log level | `WARNING` |
 | `LOG_MAX_SIZE` | Max log file size in MB | `10` |
@@ -196,120 +207,115 @@ All configuration is done via the `.env` file. Copy `.env.example` to `.env` and
 ## Architecture
 
 ### Backend (Flask + SocketIO)
-- **Flask**: Web server and REST API endpoints
-- **SocketIO**: WebSocket-based real-time communication
-- **EmbyClient**: Custom API client for Emby server integration with user authentication
-- **HLS.js**: HTTP Live Streaming (HLS) playback support
+
+- **Flask**: web server and REST API
+- **Flask-SocketIO**: WebSocket-based real-time sync between party members
+- **EmbyClient**: custom Emby API wrapper that handles authentication, playback info, HLS stream URL construction, and playback progress reporting
+- **HLS streaming**: every stream is **force-transcoded** (not stream-copied) via `EnableAutoStreamCopy=false` to guarantee reliable seeking with HLS.js. See the [quirks doc](docs/Emby%20quirks%20we%20learned%20the%20hard%20way.md) for the full backstory.
 
 ### Frontend
-- **Vanilla JavaScript**: No frameworks, just clean JS
-- **Socket.IO Client**: Real-time bidirectional communication
-- **HLS.js**: Advanced HLS video streaming with buffering and error recovery
-- **HTML5 Video**: Native video player with custom controls
 
-### Key Components
+- **Vanilla JavaScript**: no frameworks, no build step
+- **Socket.IO client**: real-time bidirectional sync
+- **HLS.js**: adaptive-bitrate HLS player with buffering and error recovery
+- **HTML5 Video**: native player with custom overlay controls
 
-#### Watch Party Rooms
-Each room maintains:
-- List of connected users
-- Current video being watched
-- Playback state (playing/paused, current time)
+### Key concepts
 
-#### Synchronization
-When any user performs an action (play/pause/seek), it's broadcast to all users in the room via WebSocket, ensuring everyone stays in sync. The application uses a coordinated pause-seek-buffer-resume flow to prevent desynchronization during seeking operations.
+**Watch party rooms** — each room tracks connected users, the selected video, and playback state (playing/paused, current time, last update timestamp).
 
-#### Authentication & Security
-The application authenticates with Emby using username/password credentials to obtain an AccessToken, which is then used for all HLS streaming requests. All media streaming goes through the Flask proxy, keeping your Emby server on your internal network and never exposed to the internet.
+**Synchronization** — play/pause/seek events are broadcast to all users in the room via WebSocket. The server authoritatively tracks party clock state; clients reconcile their local `video.currentTime` against the server's projection.
 
-## API Endpoints
+**Transcoding** — the Emby server does all video work. WatchParty just proxies HLS segments and tells Emby exactly how to transcode (quality, subtitles, audio track). Forced re-encoding is required for HLS.js seek reliability and is non-negotiable on this branch.
+
+**Authentication** — WatchParty authenticates with Emby using the configured username/password to obtain an AccessToken, then uses that token for HLS streaming. The API key is used separately for metadata calls. All guest traffic is proxied through the Flask app so your Emby server never sees guest IPs.
+
+## API endpoints
 
 ### REST API
 
-- `GET /` - Home page
-- `GET /party/<party_id>` - Watch party room page
-- `GET /api/libraries` - Get all media libraries
-- `GET /api/items?parentId=<id>&type=<type>&recursive=<bool>` - Get library items
-- `GET /api/item/<item_id>` - Get item details
-- `GET /api/stream/<item_id>` - Get video stream URL
-- `POST /api/party/create` - Create a new watch party
-- `GET /api/party/<party_id>/info` - Get party information
+- `GET /` — home page
+- `GET /party/<party_id>` — watch party room page
+- `GET /api/libraries` — list media libraries
+- `GET /api/items?parentId=<id>&type=<type>&recursive=<bool>` — list items in a library
+- `GET /api/item/<item_id>` — item details
+- `GET /api/stream/<item_id>` — get a video stream URL for a party
+- `POST /api/party/create` — create a new watch party
+- `GET /api/party/<party_id>/info` — party state
 
-### WebSocket Events
+### WebSocket events
 
 **Client → Server:**
-- `join_party` - Join a watch party room
-- `leave_party` - Leave a watch party room
-- `select_video` - Select a video to watch
-- `play` - Play the video
-- `pause` - Pause the video
-- `seek` - Seek to a specific time
-- `chat_message` - Send a chat message
+- `join_party` — join a room
+- `leave_party` — leave a room
+- `select_video` — pick a video for the party
+- `play` / `pause` / `seek` — playback control
+- `change_quality` — switch quality preset
+- `change_audio` / `change_subtitle` — switch tracks (party-wide in 1.x)
+- `chat_message` — send chat
+- `autoplay_toggle` — toggle binge mode
 
 **Server → Client:**
-- `connected` - Connection established
-- `user_joined` - A user joined the room
-- `user_left` - A user left the room
-- `sync_state` - Sync current playback state
-- `video_selected` - A new video was selected
-- `play` - Play command from another user
-- `pause` - Pause command from another user
-- `seek` - Seek command from another user
-- `chat_message` - Chat message from another user
-- `error` - Error occurred
+- `connected` — connection established
+- `user_joined` / `user_left` — room membership change
+- `sync_state` — playback state sync (authoritative)
+- `video_selected` — a new video started
+- `play` / `pause` / `seek` — control events from other users
+- `chat_message` — chat broadcast
+- `intro_data` — skip-intro chapter/timestamp info
+- `autoplay_countdown` — next-episode autoplay UI
+- `error` — error with context
 
 ## Troubleshooting
 
-### Videos won't play
-- Ensure the Flask app is accessible from client browsers
-- Check that your username and password are correct in `.env`
-- Verify the Emby server is reachable from the Flask app server (internal network)
-- Verify the user account has permission to access the media
-- Check the logs in `logs/emby-watchparty.log` for authentication or proxy errors
+See the **[Troubleshooting wiki page](https://github.com/Oratorian/emby-watchparty/wiki/Troubleshooting)** for detailed diagnosis of seeking, CPU usage, networking, and configuration issues.
 
-### Synchronization issues
-- Check your network connection
-- Make sure WebSocket connections aren't blocked by firewalls
+Quick checks:
+
+**Videos won't play**
+- Check `logs/emby-watchparty.log` for authentication or proxy errors
+- Verify `EMBY_SERVER_URL`, `EMBY_API_KEY`, `EMBY_USERNAME`, `EMBY_PASSWORD` are correct
+- Confirm the Emby user account has library access permissions
+- Verify the Flask app is reachable from guest browsers
+
+**Seeking is broken, jumps to wrong scenes, or 404s on segments**
+- Update to v1.6.3 or later — the `EnableAutoStreamCopy=false` fix is required
+
+**CPU at 100% with a single user**
+- Enable hardware acceleration in Emby (Settings → Transcoding → Hardware acceleration) and verify the container has GPU access. See the [wiki hardware guide](https://github.com/Oratorian/emby-watchparty/wiki/Hardware-Requirements).
+
+**Sync drifts or one user keeps buffering**
+- Check that user's network speed and device CPU usage
 - Try refreshing the page
-- If seeking causes desync, check that all clients have stable network connections
+- Confirm WebSocket traffic isn't being dropped by a firewall or reverse proxy
 
-### Can't browse library
-- Verify the Emby server URL is correct in `.env`
-- Check that your username and password are correct
-- Ensure the Emby server is running and reachable from the Flask app (internal network)
-- Verify the user account has library access permissions
+## Security notes
 
-## Security Notes
-
-- **Proxy Architecture**: Your Emby server stays on your local network and is never exposed to the internet
-- The Flask app proxies all HLS streaming requests, acting as a security layer between users and your Emby server
-- This application authenticates with Emby using username/password credentials
-- Credentials are stored in `.env` - **do not commit this file to public repositories**
-- Party codes are generated using cryptographically secure random tokens
-- AccessTokens are obtained at runtime and not stored persistently
+- **Proxy architecture**: Emby stays on your local network. Only the Flask app is reachable by guests.
+- Credentials live in `.env` — **do not commit this to public repos**.
+- Party codes are generated using cryptographically secure random tokens.
+- HLS tokens (optional) prevent direct stream URL sharing outside the party.
+- AccessTokens are obtained at runtime and not stored persistently.
 - Built-in security features:
   - HLS token validation (prevents direct stream access bypass)
-  - Rate limiting (prevents API abuse)
-  - Configurable party size limits
-- For production use, consider adding:
-  - HTTPS/TLS encryption (recommended if exposing to the internet)
-  - Reverse proxy (nginx, Caddy, etc.)
+  - Rate limiting on API endpoints and party creation
+  - Configurable per-party user limits
+- For production, add:
+  - HTTPS via reverse proxy (Caddy, Nginx, Traefik)
+  - A VPN or overlay network if guests aren't on the public internet
 
 ## License
 
-MIT License - feel free to modify and use as you wish!
+MIT License — feel free to modify and use as you wish.
 
 ## Contributing
 
-Contributions are welcome! Feel free to submit issues or pull requests.
+Contributions welcome. Fork, branch, PR against `dev`. Issues and feature requests go in GitHub Issues.
+
+Wiki edits are open — if you deploy on hardware or a platform not yet documented, please add your findings.
 
 ## Acknowledgments
 
-- Built with Flask and SocketIO
-- Integrates with Emby Media Server
-- Inspired by various watch party applications
-
-### Special Thanks
-
-Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
-
-Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issue!
+- Built on Flask, Flask-SocketIO, and HLS.js
+- Integrates with [Emby Media Server](https://emby.media/)
+- Inspired by various watch-party applications that didn't quite do what we needed

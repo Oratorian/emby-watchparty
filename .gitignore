@@ -50,3 +50,6 @@ merge-to-main.ps1
 EMBY_PARTIES_API_RESEARCH.md
 SKIP_INTRO_IMPLEMENTATION.md
 TODO.md
+
+# Wiki staging area (published to GitHub wiki repo, not tracked here)
+wiki/
