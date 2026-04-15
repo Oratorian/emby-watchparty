@@ -251,16 +251,43 @@ class EmbyClient:
         """Get image URL for an item"""
         return f"{self.server_url}/emby/Items/{item_id}/Images/{image_type}?api_key={self.api_key}"
 
-    def get_playback_info(self, item_id):
-        """Get playback information including MediaSourceId and PlaySessionId"""
+    def get_playback_info(self, item_id, audio_index=None, subtitle_index=None,
+                          media_source_id=None, max_streaming_bitrate=None,
+                          start_time_ticks=None):
+        """Get playback information including MediaSourceId and PlaySessionId.
+
+        Sends additional params matching Emby's own web client so the
+        server can make better transcoding decisions upfront:
+
+        - MaxStreamingBitrate: tells Emby the client's bandwidth cap
+        - IsPlayback + AutoOpenLiveStream: makes Emby pre-start ffmpeg
+          so the first HLS segment is ready by the time we request it,
+          reducing initial playback latency
+        - AudioStreamIndex / SubtitleStreamIndex / MediaSourceId: lets
+          Emby pick the right streams for the transcode decision
+        """
         if not self.user_id:
             self.logger.warning("No user ID available for playback info request")
             return None
 
         try:
-            # Use POST request to PlaybackInfo endpoint as per Emby API
             url = f"{self.server_url}/emby/Items/{item_id}/PlaybackInfo"
-            params = {"UserId": self.user_id, "api_key": self.api_key}
+            params = {
+                "UserId": self.user_id,
+                "api_key": self.api_key,
+                "IsPlayback": "true",
+                "AutoOpenLiveStream": "true",
+                "StartTimeTicks": start_time_ticks or 0,
+            }
+            if max_streaming_bitrate:
+                params["MaxStreamingBitrate"] = max_streaming_bitrate
+            if audio_index is not None:
+                params["AudioStreamIndex"] = audio_index
+            if subtitle_index is not None:
+                params["SubtitleStreamIndex"] = subtitle_index
+            if media_source_id:
+                params["MediaSourceId"] = media_source_id
+
             response = requests.post(url, headers=self.headers, params=params, json={})
             response.raise_for_status()
             data = response.json()

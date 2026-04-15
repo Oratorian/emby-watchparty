@@ -47,17 +47,29 @@ class StreamBuilder:
         max_height = preset["max_height"]
         max_bitrate = preset["bitrate"]
 
-        # Detect source video codec and bitrate
         source_video_codec = None
         source_video_bitrate = None
         for stream in media_source.get("MediaStreams", []):
             if stream.get("Type") == "Video":
                 source_video_codec = (stream.get("Codec") or "").lower()
-                source_video_bitrate = stream.get("BitRate")
+                peak_bitrate = stream.get("MaxBitRate") or stream.get("PeakBitrate")
+                avg_bitrate = stream.get("BitRate")
+                source_video_bitrate = peak_bitrate or avg_bitrate
                 self._logger.info(
-                    f"Source video codec: {source_video_codec}, bitrate: {source_video_bitrate}"
+                    f"Source video codec: {source_video_codec}, avg_bitrate: {avg_bitrate}, peak_bitrate: {peak_bitrate}"
                 )
                 break
+
+        transcode_reasons = []
+        if source_video_codec and source_video_codec != "h264":
+            transcode_reasons.append("VideoCodecNotSupported")
+        if not transcode_reasons:
+            transcode_reasons.append("ContainerBitrateExceedsLimit")
+
+        subtitle_indexes = []
+        for stream in media_source.get("MediaStreams", []):
+            if stream.get("Type") == "Subtitle":
+                subtitle_indexes.append(str(stream.get("Index")))
 
         params = [
             f"MediaSourceId={media_source_id}",
@@ -72,9 +84,23 @@ class StreamBuilder:
             "MaxAudioChannels=2",
             f"MaxWidth={max_width}",
             f"MaxHeight={max_height}",
+            # Disable automatic stream copy so Emby always re-encodes the
+            # video with controlled keyframe intervals. Without this, Emby
+            # stream-copies h264 sources into HLS segments at the source's
+            # original keyframe boundaries, producing segments with irregular
+            # durations that break seeking in HLS.js (issue #25).
+            "EnableAutoStreamCopy=false",
+            "MinSegments=1",
+            "h264-profile=high,main,baseline,constrainedbaseline",
+            "h264-level=62",
+            f"TranscodeReasons={','.join(transcode_reasons)}",
+            "SubtitleMethod=Hls",
+            "ManifestSubtitles=vtt",
         ]
 
-        # Determine if video transcoding is needed
+        if subtitle_indexes:
+            params.append(f"SubtitleStreamIndexes={','.join(subtitle_indexes)}")
+
         source_width = None
         for stream in media_source.get("MediaStreams", []):
             if stream.get("Type") == "Video":
@@ -83,59 +109,57 @@ class StreamBuilder:
 
         needs_downscale = source_width and source_width > max_width
 
-        if source_video_codec != "h264" or needs_downscale:
-            params.append("VideoCodec=h264")
-            params.append(f"VideoBitrate={max_bitrate}")
-            if source_video_codec != "h264":
-                self._logger.info(
-                    f"Source is {source_video_codec}, transcoding to h264 at {preset['label']}"
-                )
-            else:
-                self._logger.info(
-                    f"Downscaling from {source_width}px to {max_width}px at {preset['label']}"
-                )
-        elif source_video_bitrate and source_video_bitrate > max_bitrate:
-            params.append("VideoCodec=h264")
-            params.append(f"VideoBitrate={max_bitrate}")
+        params.append("VideoCodec=h264")
+        source_br = source_video_bitrate or max_bitrate
+        target_bitrate = min(max_bitrate, source_br)
+        params.append(f"VideoBitrate={target_bitrate}")
+
+        if source_video_codec != "h264":
             self._logger.info(
-                f"Source is h264 but bitrate {source_video_bitrate // 1_000_000}Mbps "
-                f"exceeds cap, transcoding at {preset['label']}"
+                f"Source is {source_video_codec}, transcoding to h264 at {preset['label']}"
+            )
+        elif needs_downscale:
+            self._logger.info(
+                f"Downscaling from {source_width}px to {max_width}px at {preset['label']}"
             )
         else:
             self._logger.info(
-                f"Source is h264 at {(source_video_bitrate or 0) // 1_000_000}Mbps, "
-                f"quality preset {preset['label']}"
+                f"Source is h264 at {source_br // 1_000_000}Mbps, "
+                f"re-encoding at {target_bitrate // 1_000_000}Mbps for reliable HLS seeking "
+                f"(auto stream copy disabled)"
             )
 
-        # Audio stream selection
         if audio_index is not None:
             params.append(f"AudioStreamIndex={audio_index}")
             self._logger.debug(f"Using audio stream index: {audio_index}")
         else:
             self._logger.debug("No audio stream index specified, Emby will use default")
 
-        # Subtitle handling
+        # Text subtitles are handled natively via the HLS manifest
+        # (SubtitleMethod=Hls + ManifestSubtitles=vtt set above). Image-based
+        # subtitles (PGS, VobSub) must be burned in because HLS.js cannot
+        # render bitmap subtitle formats.
         if subtitle_index is not None and subtitle_index != -1:
-            is_pgs = False
-            for stream in media_source["MediaStreams"]:
+            is_image_sub = False
+            for stream in media_source.get("MediaStreams", []):
                 if (
                     stream.get("Type") == "Subtitle"
                     and stream.get("Index") == subtitle_index
                 ):
                     codec = stream.get("Codec", "").lower()
-                    is_pgs = codec in ["pgssub", "pgs", "dvd_subtitle", "dvdsub", "vobsub"]
+                    is_image_sub = codec in [
+                        "pgssub", "pgs", "dvd_subtitle", "dvdsub", "vobsub",
+                    ]
                     break
 
-            if is_pgs:
-                params.append(f"SubtitleStreamIndex={subtitle_index}")
+            params.append(f"SubtitleStreamIndex={subtitle_index}")
+            if is_image_sub:
                 params.append("SubtitleMethod=Encode")
-                self._logger.info(f"Burning in PGS subtitle track {subtitle_index}")
+                self._logger.info(f"Burning in image subtitle track {subtitle_index}")
             else:
-                self._logger.info(
-                    f"Text subtitle {subtitle_index} will be loaded separately as VTT"
-                )
+                self._logger.info(f"Text subtitle {subtitle_index} via HLS manifest (VTT)")
         else:
-            self._logger.debug("No subtitles selected - omitting subtitle parameters")
+            self._logger.debug("No subtitles selected - using manifest subtitles for all available tracks")
 
         if start_time_ticks is not None and start_time_ticks > 0:
             params.append(f"StartTimeTicks={start_time_ticks}")

@@ -30,7 +30,15 @@ def register(ctx):
 
         Returns the stream info dict, or None on failure.
         """
-        playback_info = emby_client.get_playback_info(item_id)
+        start_ticks_for_info = int(start_seconds * 10_000_000) if start_seconds > 0 else 0
+        preset = QUALITY_PRESETS.get(quality, QUALITY_PRESETS[DEFAULT_QUALITY])
+        playback_info = emby_client.get_playback_info(
+            item_id,
+            audio_index=audio_index,
+            subtitle_index=subtitle_index,
+            max_streaming_bitrate=preset["bitrate"],
+            start_time_ticks=start_ticks_for_info,
+        )
         if not playback_info or "MediaSources" not in playback_info:
             logger.warning(f"Failed to get playback info for user stream (sid={sid})")
             return None
@@ -298,7 +306,14 @@ def register(ctx):
         _stop_user_stream(party, sid, snapshot_time)
 
         # Get fresh media info for new PlaySessionId
-        playback_info = emby_client.get_playback_info(item_id)
+        preset = QUALITY_PRESETS.get(quality, QUALITY_PRESETS[DEFAULT_QUALITY])
+        playback_info = emby_client.get_playback_info(
+            item_id,
+            audio_index=audio_index,
+            subtitle_index=subtitle_index,
+            max_streaming_bitrate=preset["bitrate"],
+            start_time_ticks=int(snapshot_time * 10_000_000) if snapshot_time > 0 else 0,
+        )
         if not playback_info or "MediaSources" not in playback_info:
             return
 
