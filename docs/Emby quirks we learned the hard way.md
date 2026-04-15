@@ -252,21 +252,70 @@ acceleration).
 
 ### Practical capacity per encode mode
 
-On an i9-9900K class CPU:
+We stress-tested this on a **worst-case source** -- Your Name (2016) in a
+70+ Mbit/s 4K remux with heavy x264 encoder settings baked into the
+bitstream (`subme=10`, `me_range=24`, `b_adapt=2`, large reference
+frame counts). Every concurrent user gets their own independent
+transcode (2.0's per-user architecture), so these numbers are
+per-stream multiplied by user count.
+
+On an i9-9900K (8c/16t, UHD 630 iGPU):
 
 - **Stream-copy** (Emby web player only): 30+ concurrent users,
-  basically free -- but doesn't work with HLS.js
-- **Software x264 re-encode** (CPU only, no QSV/NVENC): 2-3 concurrent
-  users comfortably, 4 if you're willing to sit at 100% CPU
-- **QSV / NVENC hardware encode**: 4-6+ concurrent users with
-  basically no CPU impact, sometimes hitting decode bottlenecks
-  before encode bottlenecks
+  basically free -- but doesn't work with HLS.js, which is why we
+  can't use it
+- **Intel QuickSync (UHD 630 iGPU)**:
+  - 2 streams: Video engine at ~97%, Render/3D at ~71%, clean playback
+  - 3 streams: Video engine at ~99%, Render/3D at ~90%, still clean
+  - 4 streams: Video engine saturated at ~99%, Render/3D at ~89%,
+    time-sliced across streams but no visible stalls
+  - All at ~10W power draw. For normal party content (5-15 Mbps 1080p)
+    the same hardware comfortably handles 5-6+ users since decode
+    complexity scales with source bitrate.
 
-x264 does scale beautifully across cores when you do fall back to
-software -- you'll see all 8/16 threads cycling through 30-50%
-utilization with no single core pinned. On a seek, expect a ~300ms
-spike to 100% all-cores while ffmpeg cold-starts the new encode at
-the seek position, then it settles back into the rotating pattern.
+  ![intel-gpu-top showing 4 concurrent QSV transcodes: Video engine at 98.73%, Render/3D at 89%, four ffmpeg processes](images/qsv.png)
+
+- **Software x264 re-encode (9900K, no QSV)**:
+  - 4 streams: all 16 threads at 70-90%, 100% aggregate CPU
+  - 5 streams: same thread pattern, seeking still reliable,
+    CPU saturated but not overrun
+  - 6 streams: all cores at ~90%, temperatures stable at 70°C,
+    still playable with reliable seeks
+  - For normal party content (5-15 Mbps 1080p) the same hardware
+    likely handles 10+ users since per-stream decode cost drops
+    dramatically with lower source bitrate
+
+  ![btop showing 6 concurrent software x264 transcodes on a 9900K: all 16 threads at 70-90% utilization, CPU stable at 70°C](images/software.png)
+
+The practical takeaway: modern desktop CPUs are more capable here than
+initial theoretical estimates suggested. A 9900K with or without its
+iGPU enabled handles a realistic watch-party user count without
+hitting walls -- QSV just gives you more headroom and lets the
+CPU stay idle for everything else.
+
+x264 scales beautifully across cores when you fall back to software --
+you'll see all 8/16 threads cycling through 30-90% utilization
+with no single core pinned. On a seek, expect a ~300ms spike to
+100% all-cores while ffmpeg cold-starts the new encode at the seek
+position, then it settles back into the rotating pattern.
+
+### Decode is often the bottleneck, not encode
+
+A surprise finding from the QSV stress test: when we pushed four
+concurrent streams of the 70+ Mbit/s source through UHD 630, the
+Render/3D engine (used by QSV's scaler and format conversion) climbed
+to ~90% while the Video engine (pure decode+encode) stayed near 99%.
+Swapping to normal 5-15 Mbps content drops both dramatically. If
+you're planning capacity for a watch party, **the source file's
+bitrate and encoder complexity matter more than the target bitrate**.
+A UHD remux at 70 Mbit/s uses 10-15x more decode cycles per frame
+than a 5 Mbit/s web release of the same movie.
+
+The kernel's page cache does share source file reads across concurrent
+ffmpeg processes -- that's why disk I/O doesn't scale linearly with
+user count. But decoded frames are not shared between ffmpeg instances;
+each user's transcode independently decodes the source and encodes
+its own output.
 
 ### Why the CPU cost exists
 
