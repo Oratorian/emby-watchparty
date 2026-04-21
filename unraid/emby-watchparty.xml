@@ -6,10 +6,10 @@
   <GitHub>https://github.com/Oratorian/emby-watchparty</GitHub>
   <Network>bridge</Network>
   <Privileged>false</Privileged>
-  <Support>https://github.com/Oratorian/emby-watchparty/issues</Support>
+  <Support>REPLACE_ME_WITH_UNRAID_FORUM_THREAD_URL</Support>
   <Project>https://github.com/Oratorian/emby-watchparty</Project>
   <Overview>A synchronized watch party application for Emby media servers. Watch videos together with friends in real-time, no matter where you are! All media streaming is proxied through the Flask app, keeping your Emby server safely on your internal network.</Overview>
-  <Category>MediaApp:Video Status:Stable</Category>
+  <Category>MediaApp:Video MediaServer:Video Network:Other Status:Stable</Category>
   <WebUI>http://[IP]:[PORT:5000]</WebUI>
    <TemplateURL>https://raw.githubusercontent.com/Oratorian/emby-watchparty/refs/heads/main/unraid/emby-watchparty.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Oratorian/emby-watchparty/main/static/favicon.ico</Icon>
@@ -40,11 +40,74 @@
           Description="Password for the Emby user above."
           Type="Variable" Display="always" Required="true" Mask="true"></Config>
 
-  <!-- Optional / logging -->
-  <Config Name="Log To File" Target="LOG_TO_FILE" Default="false"
-          Description="Set to false (recommended for Docker) to output logs to stdout only. Set to true to write logs to a file."
+  <!-- ================= Application options ================= -->
+  <Config Name="App Prefix" Target="APP_PREFIX" Default=""
+          Description="URL prefix for reverse proxy deployments (e.g. /watchparty). Leave empty for root deployment."
+          Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="Require Login" Target="REQUIRE_LOGIN" Default="false"
+          Description="Require Emby login to access the web UI (true/false). Leave false for open guest access."
           Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
 
+  <Config Name="Session Expiry (seconds)" Target="SESSION_EXPIRY" Default="86400"
+          Description="Session expiry in seconds. Default 86400 (24 hours)."
+          Type="Variable" Display="advanced" Required="false" Mask="false">86400</Config>
+
+  <Config Name="Static Session Enabled" Target="STATIC_SESSION_ENABLED" Default="false"
+          Description="Keep a single persistent party alive across restarts (true/false). Users navigating to / are redirected straight into the party."
+          Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+
+  <Config Name="Static Session ID" Target="STATIC_SESSION_ID" Default="PARTY"
+          Description="Fixed party ID used when Static Session Enabled is true. Uppercase."
+          Type="Variable" Display="advanced" Required="false" Mask="false">PARTY</Config>
+
+  <!-- ================= Logging ================= -->
+  <Config Name="Log Level" Target="LOG_LEVEL" Default="INFO"
+          Description="Logging level: DEBUG, INFO, WARNING, or ERROR."
+          Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
+
+  <Config Name="Console Log Level" Target="CONSOLE_LOG_LEVEL" Default="WARNING"
+          Description="Log level for stdout/console output. Default WARNING keeps Docker logs quiet."
+          Type="Variable" Display="advanced" Required="false" Mask="false">WARNING</Config>
+
+  <Config Name="Log To File" Target="LOG_TO_FILE" Default="false"
+          Description="Set to false (recommended for Docker) to output logs to stdout only. Set to true to write logs to a file inside the container."
+          Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+
+  <Config Name="Log File Path" Target="LOG_FILE" Default="logs/emby-watchparty.log"
+          Description="Path to the log file inside the container. Only used when Log To File is true."
+          Type="Variable" Display="advanced" Required="false" Mask="false">logs/emby-watchparty.log</Config>
+
+  <Config Name="Log Max Size (MB)" Target="LOG_MAX_SIZE" Default="10"
+          Description="Maximum size of the log file in megabytes before rotation."
+          Type="Variable" Display="advanced" Required="false" Mask="false">10</Config>
+
+  <!-- ================= Security ================= -->
+  <Config Name="Max Users Per Party" Target="MAX_USERS_PER_PARTY" Default="0"
+          Description="Maximum users per watch party. 0 means unlimited."
+          Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
+
+  <Config Name="Enable HLS Token Validation" Target="ENABLE_HLS_TOKEN_VALIDATION" Default="true"
+          Description="Validate HLS stream tokens so only party members can fetch segments (true/false)."
+          Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="HLS Token Expiry (seconds)" Target="HLS_TOKEN_EXPIRY" Default="86400"
+          Description="How long HLS tokens remain valid, in seconds. Default 86400 (24 hours)."
+          Type="Variable" Display="advanced" Required="false" Mask="false">86400</Config>
+
+  <Config Name="Enable Rate Limiting" Target="ENABLE_RATE_LIMITING" Default="true"
+          Description="Enable per-IP rate limiting on API endpoints (true/false)."
+          Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="Rate Limit: Party Creations Per Hour" Target="RATE_LIMIT_PARTY_CREATION" Default="5"
+          Description="Maximum party creations per IP per hour."
+          Type="Variable" Display="advanced" Required="false" Mask="false">5</Config>
+
+  <Config Name="Rate Limit: API Calls Per Minute" Target="RATE_LIMIT_API_CALLS" Default="1000"
+          Description="Maximum API calls per IP per minute."
+          Type="Variable" Display="advanced" Required="false" Mask="false">1000</Config>
+
+  <!-- ================= Paths ================= -->
   <!-- Optional: mount a .env file instead of / in addition to individual vars -->
   <Config Name="ENV File Path (optional)" Target="/app/.env" Default="/mnt/user/appdata/emby-watchparty/.env"
           Description="Optional: mount a .env file into the container. If set, values in this file will be used. Individual env vars above take precedence."
