@@ -48,9 +48,40 @@ https://discord.gg/RWUpxq9xsA
 
 ## Documentation
 
-- **[Wiki](https://github.com/Oratorian/emby-watchparty/wiki)** — hardware planning, deployment guides (Docker, Unraid, TrueNAS), troubleshooting, FAQ
-- **[Emby quirks we learned the hard way](docs/Emby%20quirks%20we%20learned%20the%20hard%20way.md)** — technical findings from reverse-engineering Emby's HLS transcoding pipeline
-- **[Changelog](CHANGELOG.md)** — per-release details
+### Wiki
+
+The [project wiki](https://github.com/Oratorian/emby-watchparty/wiki) has everything you need for deployment and operations:
+
+- **[Home](https://github.com/Oratorian/emby-watchparty/wiki/Home)** — start here
+- **[Hardware Requirements](https://github.com/Oratorian/emby-watchparty/wiki/Hardware-Requirements)** — how many users your hardware can actually handle, with real measurements from stress tests
+- **Deployment guides:**
+  - **[Docker Compose](https://github.com/Oratorian/emby-watchparty/wiki/Deployment-Docker-Compose)** — full stack including GPU passthrough per vendor (Intel QSV, NVIDIA NVENC, AMD VAAPI)
+  - **[Unraid](https://github.com/Oratorian/emby-watchparty/wiki/Deployment-Unraid)** — Extra Parameters, render group GID, Nvidia Driver plugin
+  - **[TrueNAS SCALE](https://github.com/Oratorian/emby-watchparty/wiki/Deployment-TrueNAS-SCALE)** — K8s and Fangtooth-Docker app configurations
+  - **[TrueNAS CORE](https://github.com/Oratorian/emby-watchparty/wiki/Deployment-TrueNAS-CORE)** — honest about FreeBSD's no-QSV/NVENC limitation and your options
+- **[Troubleshooting](https://github.com/Oratorian/emby-watchparty/wiki/Troubleshooting)** — seeking, CPU usage, network, container, and Emby-side issues by symptom
+- **[FAQ](https://github.com/Oratorian/emby-watchparty/wiki/FAQ)** — recurring questions
+
+### Technical deep dive: Emby quirks
+
+[Emby quirks we learned the hard way](docs/Emby%20quirks%20we%20learned%20the%20hard%20way.md) documents the undocumented Emby server behaviors discovered through reverse-engineering the HLS API and countless hours reading raw ffmpeg commands in server logs. Essential reading if you're building a third-party HLS client against Emby, or just curious why this app works the way it does.
+
+The ten quirks covered:
+
+1. `VideoCodec=h264` does **not** force a transcode (Emby interprets it as "client accepts h264" and stream-copies)
+2. `EnableDirectPlay=false` and `EnableDirectStream=false` on PlaybackInfo are **advisory only** — the HLS endpoint makes its own decision
+3. `EnableAutoStreamCopy=false` is the actual flag that forces a real re-encode — used throughout this app
+4. Emby's `PlaybackInfo` does not expose **peak bitrate** — only average, making peak-based logic impossible
+5. `AutoOpenLiveStream=true` pre-starts ffmpeg so the first segment is ready faster
+6. Emby's own web client **restarts the entire pipeline on seek** — a trick HLS.js can't replicate
+7. HLS playlist segment durations **lie** when stream-copying — they're uniform on paper, irregular in reality
+8. The "triple failsafe" (`MaxStreamingBitrate` + `h264-profile` + `h264-level` + `TranscodeReasons`) does **not** prevent stream-copy
+9. Concurrent seeks on a shared `PlaySessionId` cause **ffmpeg race conditions** — the reason 2.0 moved to per-user transcodes
+10. The CPU cost of forced re-encoding is real on software, near-zero with Intel QSV / NVENC / VAAPI — with measured numbers on a 9900K + UHD 630
+
+### Changelog
+
+[CHANGELOG.md](CHANGELOG.md) — per-release details including every fix and the reasoning behind it.
 
 ## Features
 
