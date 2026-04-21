@@ -53,6 +53,7 @@ def register(deps):
                     and watch_parties[party_id]["current_video"].get("selected_by") == sid
                 ):
                     watch_parties[party_id]["current_video"]["selected_by"] = request.sid
+                    watch_parties[party_id]["current_video"]["selected_by_username"] = username
                 break
 
         # Check max users per party limit (skip if this is a rejoin)
@@ -75,6 +76,28 @@ def register(deps):
 
         # Add user to party
         watch_parties[party_id]["users"][request.sid] = username
+
+        # Reclaim selector role if the previous selector is orphaned.
+        # When a user disconnects (network drop, tab close), the disconnect
+        # handler removes their sid from users before they rejoin with a new
+        # sid. At that point selected_by still points to the dead sid, and
+        # pause/seek from the returning user silently fail (issue #28). If
+        # the joining user's name matches the selector's remembered name and
+        # no active sid owns the selector role, transfer it.
+        current_video = watch_parties[party_id].get("current_video")
+        if current_video:
+            stored_selector_sid = current_video.get("selected_by")
+            stored_selector_name = current_video.get("selected_by_username")
+            active_sids = watch_parties[party_id]["users"].keys()
+            if (
+                stored_selector_sid not in active_sids
+                and stored_selector_name == username
+            ):
+                current_video["selected_by"] = request.sid
+                logger.info(
+                    f"Reclaimed selector role for {username} in party {party_id} "
+                    f"(old sid {stored_selector_sid} was orphaned)"
+                )
 
         # Notify everyone
         emit(

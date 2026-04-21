@@ -10,6 +10,11 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
+## [1.6.4] - 2026-04-21
+
+### Fixed
+- **Pause and seek silently dropped after host reconnects** ([#28](https://github.com/Oratorian/emby-watchparty/issues/28)): When the video selector disconnected (network drop, closed tab) and rejoined the party, they received a new socket ID while `current_video.selected_by` still pointed to their dead socket. Pause and seek events were silently ignored because the selector-check compared against the stale sid. The existing eviction path on `join_party` only handled fast page-refresh cases where disconnect hadn't fired yet; a real disconnect-then-reconnect sequence went unhandled. The selector role is now remembered by username as well as sid, so the returning user automatically reclaims control when they rejoin. Thanks to **[tripleredadam](https://github.com/tripleredadam)** for the detailed bug report and suggested fix approach
+
 ## [1.6.3] - 2026-04-12
 
 ### Fixed

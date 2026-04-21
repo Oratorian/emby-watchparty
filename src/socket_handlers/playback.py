@@ -108,7 +108,11 @@ def register(deps):
         run_time_ticks = media_source.get("RunTimeTicks", 0)
         run_time_seconds = run_time_ticks / 10_000_000 if run_time_ticks else None
 
-        # Store base URL without token in party data
+        # Store base URL without token in party data.
+        # selected_by tracks the current selector's sid; selected_by_username
+        # survives reconnects so we can re-attach the selector role to the
+        # same person after a disconnect rotates their sid (issue #28).
+        selector_username = watch_parties[party_id]["users"].get(request.sid)
         watch_parties[party_id]["current_video"] = {
             "item_id": item_id,
             "title": item_name,
@@ -120,6 +124,7 @@ def register(deps):
             "play_session_id": play_session_id,  # Needed for playback progress reporting
             "run_time_seconds": run_time_seconds,  # Total duration for progress reporting
             "selected_by": request.sid,  # Track who selected this video
+            "selected_by_username": selector_username,
             "quality": quality,  # Current quality preset
         }
 
