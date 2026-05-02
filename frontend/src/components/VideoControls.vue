@@ -54,6 +54,7 @@ const selectedSubtitle = ref<number>(-1)
 const selectedTextSubtitle = ref<number>(-1)
 const selectedQuality = ref(props.quality)
 const intro = ref<IntroData | null>(null)
+const appliedInitialSubtitleKey = ref<string | null>(null)
 
 const qualityPresets = [
   { label: '1080p High (10 Mbps)', value: '1080p-high' },
@@ -93,6 +94,22 @@ function selectedBurnedSubtitleIndex(): number {
   return track?.isPGS ? track.index : -1
 }
 
+function selectedSubtitleKey(): string | null {
+  const idx = selectedSubtitle.value
+  const track = subtitleTracks.value.find((t) => t.index === idx)
+  if (idx === -1 || !track) return null
+  if (track.isPGS) return `${props.itemId}:${idx}:burned`
+  if (!props.mediaSourceId) return null
+  return `${props.itemId}:${idx}:${props.mediaSourceId}`
+}
+
+function applyInitialSubtitleSelection() {
+  const key = selectedSubtitleKey()
+  if (!key || appliedInitialSubtitleKey.value === key) return
+  onSubtitleChange()
+  appliedInitialSubtitleKey.value = key
+}
+
 async function fetchStreams() {
   if (!props.itemId) return
   try {
@@ -105,9 +122,12 @@ async function fetchStreams() {
 
     const defaultSub = subtitleTracks.value.find((t) => t.isDefault)
     selectedSubtitle.value = defaultSub ? defaultSub.index : -1
+    appliedInitialSubtitleKey.value = null
+    applyInitialSubtitleSelection()
   } catch {
     audioTracks.value = []
     subtitleTracks.value = []
+    appliedInitialSubtitleKey.value = null
   }
 }
 
@@ -179,6 +199,7 @@ watch(
   () => props.itemId,
   () => {
     intro.value = null
+    appliedInitialSubtitleKey.value = null
     fetchStreams()
     fetchIntro()
   },
@@ -188,6 +209,13 @@ watch(
   () => props.quality,
   (val) => {
     selectedQuality.value = val
+  },
+)
+
+watch(
+  () => props.mediaSourceId,
+  () => {
+    applyInitialSubtitleSelection()
   },
 )
 
