@@ -8,8 +8,7 @@ function getClientId(): string {
   let clientId = localStorage.getItem(CLIENT_ID_STORAGE_KEY)
   if (clientId) return clientId
 
-  const randomUUID = (crypto as Crypto & { randomUUID?: () => string }).randomUUID
-  clientId = randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  clientId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
   localStorage.setItem(CLIENT_ID_STORAGE_KEY, clientId)
   return clientId
 }
