@@ -63,8 +63,6 @@ const qualityPresets = [
   { label: '360p (1 Mbps)', value: '360p' },
 ]
 
-const IMAGE_SUB_CODECS = ['pgssub', 'pgs', 'dvdsub', 'dvbsub', 'xsub']
-
 function formatAudioLabel(track: AudioStream): string {
   const lang = track.displayLanguage || track.language || 'Unknown'
   const codec = (track.codec || '').toUpperCase()
@@ -80,18 +78,20 @@ function formatAudioLabel(track: AudioStream): string {
 function formatSubtitleLabel(track: SubtitleStream): string {
   const lang = track.displayLanguage || track.language || 'Unknown'
   const codec = (track.codec || '').toUpperCase()
-  const burned = track.isPGS ? ' (burned in)' : ''
+  const mode = track.isPGS ? 'burned in' : 'text'
   const def = track.isDefault ? ' *' : ''
-  return `${lang} (${codec})${burned}${def}`
+  return `${lang} (${codec}, ${mode})${def}`
 }
-
-const textSubtitleTracks = computed(() => subtitleTracks.value.filter((t) => !t.isPGS))
-const burnedSubtitleTracks = computed(() => subtitleTracks.value.filter((t) => t.isPGS))
 
 const showIntroButton = computed(() => {
   if (!intro.value) return false
   return props.currentTime >= intro.value.start && props.currentTime < intro.value.end
 })
+
+function selectedBurnedSubtitleIndex(): number {
+  const track = subtitleTracks.value.find((t) => t.index === selectedSubtitle.value)
+  return track?.isPGS ? track.index : -1
+}
 
 async function fetchStreams() {
   if (!props.itemId) return
@@ -128,7 +128,7 @@ async function fetchIntro() {
 function onAudioChange() {
   emit('change-streams', {
     audioIndex: selectedAudio.value,
-    subtitleIndex: selectedSubtitle.value,
+    subtitleIndex: selectedBurnedSubtitleIndex(),
     quality: selectedQuality.value,
   })
 }
@@ -155,8 +155,8 @@ function onSubtitleChange() {
     })
   } else {
     // Text-based sub -- load locally per user, no stream change
-    const msId = props.mediaSourceId || `mediasource_${props.itemId}`
-    const url = `/api/subtitles/${props.itemId}/${msId}/${idx}`
+    if (!props.mediaSourceId) return
+    const url = `/api/subtitles/${props.itemId}/${props.mediaSourceId}/${idx}`
     emit('change-text-subtitle', { index: idx, url })
   }
 }
@@ -164,7 +164,7 @@ function onSubtitleChange() {
 function onQualityChange() {
   emit('change-streams', {
     audioIndex: selectedAudio.value,
-    subtitleIndex: selectedSubtitle.value,
+    subtitleIndex: selectedBurnedSubtitleIndex(),
     quality: selectedQuality.value,
   })
 }
@@ -210,11 +210,11 @@ onMounted(() => {
       </select>
     </div>
 
-    <div class="control-group" v-if="burnedSubtitleTracks.length">
+    <div class="control-group" v-if="subtitleTracks.length">
       <label for="subtitle-select">Subtitles</label>
       <select id="subtitle-select" v-model="selectedSubtitle" @change="onSubtitleChange">
         <option :value="-1">None</option>
-        <option v-for="track in burnedSubtitleTracks" :key="track.index" :value="track.index">
+        <option v-for="track in subtitleTracks" :key="track.index" :value="track.index">
           {{ formatSubtitleLabel(track) }}
         </option>
       </select>

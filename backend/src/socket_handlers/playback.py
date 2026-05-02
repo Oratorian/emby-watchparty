@@ -194,6 +194,7 @@ def register(ctx):
                     "item_id": item_id, "title": item_name, "overview": item_overview,
                     "stream_url": stream_url,
                     "audio_index": default_audio, "subtitle_index": None,
+                    "media_source_id": stream["media_source_id"],
                     "selected_by": selector_sid, "quality": DEFAULT_QUALITY,
                 }
             }, to=user_sid)
@@ -360,6 +361,7 @@ def register(ctx):
                 "item_id": item_id, "title": current_video["title"],
                 "overview": current_video["overview"], "stream_url": stream_url,
                 "audio_index": audio_index, "subtitle_index": subtitle_index,
+                "media_source_id": stream["media_source_id"],
                 "selected_by": current_video.get("selected_by"), "quality": quality,
             },
             "current_time": current_time,
