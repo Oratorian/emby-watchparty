@@ -28,6 +28,7 @@ const showParticipants = ref(false)
 const showMobileChat = ref(false)
 const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const currentTime = ref(0)
+let pendingPauseTimer: ReturnType<typeof setTimeout> | null = null
 
 // True while my own HLS stream is reloading (after change_streams). Used
 // to distinguish "I am the user whose stream changed" from "I am an
@@ -333,6 +334,10 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (pendingPauseTimer) {
+    clearTimeout(pendingPauseTimer)
+    pendingPauseTimer = null
+  }
   party.leave()
 })
 
@@ -460,6 +465,10 @@ function toStreamTime(mediaTime: number): number {
 
 function onVideoPlay() {
   if (!party.partyId || isForcePausing || isInitialSync) return
+  if (pendingPauseTimer) {
+    clearTimeout(pendingPauseTimer)
+    pendingPauseTimer = null
+  }
   const ve = videoPlayer.value?.videoEl
   if (!ve || ve.ended) return
   if (videoPlayer.value?.isSyncing || isUserSeeking) return
@@ -484,16 +493,30 @@ function onVideoPause() {
   if (!ve || ve.ended) return
   if (videoPlayer.value?.isSyncing) return
 
-  const now = Date.now()
-  if (now - lastPauseBroadcast < PLAY_PAUSE_THROTTLE) return
-  lastPauseBroadcast = now
+  if (pendingPauseTimer) clearTimeout(pendingPauseTimer)
+  pendingPauseTimer = setTimeout(() => {
+    pendingPauseTimer = null
+    if (!party.partyId || isForcePausing || isUserSeeking || isInitialSync) return
+    if (videoPlayer.value?.isSyncing) return
+    const currentVideoEl = videoPlayer.value?.videoEl
+    if (!currentVideoEl || currentVideoEl.ended || !currentVideoEl.paused) return
 
-  wasPlayingBeforeSeek = false
-  socket.emit('pause', { party_id: party.partyId, time: toMediaTime(ve.currentTime) })
-  addSystemMessage(`${party.username || 'You'} paused playback`)
+    const now = Date.now()
+    if (now - lastPauseBroadcast < PLAY_PAUSE_THROTTLE) return
+    lastPauseBroadcast = now
+
+    wasPlayingBeforeSeek = false
+    socket.emit('pause', { party_id: party.partyId, time: toMediaTime(currentVideoEl.currentTime) })
+    addSystemMessage(`${party.username || 'You'} paused playback`)
+  }, 250)
 }
 
 function onVideoSeeking() {
+  if (pendingPauseTimer) {
+    clearTimeout(pendingPauseTimer)
+    pendingPauseTimer = null
+  }
+  wasPlayingBeforeSeek = wasPlayingBeforeSeek || party.playbackState.playing
   isUserSeeking = true
 }
 
