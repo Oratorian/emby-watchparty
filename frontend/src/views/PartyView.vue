@@ -25,6 +25,7 @@ const showLibrary = ref(false)
 const copyLabel = ref('Copy')
 const showVersionModal = ref(false)
 const showParticipants = ref(false)
+const showMobileChat = ref(false)
 const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const currentTime = ref(0)
 
@@ -654,6 +655,7 @@ function toggleLibrary() {
         <button @click="toggleLibrary" class="btn btn-small">
           {{ showLibrary ? 'Hide Library' : 'Browse Library' }}
         </button>
+        <button @click="showMobileChat = true" class="btn btn-small mobile-chat-toggle">Chat</button>
         <button v-if="party.currentVideo" @click="stopVideo" class="btn btn-small btn-warning">Stop Video</button>
         <button @click="leaveParty" class="btn btn-small btn-danger">Leave</button>
       </div>
@@ -718,13 +720,16 @@ function toggleLibrary() {
       </main>
 
       <!-- Chat -->
-      <aside class="chat-panel">
+      <aside class="chat-panel" :class="{ 'chat-mobile-open': showMobileChat }">
         <div class="chat-header" @click="showParticipants = !showParticipants">
           <h3>Chat</h3>
-          <span class="participant-toggle" :title="showParticipants ? 'Hide participants' : 'Show participants'">
-            <span class="participant-count-badge">{{ party.userCount }}</span>
-            <span class="participant-arrow" :class="{ open: showParticipants }">&#9662;</span>
-          </span>
+          <div class="chat-header-actions">
+            <span class="participant-toggle" :title="showParticipants ? 'Hide participants' : 'Show participants'">
+              <span class="participant-count-badge">{{ party.userCount }}</span>
+              <span class="participant-arrow" :class="{ open: showParticipants }">&#9662;</span>
+            </span>
+            <button class="chat-close-btn" @click.stop="showMobileChat = false" title="Close chat">Close</button>
+          </div>
         </div>
         <div v-if="showParticipants" class="participant-list">
           <div
@@ -765,6 +770,12 @@ function toggleLibrary() {
           <button @click="sendChat" class="btn btn-small btn-primary">Send</button>
         </div>
       </aside>
+      <button
+        v-if="showMobileChat"
+        class="chat-backdrop"
+        aria-label="Close chat"
+        @click="showMobileChat = false"
+      />
     </div>
   </div>
 
@@ -922,10 +933,15 @@ function toggleLibrary() {
   gap: var(--space-sm);
 }
 
+.mobile-chat-toggle {
+  display: none;
+}
+
 .party-content {
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative;
 }
 
 /* ─── Library Panel ─── */
@@ -1067,6 +1083,12 @@ function toggleLibrary() {
   font-weight: 500;
 }
 
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
 .participant-toggle {
   display: flex;
   align-items: center;
@@ -1090,6 +1112,17 @@ function toggleLibrary() {
 
 .participant-arrow.open {
   transform: rotate(180deg);
+}
+
+.chat-close-btn {
+  display: none;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
 }
 
 .participant-list {
@@ -1266,5 +1299,71 @@ function toggleLibrary() {
 
 .version-modal-links .dot {
   color: var(--text-muted);
+}
+
+.chat-backdrop {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .party-header {
+    align-items: flex-start;
+    gap: var(--space-sm);
+  }
+
+  .header-center {
+    display: none;
+  }
+
+  .header-left,
+  .header-actions {
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .mobile-chat-toggle {
+    display: inline-flex;
+  }
+
+  .party-content {
+    overflow: hidden;
+  }
+
+  .library-panel {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .chat-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(92vw, 360px);
+    max-width: 100vw;
+    z-index: 1001;
+    transform: translateX(100%);
+    transition: transform var(--transition-fast);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .chat-panel.chat-mobile-open {
+    transform: translateX(0);
+  }
+
+  .chat-close-btn {
+    display: inline-flex;
+  }
+
+  .chat-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.45);
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
 }
 </style>
