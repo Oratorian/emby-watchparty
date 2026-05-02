@@ -582,6 +582,10 @@ function onChangeTextSubtitle(payload: { index: number; url: string | null }) {
   const ve = vp?.videoEl
   if (!ve) return
 
+  for (let i = 0; i < ve.textTracks.length; i += 1) {
+    ve.textTracks[i].mode = 'disabled'
+  }
+
   // Remove existing text tracks
   const existingTracks = ve.querySelectorAll('track')
   existingTracks.forEach((t) => t.remove())
@@ -595,12 +599,16 @@ function onChangeTextSubtitle(payload: { index: number; url: string | null }) {
   track.srclang = 'und'
   track.src = payload.url
   track.default = true
-  ve.appendChild(track)
 
-  // Activate the track
-  if (ve.textTracks.length > 0) {
-    ;(ve.textTracks[0] as any).mode = 'showing'
+  const showTrack = () => {
+    for (let i = 0; i < ve.textTracks.length; i += 1) {
+      ve.textTracks[i].mode = ve.textTracks[i] === track.track ? 'showing' : 'disabled'
+    }
   }
+
+  track.addEventListener('load', showTrack, { once: true })
+  ve.appendChild(track)
+  showTrack()
 }
 
 function onSkipIntro(endTime: number) {
