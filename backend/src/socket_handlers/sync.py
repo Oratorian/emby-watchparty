@@ -112,6 +112,7 @@ def register(ctx):
             logger.debug(f"Ignoring seek from {sid}: ready check active in {party_id}")
             return
 
+        party["playback_state"]["playing"] = was_playing
         party["playback_state"]["time"] = seek_time
         party["playback_state"]["last_update"] = datetime.now().isoformat()
 

@@ -125,6 +125,13 @@ export const usePartyStore = defineStore('party', () => {
       }
     })
 
+    socket.on('seek', (data: any) => {
+      playbackState.value.playing = !!data.playing
+      if (data.time !== undefined) {
+        playbackState.value.time = data.time
+      }
+    })
+
     socket.on('streams_changed', (data: any) => {
       // Per-user: only this user receives their updated stream.
       // Backend restarts the transcode with StartTimeTicks=current_time,
