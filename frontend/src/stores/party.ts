@@ -175,7 +175,13 @@ export const usePartyStore = defineStore('party', () => {
       }, 15000)
     })
 
-    socket.on('all_ready', () => {
+    socket.on('all_ready', (data: any) => {
+      if (data?.time !== undefined) {
+        playbackState.value.time = data.time
+      }
+      if (data?.playing !== undefined) {
+        playbackState.value.playing = !!data.playing
+      }
       clearReadyCheck()
     })
 

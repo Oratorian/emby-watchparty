@@ -506,8 +506,14 @@ def register(ctx):
                 rc["ready_sids"].discard(sid)
                 if rc["ready_sids"] >= rc["expected_sids"] and rc["expected_sids"]:
                     party["ready_check"] = None
+                    playback_state = party.get("playback_state", {})
+                    if playback_state.get("playing"):
+                        playback_state["last_update"] = datetime.now().isoformat()
                     logger.info(f"All users ready in party {party_id} (after leave)")
-                    await sio.emit("all_ready", {}, room=party_id)
+                    await sio.emit("all_ready", {
+                        "time": playback_state.get("time", 0),
+                        "playing": playback_state.get("playing", False),
+                    }, room=party_id)
                 elif not rc["expected_sids"]:
                     party["ready_check"] = None
                 else:

@@ -258,13 +258,20 @@ onMounted(async () => {
   })
 
   // All users buffered after a seek -- resume playback together
-  const resumeAfterReadyCheck = () => {
+  const resumeAfterReadyCheck = (data?: any) => {
     const vp = videoPlayer.value
     if (!vp) return
     const ve = vp.videoEl
+    if (ve && data?.time !== undefined) {
+      const streamTime = toStreamTime(data.time)
+      if (Math.abs(ve.currentTime - streamTime) > 0.1) {
+        ve.currentTime = streamTime
+      }
+    }
     // Only resume if playback is supposed to be playing (seek ready check)
     // Initial video-selection ready check leaves the video paused at 0
-    if (ve && party.playbackState.playing) {
+    const shouldPlay = data?.playing !== undefined ? !!data.playing : party.playbackState.playing
+    if (ve && shouldPlay) {
       ve.play().then(() => {
         if (vp) vp.isSyncing = false
       }).catch(() => {
