@@ -583,7 +583,8 @@ function onChangeTextSubtitle(payload: { index: number; url: string | null }) {
   if (!ve) return
 
   for (let i = 0; i < ve.textTracks.length; i += 1) {
-    ve.textTracks[i].mode = 'disabled'
+    const textTrack = ve.textTracks.item(i)
+    if (textTrack) textTrack.mode = 'disabled'
   }
 
   // Remove existing text tracks
@@ -602,7 +603,8 @@ function onChangeTextSubtitle(payload: { index: number; url: string | null }) {
 
   const showTrack = () => {
     for (let i = 0; i < ve.textTracks.length; i += 1) {
-      ve.textTracks[i].mode = ve.textTracks[i] === track.track ? 'showing' : 'disabled'
+      const textTrack = ve.textTracks.item(i)
+      if (textTrack) textTrack.mode = textTrack === track.track ? 'showing' : 'disabled'
     }
   }
 
