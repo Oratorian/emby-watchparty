@@ -112,6 +112,8 @@ class PartyManager:
             "id": party_id,
             "created_at": datetime.now().isoformat(),
             "users": {},
+            "participants": {},
+            "sid_client_ids": {},
             "current_video": None,
             "user_streams": {},
             "playback_state": {

@@ -214,6 +214,7 @@ def register(ctx):
 
     # Expose the restart helper so party.py can reuse it for vote-pass restarts
     ctx['restart_video_from_beginning'] = _restart_video_from_beginning
+    ctx['create_user_stream'] = _create_user_stream
 
     @sio.on("select_video")
     async def handle_select_video(sid, data):

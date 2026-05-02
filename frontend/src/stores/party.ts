@@ -2,6 +2,18 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useSocketStore } from './socket'
 
+const CLIENT_ID_STORAGE_KEY = 'emby-watchparty-client-id'
+
+function getClientId(): string {
+  let clientId = localStorage.getItem(CLIENT_ID_STORAGE_KEY)
+  if (clientId) return clientId
+
+  const randomUUID = (crypto as Crypto & { randomUUID?: () => string }).randomUUID
+  clientId = randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  localStorage.setItem(CLIENT_ID_STORAGE_KEY, clientId)
+  return clientId
+}
+
 export const usePartyStore = defineStore('party', () => {
   const partyId = ref<string | null>(null)
   const username = ref<string | null>(null)
@@ -37,7 +49,11 @@ export const usePartyStore = defineStore('party', () => {
     const socket = useSocketStore()
     partyId.value = id.toUpperCase()
     username.value = name
-    socket.emit('join_party', { party_id: partyId.value, username: name })
+    socket.emit('join_party', {
+      party_id: partyId.value,
+      username: name,
+      client_id: getClientId(),
+    })
   }
 
   function leave() {

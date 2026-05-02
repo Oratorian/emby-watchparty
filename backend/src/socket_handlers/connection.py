@@ -46,6 +46,7 @@ def register(ctx):
                 party.get("user_streams", {}).pop(sid, None)
 
                 del party["users"][sid]
+                party.setdefault("sid_client_ids", {}).pop(sid, None)
                 if "drift_strikes" in party and sid in party["drift_strikes"]:
                     del party["drift_strikes"][sid]
 
