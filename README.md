@@ -1,15 +1,3 @@
-> ### 🚧 Project on hiatus
->
-> This project isn't dead — just on pause for **~8 weeks** while I sort out some real-life stuff.
->
-> **What this means:**
-> - I'll still read and reply to open issues
-> - Fixes, PRs, and new features are paused until I'm back
-> - The Discord is still there if you need community help in the meantime
->
-> Thanks for your patience 🙏
-> — Oratorian
-
 # Emby Watch Party
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
