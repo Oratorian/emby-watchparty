@@ -60,15 +60,44 @@ def build_stream_params(emby_client, media_source, media_source_id, play_session
     if not transcode_reasons:
         transcode_reasons.append("ContainerBitrateExceedsLimit")
 
-    # Collect all subtitle stream indexes for the ManifestSubtitles
-    # feature. Emby's web client sends all subtitle indexes so Emby
-    # can generate segmented VTT files alongside the video segments,
-    # enabling native HLS subtitle track switching without side-channel
-    # VTT fetches.
-    subtitle_indexes = []
+    # Decide subtitle plan up-front so the URL has exactly one
+    # SubtitleMethod and one consistent set of subtitle params. Mixing
+    # SubtitleMethod=Hls + SubtitleMethod=Encode in the same URL (which
+    # the previous structure did when a PGS track was selected) silently
+    # broke burn-in for image subtitles (issue #29).
+    #
+    # Three distinct cases:
+    #   1. User selected an image subtitle (PGS/VobSub): burn it into the
+    #      video. HLS.js cannot render bitmap subtitles natively.
+    #   2. User selected a text subtitle: serve it via the HLS manifest
+    #      as a VTT track so HLS.js can switch tracks natively.
+    #   3. Nothing selected: still expose all text tracks as VTT in the
+    #      manifest so the user can switch later without restarting.
+    selected_is_image_sub = False
+    if subtitle_index is not None and subtitle_index != -1:
+        for stream in media_source.get("MediaStreams", []):
+            if (
+                stream.get("Type") == "Subtitle"
+                and stream.get("Index") == subtitle_index
+            ):
+                codec = (stream.get("Codec") or "").lower()
+                selected_is_image_sub = codec in [
+                    "pgssub", "pgs", "dvd_subtitle", "dvdsub", "vobsub",
+                ]
+                break
+
+    # Indexes of every available text subtitle (for the manifest case).
+    # Image subtitles are excluded -- VTT cannot represent them, and
+    # asking Emby to render bitmap tracks as VTT silently produces
+    # nothing.
+    text_subtitle_indexes = []
     for stream in media_source.get("MediaStreams", []):
-        if stream.get("Type") == "Subtitle":
-            subtitle_indexes.append(str(stream.get("Index")))
+        if stream.get("Type") != "Subtitle":
+            continue
+        codec = (stream.get("Codec") or "").lower()
+        if codec in ["pgssub", "pgs", "dvd_subtitle", "dvdsub", "vobsub"]:
+            continue
+        text_subtitle_indexes.append(str(stream.get("Index")))
 
     params = [
         f"MediaSourceId={media_source_id}",
@@ -100,17 +129,24 @@ def build_stream_params(emby_client, media_source, media_source_id, play_session
         "h264-level=62",
         # Tell Emby why we're transcoding so it can optimize its pipeline.
         f"TranscodeReasons={','.join(transcode_reasons)}",
-        # Native HLS subtitle support: tell Emby to generate segmented
-        # VTT files alongside the video segments. HLS.js can then switch
-        # subtitle tracks natively without separate VTT fetch requests.
-        "SubtitleMethod=Hls",
-        "ManifestSubtitles=vtt",
     ]
 
-    # Add all subtitle stream indexes so Emby generates VTT segments
-    # for every available subtitle track, not just the selected one.
-    if subtitle_indexes:
-        params.append(f"SubtitleStreamIndexes={','.join(subtitle_indexes)}")
+    if selected_is_image_sub:
+        # Burn the bitmap subtitle into the video frames. No manifest
+        # subtitles in this case -- ManifestSubtitles=vtt would cause
+        # Emby to generate empty VTTs alongside the burn-in.
+        params.append(f"SubtitleStreamIndex={subtitle_index}")
+        params.append("SubtitleMethod=Encode")
+    else:
+        # Manifest subtitles for every text track. HLS.js can switch
+        # between them without separate VTT fetches.
+        params.append("SubtitleMethod=Hls")
+        params.append("ManifestSubtitles=vtt")
+        if text_subtitle_indexes:
+            params.append(f"SubtitleStreamIndexes={','.join(text_subtitle_indexes)}")
+        if subtitle_index is not None and subtitle_index != -1:
+            # User picked a specific text track to be the default.
+            params.append(f"SubtitleStreamIndex={subtitle_index}")
 
     # Determine if transcoding is needed
     source_width = None
@@ -173,35 +209,12 @@ def build_stream_params(emby_client, media_source, media_source_id, play_session
     else:
         logger.debug("No audio stream index specified, Emby will use default")
 
-    # Subtitle handling.
-    # Text subtitles are handled natively via the HLS manifest (SubtitleMethod=Hls
-    # + ManifestSubtitles=vtt set above). Emby generates segmented VTT files
-    # alongside the video segments, and HLS.js can switch tracks natively.
-    #
-    # Image-based subtitles (PGS, VobSub) must be burned in because HLS.js
-    # cannot render bitmap subtitle formats. For these we override the method
-    # to Encode, which forces Emby to render them into the video frames.
-    if subtitle_index is not None and subtitle_index != -1:
-        is_image_sub = False
-        for stream in media_source.get("MediaStreams", []):
-            if (
-                stream.get("Type") == "Subtitle"
-                and stream.get("Index") == subtitle_index
-            ):
-                codec = stream.get("Codec", "").lower()
-                is_image_sub = codec in [
-                    "pgssub", "pgs", "dvd_subtitle", "dvdsub", "vobsub",
-                ]
-                break
-
-        params.append(f"SubtitleStreamIndex={subtitle_index}")
-        if is_image_sub:
-            # Override the HLS method for this specific track -- burn it in.
-            # This replaces the SubtitleMethod=Hls set earlier for this request.
-            params.append("SubtitleMethod=Encode")
-            logger.info(f"Burning in image subtitle track {subtitle_index}")
-        else:
-            logger.info(f"Text subtitle {subtitle_index} via HLS manifest (VTT)")
+    # Log the chosen subtitle plan (the param construction already
+    # happened up top so the URL has exactly one consistent set).
+    if selected_is_image_sub:
+        logger.info(f"Burning in image subtitle track {subtitle_index}")
+    elif subtitle_index is not None and subtitle_index != -1:
+        logger.info(f"Text subtitle {subtitle_index} via HLS manifest (VTT)")
     else:
         logger.debug("No subtitles selected - using manifest subtitles for all available tracks")
 

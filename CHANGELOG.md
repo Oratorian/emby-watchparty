@@ -10,6 +10,12 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
+## [1.6.5] - 2026-05-03
+
+### Fixed
+- **PGS / VobSub subtitles silently broken since 1.6.3** ([#29](https://github.com/Oratorian/emby-watchparty/issues/29)): The HLS URL builder unconditionally added `SubtitleMethod=Hls` + `ManifestSubtitles=vtt` to every request, then separately appended `SubtitleMethod=Encode` when the user picked an image subtitle. The result was a URL with two contradictory `SubtitleMethod` values, so Emby never engaged the burn-in path for image subtitles and they silently failed to display. Restructured `build_stream_params` to compute the subtitle plan once, up front, and emit exactly one consistent set of params per scenario (image-sub burn-in, text-sub manifest, or no selection). Image subtitles are also now filtered out of `SubtitleStreamIndexes`, which removes empty placeholder entries from the CC button menu. Thanks to **[cimspin](https://github.com/cimspin)** for the precise bug report including the log lines that pointed straight at the contradictory request URL
+- **Skip Intro button never appeared (silent 403 on Emby's intros endpoint)**: The `/emby/Items/Intros` admin endpoint was being called with `emby_client.api_key`, which after username/password login holds the user's AccessToken — user-scoped, and rejected by admin endpoints with HTTP 403 even when the underlying user is admin. The intro route now reads the persistent admin API key from `.env` (`config.EMBY_API_KEY`) directly, bypassing the AccessToken substitution. Symptom was visually indistinguishable from "this item has no intro data" so the bug had been latent since username/password auth was added
+
 ## [1.6.4] - 2026-04-21
 
 ### Fixed

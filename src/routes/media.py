@@ -36,11 +36,14 @@ def register(deps):
         logger.debug(f"Fetching intro info for item ID: {item_id}")
 
         try:
-            # Fetch all intro data from Emby's Chapter API plugin
-            # Note: This endpoint requires admin access, so we use API key directly
+            # /emby/Items/Intros is an admin-only endpoint and requires the
+            # admin API key from .env, NOT emby_client.api_key. After
+            # username/password login, emby_client.api_key holds the user's
+            # AccessToken, which is user-scoped and gets a 403 on this
+            # endpoint even when the underlying user is admin (issue #29).
             response = requests.get(
                 f"{config.EMBY_SERVER_URL}/emby/Items/Intros",
-                params={"api_key": emby_client.api_key},
+                params={"api_key": config.EMBY_API_KEY},
                 headers={"Content-Type": "application/json"},
                 timeout=5,
             )
