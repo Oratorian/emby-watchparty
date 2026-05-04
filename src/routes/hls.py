@@ -96,18 +96,39 @@ def register(deps):
                 logger.debug(
                     f"Master playlist before token addition:\n{playlist_content}"
                 )
-                # Add token to .m3u8 and .ts file references
-                # Match filenames ending with .m3u8 or .ts (not already having token param)
+                token_value = request.args.get('token')
                 lines = playlist_content.split("\n")
                 for i, line in enumerate(lines):
-                    # Skip comment lines and empty lines
-                    if line.strip().startswith("#") or not line.strip():
+                    if not line.strip():
                         continue
-                    # If line contains .m3u8 or .ts and doesn't have token already
-                    if (".m3u8" in line or ".ts" in line) and "token=" not in line:
-                        # Use & if URL already has query params, otherwise use ?
+                    # #EXT-X-MEDIA lines (used by Emby for SubtitleMethod=Hls
+                    # text-subtitle tracks) carry the playlist URL inside a
+                    # URI="..." attribute. The plain-line branch skips comments
+                    # so the subtitle .m3u8 URI never gets the token, and
+                    # HLS.js requests it without auth (issue #29 follow-up).
+                    if line.strip().startswith("#EXT-X-MEDIA") and "URI=\"" in line:
+                        old_line = line
+                        def _add_token(m):
+                            uri = m.group(1)
+                            if "token=" in uri:
+                                return m.group(0)
+                            sep = "&" if "?" in uri else "?"
+                            return f'URI="{uri}{sep}token={token_value}"'
+                        lines[i] = re.sub(r'URI="([^"]+)"', _add_token, line)
+                        if lines[i] != old_line:
+                            logger.debug(f"Subtitle URI token addition: '{old_line}' -> '{lines[i]}'")
+                        continue
+                    # Skip other comment lines.
+                    if line.strip().startswith("#"):
+                        continue
+                    # Plain URL lines: any non-comment, non-empty line in
+                    # an HLS playlist is a media URL by spec. Append the
+                    # token unconditionally rather than gating on extension,
+                    # since Emby can serve subtitle segments as .vtt, .srt,
+                    # .ass, or other formats depending on source and version.
+                    if "token=" not in line:
                         separator = "&" if "?" in line else "?"
-                        token_to_add = f"{separator}token={request.args.get('token')}"
+                        token_to_add = f"{separator}token={token_value}"
                         old_line = line
                         lines[i] = line + token_to_add
                         logger.debug(f"Token addition: '{old_line}' -> '{lines[i]}'")
@@ -222,19 +243,31 @@ def register(deps):
 
                 # Add token parameter to segment URLs if needed
                 if token_param:
-                    # Add token to .m3u8 and .ts file references
+                    token_value = request.args.get('token')
                     lines = playlist_content.split("\n")
                     for i, line in enumerate(lines):
-                        # Skip comment lines and empty lines
-                        if line.strip().startswith("#") or not line.strip():
+                        if not line.strip():
                             continue
-                        # If line contains .m3u8 or .ts and doesn't have token already
-                        if (".m3u8" in line or ".ts" in line) and "token=" not in line:
-                            # Use & if URL already has query params, otherwise use ?
+                        # #EXT-X-MEDIA URI attribute (rare in sub-playlists
+                        # but covered for completeness).
+                        if line.strip().startswith("#EXT-X-MEDIA") and "URI=\"" in line:
+                            def _add_token(m):
+                                uri = m.group(1)
+                                if "token=" in uri:
+                                    return m.group(0)
+                                sep = "&" if "?" in uri else "?"
+                                return f'URI="{uri}{sep}token={token_value}"'
+                            lines[i] = re.sub(r'URI="([^"]+)"', _add_token, line)
+                            continue
+                        if line.strip().startswith("#"):
+                            continue
+                        # Plain URL lines: any non-comment line is a media URL
+                        # per HLS spec. Append unconditionally rather than
+                        # gating on extension since subtitle segments can
+                        # be .vtt, .srt, .ass, etc.
+                        if "token=" not in line:
                             separator = "&" if "?" in line else "?"
-                            token_to_add = (
-                                f"{separator}token={request.args.get('token')}"
-                            )
+                            token_to_add = f"{separator}token={token_value}"
                             lines[i] = line + token_to_add
                     playlist_content = "\n".join(lines)
 

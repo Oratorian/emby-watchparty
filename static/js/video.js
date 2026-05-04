@@ -122,7 +122,22 @@
         textSubtitles.forEach(function(subtitle) {
             var track = document.createElement('track');
             track.kind = 'subtitles';
-            track.label = subtitle.displayLanguage || subtitle.language || 'Unknown';
+            // Build a descriptive label so the CC menu can distinguish
+            // tracks of the same language. Emby's Title field holds the
+            // useful descriptor like "Signs & Songs", "Full", "SDH",
+            // etc. -- without it, anime fansubs collapse into multiple
+            // identical "English" entries in the menu.
+            var label = subtitle.displayLanguage || subtitle.language || 'Unknown';
+            if (subtitle.title) {
+                label += ' (' + subtitle.title + ')';
+            }
+            if (subtitle.isForced) {
+                label += ' [Forced]';
+            }
+            if (subtitle.isExternal) {
+                label += ' [External]';
+            }
+            track.label = label;
             track.srclang = subtitle.language || 'und';
             track.src = S.appPrefix + '/api/subtitles/' + S.currentItemId + '/' + S.currentMediaSourceId + '/' + subtitle.index;
             track.mode = 'hidden';

@@ -132,21 +132,21 @@ def build_stream_params(emby_client, media_source, media_source_id, play_session
     ]
 
     if selected_is_image_sub:
-        # Burn the bitmap subtitle into the video frames. No manifest
-        # subtitles in this case -- ManifestSubtitles=vtt would cause
-        # Emby to generate empty VTTs alongside the burn-in.
+        # Burn the bitmap subtitle into the video frames. HLS.js cannot
+        # render bitmap subtitle formats; this forces Emby to render
+        # them into the video.
         params.append(f"SubtitleStreamIndex={subtitle_index}")
         params.append("SubtitleMethod=Encode")
-    else:
-        # Manifest subtitles for every text track. HLS.js can switch
-        # between them without separate VTT fetches.
-        params.append("SubtitleMethod=Hls")
-        params.append("ManifestSubtitles=vtt")
-        if text_subtitle_indexes:
-            params.append(f"SubtitleStreamIndexes={','.join(text_subtitle_indexes)}")
-        if subtitle_index is not None and subtitle_index != -1:
-            # User picked a specific text track to be the default.
-            params.append(f"SubtitleStreamIndex={subtitle_index}")
+    # Text subtitles are NOT requested via the HLS manifest. We tried
+    # SubtitleMethod=Hls + ManifestSubtitles=vtt in 1.6.5 but it
+    # produced two competing track lists -- HLS.js's manifest-managed
+    # tracks and our side-channel <track> elements -- which fought
+    # over textTrack mode state and broke CC-button switching when
+    # an HLS-managed track was disengaged then re-selected. Letting
+    # the frontend's side-channel <track> elements (sourced from
+    # /api/subtitles/...) own all text subtitles avoids the conflict
+    # entirely. PGS / VobSub burn-in still goes through SubtitleMethod=Encode
+    # above, which is unaffected by this change.
 
     # Determine if transcoding is needed
     source_width = None

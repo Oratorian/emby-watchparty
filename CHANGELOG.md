@@ -10,6 +10,15 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
+## [1.6.6] - 2026-05-05
+
+### Fixed
+- **CC button broken when switching between embedded and external text subs** ([#29](https://github.com/Oratorian/emby-watchparty/issues/29) follow-up): 1.6.5 enabled HLS manifest subtitles (`SubtitleMethod=Hls` + `ManifestSubtitles=vtt`) so external sidecar SRT/VTT files would appear as native HLS.js-managed text tracks. This created two parallel subtitle delivery paths -- HLS.js's manifest-managed tracks and our existing side-channel `<track>` elements -- which fought over `textTrack.mode` state. Switching from an external (manifest) sub to an embedded (side-channel) sub silently disabled both, leaving "no captions" even though the user clicked a real track. Reverted manifest text-subtitle delivery; the side-channel `<track>` path now owns all text subtitles, eliminating the conflict. PGS / VobSub burn-in still uses `SubtitleMethod=Encode` and is unaffected
+- **HLS subtitle segments returned 401** ([#29](https://github.com/Oratorian/emby-watchparty/issues/29) follow-up): when 1.6.5's manifest subtitle path was active, `subtitles.m3u8` and its VTT segments were proxied without the HLS auth token so token validation rejected them. The token-injection code in the HLS proxy only handled plain URL lines; subtitle playlist URIs live inside `#EXT-X-MEDIA URI="..."` attributes and were silently skipped. Added regex-based token injection for `URI="..."` attributes and broadened the plain-URL injection to handle any non-comment line (covering `.vtt`, `.srt`, `.ass`, and anything else Emby may serve). Even though manifest subs are now off, the fix remains in case the path is reactivated later
+
+### Changed
+- **CC menu now shows subtitle title and source**: subtitle tracks of the same language used to all collapse into identical "English" entries in the CC menu, making it impossible to pick the right one when a file had variants like "Signs & Songs" vs "Full" vs "SDH". The native HTML5 `<track>` label now includes Emby's `Title` field plus `[Forced]` and `[External]` markers so each variant is distinguishable
+
 ## [1.6.5] - 2026-05-03
 
 ### Fixed
