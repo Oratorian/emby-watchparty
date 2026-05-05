@@ -10,6 +10,37 @@ A synchronized watch party application for Emby media servers. Watch videos toge
 
 ---
 
+## Table of contents
+
+- [Support development](#support-development)
+- [Special Thanks](#-special-thanks)
+- [Discord](#discord-for-more-personal-support)
+- [Documentation](#documentation)
+  - [Wiki](#wiki) — hardware, deployment, troubleshooting, FAQ
+  - [Emby quirks we learned the hard way](#technical-deep-dive-emby-quirks)
+  - [Changelog](#changelog)
+- [Features](#features)
+- [Browser compatibility](#browser-compatibility)
+- [Setup](#setup)
+  - [Prerequisites](#prerequisites)
+  - [Option 1: Manual installation](#option-1-manual-installation)
+  - [Option 2: Docker installation](#option-2-docker-installation)
+- [Usage](#usage)
+  - [Creating a watch party](#creating-a-watch-party)
+  - [Joining a watch party](#joining-a-watch-party)
+  - [In-party controls](#in-party-controls)
+- [Configuration](#configuration)
+- [Architecture](#architecture)
+- [API endpoints](#api-endpoints)
+- [Troubleshooting](#troubleshooting)
+- [Security notes](#security-notes)
+- [License](#license)
+- [Contributing](#contributing)
+- [Acknowledgments](#acknowledgments)
+- [Educational use notice](#educational-use-notice)
+
+---
+
 ### Support development
 
 If Emby WatchParty has saved you from the hell of trying to coordinate "3, 2, 1, play" over Discord, consider buying me a coffee:
@@ -350,3 +381,9 @@ Wiki edits are open — if you deploy on hardware or a platform not yet document
 - Built on Flask, Flask-SocketIO, and HLS.js
 - Integrates with [Emby Media Server](https://emby.media/)
 - Inspired by various watch-party applications that didn't quite do what we needed
+
+---
+
+## Educational use notice
+
+This project is intended for educational purposes and private use only. Please ensure you use this responsibly and in compliance with your Emby server's terms of service and applicable copyright laws.
