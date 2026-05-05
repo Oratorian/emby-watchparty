@@ -53,3 +53,6 @@ TODO.md
 
 # Wiki staging area (published to GitHub wiki repo, not tracked here)
 wiki/
+
+# General ignored files
+*.bak
