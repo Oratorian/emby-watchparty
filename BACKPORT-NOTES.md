@@ -84,7 +84,7 @@ The intro 403 fix is a one-line route change, low risk. The subtitle URL builder
 
 | Item | Status | Notes |
 |---|---|---|
-| **Remove manifest text subtitle params** (`SubtitleMethod=Hls`, `ManifestSubtitles=vtt`, `SubtitleStreamIndexes` for text subs) | ⏳ Pending — **important** | This is a **deletion** from what 1.6.3 added. After 1.6.6 there are no manifest text subs at all. PGS still gets `SubtitleMethod=Encode`. Side-channel proxy (`/api/subtitles/...`) handles all text. |
+| **Remove manifest text subtitle params** (`SubtitleMethod=Hls`, `ManifestSubtitles=vtt`, `SubtitleStreamIndexes` for text subs) | ✅ Done | `backend/src/stream_builder.py`. Removed the unconditional manifest text-sub params and the `subtitle_indexes` collection. `SubtitleStreamIndex` is now only emitted when an image sub is selected (paired with `SubtitleMethod=Encode`). Text subs are handled exclusively by the side-channel proxy. |
 | Token injection in `#EXT-X-MEDIA URI="..."` attributes in HLS proxy | ⏳ Pending | In 1.x: `src/routes/hls.py`. Even though manifest text-subs are off, the URI-attribute token injection is a safety net in case the path is reactivated. Apply to 2.0's `backend/src/routers/hls.py`. |
 | Broaden plain-URL token injection to any non-comment line (cover `.vtt`, `.srt`, `.ass`) | ⏳ Pending | Same file. Drop the extension allowlist, append token to any non-comment, non-empty line that doesn't already have `token=`. |
 

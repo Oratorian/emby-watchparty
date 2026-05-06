@@ -66,11 +66,6 @@ class StreamBuilder:
         if not transcode_reasons:
             transcode_reasons.append("ContainerBitrateExceedsLimit")
 
-        subtitle_indexes = []
-        for stream in media_source.get("MediaStreams", []):
-            if stream.get("Type") == "Subtitle":
-                subtitle_indexes.append(str(stream.get("Index")))
-
         params = [
             f"MediaSourceId={media_source_id}",
             f"PlaySessionId={play_session_id}",
@@ -94,12 +89,7 @@ class StreamBuilder:
             "h264-profile=high,main,baseline,constrainedbaseline",
             "h264-level=62",
             f"TranscodeReasons={','.join(transcode_reasons)}",
-            "SubtitleMethod=Hls",
-            "ManifestSubtitles=vtt",
         ]
-
-        if subtitle_indexes:
-            params.append(f"SubtitleStreamIndexes={','.join(subtitle_indexes)}")
 
         source_width = None
         for stream in media_source.get("MediaStreams", []):
@@ -135,10 +125,12 @@ class StreamBuilder:
         else:
             self._logger.debug("No audio stream index specified, Emby will use default")
 
-        # Text subtitles are handled natively via the HLS manifest
-        # (SubtitleMethod=Hls + ManifestSubtitles=vtt set above). Image-based
-        # subtitles (PGS, VobSub) must be burned in because HLS.js cannot
-        # render bitmap subtitle formats.
+        # Image subtitles (PGS, VobSub) must be burned in because HLS.js cannot
+        # render bitmap subtitle formats. Text subtitles are NOT delivered via
+        # the HLS manifest -- the frontend preloads them as side-channel
+        # <track> elements via /api/subtitles/<item>/<msid>/<idx>. Two parallel
+        # subtitle delivery systems (manifest + side-channel) fight over
+        # textTrack.mode state, so the manifest path is intentionally off.
         if subtitle_index is not None and subtitle_index != -1:
             is_image_sub = False
             for stream in media_source.get("MediaStreams", []):
@@ -152,14 +144,16 @@ class StreamBuilder:
                     ]
                     break
 
-            params.append(f"SubtitleStreamIndex={subtitle_index}")
             if is_image_sub:
+                params.append(f"SubtitleStreamIndex={subtitle_index}")
                 params.append("SubtitleMethod=Encode")
                 self._logger.info(f"Burning in image subtitle track {subtitle_index}")
             else:
-                self._logger.info(f"Text subtitle {subtitle_index} via HLS manifest (VTT)")
+                self._logger.debug(
+                    f"Text subtitle {subtitle_index} delivered via side-channel proxy"
+                )
         else:
-            self._logger.debug("No subtitles selected - using manifest subtitles for all available tracks")
+            self._logger.debug("No subtitle selected for backend transcode")
 
         if start_time_ticks is not None and start_time_ticks > 0:
             params.append(f"StartTimeTicks={start_time_ticks}")
