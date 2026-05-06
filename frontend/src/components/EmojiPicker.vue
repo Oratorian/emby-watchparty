@@ -30,10 +30,19 @@ function positionPanel() {
   // Anchor the panel above the trigger, right-aligned with the
   // trigger so the layout matches the previous position-absolute
   // behaviour. Coordinates are viewport-relative because the panel
-  // is teleported to <body> with position: fixed.
+  // is teleported to <body> with position: fixed. Layout properties
+  // are set inline so they cannot be overridden by Vue scoped CSS
+  // edge cases on teleported elements.
   panelStyle.value = {
+    position: 'fixed',
     right: `${window.innerWidth - r.right}px`,
     bottom: `${window.innerHeight - r.top + 8}px`,
+    width: '320px',
+    maxHeight: '300px',
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    boxSizing: 'border-box',
+    zIndex: '1000',
   }
 }
 
@@ -122,24 +131,20 @@ onUnmounted(cleanup)
 }
 
 .emoji-panel {
-  /* Teleported to <body> with position:fixed so the panel escapes
-     .party-content's overflow:hidden. Coordinates (right/bottom) are
-     set in JS from the trigger button's bounding rect on open.
-     No padding here -- padding lives on .emoji-panel-inner below
-     so the scrollbar sits at the panel's true right edge instead of
-     inside the right padding (where it would visually shrink one side). */
-  position: fixed;
-  width: 296px;
-  max-height: 300px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  z-index: 1000;
-  box-sizing: border-box;
+  /* Position, width, height, and overflow are set inline from
+     positionPanel() because scoped CSS can be unreliable on
+     Teleport-ed elements in some Vue/build setups. This rule only
+     carries the cosmetic / scrollbar-thinning bits. */
   scrollbar-width: thin;
 }
 
 .emoji-panel-inner {
-  padding: var(--space-sm);
+  /* Padding lives inside the scroll container so the y-scrollbar
+     sits at the panel's true right edge rather than inside the
+     padding area. Symmetric 12px on all four sides is generous
+     enough to absorb minor scrollbar offsets without looking
+     visually lopsided either way. */
+  padding: 12px;
 }
 
 .emoji-panel::-webkit-scrollbar {
