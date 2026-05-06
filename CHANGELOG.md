@@ -5,10 +5,127 @@ All notable changes to Emby Watch Party will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+Each release has a short user-facing summary on top and a longer **Technical details** section underneath for anyone who wants the full story.
+
 ### Special Thanks
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
+
+---
+
+## [2.0.0-dev] - Midnight Premiere
+
+This is the working entry for 2.0. The version is `2.0.0-dev` and the branch is `2.0-Rework`. Nothing here has been cut as a stable release yet -- the entry is updated as the rework progresses.
+
+### Added
+
+- **Per-user transcodes**: each user gets their own Emby transcode session and HLS stream, so audio language, subtitle selection, and quality can be different per user without disrupting the rest of the party.
+- **Late-joiner vote flow**: when someone tries to join mid-playback, existing users vote on whether to admit them. If the vote passes, the video restarts from the beginning so everyone lands on the same PTS-aligned segment. Vote modal for existing users, waiting-room screen for the joiner. Selector tiebreak on timeout, default-no fallback, 30s cooldown after a failed vote to prevent URL-spam griefing.
+- **Silent `change_streams`**: switching audio, subtitle, or quality mid-playback now swaps only your own stream without pausing the rest of the party.
+- **Admin panel** (`/admin`) with hot-reload: 17 runtime settings editable from the UI, no restart needed. Two-tier config splits boot-essential `.env` vars from mutable runtime settings persisted to `config.json`.
+- **OpenAPI documentation** at `/docs` and `/redoc`. All JSON endpoints have typed Pydantic response schemas so the spec is complete.
+- **User guide** ([docs/USER_GUIDE.md](docs/USER_GUIDE.md)) covering the full end-user experience including the vote flow, admin panel, and troubleshooting.
+- **Mobile chat panel**: chat slides in over the video on narrow screens with a tap-to-dismiss backdrop. (NewBlade)
+- **Reload-as-rejoin**: refreshing the page in an active party is now recognised as a rejoin instead of triggering a vote on yourself. (NewBlade)
+- **Codename system**: 2.0 carries the codename "Midnight Premiere", shown on the version page and in the startup banner.
+
+### Changed
+
+- **Full rewrite to FastAPI + Vue 3 + TypeScript**. python-socketio AsyncServer replaces Flask-SocketIO. Vue Router with 6 routes (Index, Party, Login, Admin, Version, 404). Pinia stores for auth/party/socket state. Vite for dev + build. uvicorn replaces gevent as the ASGI server. httpx for async HLS proxying. socket.io-client for real-time sync.
+- **Foundation refactor (5 phases)** before the rewrite: introduced `PartyManager`, app-factory pattern with compatibility shims, eliminated string-bool comparisons, merged `run_production.py` into `app.py` as a single entrypoint.
+- **Per-user subtitle delivery**: text subtitles via side-channel proxy (`/api/subtitles/...`), image subtitles burned in via per-user transcode. Unified subtitle dropdown shows both with `text` / `burned in` markers in the label. (NewBlade)
+- **Selector-only sync authority**: only the user who selected the video can issue play/pause/seek. Non-selector events are silently dropped to prevent state corruption.
+- **Admin panel auth**: now Emby-admin-only when login is required, verified via `IsAdministrator` policy from the auth response.
+
+### Fixed
+
+- **Page reload triggered a late-joiner vote** on the user who refreshed. Now recognised as a rejoin via persistent `client_id`. (NewBlade)
+- **Default subtitle from Emby** was selected in the dropdown but never actually displayed. Fixed. (NewBlade)
+- **Subtitle dropdown hid all text-based subtitles**, leaving only burned-in image subs available. Fixed. (NewBlade)
+- **Text subtitle track activation** raced with the `<track>` element's `load` event. Fixed. (NewBlade)
+- **Drift correction immediately flagged everyone as several seconds behind** the moment a ready check resolved. Fixed. (NewBlade)
+- **Browser pause events fired during seeks** were broadcast to the rest of the party, causing flicker. Now debounced. (NewBlade)
+- **Seek events left the server's playing state stale**, causing intermittent state divergence between clients. Fixed. (NewBlade)
+- **HLS transcode silently picked stream-copy** over real transcoding for some sources, breaking quality presets. `EnableAutoStreamCopy=false` ported from 1.6.3.
+
+### Removed
+
+- **Old Flask frontend** (`src/`, `static/`, `templates/`, `app.py`). The Vue 3 build at `frontend/` produces static assets served from `backend/static/` so a single uvicorn process serves both.
+- **Tracked `config.json`** is now generated from `RuntimeConfig` defaults on first run and gitignored, since values are deployment-specific.
+
+### Contributors
+
+Big thanks to **[NewBlade](https://github.com/NewBlade)** for the comprehensive batch of UX, sync, and reload-handling fixes cherry-picked from his [2.0-Rework fork](https://github.com/NewBlade/emby-watchparty/commits/2.0-Rework/). Author attribution is preserved on every commit.
+
+### Technical details
+
+**Foundation refactor before the rewrite**
+
+Five phases of pre-rewrite work modernised the Flask codebase first so the migration to FastAPI was a transport-layer port rather than a from-scratch rewrite. Phase 1 introduced foundation classes (`PartyManager`, runtime config). Phase 2 wrapped Flask in an app factory with compatibility shims so existing code kept working. Phases 3-4 eliminated string-bool comparisons and migrated callers to the `PartyManager` API. Phase 5 cleaned up dead code and bumped the version to `2.0.0-dev`. By the time `88255e2` swapped the transport, the structural shape of 2.0 already existed.
+
+**FastAPI + Vue 3 rewrite**
+
+Backend replaced Flask + Flask-SocketIO with FastAPI + python-socketio AsyncServer. All routes ported with Pydantic request/response schemas. `FastAPI Depends()` replaces the old `deps` dict pattern. ASGI lifespan handles service initialisation. httpx replaces requests for HLS proxying so streaming is async end-to-end. uvicorn replaces gevent. The `/docs` and `/redoc` endpoints render the auto-generated OpenAPI spec.
+
+Frontend replaced Jinja templates + vanilla JS with Vue 3 + Vite + TypeScript. Vue Router for client-side routing across 6 views. Pinia stores for `auth`, `party`, and `socket` state. socket.io-client for real-time sync. Vite dev proxy forwards backend calls during development; the production build outputs to `backend/static/`.
+
+Docker is now a multi-stage build (node for the frontend, python for the backend) producing a single image.
+
+**Per-user transcodes**
+
+The 1.x model was one shared transcode that everyone read from, with audio/subtitle/quality forced to be uniform. 2.0 creates a fresh `PlaySessionId` per user. Each user picks their own audio track, subtitle, and quality, and the backend builds a separate Emby HLS URL per user. Drift correction was re-added in this model because per-user transcodes can drift independently of each other.
+
+**Late-joiner vote flow**
+
+The fundamental late-joiner problem in per-user transcodes is that Emby rounds `StartTimeTicks` to the nearest keyframe / GOP boundary, so a late joiner's segment 0 starts at a different media position than the party clock. HLS.js trusts what Emby advertises in `#EXT-X-START:TIME-OFFSET`, so `currentTime` reports the "correct" number while the actual frame is 15-20 seconds off. Drift correction can't see this because the late joiner's `currentTime` already equals the party clock.
+
+The solution sidesteps the alignment problem entirely. When a late joiner arrives, existing users vote on whether to admit them. If the vote passes, everyone restarts from `StartTimeTicks=0`, which Emby aligns identically across sessions. Vote eligibility is a snapshot at vote start, strict majority resolves immediately, ties resolve via the video selector at timeout (with default-no fallback if the selector hasn't voted). A 30s cooldown after a failed vote prevents repeated vote pop-ups from a malicious join URL.
+
+**Silent change_streams**
+
+Originally `change_streams` paused the whole party, ran a ready check, and auto-resumed. That was fragile because the target user's resume depended on a coordinated `all_ready` + play broadcast. The flow now:
+
+- Backend snapshots current time, stops the requesting user's old transcode, creates a new one with the up-to-date party position as `StartTimeTicks`, emits `streams_changed` only to the requesting user.
+- The party clock is not touched. Other users keep playing. Drift correction continues operating from the authoritative `playback_state` throughout the swap.
+- The requesting user's `VideoPlayer` reloads with the new stream URL. Residual lag (typically 2-5 seconds from Emby setup + HLS buffer warmup) is closed by drift correction over the next few heartbeats.
+- Stall recovery: if `currentTime` does not advance within 1s after the swap, HLS.js is nudged to reload at the current position.
+
+**Admin panel + two-tier config**
+
+Config splits into `EnvConfig` (frozen, restart required) for boot essentials like bind, port, Emby URL, and login requirement, and `RuntimeConfig` (mutable, hot-reloadable) for everything else (logging, security, session, late-join vote settings). `RuntimeConfig` is persisted to `config.json` and edited via `/admin`.
+
+When `REQUIRE_LOGIN=true` the admin panel requires Emby admin (`IsAdministrator` policy from the auth response). When `REQUIRE_LOGIN=false` it is open for trusted networks. All 17 runtime settings are editable from the UI; the 9 boot-essential settings continue to require a restart and ship in `.env.example`.
+
+**OpenAPI completeness**
+
+Several JSON endpoints had no `response_model`, so the OpenAPI spec emitted empty response schemas and the `/docs` page did not show response structure. New Pydantic schemas: `LibraryItem`, `LibraryItemsResponse`, `ItemDetailsResponse`, `AdminLoginResponse`, `SuccessResponse`, `RuntimeConfigResponse`, `StaticSessionResponse`. Wired up on `/api/libraries`, `/api/items`, `/api/search`, `/api/item/{id}`, `/api/item/{id}/streams`, `/api/admin/{login,logout,config}`, `/api/auth/logout`, `/api/party/static-session`. Binary endpoints (`/api/image`, `/api/subtitles`, `/hls/*`) intentionally stay raw since they return bytes.
+
+**1.6.3 backport: EnableAutoStreamCopy=false**
+
+`build_stream_params` now sets `EnableAutoStreamCopy=false`, `MinSegments=1`, and provides `h264-profile`, `h264-level`, `TranscodeReasons`. PlaybackInfo gained `IsPlayback=true`, `AutoOpenLiveStream=true`, `MaxStreamingBitrate`, `AudioStreamIndex`, `SubtitleStreamIndex`, `MediaSourceId`, `StartTimeTicks`. Without these, Emby would sometimes pick stream-copy for sources that should have been transcoded, breaking quality presets. See [BACKPORT-NOTES.md](BACKPORT-NOTES.md) for the full porting status of 1.6.4 / 1.6.5 / 1.6.6.
+
+**Reload as rejoin via persistent client id (NewBlade)**
+
+A localStorage UUID per browser is sent with `join_party`. The backend tracks `participants[client_id]` separately from the socket-id-keyed `users` dict, so a known client_id reattaching to the room with a fresh socket id is treated as a rejoin and skips the late-joiner vote. The new `_replace_sid` helper migrates all sid-keyed state -- users, join_times, drift_strikes, ready_check sets, `current_video.selected_by`, and `user_streams` ownership including the Emby session cleanup -- in one place. Falls back to legacy username-eviction for clients without a client_id.
+
+**Ready-check clock reset (NewBlade)**
+
+While a ready check was active, wall-clock time elapsed but `playback_state.last_update` did not, so the moment `all_ready` fired the projected time looked N seconds behind reality and drift correction immediately corrected everyone. `_check_all_ready` and the leave/disconnect equivalents now refresh `last_update` at the resolution moment, and the `all_ready` event carries the authoritative `time` + `playing` so clients can seek to the right frame before resuming.
+
+**Native pause debounced during seeks (NewBlade)**
+
+Browsers fire transient pause events during seeks. `onVideoPause` now waits 250ms via `setTimeout`, and `onVideoSeeking` cancels that pending timer, so a pause that's actually part of a seek does not get rebroadcast. `wasPlayingBeforeSeek` was made sticky (`||` instead of `=`) so a sequence of seek events while paused does not clobber the original playing state.
+
+**Unified subtitle dropdown + initial selection (NewBlade)**
+
+The 2.0 dropdown was hiding text subtitles entirely and only showing burned-in image subs. All subtitle tracks now appear in one list with `text` / `burned in` markers in the label. A `selectedBurnedSubtitleIndex()` helper ensures audio/quality changes only carry a subtitle index in the `change_streams` payload when the selection is actually an image sub that needs backend re-encoding; text-sub selections continue to swap via the side-channel proxy without restarting the transcode. `media_source_id` is now part of the `current_video` payload so the subtitle URL builder does not have to guess. When the subtitle list loads with a default from Emby, `applyInitialSubtitleSelection` triggers the same activation flow a manual click would, so the default actually shows instead of just appearing selected. Text track activation now also waits for the `<track>` element's `load` event before setting `mode = 'showing'` to fix the race.
+
+**Mobile chat panel (NewBlade)**
+
+Sliding panel via CSS `transform: translateX(...)` with a backdrop click-to-dismiss, gated by a `showMobileChat` ref and a 760px media query. The header centre section hides on narrow screens to keep room for the chat toggle button.
+
+---
 
 ## [1.6.0] - 2026-03-22
 
