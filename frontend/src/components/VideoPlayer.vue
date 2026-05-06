@@ -64,9 +64,17 @@ function attachStream(url: string) {
       fragLoadingRetryDelay: 1000,
       manifestLoadingTimeOut: 10000,
       levelLoadingTimeOut: 10000,
-      subtitleDisplay: true,
-      enableWebVTT: true,
-      renderTextTracksNatively: true,
+      // Subtitle handling lives outside HLS.js. Text subs are preloaded
+      // as side-channel <track> elements via /api/subtitles/..., and PGS
+      // subs are burned into the video by Emby. The manifest no longer
+      // carries subtitle entries (1.6.6 backend backport). Disable HLS.js's
+      // native text-track features so it does not subscribe to
+      // textTracks 'change' events and try to coordinate with our
+      // externally-managed <track> elements -- that coordination caused
+      // phantom seeks during playback whenever a sub was set to 'showing'.
+      subtitleDisplay: false,
+      enableWebVTT: false,
+      renderTextTracksNatively: false,
     }
     // For late joiners, the backend already offsets the Emby transcode via
     // StartTimeTicks, so the stream's currentTime=0 corresponds to the
