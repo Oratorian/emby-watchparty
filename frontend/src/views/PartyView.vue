@@ -49,6 +49,18 @@ onMounted(async () => {
     versionInfo.value = { version: v.current_version || v.version || '', codename: v.codename || '' }
   } catch { /* ignore */ }
 
+  // Defensive: clear any previously-registered handlers for the events
+  // PartyView listens to, so HMR reloads and Vue Router remounts cannot
+  // stack duplicate listeners. Without this, repeated mounts caused a
+  // single 'seek' broadcast to fire its addSystemMessage callback once
+  // per stacked listener, flooding the chat with phantom seek messages.
+  const partyViewEvents = [
+    'chat_message', 'play', 'pause', 'seek', 'force_pause_before_seek',
+    'ready_check_update', 'drift_correction', 'all_ready', 'sync_state',
+    'error', 'join_rejected', 'join_vote_resolved',
+  ]
+  for (const e of partyViewEvents) socket.off(e)
+
   socket.on('chat_message', (data: any) => {
     chatMessages.value.push(data)
     nextTick(() => {

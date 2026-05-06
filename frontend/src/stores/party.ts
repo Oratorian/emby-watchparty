@@ -81,6 +81,21 @@ export const usePartyStore = defineStore('party', () => {
   function setupListeners() {
     const socket = useSocketStore()
 
+    // Defensive: drop any previously-registered handlers for these events
+    // before re-registering. HMR reloads or PartyView remounts call
+    // setupListeners again, and without this every cycle would stack
+    // duplicate listeners -- a single server emit would then fire the
+    // chat-message side effects N times (observed: "Andrew seeked to..."
+    // repeating 5-6 times per real seek event after a few HMR cycles).
+    const events = [
+      'user_joined', 'user_left', 'sync_state', 'video_selected',
+      'video_stopped', 'video_ended', 'play', 'pause', 'seek',
+      'streams_changed', 'ready_check_update', 'all_ready',
+      'join_vote_started', 'join_vote_pending', 'join_vote_update',
+      'join_vote_resolved', 'join_rejected',
+    ]
+    for (const e of events) socket.off(e)
+
     socket.on('user_joined', (data: any) => {
       users.value = data.users
     })
