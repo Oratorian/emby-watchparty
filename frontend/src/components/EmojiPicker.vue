@@ -53,7 +53,11 @@ async function toggleOpen() {
     positionPanel()
     document.addEventListener('mousedown', onDocClick)
     window.addEventListener('resize', positionPanel)
-    window.addEventListener('scroll', positionPanel, true)
+    // Only re-anchor on page-level scroll. A capture-phase listener
+    // also catches the picker's OWN internal scroll events, which
+    // produced sub-pixel jitter on each wheel tick because every
+    // call recomputes position from the trigger's bounding rect.
+    window.addEventListener('scroll', positionPanel)
   } else {
     cleanup()
   }
@@ -62,7 +66,7 @@ async function toggleOpen() {
 function cleanup() {
   document.removeEventListener('mousedown', onDocClick)
   window.removeEventListener('resize', positionPanel)
-  window.removeEventListener('scroll', positionPanel, true)
+  window.removeEventListener('scroll', positionPanel)
 }
 
 function onDocClick(e: MouseEvent) {
