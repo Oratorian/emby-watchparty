@@ -78,8 +78,10 @@ function select(emoji: string) {
   width: 280px;
   max-height: 300px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--space-sm);
   z-index: 100;
+  box-sizing: border-box;
 }
 
 .emoji-category {
@@ -97,8 +99,8 @@ function select(emoji: string) {
 
 .emoji-grid {
   display: grid;
-  grid-template-columns: repeat(10, 1fr);
-  gap: 1px;
+  grid-template-columns: repeat(auto-fill, minmax(26px, 1fr));
+  gap: 2px;
 }
 
 .emoji-btn {
@@ -110,6 +112,8 @@ function select(emoji: string) {
   border-radius: var(--radius-sm);
   transition: background var(--transition-fast);
   line-height: 1;
+  min-width: 0;
+  text-align: center;
 }
 
 .emoji-btn:hover {
