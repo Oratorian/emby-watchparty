@@ -643,6 +643,15 @@ function stopVideo() {
   socket.emit('stop_video', { party_id: party.partyId })
 }
 
+// When the current video clears (anyone clicked Stop Video), pop the
+// library open automatically so the next selection is one click away
+// instead of two ("Browse Library" -> pick item).
+watch(() => party.currentVideo, (newVal, oldVal) => {
+  if (oldVal && !newVal) {
+    showLibrary.value = true
+  }
+})
+
 function onChangeStreams(opts: { audioIndex?: number; subtitleIndex?: number; quality?: string }) {
   if (!party.partyId) return
   socket.emit('change_streams', {
