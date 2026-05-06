@@ -82,6 +82,29 @@ function select(emoji: string) {
   padding: var(--space-sm);
   z-index: 100;
   box-sizing: border-box;
+  /* Reserve space for the y-scrollbar so it does not eat into the
+     visible right padding. Without this, classic scrollbars (Windows)
+     sit in the padding area and the picker looks lopsided -- left
+     padding intact, right padding visually shrunk. */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.emoji-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.emoji-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.emoji-panel::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 3px;
+}
+
+.emoji-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 .emoji-category {
