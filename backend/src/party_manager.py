@@ -94,11 +94,17 @@ class PartyManager:
         self.watch_parties: Dict[str, dict] = {}
         self._config = config
         self._logger = logger
+        # Tracks the static party's id as last known to this manager, so
+        # sync_static_party() can detect when STATIC_SESSION_ID changes
+        # and clean up the old party.
+        self._last_static_id: Optional[str] = None
 
         # Create static party on startup if configured
         if config.STATIC_SESSION_ENABLED:
-            self._create_party_dict(party_id=config.STATIC_SESSION_ID.upper())
-            self._logger.info(f"Static session mode: {config.STATIC_SESSION_ID.upper()}")
+            pid = config.STATIC_SESSION_ID.upper()
+            self._create_party_dict(party_id=pid)
+            self._last_static_id = pid
+            self._logger.info(f"Static session mode: {pid}")
 
     @property
     def static_party_id(self) -> Optional[str]:
@@ -161,6 +167,37 @@ class PartyManager:
             self._create_party_dict(pid)
             self._logger.info(f"Recreated static party: {pid}")
         return pid
+
+    def sync_static_party(self) -> Optional[str]:
+        """Reconcile the static party with the current runtime config.
+
+        Called when STATIC_SESSION_ENABLED or STATIC_SESSION_ID changes via
+        the admin panel so the change takes effect without a restart:
+
+        - If the static id changed, remove the old party (if it still exists
+          and was not repurposed) before creating the new one.
+        - If the feature was disabled, remove the previously-created static
+          party so it stops responding to joins.
+        - If the feature is enabled and the configured party is missing,
+          create it.
+
+        Returns the current static party id (or None when disabled).
+        """
+        cfg_enabled = self._config.STATIC_SESSION_ENABLED
+        cfg_id = self._config.STATIC_SESSION_ID.upper() if cfg_enabled else None
+
+        if self._last_static_id and self._last_static_id != cfg_id:
+            old = self._last_static_id
+            if old in self.watch_parties:
+                del self.watch_parties[old]
+                self._logger.info(f"Removed previous static party: {old}")
+
+        if cfg_id and cfg_id not in self.watch_parties:
+            self._create_party_dict(cfg_id)
+            self._logger.info(f"Created static party: {cfg_id}")
+
+        self._last_static_id = cfg_id
+        return cfg_id
 
     def add_user(self, party_id: str, sid: str, username: str) -> bool:
         """Add a user to a party. Returns False if party doesn't exist or is full."""

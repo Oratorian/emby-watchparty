@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 import requests as http_requests
 
-from backend.src.dependencies import get_config, get_emby_client, get_logger
+from backend.src.dependencies import get_config, get_emby_client, get_logger, get_party_manager
 from backend.src.schemas import (
     AdminLoginRequest,
     AdminLoginResponse,
@@ -76,6 +76,7 @@ def get_config_values(request: Request, config=Depends(get_config)):
 
 @router.put("/config", response_model=ConfigUpdateResponse)
 def update_config(request: Request, body: dict, config=Depends(get_config),
+                  party_manager=Depends(get_party_manager),
                   logger=Depends(get_logger)):
     if not request.session.get("admin_authenticated"):
         return ConfigUpdateResponse(success=False)
@@ -94,6 +95,14 @@ def update_config(request: Request, body: dict, config=Depends(get_config),
 
         if {'LOG_LEVEL', 'CONSOLE_LOG_LEVEL'} & set(changed):
             _reload_log_levels(config, logger)
+
+        # Static session toggles or id renames need an explicit sync
+        # because the static party lives in PartyManager.watch_parties,
+        # not in the config object. Without this, enabling static
+        # sessions via the admin panel would persist the setting but
+        # never actually create the party until restart.
+        if {'STATIC_SESSION_ENABLED', 'STATIC_SESSION_ID'} & set(changed):
+            party_manager.sync_static_party()
 
         logger.info(f"Admin config updated: {changed}")
         return ConfigUpdateResponse(success=True, changed=changed, config=config.get_runtime_dict())
