@@ -348,7 +348,9 @@ onUnmounted(() => {
   party.leave()
 })
 
-// Preload all text subtitles as hidden tracks when video changes
+// Preload all text subtitles as hidden tracks when video changes.
+// The browser's CC button and the dropdown both pick from this preloaded
+// set by toggling textTrack.mode -- no network roundtrip per switch.
 watch(() => party.currentVideo, async (video) => {
   if (!video?.item_id || !video?.media_source_id) return
   await nextTick()
@@ -356,13 +358,21 @@ watch(() => party.currentVideo, async (video) => {
   const ve = vp?.videoEl
   if (!ve) return
 
+  // Clear any tracks left over from a previous video so the CC menu
+  // does not accumulate stale entries.
+  ve.querySelectorAll('track').forEach((t) => t.remove())
+
   try {
     const streams = await api.itemStreams(video.item_id)
     const textSubs = (streams.subtitles || []).filter((s: any) => !s.isPGS && s.isTextSubtitleStream)
     textSubs.forEach((sub: any) => {
       const track = document.createElement('track')
       track.kind = 'subtitles'
-      track.label = sub.displayLanguage || sub.language || 'Unknown'
+      let label = sub.displayLanguage || sub.language || 'Unknown'
+      if (sub.title) label += ` (${sub.title})`
+      if (sub.isForced) label += ' [Forced]'
+      if (sub.isExternal) label += ' [External]'
+      track.label = label
       track.srclang = sub.language || 'und'
       track.src = `/api/subtitles/${video.item_id}/${video.media_source_id}/${sub.index}`
       ;(track as any).mode = 'hidden'
@@ -612,18 +622,34 @@ function onChangeTextSubtitle(payload: { index: number; url: string | null }) {
   const ve = vp?.videoEl
   if (!ve) return
 
-  for (let i = 0; i < ve.textTracks.length; i += 1) {
-    const textTrack = ve.textTracks[i]
-    if (textTrack) textTrack.mode = 'disabled'
+  // "None" selected -- disable every track but leave the preloaded set in
+  // place so the CC button can still switch back later without a refetch.
+  if (payload.index === -1 || !payload.url) {
+    for (let i = 0; i < ve.textTracks.length; i += 1) {
+      const tt = ve.textTracks[i]
+      if (tt) tt.mode = 'disabled'
+    }
+    return
   }
 
-  // Remove existing text tracks
-  const existingTracks = ve.querySelectorAll('track')
-  existingTracks.forEach((t) => t.remove())
+  // Find the preloaded <track> whose src matches the requested url. The
+  // src attribute resolves to an absolute URL but endsWith on the relative
+  // path still matches because the suffix is identical.
+  const tracks = Array.from(ve.querySelectorAll('track'))
+  const target = tracks.find((t) => t.src.endsWith(payload.url!))
 
-  if (payload.index === -1 || !payload.url) return
+  if (target) {
+    // Already preloaded -- just flip modes. This is identical to what the
+    // browser's CC button does, so the dropdown and CC stay in sync.
+    for (let i = 0; i < ve.textTracks.length; i += 1) {
+      const tt = ve.textTracks[i]
+      if (tt) tt.mode = tt === target.track ? 'showing' : 'disabled'
+    }
+    return
+  }
 
-  // Add new text track
+  // Fallback for ad-hoc subtitles not in the preload set (rare -- the
+  // dropdown filter and the auto-load filter use the same criteria).
   const track = document.createElement('track')
   track.kind = 'subtitles'
   track.label = 'Subtitles'
@@ -633,8 +659,8 @@ function onChangeTextSubtitle(payload: { index: number; url: string | null }) {
 
   const showTrack = () => {
     for (let i = 0; i < ve.textTracks.length; i += 1) {
-      const textTrack = ve.textTracks[i]
-      if (textTrack) textTrack.mode = textTrack === track.track ? 'showing' : 'disabled'
+      const tt = ve.textTracks[i]
+      if (tt) tt.mode = tt === track.track ? 'showing' : 'disabled'
     }
   }
 
