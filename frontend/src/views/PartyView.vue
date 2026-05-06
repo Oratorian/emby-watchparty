@@ -360,11 +360,29 @@ onUnmounted(() => {
   party.leave()
 })
 
-// Preload all text subtitles as hidden tracks when video changes.
-// The browser's CC button and the dropdown both pick from this preloaded
-// set by toggling textTrack.mode -- no network roundtrip per switch.
+// Preload all text subtitles as hidden tracks when the video or media
+// source changes, and set the default sub to mode='showing' on initial
+// load. The browser's CC button and the dropdown both pick from this
+// preloaded set by toggling textTrack.mode -- no network roundtrip per
+// switch. We also handle "auto-show default" here (instead of having
+// VideoControls emit change-text-subtitle on initial fetch) so there is
+// no race between the auto-load API call and the dropdown's initial
+// selection -- both used to fire in parallel and the dropdown's path
+// would create an ad-hoc <track> labelled "Subtitles" before the
+// preloaded set landed, leaving the CC menu with a stray duplicate.
+let lastSubtitlePreloadKey: string | null = null
 watch(() => party.currentVideo, async (video) => {
   if (!video?.item_id || !video?.media_source_id) return
+
+  // Skip re-fire when neither item_id nor media_source_id changed.
+  // A PGS pick triggers change_streams which updates currentVideo by
+  // reference but keeps both ids stable, so re-running the preload
+  // would needlessly clear the user's currently-showing text sub.
+  const key = `${video.item_id}:${video.media_source_id}`
+  if (key === lastSubtitlePreloadKey) return
+  const isNewItem = !lastSubtitlePreloadKey || lastSubtitlePreloadKey.split(':')[0] !== video.item_id
+  lastSubtitlePreloadKey = key
+
   await nextTick()
   const vp = videoPlayer.value
   const ve = vp?.videoEl
@@ -377,6 +395,11 @@ watch(() => party.currentVideo, async (video) => {
   try {
     const streams = await api.itemStreams(video.item_id)
     const textSubs = (streams.subtitles || []).filter((s: any) => !s.isPGS && s.isTextSubtitleStream)
+    // Only auto-show the default sub when the item actually changed.
+    // For media-source switches on the same item (e.g. dual-format
+    // releases) keep tracks hidden so we do not override a selection
+    // the user already made.
+    const defaultSub = isNewItem ? textSubs.find((s: any) => s.isDefault) : null
     textSubs.forEach((sub: any) => {
       const track = document.createElement('track')
       track.kind = 'subtitles'
@@ -387,7 +410,8 @@ watch(() => party.currentVideo, async (video) => {
       track.label = label
       track.srclang = sub.language || 'und'
       track.src = `/api/subtitles/${video.item_id}/${video.media_source_id}/${sub.index}`
-      ;(track as any).mode = 'hidden'
+      const isDefault = defaultSub && sub.index === defaultSub.index
+      ;(track as any).mode = isDefault ? 'showing' : 'hidden'
       ve.appendChild(track)
     })
   } catch { /* ignore */ }

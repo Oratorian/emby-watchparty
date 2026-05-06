@@ -77,11 +77,16 @@ function formatAudioLabel(track: AudioStream): string {
 }
 
 function formatSubtitleLabel(track: SubtitleStream): string {
-  const lang = track.displayLanguage || track.language || 'Unknown'
-  const codec = (track.codec || '').toUpperCase()
-  const mode = track.isPGS ? 'burned in' : 'text'
-  const def = track.isDefault ? ' *' : ''
-  return `${lang} (${codec}, ${mode})${def}`
+  // Keep this in sync with the <track> label construction in
+  // PartyView.vue's auto-load watcher so the dropdown and the browser's
+  // native CC button menu show the same text for the same subtitle.
+  let label = track.displayLanguage || track.language || 'Unknown'
+  if (track.title) label += ` (${track.title})`
+  if (track.isForced) label += ' [Forced]'
+  if (track.isExternal) label += ' [External]'
+  if (track.isPGS) label += ' (burned in)'
+  if (track.isDefault) label += ' *'
+  return label
 }
 
 const showIntroButton = computed(() => {
@@ -94,18 +99,18 @@ function selectedBurnedSubtitleIndex(): number {
   return track?.isPGS ? track.index : -1
 }
 
-function selectedSubtitleKey(): string | null {
+function applyInitialSubtitleSelection() {
+  // Only auto-apply the default selection for PGS / image subs, which
+  // need a backend stream restart with SubtitleMethod=Encode. Text-sub
+  // auto-show is handled by PartyView's auto-load watcher, which sets
+  // textTrack.mode='showing' on the default <track> as it preloads --
+  // routing text subs through this path raced the auto-load and left
+  // a stray ad-hoc 'Subtitles' track in the CC menu.
   const idx = selectedSubtitle.value
   const track = subtitleTracks.value.find((t) => t.index === idx)
-  if (idx === -1 || !track) return null
-  if (track.isPGS) return `${props.itemId}:${idx}:burned`
-  if (!props.mediaSourceId) return null
-  return `${props.itemId}:${idx}:${props.mediaSourceId}`
-}
-
-function applyInitialSubtitleSelection() {
-  const key = selectedSubtitleKey()
-  if (!key || appliedInitialSubtitleKey.value === key) return
+  if (!track || !track.isPGS) return
+  const key = `${props.itemId}:${idx}:burned`
+  if (appliedInitialSubtitleKey.value === key) return
   onSubtitleChange()
   appliedInitialSubtitleKey.value = key
 }
