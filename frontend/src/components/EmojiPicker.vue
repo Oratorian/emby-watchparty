@@ -134,8 +134,10 @@ onUnmounted(cleanup)
   /* Position, width, height, and overflow are set inline from
      positionPanel() because scoped CSS can be unreliable on
      Teleport-ed elements in some Vue/build setups. This rule only
-     carries the cosmetic / scrollbar-thinning bits. */
-  scrollbar-width: thin;
+     carries the cosmetic / scrollbar-hiding bits. The scrollbar is
+     hidden entirely so the picker reads as visually symmetric --
+     mouse wheel and touch scrolling still work natively. */
+  scrollbar-width: none;
 }
 
 .emoji-panel-inner {
@@ -148,20 +150,7 @@ onUnmounted(cleanup)
 }
 
 .emoji-panel::-webkit-scrollbar {
-  width: 6px;
-}
-
-.emoji-panel::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.emoji-panel::-webkit-scrollbar-thumb {
-  background: var(--border-default);
-  border-radius: 3px;
-}
-
-.emoji-panel::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  display: none;
 }
 
 .emoji-category {
