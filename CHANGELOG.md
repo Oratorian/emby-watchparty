@@ -28,6 +28,8 @@ This is the working entry for 2.0. The version is `2.0.0-dev` and the branch is 
 - **User guide** ([docs/USER_GUIDE.md](docs/USER_GUIDE.md)) covering the full end-user experience including the vote flow, admin panel, and troubleshooting.
 - **Mobile chat panel**: chat slides in over the video on narrow screens with a tap-to-dismiss backdrop. (NewBlade)
 - **Reload-as-rejoin**: refreshing the page in an active party is now recognised as a rejoin instead of triggering a vote on yourself. (NewBlade)
+- **Library browse position persists across refresh / rejoin / app restart**: drilling into Movies > Action then reloading the page now lands you back in Action with the breadcrumb intact. Saved per-browser in localStorage, falls back to the root if the saved item no longer exists.
+- **Library auto-opens on Stop Video**: clicking Stop Video pops the library open in one gesture instead of leaving everyone on a "Browse Library" button. Fires for every user in the party.
 - **Codename system**: 2.0 carries the codename "Midnight Premiere", shown on the version page and in the startup banner.
 
 ### Changed
@@ -48,6 +50,12 @@ This is the working entry for 2.0. The version is `2.0.0-dev` and the branch is 
 - **Browser pause events fired during seeks** were broadcast to the rest of the party, causing flicker. Now debounced. (NewBlade)
 - **Seek events left the server's playing state stale**, causing intermittent state divergence between clients. Fixed. (NewBlade)
 - **HLS transcode silently picked stream-copy** over real transcoding for some sources, breaking quality presets. `EnableAutoStreamCopy=false` ported from 1.6.3.
+- **Phantom "Andrew seeked to..." chat spam during normal playback** at 5-6 messages per second. Looked like real seeks; was actually Vite HMR stacking duplicate socket listeners across reloads. Fixed by clearing existing listeners before re-registering at every setup point.
+- **Subtitle architecture conflict** between HLS.js manifest text tracks and side-channel `<track>` elements (1.6.6 backend + frontend backport). Manifest text-sub params removed from the HLS URL; side-channel proxy is now the single source for text subs. CC menu shows distinct labels for variants like `English (Signs & Songs)`, `English [Forced]`, `English [External]`.
+- **CC menu duplicate "Subtitles" entry** when the dropdown's initial-default emit raced the auto-load. Auto-show for the default text sub now happens inside the auto-load watcher so there is no parallel emit to race with.
+- **Static session settings required a full restart** to take effect. Toggling "static session = X" via /admin now applies immediately; renaming the id without restart also works.
+- **Emoji picker right-side cropping** caused by `.party-content`'s `overflow: hidden` clipping the absolutely-positioned panel. Picker now teleports to `<body>` with computed `position: fixed`, escaping the clip context entirely.
+- **Emoji picker scroll jitter** where scrolling the picker shifted it leftward by sub-pixels per wheel tick. Capture-phase scroll listener was firing on the picker's own internal scroll; switched to default-phase so only page-level scroll triggers reposition.
 
 ### Removed
 
@@ -124,6 +132,78 @@ The 2.0 dropdown was hiding text subtitles entirely and only showing burned-in i
 **Mobile chat panel (NewBlade)**
 
 Sliding panel via CSS `transform: translateX(...)` with a backdrop click-to-dismiss, gated by a `showMobileChat` ref and a 760px media query. The header centre section hides on narrow screens to keep room for the chat toggle button.
+
+**Phantom seek spam (HMR socket listener stacking)**
+
+Symptom: chat flooded with "Andrew seeked to 00:01 / 00:02 / 00:03..." 5-6 messages per second during normal playback with no user interaction. The trigger condition narrowed to "happens after picking a subtitle from the dropdown". Several rounds of investigation chased architectural theories -- HLS.js text-track coordination, programmatic `textTrack.mode = 'showing'` triggering native seeks, parent overflow clipping. None of those were the cause.
+
+Actual root cause: Vite HMR was reloading `stores/party.ts` and `views/PartyView.vue` repeatedly across our editing session, and each reload re-ran `setupListeners()` and `onMounted()` which call `socket.on(eventName, handler)` for ~17 different events. Neither setup function ever called `socket.off`, so each HMR cycle stacked another full set of handlers on the same socket.io connection. After ~6 reloads, a single server `seek` broadcast fired its chat-message side effect 6 times.
+
+The math gave it away: with a 500ms debounce on `onVideoSeeked`, the maximum legitimate emit rate is 2 per second. 5-6 messages per second is impossible from one listener. Once spotted, the fix was straightforward: at the top of each setup function, call `socket.off(eventName)` for every event the function is about to register, dropping any previously-bound handlers before re-registering.
+
+Note for future patches: when adding a new `socket.on(...)` in either `stores/party.ts` `setupListeners` or `PartyView.vue` `onMounted`, also add the event name to the corresponding `off()` list at the top so the guarantee keeps holding.
+
+**Subtitle architecture: 1.6.6 backport**
+
+Three pieces of 1.6.6 in 1.x ported to 2.0 to make the dropdown and the browser's CC button drive the same underlying preloaded `<track>` set:
+
+1. *Backend manifest text-sub params removed* from `stream_builder.build_stream_params`. Dropped the unconditional `SubtitleMethod=Hls`, `ManifestSubtitles=vtt`, and the `subtitle_indexes` collection that fed `SubtitleStreamIndexes`. `SubtitleStreamIndex` is now only emitted when an image sub is selected, paired with `SubtitleMethod=Encode` for backend burn-in. Text subs are handled exclusively by the side-channel proxy at `/api/subtitles/<item>/<msid>/<idx>`.
+2. *Frontend `onChangeTextSubtitle` rewritten* to find the preloaded `<track>` by URL match and toggle `textTrack.mode` instead of wiping the entire `<track>` set. The dropdown and CC button now perform identical operations on the same preloaded tracks. Falls back to ad-hoc `<track>` creation only when the picked sub is not in the preload set.
+3. *1.6.6 label clarity* in the auto-load watcher: `<track>` labels now combine `displayLanguage`, `title`, and `[Forced]` / `[External]` markers so multi-variant releases like "English (Signs & Songs)" / "English (Full)" / "English [SDH]" show as distinct CC menu entries.
+
+The auto-load watcher itself was reworked to skip re-fire when neither `item_id` nor `media_source_id` changed -- a PGS pick triggers `change_streams` which updates `currentVideo` by reference but keeps both ids stable, so re-running the preload would needlessly clear and re-add tracks (and re-show the default), wiping the user's selection. Default text sub is auto-shown only on actual item changes, eliminating a race with the dropdown's initial-selection path that used to leave a stray "Subtitles" entry in the CC menu.
+
+`applyInitialSubtitleSelection` in `VideoControls` is now PGS-only. Image subs need a backend stream restart with `SubtitleMethod=Encode` and that path stays explicit; text-sub auto-show is owned by the auto-load watcher.
+
+HLS.js native text-track features (`subtitleDisplay`, `enableWebVTT`, `renderTextTracksNatively`) are explicitly disabled. Subtitle handling lives entirely outside HLS.js now -- the auto-load watcher manages text-sub `<track>` elements directly, and PGS subs are burned into the video by Emby. HLS.js no longer has any reason to touch textTracks state.
+
+**Library browse position persistence**
+
+A new localStorage key `emby-watchparty-library-state` stores `{ breadcrumbs, parentId }` after every successful `fetchItems` call. Cleared after `fetchLibraries` (root view), so going home wipes the saved state and the next mount starts at the root. Restored in `onMounted` by populating breadcrumbs and calling `fetchItems(savedParentId)`. Stale-state guard: if the saved parent no longer exists in Emby, `fetchItems` returns empty, the component falls back to the root, and the stale state is cleared. Search state is intentionally not saved -- searches reset breadcrumbs and are transient.
+
+**Auto-open library on Stop Video**
+
+A watcher on `party.currentVideo` for non-null -> null transitions sets `showLibrary = true`. Fires for every user in the party because `video_stopped` clears `currentVideo` everywhere. `video_ended` (movie plays to completion) does NOT clear `currentVideo`, only resets `playbackState`, so this does not auto-open at the end of an episode -- intentional, that flow may be auto-binge-watching the next one.
+
+**Emoji picker rework**
+
+Original layout: `position: absolute` inside `.chat-input` inside `.chat-panel` inside `.party-content`. The latter has `overflow: hidden` to contain the side-by-side video + chat layout. Any absolute-positioned descendant of `.party-content` gets clipped at its bounds, so the picker's right side was being chopped off regardless of how wide the panel was made.
+
+Fix: `<Teleport to="body">` + `position: fixed` lifts the panel out of the clip context entirely. Position computed from the trigger button's `getBoundingClientRect()` on open and reapplied on resize / page-scroll. Layout properties (`width`, `max-height`, `overflow`, `box-sizing`, `z-index`, `position`) are set inline rather than via scoped CSS so any Teleport-edge-case where the data-v scope id does not propagate cannot affect them.
+
+The internal scrollbar is hidden entirely (`scrollbar-width: none` for Firefox, `::-webkit-scrollbar { display: none }` for Chromium / Safari). Mouse wheel, touch, and arrow-key scrolling still work natively, but no visible bar consumes the right edge -- the panel reads as visually symmetric on all four sides.
+
+Two bonus improvements added during the rework:
+- *Click-outside-to-close*: was missing originally (only re-clicking the trigger would close it).
+- *Scroll-listener phase fix*: the resize/scroll repositioning listener originally used capture phase, which caught the picker's OWN internal scroll events too. Each wheel tick re-measured the trigger via `getBoundingClientRect` and re-applied right/bottom, with sub-pixel rounding visible as a leftward jitter while scrolling. Switched to default-phase scroll listener, so only page-level scroll triggers reposition.
+
+**Static session hot-reload**
+
+The admin save endpoint persisted `STATIC_SESSION_ENABLED` and `STATIC_SESSION_ID` to `config.json` and updated the in-memory runtime config, but never told `PartyManager` to actually create the static party in `watch_parties`. Toggling static session ON via /admin would persist the setting but `/party/<id>` returned "Watch party not found" until the next restart -- and even after restart only worked if the user remembered the new id.
+
+`PartyManager` now tracks `_last_static_id` and exposes a new `sync_static_party()` method that reconciles with current config: removes the previous static party if its id no longer matches (rename) or static sessions are now disabled, and creates the configured party if it is missing. The admin handler calls `sync_static_party()` whenever `STATIC_SESSION_ENABLED` or `STATIC_SESSION_ID` is in the changed-fields set, with the party_manager dependency added to the handler signature.
+
+---
+
+### NewBlade contribution outcomes
+
+After porting NewBlade's batch and going through several rounds of testing, here is which commits remain effective in the codebase as of this writing. Author attribution is preserved in git history for all 11 commits regardless of whether the code survived in its original form.
+
+| Commit | Title | Outcome |
+|---|---|---|
+| `bcafaa6` | Fix text subtitle selection in rework UI | ✅ Active. Briefly reverted in `d0b3380` while phantom seeks were misdiagnosed as a `textTrack.mode` issue, then restored in `3dc96c8` once HMR listener stacking was identified as the real cause. |
+| `0ad5b38` | Hide chat panel on narrow screens | ✅ Active. Mobile chat panel unchanged. |
+| `4f1f35c` | Preserve playback state across seeks | ✅ Active. Backend `handle_seek` + frontend store `seek` listener both kept verbatim. |
+| `acd6467` | Enable selected text subtitle track | ⚠️ Replaced. The wipe-and-replace approach in `onChangeTextSubtitle` was rewritten in `2bd8245` to a find-and-toggle-modes approach that preserves the auto-loaded `<track>` set. Conceptual goal (make the picked text sub actually show) is preserved; the implementation differs. |
+| `fdc2ea6` | Fix text track type checks | ⚠️ Dead code. The function the patch targeted was rewritten; the type checks no longer exist in the new code path. |
+| `7ffebcf` | Use indexed text track access | ⚠️ Dead code. Same as above -- patched a function that no longer exists. |
+| `e6fd406` | Ignore native pause during seek | ✅ Active. 250ms debounce on `onVideoPause` + `wasPlayingBeforeSeek` sticky logic unchanged. |
+| `1904e65` | Reset ready check clock on resume | ✅ Active. Backend `last_update` reset + frontend `resumeAfterReadyCheck` payload unchanged. |
+| `a2bbb16` | Apply initial subtitle selection | 🔧 Modified. Now PGS-only (`aba43a4`). Text-sub default-show was moved into the auto-load watcher in `PartyView.vue` to eliminate a race where the dropdown's initial emit could reach `onChangeTextSubtitle` before the auto-load had populated the preloaded tracks. |
+| `68493ba` | Treat client reloads as participant rejoin | ✅ Active. `client_id`-based rejoin handling unchanged -- the architectural keystone of the whole batch. |
+| `3dc006a` | Fix client id UUID generation | ✅ Active. TypeScript cleanup unchanged. |
+
+Net: 7 of 11 commits active as-shipped, 1 modified in scope, 3 superseded by a different implementation of the same goal. The architectural pattern NewBlade introduced -- per-client UUID for rejoin handling, per-user state migration via `_replace_sid`, ready-check clock semantics -- carried through unchanged and forms the structural backbone of how 2.0 handles reload and rejoin.
 
 ---
 
