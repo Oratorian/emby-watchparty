@@ -95,6 +95,50 @@ const PAGE_SIZE = 50
 const browsableTypes = new Set(['CollectionFolder', 'Folder', 'Series', 'Season'])
 const playableTypes = new Set(['Movie', 'Episode'])
 
+// Persist the user's browsing position so they don't have to
+// re-navigate from the root after a refresh, party rejoin, or
+// app restart. Search state and root view are intentionally not
+// saved -- those are transient or default.
+const LIBRARY_STATE_KEY = 'emby-watchparty-library-state'
+
+interface LibraryState {
+  breadcrumbs: Breadcrumb[]
+  parentId: string
+}
+
+function saveLibraryState() {
+  if (!currentParentId.value) return
+  try {
+    const state: LibraryState = {
+      breadcrumbs: [...breadcrumbs.value],
+      parentId: currentParentId.value,
+    }
+    localStorage.setItem(LIBRARY_STATE_KEY, JSON.stringify(state))
+  } catch {
+    /* ignore quota / disabled storage */
+  }
+}
+
+function clearLibraryState() {
+  try {
+    localStorage.removeItem(LIBRARY_STATE_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadLibraryState(): LibraryState | null {
+  try {
+    const raw = localStorage.getItem(LIBRARY_STATE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed?.parentId || !Array.isArray(parsed?.breadcrumbs)) return null
+    return parsed as LibraryState
+  } catch {
+    return null
+  }
+}
+
 function imageUrl(id: string): string {
   return api.imageUrl(id, 'Primary')
 }
@@ -121,6 +165,7 @@ async function fetchLibraries() {
   try {
     const data = await api.libraries()
     items.value = data.Items ?? data ?? []
+    clearLibraryState()
   } catch {
     items.value = []
   } finally {
@@ -147,6 +192,7 @@ async function fetchItems(parentId: string, append = false) {
     }
     const totalCount = data.TotalRecordCount ?? newItems.length
     hasMore.value = items.value.length < totalCount
+    if (!append && !isSearching.value) saveLibraryState()
   } catch {
     if (!append) items.value = []
     hasMore.value = false
@@ -219,9 +265,29 @@ watch(hasMore, async (val) => {
   }
 })
 
+async function restoreOrFetchRoot() {
+  const saved = loadLibraryState()
+  if (!saved) {
+    await fetchLibraries()
+    return
+  }
+  // Optimistically restore the breadcrumb chain so the header reflects
+  // the saved depth while items load. If the parent no longer exists,
+  // fetchItems comes back empty -- in that case fall back to the root
+  // and clear the stale state.
+  breadcrumbs.value = saved.breadcrumbs
+  await fetchItems(saved.parentId)
+  if (items.value.length === 0) {
+    clearLibraryState()
+    breadcrumbs.value = []
+    currentParentId.value = null
+    await fetchLibraries()
+  }
+}
+
 onMounted(() => {
   setupObserver()
-  fetchLibraries()
+  restoreOrFetchRoot()
 })
 
 onUnmounted(() => {
