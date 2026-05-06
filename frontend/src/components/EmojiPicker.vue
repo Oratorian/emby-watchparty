@@ -82,17 +82,19 @@ onUnmounted(cleanup)
     </button>
     <Teleport to="body">
       <div v-if="open" class="emoji-panel glass" :style="panelStyle">
-        <div v-for="cat in categories" :key="cat.name" class="emoji-category">
-          <div class="emoji-category-name">{{ cat.name }}</div>
-          <div class="emoji-grid">
-            <button
-              v-for="emoji in cat.emojis"
-              :key="emoji"
-              class="emoji-btn"
-              @click="select(emoji)"
-            >
-              {{ emoji }}
-            </button>
+        <div class="emoji-panel-inner">
+          <div v-for="cat in categories" :key="cat.name" class="emoji-category">
+            <div class="emoji-category-name">{{ cat.name }}</div>
+            <div class="emoji-grid">
+              <button
+                v-for="emoji in cat.emojis"
+                :key="emoji"
+                class="emoji-btn"
+                @click="select(emoji)"
+              >
+                {{ emoji }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -122,17 +124,22 @@ onUnmounted(cleanup)
 .emoji-panel {
   /* Teleported to <body> with position:fixed so the panel escapes
      .party-content's overflow:hidden. Coordinates (right/bottom) are
-     set in JS from the trigger button's bounding rect on open. */
+     set in JS from the trigger button's bounding rect on open.
+     No padding here -- padding lives on .emoji-panel-inner below
+     so the scrollbar sits at the panel's true right edge instead of
+     inside the right padding (where it would visually shrink one side). */
   position: fixed;
   width: 296px;
   max-height: 300px;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--space-sm);
   z-index: 1000;
   box-sizing: border-box;
-  scrollbar-gutter: stable;
   scrollbar-width: thin;
+}
+
+.emoji-panel-inner {
+  padding: var(--space-sm);
 }
 
 .emoji-panel::-webkit-scrollbar {
