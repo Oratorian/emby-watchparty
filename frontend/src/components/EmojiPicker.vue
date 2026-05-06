@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, nextTick, onUnmounted } from 'vue'
 
 const emit = defineEmits<{
   select: [emoji: string]
 }>()
 
 const open = ref(false)
+const triggerEl = ref<HTMLButtonElement | null>(null)
+const panelStyle = ref<Record<string, string>>({})
 
 const categories = [
   {
@@ -22,32 +24,79 @@ const categories = [
   },
 ]
 
+function positionPanel() {
+  if (!triggerEl.value) return
+  const r = triggerEl.value.getBoundingClientRect()
+  // Anchor the panel above the trigger, right-aligned with the
+  // trigger so the layout matches the previous position-absolute
+  // behaviour. Coordinates are viewport-relative because the panel
+  // is teleported to <body> with position: fixed.
+  panelStyle.value = {
+    right: `${window.innerWidth - r.right}px`,
+    bottom: `${window.innerHeight - r.top + 8}px`,
+  }
+}
+
+async function toggleOpen() {
+  open.value = !open.value
+  if (open.value) {
+    await nextTick()
+    positionPanel()
+    document.addEventListener('mousedown', onDocClick)
+    window.addEventListener('resize', positionPanel)
+    window.addEventListener('scroll', positionPanel, true)
+  } else {
+    cleanup()
+  }
+}
+
+function cleanup() {
+  document.removeEventListener('mousedown', onDocClick)
+  window.removeEventListener('resize', positionPanel)
+  window.removeEventListener('scroll', positionPanel, true)
+}
+
+function onDocClick(e: MouseEvent) {
+  const target = e.target as Node | null
+  if (!target) return
+  if (triggerEl.value?.contains(target)) return
+  const panel = document.querySelector('.emoji-panel')
+  if (panel?.contains(target)) return
+  open.value = false
+  cleanup()
+}
+
 function select(emoji: string) {
   emit('select', emoji)
   open.value = false
+  cleanup()
 }
+
+onUnmounted(cleanup)
 </script>
 
 <template>
   <div class="emoji-picker-wrapper">
-    <button @click="open = !open" class="emoji-trigger" title="Emoji">
+    <button ref="triggerEl" @click="toggleOpen" class="emoji-trigger" title="Emoji">
       😀
     </button>
-    <div v-if="open" class="emoji-panel glass">
-      <div v-for="cat in categories" :key="cat.name" class="emoji-category">
-        <div class="emoji-category-name">{{ cat.name }}</div>
-        <div class="emoji-grid">
-          <button
-            v-for="emoji in cat.emojis"
-            :key="emoji"
-            class="emoji-btn"
-            @click="select(emoji)"
-          >
-            {{ emoji }}
-          </button>
+    <Teleport to="body">
+      <div v-if="open" class="emoji-panel glass" :style="panelStyle">
+        <div v-for="cat in categories" :key="cat.name" class="emoji-category">
+          <div class="emoji-category-name">{{ cat.name }}</div>
+          <div class="emoji-grid">
+            <button
+              v-for="emoji in cat.emojis"
+              :key="emoji"
+              class="emoji-btn"
+              @click="select(emoji)"
+            >
+              {{ emoji }}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -71,21 +120,16 @@ function select(emoji: string) {
 }
 
 .emoji-panel {
-  position: absolute;
-  bottom: 100%;
-  right: 0;
-  margin-bottom: var(--space-sm);
-  /* Width sized to accommodate the y-scrollbar AND keep symmetric
-     visible padding around the emoji grid. The grid wants ~264px of
-     content area; we add 16px for the panel's left/right padding
-     plus ~16px buffer so the scrollbar does not visually steal from
-     the right padding. */
+  /* Teleported to <body> with position:fixed so the panel escapes
+     .party-content's overflow:hidden. Coordinates (right/bottom) are
+     set in JS from the trigger button's bounding rect on open. */
+  position: fixed;
   width: 296px;
   max-height: 300px;
   overflow-y: auto;
   overflow-x: hidden;
   padding: var(--space-sm);
-  z-index: 100;
+  z-index: 1000;
   box-sizing: border-box;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
