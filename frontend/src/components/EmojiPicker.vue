@@ -75,17 +75,18 @@ function select(emoji: string) {
   bottom: 100%;
   right: 0;
   margin-bottom: var(--space-sm);
-  width: 280px;
+  /* Width sized to accommodate the y-scrollbar AND keep symmetric
+     visible padding around the emoji grid. The grid wants ~264px of
+     content area; we add 16px for the panel's left/right padding
+     plus ~16px buffer so the scrollbar does not visually steal from
+     the right padding. */
+  width: 296px;
   max-height: 300px;
   overflow-y: auto;
   overflow-x: hidden;
   padding: var(--space-sm);
   z-index: 100;
   box-sizing: border-box;
-  /* Reserve space for the y-scrollbar so it does not eat into the
-     visible right padding. Without this, classic scrollbars (Windows)
-     sit in the padding area and the picker looks lopsided -- left
-     padding intact, right padding visually shrunk. */
   scrollbar-gutter: stable;
   scrollbar-width: thin;
 }
