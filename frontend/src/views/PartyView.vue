@@ -160,7 +160,18 @@ onMounted(async () => {
     // Server sends media time, convert to stream-local time for this user
     const streamTime = toStreamTime(data.time)
     if (ve) {
-      ve.currentTime = streamTime
+      // Only re-seek if our position actually differs. The backend
+      // broadcasts 'seek' to the whole room without skip_sid in the
+      // was_playing branch, so the seeker receives their own seek
+      // back. ve.currentTime is already at streamTime in that case;
+      // assigning it again can fire a phantom 'seeked' event that
+      // queues, runs after isSyncing has been released by
+      // resumeAfterReadyCheck, and re-emits a seek -- which the
+      // backend then broadcasts back, repeating the cycle every
+      // ~500ms. The pause handler above already guards this way.
+      if (Math.abs(ve.currentTime - streamTime) > 0.3) {
+        ve.currentTime = streamTime
+      }
       if (data.playing && data.wait_for_ready) {
         // Wait for buffer, then signal ready -- all_ready will trigger play
         const signalReady = () => {
