@@ -588,6 +588,23 @@ function onVideoSeeked(time: number) {
   if (!party.partyId || isInitialSync) return
   if (videoPlayer.value?.isSyncing) return
 
+  // Phantom-seek guard: HLS.js fires 'seeked' events during initial
+  // buffer alignment and segment transitions that look identical to
+  // user seeks at the DOM level. If the seek target is within ~2s of
+  // where natural playback would have advanced to from the last
+  // timeupdate, this is almost certainly a phantom event. Real user
+  // seeks are normally many seconds away from the previous position
+  // (drag the timeline); intra-second adjustments aren't worth
+  // broadcasting and are usually corrections HLS.js is making to its
+  // own buffer.
+  if (lastNaturalAt > 0) {
+    const elapsed = (Date.now() - lastNaturalAt) / 1000
+    const expected = lastNaturalTime + elapsed
+    if (Math.abs(time - expected) < 2.0) {
+      return
+    }
+  }
+
   // Seek settle timer -- wait 500ms for rapid seeks to settle
   if (seekSettleTimer) clearTimeout(seekSettleTimer)
   seekSettleTimer = setTimeout(() => {
@@ -609,6 +626,12 @@ function onVideoSeeked(time: number) {
 let lastProgressReport = 0
 const PROGRESS_INTERVAL = 10000 // 10 seconds
 
+// Track natural playback progression so onVideoSeeked can distinguish
+// real user-initiated seeks from phantom 'seeked' events fired by
+// HLS.js during buffer alignment / initial decode.
+let lastNaturalTime = 0
+let lastNaturalAt = 0
+
 function onVideoTimeUpdate(time: number) {
   // HLS.js reports currentTime as the media position directly, even
   // for late-joiner streams with StartTimeTicks offsets.
@@ -622,6 +645,11 @@ function onVideoTimeUpdate(time: number) {
   if (Math.abs(time - currentTime.value) >= 1) {
     currentTime.value = time
   }
+  // Always update the natural-progression tracker. We need this on
+  // every timeupdate (not just throttled ones) so phantom seek
+  // detection has a fresh reference point.
+  lastNaturalTime = time
+  lastNaturalAt = Date.now()
   if (!party.partyId || isInitialSync) return
   const ve = videoPlayer.value?.videoEl
   if (!ve || !ve.src || ve.readyState < 2 || ve.paused) return
