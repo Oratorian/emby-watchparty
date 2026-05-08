@@ -84,9 +84,7 @@ class StreamBuilder:
             # stream-copies h264 sources into HLS segments at the source's
             # original keyframe boundaries, producing segments with irregular
             # durations that break seeking in HLS.js (issue #25).
-            # "EnableAutoStreamCopy=false",  # TEMP: testing whether seek
-            # bug from #25 is actually a drift-correction artifact, not
-            # caused by stream-copy itself. Re-enable if seeking breaks.
+            "EnableAutoStreamCopy=false",
             "MinSegments=1",
             "h264-profile=high,main,baseline,constrainedbaseline",
             "h264-level=62",
