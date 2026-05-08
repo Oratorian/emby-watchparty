@@ -84,7 +84,11 @@ class StreamBuilder:
             # stream-copies h264 sources into HLS segments at the source's
             # original keyframe boundaries, producing segments with irregular
             # durations that break seeking in HLS.js (issue #25).
-            "EnableAutoStreamCopy=false",
+            # "EnableAutoStreamCopy=false",  # disabled for closed-beta:
+            # the seek-cascade bug it was masking is fixed in 0fd914d,
+            # and phantom HLS.js seeks during stream-copy startup are
+            # suppressed by the natural-progression guard in 4562b03.
+            # Re-enable if seeking on stream-copy sources misbehaves.
             "MinSegments=1",
             "h264-profile=high,main,baseline,constrainedbaseline",
             "h264-level=62",
