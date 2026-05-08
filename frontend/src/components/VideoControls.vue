@@ -18,6 +18,8 @@ interface SubtitleStream {
   displayLanguage: string
   codec: string
   isDefault: boolean
+  isForced: boolean
+  isExternal: boolean
   isPGS: boolean
   title: string
 }
