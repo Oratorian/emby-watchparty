@@ -38,7 +38,7 @@
           class="item-card"
           @click="handleItemClick(item)"
         >
-          <div class="item-poster">
+          <div class="item-poster" :style="posterStyle(item)">
             <img
               v-if="item.ImageTags?.Primary"
               :src="imageUrl(item.Id)"
@@ -69,6 +69,7 @@ interface EmbyItem {
   Name: string
   Type: string
   ImageTags?: { Primary?: string }
+  PrimaryImageAspectRatio?: number
   ProductionYear?: number
   Overview?: string
 }
@@ -141,6 +142,28 @@ function loadLibraryState(): LibraryState | null {
 
 function imageUrl(id: string): string {
   return api.imageUrl(id, 'Primary')
+}
+
+// Compute the card's aspect ratio from Emby's PrimaryImageAspectRatio.
+// Emby returns this as a float (width/height): 0.667 for 2:3 portrait,
+// 1.778 for 16:9 landscape, ~4.0 for ultra-wide custom banners. By
+// applying it inline per card, each image fits its native aspect with
+// no cropping and no awkward letterboxing. The grid arranges cards of
+// varying heights via auto-fill; rows accommodate the tallest card in
+// the row, and short cards just take less vertical space.
+//
+// Clamped to [0.4, 4.0] so absurd source aspects do not produce
+// unreadable cards (e.g. an extremely tall thumbnail or a 10:1
+// banner). Falls back to 2:3 portrait when Emby does not provide a
+// ratio, matching the typical movie/episode poster shape.
+function posterStyle(item: EmbyItem): Record<string, string> {
+  let ratio = item.PrimaryImageAspectRatio
+  if (!ratio || !isFinite(ratio) || ratio <= 0) {
+    ratio = 2 / 3
+  } else {
+    ratio = Math.min(4.0, Math.max(0.4, ratio))
+  }
+  return { aspectRatio: String(ratio) }
 }
 
 async function goToRoot() {
@@ -412,22 +435,21 @@ onUnmounted(() => {
 }
 
 .item-poster {
+  /* aspect-ratio is set inline via posterStyle() from each item's
+     PrimaryImageAspectRatio so each card matches its image. The
+     fallback 2/3 here applies only if inline style fails to attach. */
   aspect-ratio: 2 / 3;
   overflow: hidden;
   background: var(--bg-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .item-poster img {
   width: 100%;
   height: 100%;
-  /* `contain` instead of `cover` so non-poster aspect ratios (e.g.
-     custom collection banners on heavily-modified Emby setups) are
-     letterboxed rather than cropped. Standard 2:3 posters still fill
-     the card because contain == cover when the aspect ratios match. */
-  object-fit: contain;
+  /* `cover` is safe again now that the card's aspect ratio matches
+     the source image's. No cropping happens when source and container
+     match. */
+  object-fit: cover;
 }
 
 .no-poster {

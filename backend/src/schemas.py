@@ -73,6 +73,7 @@ class LibraryItem(BaseModel):
     ServerId: Optional[str] = None
     ImageTags: Optional[dict] = None
     BackdropImageTags: Optional[list[str]] = None
+    PrimaryImageAspectRatio: Optional[float] = None
     ProductionYear: Optional[int] = None
     Overview: Optional[str] = None
     RunTimeTicks: Optional[int] = None
