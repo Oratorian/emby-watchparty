@@ -63,8 +63,9 @@ function joinParty() {
           <input
             v-model="partyCode"
             @keypress.enter="joinParty"
-            placeholder="Enter party code"
+            placeholder="Party code"
             type="text"
+            maxlength="6"
           />
           <button @click="joinParty" class="btn btn-secondary">Join</button>
         </div>
@@ -168,6 +169,18 @@ function joinParty() {
   text-transform: uppercase;
   letter-spacing: 0.15em;
   font-weight: 600;
+  min-width: 0;
+}
+
+/* Placeholder text bypasses the uppercase + wide letter-spacing
+   styling that real codes get. Otherwise the placeholder renders
+   wider than the input and Chrome shows truncation artifacts where
+   the last characters get clipped. */
+.join-form input::placeholder {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  font-size: 0.9em;
 }
 
 .status-msg {
