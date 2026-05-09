@@ -400,12 +400,19 @@ onUnmounted(() => {
   aspect-ratio: 2 / 3;
   overflow: hidden;
   background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .item-poster img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* `contain` instead of `cover` so non-poster aspect ratios (e.g.
+     custom collection banners on heavily-modified Emby setups) are
+     letterboxed rather than cropped. Standard 2:3 posters still fill
+     the card because contain == cover when the aspect ratios match. */
+  object-fit: contain;
 }
 
 .no-poster {
