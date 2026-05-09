@@ -173,6 +173,20 @@ async function fetchLibraries() {
   }
 }
 
+// Types we render as cards. Generic `Folder` is intentionally
+// excluded: Emby's /emby/Items endpoint can return raw filesystem
+// folder entries that shadow the same physical paths as proper Movie
+// or Episode items. Showing both produces broken-looking duplicates
+// (filename as Name, single-character placeholder image) alongside
+// the metadata-rich originals. 1.x's library.js filter does the
+// same thing -- it kept only Movie / Series / Video at the library
+// level. This filter generalises that to any depth of navigation.
+const displayableTypes = new Set([
+  'CollectionFolder', 'BoxSet',
+  'Movie', 'Series', 'Season', 'Episode', 'Video',
+  'MusicAlbum', 'MusicArtist', 'Audio',
+])
+
 async function fetchItems(parentId: string, append = false) {
   if (append) {
     loadingMore.value = true
@@ -184,7 +198,8 @@ async function fetchItems(parentId: string, append = false) {
   try {
     const startIndex = append ? items.value.length : 0
     const data = await api.items({ parentId, startIndex, limit: PAGE_SIZE })
-    const newItems = data.Items ?? data ?? []
+    const rawItems: EmbyItem[] = data.Items ?? data ?? []
+    const newItems = rawItems.filter((it) => displayableTypes.has(it.Type))
     if (append) {
       items.value.push(...newItems)
     } else {
