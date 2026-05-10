@@ -28,6 +28,12 @@ class EmbyClient:
         self.user_id = None
         self.access_token = None
         self.device_id = "emby-watchparty-" + secrets.token_hex(8)
+        # CollectionType per library id ("movies", "tvshows", "boxsets",
+        # "music", "homevideos", ...). Populated lazily on first need by
+        # get_items() so we can route the right IncludeItemTypes /
+        # Recursive flags to Emby. Without this, folder-organised
+        # libraries return raw Folder entries instead of resolved Movies.
+        self._library_collection_types = {}
 
         # If username/password provided, authenticate as that user
         if username and password:
@@ -165,20 +171,78 @@ class EmbyClient:
             self.logger.error(f"Error fetching libraries: {e}")
             return {"Items": []}
 
-    def get_items(self, parent_id=None, item_type=None, recursive=False, start_index=None, limit=None):
-        """Get items from library"""
+    def _ensure_library_cache(self):
+        """Populate the library -> CollectionType cache the first time
+        we need to know what kind of content a library holds. Used by
+        get_items() to set the right IncludeItemTypes / Recursive
+        flags so folder-organised libraries return their Movies (or
+        Series) directly rather than raw Folder entries.
+        """
+        if self._library_collection_types:
+            return
         try:
-            url = f"{self.server_url}/emby/Items"
+            libs = self.get_libraries().get("Items", [])
+            for lib in libs:
+                lib_id = lib.get("Id")
+                if lib_id:
+                    self._library_collection_types[lib_id] = lib.get("CollectionType")
+        except Exception as e:
+            self.logger.warning(f"Could not populate library cache: {e}")
+
+    def get_items(self, parent_id=None, item_type=None, recursive=False, start_index=None, limit=None):
+        """Get items from library.
+
+        When parent_id refers to a top-level library (CollectionFolder),
+        derive the right IncludeItemTypes and Recursive flags from the
+        library's CollectionType so Emby resolves folder-organised
+        content into the actual Movie / Series items instead of
+        returning raw Folder entries. For deeper navigation
+        (Series -> Seasons -> Episodes, BoxSet -> Movies, etc.) the
+        natural Emby semantics already work, so we leave the request
+        alone.
+
+        Uses the user-scoped /emby/Users/{user_id}/Items endpoint when
+        a user_id is known, falling back to /emby/Items otherwise.
+        """
+        try:
+            # Auto-derive query params for top-level library navigation.
+            # Caller-provided item_type or recursive=True wins so explicit
+            # callers can still drive the query themselves (e.g. search).
+            effective_type = item_type
+            effective_recursive = recursive
+            if parent_id and not item_type and not recursive:
+                self._ensure_library_cache()
+                collection_type = self._library_collection_types.get(parent_id)
+                if collection_type == "movies":
+                    effective_type = "Movie"
+                    effective_recursive = True
+                elif collection_type == "tvshows":
+                    effective_type = "Series"
+                    effective_recursive = False
+                elif collection_type == "boxsets":
+                    effective_type = "BoxSet"
+                    effective_recursive = False
+                elif collection_type == "music":
+                    effective_type = "MusicArtist"
+                    effective_recursive = False
+                elif collection_type == "homevideos" or collection_type == "photos":
+                    effective_type = "Movie,Video,Photo"
+                    effective_recursive = True
+
+            if self.user_id:
+                url = f"{self.server_url}/emby/Users/{self.user_id}/Items"
+            else:
+                url = f"{self.server_url}/emby/Items"
             params = {
-                "Recursive": str(recursive).lower(),
+                "Recursive": str(effective_recursive).lower(),
                 "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,ParentIndexNumber,SeriesId,SeasonId",
             }
 
             if parent_id:
                 params["ParentId"] = parent_id
 
-            if item_type:
-                params["IncludeItemTypes"] = item_type
+            if effective_type:
+                params["IncludeItemTypes"] = effective_type
 
             if start_index is not None:
                 params["StartIndex"] = start_index

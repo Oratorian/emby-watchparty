@@ -222,7 +222,22 @@ async function fetchItems(parentId: string, append = false) {
     const startIndex = append ? items.value.length : 0
     const data = await api.items({ parentId, startIndex, limit: PAGE_SIZE })
     const rawItems: EmbyItem[] = data.Items ?? data ?? []
-    const newItems = rawItems.filter((it) => displayableTypes.has(it.Type))
+    // Only filter raw Folder items when the response also contains
+    // other displayable types -- in that case the Folders are
+    // shadowing entries (Jeslyn's flat layout: Movies/Blade.mkv
+    // returns both a Movie and a Folder pointing at the same path).
+    // When the response is ENTIRELY Folder-typed, the library is
+    // folder-organised and those Folders ARE the navigable content
+    // (Oratorian's folder-per-movie layout: Movies/Blade/Blade.mkv
+    // returns only Folder items at the library root, the actual
+    // Movie items are one level deeper). Filtering everything out
+    // would leave the view empty in that case.
+    const hasDisplayable = rawItems.some(
+      (it) => it.Type && displayableTypes.has(it.Type),
+    )
+    const newItems = hasDisplayable
+      ? rawItems.filter((it) => displayableTypes.has(it.Type))
+      : rawItems
     if (append) {
       items.value.push(...newItems)
     } else {
