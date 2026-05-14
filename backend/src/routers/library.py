@@ -6,7 +6,7 @@ a party-bound session cookie AND the party must have a current host
 whose Emby access_token signs the upstream call. See docs/AUTH-DESIGN.md.
 """
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 
 from backend.src.dependencies import (
@@ -83,7 +83,10 @@ def api_item_details(
     details = emby_client.get_item_details(item_id, access_token=access_token, user_id=user_id)
     if details:
         return details
-    return {"error": "Item not found"}
+    # ItemDetailsResponse requires Id and Name, so the previous
+    # {"error": "..."} return tripped FastAPI response validation
+    # and surfaced as a 500. 404 is the honest answer.
+    raise HTTPException(status_code=404, detail="Item not found")
 
 
 @router.get("/item/{item_id}/streams", response_model=StreamsResponse)
@@ -105,7 +108,13 @@ def api_item_streams(
         )
 
     if not playback_info:
-        return {"audio": [], "subtitles": [], "error": "Could not fetch stream information"}
+        # Stream metadata is gone; tell the caller honestly rather than
+        # returning an empty StreamsResponse with a silently-dropped
+        # error field.
+        raise HTTPException(
+            status_code=502,
+            detail="Could not fetch stream information from Emby",
+        )
 
     audio_streams = []
     subtitle_streams = []

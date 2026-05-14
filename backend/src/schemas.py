@@ -228,6 +228,19 @@ class VersionResponse(BaseModel):
     release_url: Optional[str] = None
 
 
+class HealthResponse(BaseModel):
+    """Liveness probe payload.
+
+    Intentionally minimal: returns 200 as long as the process is up and
+    can route the request. Does NOT contact Emby, the DB, or anything
+    else, so a transient upstream blip will not flap a container's
+    healthcheck and trigger restart loops.
+    """
+    status: str = "ok"
+    version: str
+    codename: str
+
+
 # ============== Admin ==============
 
 class AdminLoginRequest(BaseModel):
@@ -267,3 +280,9 @@ class StaticSessionResponse(BaseModel):
     """Returned by GET /api/party/static-session.
     party_id is null when static session mode is disabled."""
     party_id: Optional[str] = None
+
+
+class PartyExistsResponse(BaseModel):
+    """Returned by GET /api/party/<id>/exists. Boolean probe used by
+    the join screen to validate a party code before issuing the cookie."""
+    exists: bool

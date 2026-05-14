@@ -84,7 +84,17 @@ def _rewrite_playlist(content: str, item_id: str, app_prefix: str, emby_url: str
     return content
 
 
-@router.get("/{item_id}/master.m3u8")
+@router.get(
+    "/{item_id}/master.m3u8",
+    responses={
+        200: {
+            "content": {"application/vnd.apple.mpegurl": {}},
+            "description": "HLS master playlist (rewritten to proxy URLs)",
+        },
+        401: {"description": "HLS token missing, invalid, or party has no host"},
+        502: {"description": "Upstream Emby request failed"},
+    },
+)
 def proxy_hls_master(item_id: str, request: Request,
                      config=Depends(get_config), emby_client=Depends(get_emby_client),
                      token_manager=Depends(get_token_manager),
@@ -133,7 +143,21 @@ def proxy_hls_master(item_id: str, request: Request,
                         status_code=500, media_type="application/json")
 
 
-@router.get("/{item_id}/{subpath:path}")
+@router.get(
+    "/{item_id}/{subpath:path}",
+    responses={
+        200: {
+            "content": {
+                "application/vnd.apple.mpegurl": {},
+                "video/MP2T": {},
+                "application/octet-stream": {},
+            },
+            "description": "HLS variant playlist or .ts segment",
+        },
+        401: {"description": "HLS token missing, invalid, or party has no host"},
+        502: {"description": "Upstream Emby request failed"},
+    },
+)
 def proxy_hls_segment(item_id: str, subpath: str, request: Request,
                       config=Depends(get_config), emby_client=Depends(get_emby_client),
                       token_manager=Depends(get_token_manager),

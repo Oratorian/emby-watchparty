@@ -8,7 +8,7 @@ party-bound session cookie used by every protected route.
 See docs/AUTH-DESIGN.md.
 """
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.src.dependencies import (
     get_config, get_party_manager, get_logger, get_emby_client,
@@ -18,6 +18,7 @@ from backend.src.schemas import (
     CreatePartyResponse,
     JoinPartyRequest,
     JoinPartyResponse,
+    PartyExistsResponse,
     PartyInfoResponse,
     StaticSessionResponse,
 )
@@ -155,21 +156,24 @@ def join_party(
     )
 
 
-@router.get("/{party_id}/exists")
+@router.get("/{party_id}/exists", response_model=PartyExistsResponse)
 def party_exists(party_id: str, party_manager=Depends(get_party_manager)):
     """Anonymous probe: does this party exist?
 
     Used by the join screen to validate a code before issuing the cookie.
     Returns only a boolean so it leaks no party state.
     """
-    return {"exists": party_manager.exists(party_id.upper())}
+    return PartyExistsResponse(exists=party_manager.exists(party_id.upper()))
 
 
 @router.get("/{party_id}/info", response_model=PartyInfoResponse)
 def party_info(party_id: str, party_manager=Depends(get_party_manager)):
     party = party_manager.get(party_id.upper())
     if not party:
-        return {"error": "Party not found"}
+        # 404 keeps the response_model satisfied; returning a dict
+        # with {"error": "..."} would fail validation since
+        # PartyInfoResponse requires id, users, and playback_state.
+        raise HTTPException(status_code=404, detail="Party not found")
     return PartyInfoResponse(
         id=party["id"],
         users=list(party["users"].values()),

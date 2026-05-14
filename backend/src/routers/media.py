@@ -54,7 +54,16 @@ def get_intro_info(
         return IntroResponse(hasIntro=False)
 
 
-@router.get("/image/{item_id}")
+@router.get(
+    "/image/{item_id}",
+    responses={
+        200: {
+            "content": {"image/jpeg": {}, "image/png": {}, "image/webp": {}},
+            "description": "Item poster / image bytes proxied from Emby",
+        },
+        404: {"description": "No such image"},
+    },
+)
 def api_image(
     item_id: str,
     type: str = Query("Primary"),
@@ -84,7 +93,16 @@ def api_image(
         return Response(status_code=404)
 
 
-@router.get("/subtitles/{item_id}/{media_source_id}/{subtitle_index}")
+@router.get(
+    "/subtitles/{item_id}/{media_source_id}/{subtitle_index}",
+    responses={
+        200: {
+            "content": {"text/vtt": {}},
+            "description": "WebVTT subtitle stream",
+        },
+        404: {"description": "Subtitle stream unavailable"},
+    },
+)
 def api_subtitles(
     item_id: str,
     media_source_id: str,

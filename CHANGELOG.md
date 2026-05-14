@@ -60,6 +60,8 @@ Codename: **Midnight Premiere**. Branch: `2.0-Rework`. The version is `2.0.0-dev
 - **`POST /api/auth/logout`**: drops host status without leaving the party. Emits `host_left` to the room.
 - **`GET /api/auth/status`** returns the caller's relationship to their current party (`{ authenticated, is_host, is_admin, host_username, party_id, party_unlocked, require_login }`).
 - **`EmbyLoginModal` Vue component** reused by both the create-party flow (when `REQUIRE_LOGIN=true`) and the in-party "Login to Become Host" flow.
+- **`GET /api/health`**: anonymous liveness endpoint for Docker / Kubernetes / reverse-proxy healthchecks. Returns `{status, version, codename}` and intentionally does not contact Emby or the avatar DB, so a transient upstream blip cannot flap container restarts.
+- **OpenAPI annotations on every binary-response endpoint** (`/api/avatar/{uuid}`, `/api/avatar/host/{party_id}`, `/api/image/{item_id}`, `/api/subtitles/...`, `/hls/{item_id}/master.m3u8`, `/hls/{item_id}/{subpath}`). `/docs` and `/redoc` now show the right content-type tables (image/*, text/vtt, application/vnd.apple.mpegurl, video/MP2T) and document the failure status codes.
 
 ### Changed
 
@@ -92,6 +94,9 @@ Codename: **Midnight Premiere**. Branch: `2.0-Rework`. The version is `2.0.0-dev
 - **Browser tab title was the Vite default** ([#33](https://github.com/Oratorian/emby-watchparty/issues/33)): updated to "Emby Watch Party - Tonight's Premiere".
 - **"Enter Party Code" placeholder was clipped** ([#37](https://github.com/Oratorian/emby-watchparty/issues/37)): the input's uppercase + 0.15em letter-spacing made the placeholder wider than the input, so Chrome chopped the last few characters. Shortened to "Party code" and added `::placeholder` rules that disable the uppercase/letter-spacing styling for placeholder text only.
 - **Phantom "seeked to..." chat spam during normal playback** in production builds (separate from the HMR-driven version in dev): the `socket.on('seek')` broadcast handler unconditionally assigned `ve.currentTime = streamTime` even when the deltas matched, which queued a fresh `seeked` event that fired after `isSyncing` had already reset, escaping the guard and being rebroadcast to the party. The assignment is now gated behind a 0.3s delta check, and `onVideoSeeked` tracks natural playback progression so spurious browser-fired `seeked` events on startup don't get rebroadcast either.
+- **`GET /api/party/<id>/info` and `GET /api/item/<id>` returned 500** when the target was missing: their error-fallback `{"error": ...}` dict didn't satisfy the route's `response_model`, so FastAPI's response validation raised a `ResponseValidationError`. Both now properly return `404` with a `detail` field.
+- **`GET /api/item/<id>/streams` silently swallowed upstream failures** inside a 200 response. The error key was stripped by Pydantic v2's default `extra="ignore"`, so the caller saw empty stream arrays and no signal that anything went wrong. Now returns `502` honestly when stream metadata cannot be fetched.
+- **`GET /api/party/<id>/exists` had no `response_model`** so its OpenAPI entry was untyped. Added `PartyExistsResponse`.
 
 ### Removed
 

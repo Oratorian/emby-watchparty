@@ -186,7 +186,16 @@ def recover(
     return RecoverResponse(success=True, uuid=avatar_uuid)
 
 
-@router.get("/host/{party_id}")
+@router.get(
+    "/host/{party_id}",
+    responses={
+        200: {
+            "content": {"image/jpeg": {}, "image/png": {}, "image/webp": {}},
+            "description": "The current host's Emby Primary image",
+        },
+        404: {"description": "Party has no host, host has no Emby Primary, or party is unknown"},
+    },
+)
 async def host_avatar(
     party_id: str,
     request: Request,
@@ -232,7 +241,19 @@ async def host_avatar(
         return Response(status_code=404)
 
 
-@router.get("/{avatar_uuid}")
+@router.get(
+    "/{avatar_uuid}",
+    responses={
+        200: {
+            "content": {
+                "image/jpeg": {}, "image/png": {},
+                "image/webp": {}, "image/gif": {},
+            },
+            "description": "Avatar image bytes (local file or Gravatar proxy)",
+        },
+        404: {"description": "Unknown avatar uuid or upstream fetch failed"},
+    },
+)
 async def serve_avatar(
     avatar_uuid: str,
     store=Depends(get_avatar_store),
