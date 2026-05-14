@@ -1,6 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useSocketStore } from './socket'
+import { useAvatarStore } from './avatar'
+import { api } from '@/api/client'
+
+export interface MemberInfo {
+  username: string
+  avatar_uuid?: string | null
+}
 
 const CLIENT_ID_STORAGE_KEY = 'emby-watchparty-client-id'
 
@@ -13,10 +20,17 @@ function getClientId(): string {
   return clientId
 }
 
+export { getClientId }
+
 export const usePartyStore = defineStore('party', () => {
   const partyId = ref<string | null>(null)
   const username = ref<string | null>(null)
   const users = ref<string[]>([])
+  // Parallel to `users` but carries avatar_uuid per member. Server
+  // emits this in user_joined / user_left payloads. Indexed by display
+  // name (sufficient because the server enforces unique-ish names per
+  // party). Falls back to null when the backend hasn't bound an avatar.
+  const members = ref<Record<string, string | null>>({})
   const currentVideo = ref<any>(null)
   const playbackState = ref({ playing: false, time: 0, last_update: '' })
   const myStreamUrl = ref<string | null>(null)
@@ -44,14 +58,33 @@ export const usePartyStore = defineStore('party', () => {
 
   const userCount = computed(() => users.value.length)
 
-  function join(id: string, name: string) {
+  async function join(id: string, name: string) {
     const socket = useSocketStore()
+    const avatar = useAvatarStore()
     partyId.value = id.toUpperCase()
     username.value = name
+    const clientId = getClientId()
+    // Load the persisted avatar id (IndexedDB or localStorage) so it
+    // can ride along on the join. Safe to call repeatedly.
+    if (!avatar.uuid) {
+      try { await avatar.load() } catch { /* ignore */ }
+    }
+    const avatarUuid = avatar.uuid
+    // Set the party-bound session cookie before the socket connects.
+    // The cookie is what every protected HTTP route and the socket
+    // handshake will use to authenticate this caller.
+    try {
+      await api.joinParty(partyId.value, clientId, name || 'Guest', avatarUuid)
+    } catch {
+      // Best-effort: even if the cookie call fails, the socket join
+      // event below carries the same identity so we fall back to
+      // socket-only auth during the transition.
+    }
     socket.emit('join_party', {
       party_id: partyId.value,
       username: name,
-      client_id: getClientId(),
+      client_id: clientId,
+      avatar_uuid: avatarUuid,
     })
   }
 
@@ -98,10 +131,36 @@ export const usePartyStore = defineStore('party', () => {
 
     socket.on('user_joined', (data: any) => {
       users.value = data.users
+      if (Array.isArray(data.members)) {
+        const map: Record<string, string | null> = {}
+        for (const m of data.members as MemberInfo[]) {
+          map[m.username] = m.avatar_uuid ?? null
+        }
+        members.value = map
+      }
     })
 
     socket.on('user_left', (data: any) => {
       users.value = data.users || []
+      if (Array.isArray(data.members)) {
+        const map: Record<string, string | null> = {}
+        for (const m of data.members as MemberInfo[]) {
+          map[m.username] = m.avatar_uuid ?? null
+        }
+        members.value = map
+      }
+    })
+
+    // Avatar updates from anyone in the room: refresh the members map
+    // so chat + participant list re-render without a page reload.
+    socket.on('members_update', (data: any) => {
+      if (Array.isArray(data.members)) {
+        const map: Record<string, string | null> = {}
+        for (const m of data.members as MemberInfo[]) {
+          map[m.username] = m.avatar_uuid ?? null
+        }
+        members.value = map
+      }
     })
 
     socket.on('sync_state', (data: any) => {
@@ -282,7 +341,7 @@ export const usePartyStore = defineStore('party', () => {
   }
 
   return {
-    partyId, username, users, currentVideo, playbackState, userCount,
+    partyId, username, users, members, currentVideo, playbackState, userCount,
     myStreamUrl, streamOffset, readyCheckActive, readyUsers, waitingUsers,
     pendingVote,
     join, leave, setupListeners, submitVote,

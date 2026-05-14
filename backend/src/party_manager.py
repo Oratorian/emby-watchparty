@@ -133,6 +133,16 @@ class PartyManager:
             # triggered. Set after every failed/cancelled vote to prevent
             # spam attacks. None or 0 means no cooldown active.
             "join_cooldown_until": 0,
+            # Host = the Emby-authenticated member whose access_token signs
+            # every Emby call for this party. See docs/AUTH-DESIGN.md.
+            # host_left_at is set when the host's socket drops; the grace
+            # window in connection.py decides whether to clear or restore.
+            "host_client_id": None,
+            "host_user_id": None,
+            "host_access_token": None,
+            "host_is_admin": False,
+            "host_username": None,
+            "host_left_at": None,
         }
 
     def _create_party_dict(self, party_id: str) -> dict:
@@ -168,28 +178,32 @@ class PartyManager:
             self._logger.info(f"Recreated static party: {pid}")
         return pid
 
-    def sync_static_party(self) -> Optional[str]:
+    def sync_static_party(self) -> tuple[Optional[str], Optional[str]]:
         """Reconcile the static party with the current runtime config.
 
-        Called when STATIC_SESSION_ENABLED or STATIC_SESSION_ID changes via
-        the admin panel so the change takes effect without a restart:
+        Called when STATIC_SESSION_ENABLED or STATIC_SESSION_ID changes
+        via the admin panel so the change takes effect without a restart:
 
-        - If the static id changed, remove the old party (if it still exists
-          and was not repurposed) before creating the new one.
-        - If the feature was disabled, remove the previously-created static
-          party so it stops responding to joins.
+        - If the static id changed, remove the old party before creating
+          the new one.
+        - If the feature was disabled, remove the previously-created
+          static party so it stops responding to joins.
         - If the feature is enabled and the configured party is missing,
           create it.
 
-        Returns the current static party id (or None when disabled).
+        Returns (new_static_id, dissolved_party_id). The dissolved id
+        is non-None when this call deleted a party (caller can use it
+        to kick sockets, revoke HLS tokens, broadcast dissolved event).
         """
         cfg_enabled = self._config.STATIC_SESSION_ENABLED
         cfg_id = self._config.STATIC_SESSION_ID.upper() if cfg_enabled else None
 
+        dissolved: Optional[str] = None
         if self._last_static_id and self._last_static_id != cfg_id:
             old = self._last_static_id
             if old in self.watch_parties:
                 del self.watch_parties[old]
+                dissolved = old
                 self._logger.info(f"Removed previous static party: {old}")
 
         if cfg_id and cfg_id not in self.watch_parties:
@@ -197,7 +211,7 @@ class PartyManager:
             self._logger.info(f"Created static party: {cfg_id}")
 
         self._last_static_id = cfg_id
-        return cfg_id
+        return cfg_id, dissolved
 
     def add_user(self, party_id: str, sid: str, username: str) -> bool:
         """Add a user to a party. Returns False if party doesn't exist or is full."""
@@ -269,3 +283,119 @@ class PartyManager:
 
     def count(self) -> int:
         return len(self.watch_parties)
+
+    # =========================================================================
+    # Host management (see docs/AUTH-DESIGN.md)
+    # =========================================================================
+
+    def set_host(
+        self,
+        party_id: str,
+        *,
+        client_id: str,
+        user_id: str,
+        access_token: str,
+        username: str,
+        is_admin: bool = False,
+    ) -> bool:
+        """Mark a party member as host. Returns False if party is missing.
+
+        Overwrites any prior host and clears host_left_at so the party
+        moves to UNLOCKED.
+        """
+        party = self.watch_parties.get(party_id)
+        if not party:
+            return False
+        party["host_client_id"] = client_id
+        party["host_user_id"] = user_id
+        party["host_access_token"] = access_token
+        party["host_username"] = username
+        party["host_is_admin"] = bool(is_admin)
+        party["host_left_at"] = None
+        return True
+
+    def clear_host(self, party_id: str) -> bool:
+        """Wipe all host fields. Library and HLS are now both locked."""
+        party = self.watch_parties.get(party_id)
+        if not party:
+            return False
+        party["host_client_id"] = None
+        party["host_user_id"] = None
+        party["host_access_token"] = None
+        party["host_username"] = None
+        party["host_is_admin"] = False
+        party["host_left_at"] = None
+        return True
+
+    def mark_host_left(self, party_id: str) -> bool:
+        """Stamp host_left_at without clearing the token.
+
+        Transitions the party to PLAYING-ONLY (library locked, HLS still
+        served on the stored token). A full clear happens later, either
+        on grace expiry or on video_ended/stop_video.
+        """
+        party = self.watch_parties.get(party_id)
+        if not party or not party.get("host_access_token"):
+            return False
+        party["host_left_at"] = datetime.now().isoformat()
+        return True
+
+    def has_host_token(self, party_id: str) -> bool:
+        """True iff an Emby access token is stored (HLS usable)."""
+        party = self.watch_parties.get(party_id)
+        return bool(party and party.get("host_access_token"))
+
+    def is_unlocked(self, party_id: str) -> bool:
+        """True iff a host is present and the library is browsable."""
+        party = self.watch_parties.get(party_id)
+        if not party:
+            return False
+        return bool(party.get("host_access_token")) and party.get("host_left_at") is None
+
+    def is_playing_only(self, party_id: str) -> bool:
+        """True iff host has left but HLS is still serving a current video."""
+        party = self.watch_parties.get(party_id)
+        if not party:
+            return False
+        return (
+            bool(party.get("host_access_token"))
+            and party.get("host_left_at") is not None
+            and party.get("current_video") is not None
+        )
+
+    def get_host_token(self, party_id: str) -> Optional[str]:
+        """Return the host's Emby access token, or None when fully locked."""
+        party = self.watch_parties.get(party_id)
+        if not party:
+            return None
+        return party.get("host_access_token")
+
+    def get_host_user_id(self, party_id: str) -> Optional[str]:
+        """Return the host's Emby user id (used for Emby API calls)."""
+        party = self.watch_parties.get(party_id)
+        if not party:
+            return None
+        return party.get("host_user_id")
+
+    def members_list(self, party_id: str) -> list:
+        """Return [{username, avatar_uuid}, ...] for everyone in the party.
+
+        Combines `party.users` (sid -> name) with `party.participants`
+        (client_id keyed metadata) so the frontend can render the
+        right avatar per member. Used by user_joined / user_left /
+        chat_message emits.
+        """
+        party = self.watch_parties.get(party_id)
+        if not party:
+            return []
+        sid_client_ids = party.get("sid_client_ids", {})
+        participants = party.get("participants", {})
+        out = []
+        for sid, username in party.get("users", {}).items():
+            cid = sid_client_ids.get(sid)
+            p = participants.get(cid) if cid else None
+            out.append({
+                "username": username,
+                "avatar_uuid": p.get("avatar_uuid") if p else None,
+            })
+        return out

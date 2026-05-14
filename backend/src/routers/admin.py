@@ -1,14 +1,31 @@
 """
-Admin Router - Settings management
-Requires Emby administrator credentials
+Admin Router - Settings management.
+
+Two paths in:
+1. **Party-host as admin.** A host whose Emby account has
+   `IsAdministrator=true` is automatically admin of the application.
+   No separate /admin login is needed; the same party-bound session
+   cookie used everywhere else also unlocks /admin.
+2. **Standalone login.** Kept so an admin can edit config without
+   joining a party. Posts Emby admin credentials to
+   `POST /api/admin/login`; the session gains an `admin_authenticated`
+   flag that survives until logout.
 """
 
 import logging
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import RedirectResponse
 import requests as http_requests
 
-from backend.src.dependencies import get_config, get_emby_client, get_logger, get_party_manager
+from backend.src.dependencies import (
+    admin_display_name,
+    get_config,
+    get_emby_client,
+    get_logger,
+    get_party_manager,
+    get_sio,
+    get_token_manager,
+    is_admin_authenticated,
+)
 from backend.src.schemas import (
     AdminLoginRequest,
     AdminLoginResponse,
@@ -23,6 +40,12 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 @router.post("/login", response_model=AdminLoginResponse)
 def admin_login(body: AdminLoginRequest, request: Request,
                 emby_client=Depends(get_emby_client), logger=Depends(get_logger)):
+    """Standalone admin login. Useful when not currently in a party.
+
+    Hosts who are already inside a party with admin policy do NOT need
+    to call this -- their party-bound cookie already grants /admin
+    access via is_admin_authenticated().
+    """
     try:
         url = f"{emby_client.server_url}/emby/Users/AuthenticateByName"
         headers = {
@@ -62,29 +85,70 @@ def admin_login(body: AdminLoginRequest, request: Request,
 
 @router.post("/logout", response_model=SuccessResponse)
 def admin_logout(request: Request):
+    """Clear the standalone admin session.
+
+    Does NOT touch host status -- a host who is also admin via Emby
+    policy stays admin as long as they remain host.
+    """
     request.session.pop("admin_authenticated", None)
     request.session.pop("admin_username", None)
     return {"success": True}
 
 
 @router.get("/config", response_model=RuntimeConfigResponse)
-def get_config_values(request: Request, config=Depends(get_config)):
-    if not request.session.get("admin_authenticated"):
+def get_config_values(
+    request: Request,
+    config=Depends(get_config),
+    party_manager=Depends(get_party_manager),
+):
+    if not is_admin_authenticated(request, party_manager):
         return {"error": "Not authenticated"}
     return config.get_runtime_dict()
 
 
+async def _dissolve_party(party_id: str, sio, token_manager, logger):
+    """Tear down a party that was just deleted from PartyManager.
+
+    1. Tell every connected member to go back to the index ('party_dissolved').
+    2. Close the Socket.IO room so future emits do not reach them.
+    3. Revoke every cached HLS token issued for this party so leftover
+       stream URLs stop working immediately.
+    """
+    try:
+        await sio.emit(
+            "party_dissolved",
+            {"party_id": party_id, "reason": "static_session_disabled"},
+            room=party_id,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to emit party_dissolved for {party_id}: {e}")
+    try:
+        await sio.close_room(party_id)
+    except Exception as e:
+        logger.warning(f"Failed to close room {party_id}: {e}")
+    try:
+        token_manager.revoke_party(party_id)
+    except Exception as e:
+        logger.warning(f"Failed to revoke tokens for {party_id}: {e}")
+
+
 @router.put("/config", response_model=ConfigUpdateResponse)
-def update_config(request: Request, body: dict, config=Depends(get_config),
-                  party_manager=Depends(get_party_manager),
-                  logger=Depends(get_logger)):
-    if not request.session.get("admin_authenticated"):
+async def update_config(
+    request: Request,
+    body: dict,
+    config=Depends(get_config),
+    party_manager=Depends(get_party_manager),
+    token_manager=Depends(get_token_manager),
+    sio=Depends(get_sio),
+    logger=Depends(get_logger),
+):
+    if not is_admin_authenticated(request, party_manager):
         return ConfigUpdateResponse(success=False)
 
     env_only = {
         'WATCH_PARTY_BIND', 'WATCH_PARTY_PORT', 'APP_PREFIX',
-        'REQUIRE_LOGIN', 'SESSION_EXPIRY',
-        'EMBY_SERVER_URL', 'EMBY_API_KEY', 'EMBY_USERNAME', 'EMBY_PASSWORD',
+        'SESSION_EXPIRY',
+        'EMBY_SERVER_URL', 'EMBY_API_KEY',
     }
     rejected = [k for k in body.keys() if k in env_only]
     if rejected:
@@ -98,13 +162,17 @@ def update_config(request: Request, body: dict, config=Depends(get_config),
 
         # Static session toggles or id renames need an explicit sync
         # because the static party lives in PartyManager.watch_parties,
-        # not in the config object. Without this, enabling static
-        # sessions via the admin panel would persist the setting but
-        # never actually create the party until restart.
+        # not in the config object. When the old party is deleted we
+        # also need to evict any lingering sockets and revoke HLS tokens
+        # so users with active streams or stale cookies stop hitting
+        # the now-defunct party.
         if {'STATIC_SESSION_ENABLED', 'STATIC_SESSION_ID'} & set(changed):
-            party_manager.sync_static_party()
+            _, dissolved = party_manager.sync_static_party()
+            if dissolved:
+                await _dissolve_party(dissolved, sio, token_manager, logger)
 
-        logger.info(f"Admin config updated: {changed}")
+        actor = admin_display_name(request, party_manager) or "(unknown admin)"
+        logger.info(f"Admin config updated by '{actor}': {changed}")
         return ConfigUpdateResponse(success=True, changed=changed, config=config.get_runtime_dict())
     except Exception as e:
         logger.error(f"Config update failed: {e}")

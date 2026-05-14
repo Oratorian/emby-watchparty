@@ -84,10 +84,10 @@ cp .env.example .env
 Edit `.env` with your Emby server credentials:
 ```env
 # Emby Server Configuration
+# Only the admin server API key is needed. Per-user authentication
+# happens at runtime via the in-app "Login to Become Host" flow.
 EMBY_SERVER_URL=http://your-emby-server:8096
 EMBY_API_KEY=your-api-key-here
-EMBY_USERNAME=your-username
-EMBY_PASSWORD=your-password
 
 # Application Configuration
 WATCH_PARTY_BIND=0.0.0.0
@@ -128,11 +128,15 @@ docker run -d \
   -p 5000:5000 \
   -e EMBY_SERVER_URL=http://your-emby-server:8096 \
   -e EMBY_API_KEY=your-api-key \
-  -e EMBY_USERNAME=your-username \
-  -e EMBY_PASSWORD=your-password \
   -e LOG_TO_FILE=false \
+  -v /your/path/data:/app/data \
+  -v /your/path/images:/app/images \
   ghcr.io/oratorian/emby-watchparty:latest
 ```
+
+The two volume mounts keep the avatar database (`/app/data/avatars.db`)
+and uploaded avatar files (`/app/images/avatars/`) outside the
+container so they survive image updates.
 
 **Note:** For Docker deployments, set `LOG_TO_FILE=false` to output logs to stdout only.
 
@@ -140,10 +144,22 @@ docker run -d \
 
 ### Creating a Watch Party
 
-1. Click **"Create Party"** on the home page
+The default (`REQUIRE_LOGIN=false`):
+1. Click **"Create Party"** on the home page (no login required)
 2. Share the party code or URL with your friends
-3. Browse the Emby library and select a video
-4. Everyone in the room will be synchronized!
+3. Inside the party, click **"Login to Become Host"** with your Emby credentials -- this unlocks the library for everyone in the room. Any party member with an Emby account can do this; spectators never see a login prompt.
+4. Browse the library and select a video
+5. Everyone in the room will be synchronized
+
+With `REQUIRE_LOGIN=true` (set from the admin panel):
+1. Click **"Create Party"** -- you will be prompted for Emby credentials
+2. The creator becomes host atomically; the party starts UNLOCKED
+3. Share the code; spectators join with no login prompt
+4. Browse, pick, watch
+
+In both modes, when the host disconnects mid-playback the in-flight video keeps streaming until it ends naturally (PLAYING-ONLY state). The library re-locks immediately; any member can click "Login to Become Host" to unlock it again.
+
+See [docs/AUTH-DESIGN.md](docs/AUTH-DESIGN.md) for the full auth model.
 
 ### Joining a Watch Party
 
@@ -200,13 +216,14 @@ Configuration is split into two tiers:
 | `WATCH_PARTY_BIND` | IP address to bind to | `0.0.0.0` |
 | `WATCH_PARTY_PORT` | Port to run on | `5000` |
 | `APP_PREFIX` | URL prefix for reverse proxy deployments (e.g. `/watchparty`) | (empty) |
-| `REQUIRE_LOGIN` | Require Emby login to access | `false` |
 | `SESSION_EXPIRY` | Session expiry in seconds | `86400` |
 | **Emby Server** | | |
 | `EMBY_SERVER_URL` | Your Emby server URL | `http://localhost:8096` |
-| `EMBY_API_KEY` | Emby API key | (required) |
-| `EMBY_USERNAME` | Your Emby username | (required) |
-| `EMBY_PASSWORD` | Your Emby password | (required) |
+| `EMBY_API_KEY` | Emby API key (server admin key) | (required) |
+
+`REQUIRE_LOGIN` was previously here. It now lives in the admin panel as
+a runtime setting; see [docs/AUTH-DESIGN.md](docs/AUTH-DESIGN.md) for
+the semantics.
 
 ### Admin panel (runtime, hot-reloadable)
 

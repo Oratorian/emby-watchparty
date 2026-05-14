@@ -19,8 +19,9 @@ from backend.src.emby_client import EmbyClient
 from backend.src.party_manager import PartyManager
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.stream_builder import StreamBuilder
+from backend.src.avatar_store import AvatarStore
 from backend.src.update_checker import check_for_updates
-from backend.src.routers import auth, library, media, hls, party, admin
+from backend.src.routers import auth, library, media, hls, party, admin, avatar
 from backend.src.socket_handlers import register_all as register_socket_handlers
 
 
@@ -57,13 +58,20 @@ async def lifespan(app: FastAPI):
         server_url=config.EMBY_SERVER_URL,
         api_key=config.EMBY_API_KEY,
         logger=logger,
-        username=config.EMBY_USERNAME,
-        password=config.EMBY_PASSWORD,
     )
 
     party_manager = PartyManager(config, logger)
     token_manager = HLSTokenManager(config, logger)
     stream_builder = StreamBuilder(emby_client, logger)
+
+    # Avatar storage lives alongside config.json. The images directory
+    # is a sibling so Docker mounts can target it explicitly.
+    project_root = Path(__file__).parent.parent
+    avatar_store = AvatarStore(
+        db_path=project_root / "data" / "avatars.db",
+        avatars_dir=project_root / "images" / "avatars",
+        logger=logger,
+    )
 
     logger.info(f"Emby Server: {config.EMBY_SERVER_URL}")
     if config.APP_PREFIX:
@@ -77,11 +85,15 @@ async def lifespan(app: FastAPI):
     app.state.party_manager = party_manager
     app.state.token_manager = token_manager
     app.state.stream_builder = stream_builder
+    app.state.avatar_store = avatar_store
+    app.state.sio = sio
+    app.state.session_secret = SESSION_SECRET
 
     # Register socket handlers
     register_socket_handlers(
         sio, emby_client, party_manager, token_manager,
         stream_builder, config, logger,
+        session_secret=SESSION_SECRET,
     )
     logger.info("Socket handlers registered")
 
@@ -103,8 +115,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Session middleware
-app.add_middleware(SessionMiddleware, secret_key=secrets.token_hex(32))
+# Session middleware. Secret is reused by the socket connect handler to
+# decode the same cookie, so we generate it once and stash it on app.state
+# (see lifespan above for the assignment).
+SESSION_SECRET = secrets.token_hex(32)
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
 # Include API routers
 app.include_router(auth.router)
@@ -113,6 +128,7 @@ app.include_router(media.router)
 app.include_router(hls.router)
 app.include_router(party.router)
 app.include_router(admin.router)
+app.include_router(avatar.router)
 
 # Mount SocketIO
 socket_app = socketio.ASGIApp(sio, socketio_path="socket.io")

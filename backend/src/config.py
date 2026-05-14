@@ -32,12 +32,9 @@ class EnvConfig:
     WATCH_PARTY_BIND: str
     WATCH_PARTY_PORT: int
     APP_PREFIX: str
-    REQUIRE_LOGIN: bool
     SESSION_EXPIRY: int
     EMBY_SERVER_URL: str
     EMBY_API_KEY: str
-    EMBY_USERNAME: str
-    EMBY_PASSWORD: str
 
     @classmethod
     def from_env(cls) -> 'EnvConfig':
@@ -48,18 +45,20 @@ class EnvConfig:
             WATCH_PARTY_BIND=os.getenv('WATCH_PARTY_BIND', '0.0.0.0'),
             WATCH_PARTY_PORT=int(os.getenv('WATCH_PARTY_PORT', '5000')),
             APP_PREFIX=os.getenv('APP_PREFIX', '').rstrip('/'),
-            REQUIRE_LOGIN=_bool(os.getenv('REQUIRE_LOGIN', 'false')),
             SESSION_EXPIRY=int(os.getenv('SESSION_EXPIRY', '86400')),
             EMBY_SERVER_URL=os.getenv('EMBY_SERVER_URL', 'http://localhost:8096'),
             EMBY_API_KEY=os.getenv('EMBY_API_KEY', ''),
-            EMBY_USERNAME=os.getenv('EMBY_USERNAME', ''),
-            EMBY_PASSWORD=os.getenv('EMBY_PASSWORD', ''),
         )
 
 
 @dataclass
 class RuntimeConfig:
     """Runtime settings from config.json (hot-reloadable)"""
+
+    # Auth gating (see docs/AUTH-DESIGN.md)
+    # True: party creation requires Emby credentials (creator becomes host).
+    # False: anyone can create a party; any member can later log in to host.
+    REQUIRE_LOGIN: bool = False
 
     # Logging
     LOG_LEVEL: str = 'INFO'
@@ -146,6 +145,7 @@ class RuntimeConfig:
     def field_metadata(cls) -> list:
         """Return field info for the admin UI"""
         sections = {
+            'Auth': ['REQUIRE_LOGIN'],
             'Logging': ['LOG_LEVEL', 'LOG_TO_FILE', 'LOG_FILE', 'LOG_FORMAT', 'LOG_MAX_SIZE', 'CONSOLE_LOG_LEVEL'],
             'Security': ['MAX_USERS_PER_PARTY', 'ENABLE_HLS_TOKEN_VALIDATION', 'HLS_TOKEN_EXPIRY',
                          'ENABLE_RATE_LIMITING', 'RATE_LIMIT_PARTY_CREATION', 'RATE_LIMIT_API_CALLS'],

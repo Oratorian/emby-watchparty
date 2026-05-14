@@ -2,6 +2,9 @@
 import { ref, onMounted } from 'vue'
 import { api } from '@/api/client'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const authenticated = ref(false)
 const loginUser = ref('')
@@ -80,6 +83,12 @@ async function saveConfig() {
     saveStatus.value = changed.length ? `Saved: ${changed.join(', ')}` : 'No changes'
     saveClass.value = 'success'
     if (result.config) config.value = result.config
+    // Settings like REQUIRE_LOGIN are read by other views via the auth
+    // store. Refresh so the new value takes effect immediately without
+    // requiring a route remount.
+    if (changed.includes('REQUIRE_LOGIN')) {
+      auth.refresh().catch(() => { /* ignore */ })
+    }
   } else {
     saveStatus.value = result.error || 'Save failed'
     saveClass.value = 'error'
@@ -136,6 +145,22 @@ onMounted(async () => {
     </div>
 
     <div class="admin-grid">
+      <!-- Auth -->
+      <div class="admin-card card">
+        <h2 class="card-title">Auth</h2>
+        <div class="setting-row">
+          <div class="setting-label">
+            <span>Require Login to Create Party</span>
+            <span class="setting-hint">
+              When on, creating a party requires Emby credentials and the creator
+              becomes host. When off, anyone can create; any member can later log
+              in to host. Browsing always needs a host with a valid session.
+            </span>
+          </div>
+          <ToggleSwitch v-model="config.REQUIRE_LOGIN" />
+        </div>
+      </div>
+
       <!-- Logging -->
       <div class="admin-card card">
         <h2 class="card-title">Logging</h2>

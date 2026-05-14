@@ -2,12 +2,35 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
+import EmbyLoginModal from '@/components/EmbyLoginModal.vue'
 
 const router = useRouter()
+const auth = useAuthStore()
 const partyCode = ref('')
 const status = ref('')
 
+// REQUIRE_LOGIN=true create flow: open the Emby login modal first,
+// then post the credentials with /api/party/create so the creator
+// becomes host atomically.
+const showCreateModal = ref(false)
+const createBusy = ref(false)
+const createError = ref<string | null>(null)
+
+const CLIENT_ID_STORAGE_KEY = 'emby-watchparty-client-id'
+
+function getClientId(): string {
+  let id = localStorage.getItem(CLIENT_ID_STORAGE_KEY)
+  if (id) return id
+  id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  localStorage.setItem(CLIENT_ID_STORAGE_KEY, id)
+  return id
+}
+
 onMounted(async () => {
+  try {
+    await auth.refresh()
+  } catch { /* ignore */ }
   try {
     const res = await fetch('/api/party/static-session')
     const data = await res.json()
@@ -20,12 +43,39 @@ onMounted(async () => {
 })
 
 async function createParty() {
+  status.value = ''
+  createError.value = null
+  if (auth.requireLogin) {
+    showCreateModal.value = true
+    return
+  }
   status.value = 'Creating party...'
-  const data = await api.createParty()
+  const data = await api.createParty({ client_id: getClientId() })
   if (data.party_id) {
     router.push(`/party/${data.party_id}`)
   } else {
-    status.value = 'Error creating party'
+    status.value = data.message || 'Error creating party'
+  }
+}
+
+async function submitCreateLogin(payload: { username: string; password: string }) {
+  createBusy.value = true
+  createError.value = null
+  try {
+    const data = await api.createParty({
+      client_id: getClientId(),
+      display_name: payload.username,
+      username: payload.username,
+      password: payload.password,
+    })
+    if (data.party_id) {
+      showCreateModal.value = false
+      router.push(`/party/${data.party_id}`)
+    } else {
+      createError.value = data.message || 'Could not create the party'
+    }
+  } finally {
+    createBusy.value = false
   }
 }
 
@@ -73,6 +123,17 @@ function joinParty() {
     </main>
 
     <div v-if="status" class="status-msg">{{ status }}</div>
+
+    <EmbyLoginModal
+      v-if="showCreateModal"
+      title="Login to Create a Party"
+      description="Emby login is required to start a new watch party. Spectators will only need the party code."
+      submit-label="Create Party"
+      :busy="createBusy"
+      :error-message="createError"
+      @submit="submitCreateLogin"
+      @cancel="showCreateModal = false"
+    />
 
     <footer class="index-footer">
       <router-link to="/version">Version Info</router-link>

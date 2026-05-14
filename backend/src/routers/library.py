@@ -1,11 +1,20 @@
 """
-Library Router - Emby library browsing and search
+Library Router - Emby library browsing and search.
+
+Every route is gated by `require_party_unlocked`: the caller must hold
+a party-bound session cookie AND the party must have a current host
+whose Emby access_token signs the upstream call. See docs/AUTH-DESIGN.md.
 """
 
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
 
-from backend.src.dependencies import get_emby_client, get_logger
+from backend.src.dependencies import (
+    PartySession,
+    get_emby_client,
+    get_logger,
+    require_party_unlocked,
+)
 from backend.src.schemas import (
     LibraryItemsResponse,
     ItemDetailsResponse,
@@ -15,9 +24,19 @@ from backend.src.schemas import (
 router = APIRouter(prefix="/api", tags=["library"])
 
 
+def _host_creds(party_session: PartySession) -> tuple[str, str]:
+    """Pull (access_token, user_id) for the party's current host."""
+    party = party_session.party
+    return party["host_access_token"], party["host_user_id"]
+
+
 @router.get("/libraries", response_model=LibraryItemsResponse)
-def api_libraries(emby_client=Depends(get_emby_client)):
-    return emby_client.get_libraries()
+def api_libraries(
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    return emby_client.get_libraries(access_token=access_token, user_id=user_id)
 
 
 @router.get("/items", response_model=LibraryItemsResponse)
@@ -27,33 +46,63 @@ def api_items(
     recursive: bool = False,
     startIndex: Optional[int] = None,
     limit: Optional[int] = None,
+    party_session: PartySession = Depends(require_party_unlocked),
     emby_client=Depends(get_emby_client),
 ):
-    return emby_client.get_items(parentId, type, recursive, startIndex, limit)
+    access_token, user_id = _host_creds(party_session)
+    return emby_client.get_items(
+        parent_id=parentId,
+        item_type=type,
+        recursive=recursive,
+        start_index=startIndex,
+        limit=limit,
+        access_token=access_token,
+        user_id=user_id,
+    )
 
 
 @router.get("/search", response_model=LibraryItemsResponse)
-def api_search(q: str = Query(""), emby_client=Depends(get_emby_client)):
+def api_search(
+    q: str = Query(""),
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
     if not q.strip():
         return {"Items": []}
-    return emby_client.search_items(q.strip())
+    access_token, user_id = _host_creds(party_session)
+    return emby_client.search_items(q.strip(), access_token=access_token, user_id=user_id)
 
 
 @router.get("/item/{item_id}", response_model=ItemDetailsResponse)
-def api_item_details(item_id: str, emby_client=Depends(get_emby_client)):
-    details = emby_client.get_item_details(item_id)
+def api_item_details(
+    item_id: str,
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    details = emby_client.get_item_details(item_id, access_token=access_token, user_id=user_id)
     if details:
         return details
     return {"error": "Item not found"}
 
 
 @router.get("/item/{item_id}/streams", response_model=StreamsResponse)
-def api_item_streams(item_id: str, emby_client=Depends(get_emby_client), logger=Depends(get_logger)):
+def api_item_streams(
+    item_id: str,
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+    logger=Depends(get_logger),
+):
     logger.info(f"Fetching streams for item ID: {item_id}")
+    access_token, user_id = _host_creds(party_session)
 
-    playback_info = emby_client.get_playback_info(item_id)
+    playback_info = emby_client.get_playback_info(
+        item_id, access_token=access_token, user_id=user_id
+    )
     if not playback_info:
-        playback_info = emby_client.get_item_details(item_id)
+        playback_info = emby_client.get_item_details(
+            item_id, access_token=access_token, user_id=user_id
+        )
 
     if not playback_info:
         return {"audio": [], "subtitles": [], "error": "Could not fetch stream information"}

@@ -15,23 +15,83 @@ class LoginRequest(BaseModel):
 
 
 class LoginResponse(BaseModel):
+    """Result of /api/auth/login (become host) and /api/auth/logout.
+
+    On a successful become-host, host_username carries the Emby account
+    name the caller is now hosting under.
+    """
     success: bool
     message: str
     username: Optional[str] = None
+    is_host: bool = False
+    host_username: Optional[str] = None
+    is_admin: bool = False
 
 
 class AuthStatusResponse(BaseModel):
+    """Reflects the caller's relationship to their current party.
+
+    `authenticated` is true iff this caller has a party-bound session
+    AND is currently the host of that party. `party_id` is the party
+    the caller is bound to (cookie state), or None.
+    """
     authenticated: bool
     username: Optional[str] = None
     is_admin: bool = False
     require_login: bool = False
+    is_host: bool = False
+    party_id: Optional[str] = None
+    host_username: Optional[str] = None
+    party_unlocked: bool = False
 
 
 # ============== Party ==============
 
+class CreatePartyRequest(BaseModel):
+    """Body for POST /api/party/create.
+
+    When `REQUIRE_LOGIN=true`, `username` and `password` are required:
+    the creator authenticates with Emby and becomes host atomically.
+    `client_id` is the caller's persistent identifier from localStorage
+    (used to bind the session cookie when becoming host).
+    `display_name` is shown in chat / user lists.
+    """
+    client_id: Optional[str] = None
+    display_name: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+
 class CreatePartyResponse(BaseModel):
     party_id: str
     url: str
+    is_host: bool = False
+    host_username: Optional[str] = None
+    is_admin: bool = False
+    message: Optional[str] = None
+
+
+class JoinPartyRequest(BaseModel):
+    """Body for POST /api/party/<id>/join.
+
+    Sets up the party-bound session cookie. Anonymous (no Emby
+    credentials). The cookie carries the supplied `client_id` and
+    `display_name` so subsequent Socket.IO connect / HTTP requests
+    can be attributed back to this caller. `avatar_uuid` is optional
+    -- when present, members of the party see this caller's chosen
+    avatar instead of the generated fallback.
+    """
+    client_id: str
+    display_name: str
+    avatar_uuid: Optional[str] = None
+
+
+class JoinPartyResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    party_id: Optional[str] = None
+    is_host: bool = False
+    party_unlocked: bool = False
 
 
 class PlaybackStateSchema(BaseModel):

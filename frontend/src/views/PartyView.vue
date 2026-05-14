@@ -9,13 +9,52 @@ import VideoControls from '@/components/VideoControls.vue'
 import EmojiPicker from '@/components/EmojiPicker.vue'
 import JoinVoteModal from '@/components/JoinVoteModal.vue'
 import JoinWaitingRoom from '@/components/JoinWaitingRoom.vue'
+import EmbyLoginModal from '@/components/EmbyLoginModal.vue'
+import AvatarSetupModal from '@/components/AvatarSetupModal.vue'
 import { api } from '@/api/client'
-import { avatarUrl } from '@/utils/avatar'
+import { avatarUrl as fallbackAvatarUrl } from '@/utils/avatar'
+import { useAuthStore } from '@/stores/auth'
+import { useAvatarStore } from '@/stores/avatar'
 
 const route = useRoute()
 const router = useRouter()
 const socket = useSocketStore()
 const party = usePartyStore()
+const auth = useAuthStore()
+const avatar = useAvatarStore()
+
+const showBecomeHostModal = ref(false)
+const becomeHostBusy = ref(false)
+const becomeHostError = ref<string | null>(null)
+const showAvatarModal = ref(false)
+
+/**
+ * Resolve a member's avatar image source.
+ *
+ * Order of precedence:
+ * 1. The member has a stored avatar (uploaded or gravatar) -> /api/avatar/{uuid}
+ * 2. The member is the current host of this party AND no stored avatar -> /api/avatar/host/{party_id}
+ * 3. Generated monsterid keyed off display name (legacy default).
+ */
+function avatarSrc(name: string): string {
+  const uuid = party.members[name]
+  if (uuid) return api.avatarSrc(uuid)
+  if (auth.hostUsername && name === auth.hostUsername && party.partyId) {
+    return api.hostAvatarSrc(party.partyId)
+  }
+  return fallbackAvatarUrl(name)
+}
+
+/**
+ * Pick the avatar URL for a chat message bubble. Prefers the
+ * `avatar_uuid` snapshot the server attached at emit time so a sender
+ * who has since left the party still renders with their chosen
+ * avatar.
+ */
+function chatAvatarSrc(msg: { username: string; avatar_uuid?: string | null }): string {
+  if (msg.avatar_uuid) return api.avatarSrc(msg.avatar_uuid)
+  return avatarSrc(msg.username)
+}
 
 const usernameInput = ref('')
 const joined = ref(false)
@@ -43,6 +82,11 @@ const versionInfo = ref({ version: '', codename: '' })
 onMounted(async () => {
   socket.connect()
   party.setupListeners()
+  auth.attachSocketListeners()
+
+  try {
+    await auth.refresh()
+  } catch { /* ignore */ }
 
   try {
     const v = await api.version()
@@ -345,6 +389,14 @@ onMounted(async () => {
     router.push('/')
   })
 
+  // Party was dissolved server-side (e.g. an admin disabled static
+  // sessions while we were inside one). Clean up and redirect home.
+  socket.on('party_dissolved', () => {
+    alert('This party has been closed by an administrator.')
+    party.leave()
+    router.push('/')
+  })
+
   // Vote resolved as fail while we were the late joiner: the store
   // already cleared the pending state; here we just redirect.
   socket.on('join_vote_resolved', (data: any) => {
@@ -354,6 +406,24 @@ onMounted(async () => {
       // If the store's leave() already ran, party.partyId is null.
       router.push('/')
     }
+  })
+
+  // Resolve any persisted avatar uuid BEFORE registering the watcher
+  // below. Without this, the IndexedDB-driven null -> uuid transition
+  // would be the first watcher firing, and we'd have to gate it --
+  // which previously caused first-time recover/upload events to never
+  // broadcast (the user's first ever uuid change got eaten by the
+  // "skip the initial load" guard).
+  try { await avatar.load() } catch { /* ignore */ }
+
+  // Now any change is a real user action (upload, gravatar, recover).
+  // Tell the room so everyone re-renders without a page refresh.
+  watch(() => avatar.uuid, (newUuid) => {
+    if (!party.partyId) return
+    socket.emit('update_avatar', {
+      party_id: party.partyId,
+      avatar_uuid: newUuid,
+    })
   })
 
   // Auto-join with saved username
@@ -774,6 +844,32 @@ function toggleLibrary() {
     socket.emit('toggle_library', { party_id: party.partyId, show: false })
   }
 }
+
+function libraryButtonAction() {
+  if (auth.partyUnlocked) {
+    toggleLibrary()
+  } else {
+    becomeHostError.value = null
+    showBecomeHostModal.value = true
+  }
+}
+
+async function submitBecomeHost(payload: { username: string; password: string }) {
+  becomeHostBusy.value = true
+  becomeHostError.value = null
+  try {
+    const data = await auth.becomeHost(payload.username, payload.password)
+    if (data.success) {
+      showBecomeHostModal.value = false
+      // Caller is now host. Pop the library open so they can pick.
+      showLibrary.value = true
+    } else {
+      becomeHostError.value = data.message || 'Login failed'
+    }
+  } finally {
+    becomeHostBusy.value = false
+  }
+}
 </script>
 
 <template>
@@ -802,9 +898,15 @@ function toggleLibrary() {
         <span class="header-codename">{{ versionInfo.codename }}</span>
       </div>
       <div class="header-actions">
-        <button @click="toggleLibrary" class="btn btn-small">
-          {{ showLibrary ? 'Hide Library' : 'Browse Library' }}
+        <button @click="libraryButtonAction" class="btn btn-small">
+          <template v-if="auth.partyUnlocked">
+            {{ showLibrary ? 'Hide Library' : 'Browse Library' }}
+          </template>
+          <template v-else>Login to Become Host</template>
         </button>
+        <span v-if="auth.hostUsername" class="host-badge" :title="`Host: ${auth.hostUsername}`">
+          Host: {{ auth.hostUsername }}
+        </span>
         <button @click="showMobileChat = true" class="btn btn-small mobile-chat-toggle">Chat</button>
         <button v-if="party.currentVideo" @click="stopVideo" class="btn btn-small btn-warning">Stop Video</button>
         <button @click="leaveParty" class="btn btn-small btn-danger">Leave</button>
@@ -822,9 +924,16 @@ function toggleLibrary() {
       <!-- Video area -->
       <main class="video-area">
         <div v-if="!party.currentVideo" class="no-video">
-          <h2>No video selected</h2>
-          <p>Browse the library and select a video to start watching together</p>
-          <button @click="toggleLibrary" class="btn btn-primary">Browse Library</button>
+          <template v-if="auth.partyUnlocked">
+            <h2>No video selected</h2>
+            <p>Browse the library and select a video to start watching together</p>
+            <button @click="toggleLibrary" class="btn btn-primary">Browse Library</button>
+          </template>
+          <template v-else>
+            <h2>Party is locked</h2>
+            <p>An Emby login is needed before anyone can browse the library. Any party member can do it.</p>
+            <button @click="libraryButtonAction" class="btn btn-primary">Login to Become Host</button>
+          </template>
         </div>
         <div v-else class="video-wrapper">
           <div v-if="party.readyCheckActive" class="ready-check-overlay">
@@ -882,13 +991,18 @@ function toggleLibrary() {
           </div>
         </div>
         <div v-if="showParticipants" class="participant-list">
+          <div class="participant-actions">
+            <button class="btn btn-ghost btn-small" @click.stop="showAvatarModal = true">
+              My avatar
+            </button>
+          </div>
           <div
             v-for="user in party.users"
             :key="user"
             class="participant-item"
             :class="{ 'participant-self': user === party.username }"
           >
-            <img :src="avatarUrl(user)" class="avatar avatar-sm" :alt="user" />
+            <img :src="avatarSrc(user)" class="avatar avatar-sm" :alt="user" />
             <span>{{ user }}</span>
             <span v-if="user === party.username" class="you-label">(you)</span>
           </div>
@@ -904,12 +1018,12 @@ function toggleLibrary() {
             </template>
             <template v-else>
               <div class="msg-bubble-row" :class="{ 'msg-self': msg.username === party.username }">
-                <img v-if="msg.username !== party.username" :src="avatarUrl(msg.username)" class="avatar avatar-chat" :alt="msg.username" />
+                <img v-if="msg.username !== party.username" :src="chatAvatarSrc(msg)" class="avatar avatar-chat" :alt="msg.username" />
                 <div class="msg-bubble" :class="msg.username === party.username ? 'bubble-self' : 'bubble-other'">
                   <strong>{{ msg.username }}</strong>
                   <span>{{ msg.message }}</span>
                 </div>
-                <img v-if="msg.username === party.username" :src="avatarUrl(msg.username)" class="avatar avatar-chat" :alt="msg.username" />
+                <img v-if="msg.username === party.username" :src="chatAvatarSrc(msg)" class="avatar avatar-chat" :alt="msg.username" />
               </div>
             </template>
           </div>
@@ -957,6 +1071,24 @@ function toggleLibrary() {
 
   <!-- Late-joiner waiting room (the joiner themselves) -->
   <JoinWaitingRoom />
+
+  <!-- Avatar setup / recovery -->
+  <AvatarSetupModal
+    v-if="showAvatarModal"
+    @close="showAvatarModal = false"
+  />
+
+  <!-- Become host (any party member can promote themselves) -->
+  <EmbyLoginModal
+    v-if="showBecomeHostModal"
+    title="Login to Become Host"
+    description="Any party member can log in with valid Emby credentials. The host's library becomes browsable for everyone in the room."
+    submit-label="Become Host"
+    :busy="becomeHostBusy"
+    :error-message="becomeHostError"
+    @submit="submitBecomeHost"
+    @cancel="showBecomeHostModal = false"
+  />
 </template>
 
 <style scoped>
@@ -1080,7 +1212,18 @@ function toggleLibrary() {
 
 .header-actions {
   display: flex;
+  align-items: center;
   gap: var(--space-sm);
+}
+
+.host-badge {
+  font-size: 0.75rem;
+  color: var(--accent-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
 }
 
 .mobile-chat-toggle {

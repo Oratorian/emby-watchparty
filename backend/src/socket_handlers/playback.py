@@ -1,4 +1,17 @@
-"""Playback handlers: select_video, stop_video, change_streams, video_ended, report_progress, stream_ready"""
+"""Playback handlers: select_video, stop_video, change_streams, video_ended, report_progress, stream_ready.
+
+Identity model:
+- `current_video.selected_by` is the **client_id** of the user who picked
+  the video, not their current sid. client_ids survive page refreshes,
+  so a selector who reloads still owns Stop Video.
+- Every Emby call uses the **host's** access_token / user_id. When the
+  host has fully left (token cleared) Emby-touching events refuse the
+  request; the party is LOCKED.
+- After a video ends or is stopped in the PLAYING-ONLY state, the
+  stored host token is wiped (full LOCKED).
+
+See docs/AUTH-DESIGN.md.
+"""
 
 from datetime import datetime
 from backend.src.stream_builder import QUALITY_PRESETS, DEFAULT_QUALITY
@@ -11,6 +24,14 @@ def register(ctx):
     logger = ctx['logger']
     party_manager = ctx['party_manager']
     token_manager = ctx['token_manager']
+
+    def _client_id_for_sid(party, sid):
+        """Look up the persistent client_id mapped to this socket sid."""
+        return party.get("sid_client_ids", {}).get(sid)
+
+    def _host_creds(party):
+        """Return (access_token, user_id) for the party's current host."""
+        return party.get("host_access_token"), party.get("host_user_id")
 
     def _default_audio_index(media_source):
         """Find the default audio track index from a media source."""
@@ -30,6 +51,7 @@ def register(ctx):
 
         Returns the stream info dict, or None on failure.
         """
+        access_token, user_id = _host_creds(party)
         start_ticks_for_info = int(start_seconds * 10_000_000) if start_seconds > 0 else 0
         preset = QUALITY_PRESETS.get(quality, QUALITY_PRESETS[DEFAULT_QUALITY])
         playback_info = emby_client.get_playback_info(
@@ -38,6 +60,8 @@ def register(ctx):
             subtitle_index=subtitle_index,
             max_streaming_bitrate=preset["bitrate"],
             start_time_ticks=start_ticks_for_info,
+            access_token=access_token,
+            user_id=user_id,
         )
         if not playback_info or "MediaSources" not in playback_info:
             logger.warning(f"Failed to get playback info for user stream (sid={sid})")
@@ -82,6 +106,8 @@ def register(ctx):
             audio_index=audio_index,
             subtitle_index=subtitle_index if subtitle_index != -1 else None,
             run_time_seconds=run_time_seconds,
+            access_token=access_token,
+            user_id=user_id,
         )
 
         logger.info(f"Created user stream for {party['users'].get(sid, sid)}: "
@@ -95,6 +121,7 @@ def register(ctx):
         if not stream or not stream.get("play_session_id"):
             return
 
+        access_token, user_id = _host_creds(party)
         current_video = party.get("current_video")
         if current_video:
             emby_client.report_playback_stopped(
@@ -103,13 +130,26 @@ def register(ctx):
                 play_session_id=stream["play_session_id"],
                 position_seconds=position_seconds,
                 run_time_seconds=current_video.get("run_time_seconds"),
+                access_token=access_token,
+                user_id=user_id,
             )
-        emby_client.stop_active_encodings(play_session_id=stream["play_session_id"])
+        emby_client.stop_active_encodings(
+            play_session_id=stream["play_session_id"],
+            access_token=access_token,
+        )
 
     def _stop_all_user_streams(party, position_seconds=0):
         """Stop all per-user transcodes."""
         for sid in list(party.get("user_streams", {}).keys()):
             _stop_user_stream(party, sid, position_seconds)
+
+    def _wipe_host_if_orphan(party_id, party):
+        """If host has already left and there's nothing left to play, wipe
+        the stored token so the party fully transitions to LOCKED.
+        """
+        if party.get("host_left_at") is not None:
+            party_manager.clear_host(party_id)
+            logger.info(f"Party {party_id} -> LOCKED (host gone, playback ended)")
 
     def _start_ready_check(party, party_id):
         """Start a ready check for all users in the party."""
@@ -144,14 +184,20 @@ def register(ctx):
                 "ready": ready_names, "waiting": waiting_names,
             }, room=party_id)
 
-    async def _restart_video_from_beginning(party, party_id, selector_sid,
+    async def _restart_video_from_beginning(party, party_id, selector_client_id,
                                               item_id, item_name, item_overview):
         """Fetch fresh media info, stop existing streams, create per-user
         streams starting at 0, broadcast video_selected + ready_check.
 
+        `selector_client_id` is stored as `current_video.selected_by` so
+        the selector survives reloads / sid changes.
+
         Returns True on success, False on failure (caller should emit error).
         """
-        playback_info = emby_client.get_playback_info(item_id)
+        access_token, user_id = _host_creds(party)
+        playback_info = emby_client.get_playback_info(
+            item_id, access_token=access_token, user_id=user_id,
+        )
         if not playback_info or "MediaSources" not in playback_info:
             return False
 
@@ -164,10 +210,12 @@ def register(ctx):
         prev_time = party["playback_state"].get("time", 0)
         _stop_all_user_streams(party, prev_time)
 
-        # Store shared video info (no per-user fields)
+        # Store shared video info (no per-user fields). selected_by is the
+        # persistent client_id, not the current sid.
         party["current_video"] = {
             "item_id": item_id, "title": item_name, "overview": item_overview,
-            "run_time_seconds": run_time_seconds, "selected_by": selector_sid,
+            "run_time_seconds": run_time_seconds,
+            "selected_by": selector_client_id,
         }
 
         party["playback_state"] = {
@@ -201,7 +249,7 @@ def register(ctx):
                     "stream_url": stream_url,
                     "audio_index": default_audio, "subtitle_index": None,
                     "media_source_id": stream["media_source_id"],
-                    "selected_by": selector_sid, "quality": DEFAULT_QUALITY,
+                    "selected_by": selector_client_id, "quality": DEFAULT_QUALITY,
                 }
             }, to=user_sid)
 
@@ -229,8 +277,23 @@ def register(ctx):
 
         party = party_manager.get(party_id)
 
+        # Party must be UNLOCKED. PLAYING-ONLY does not allow new picks
+        # because the host is gone and a new transcode can not be started.
+        if not party_manager.is_unlocked(party_id):
+            await sio.emit(
+                "error",
+                {"message": "Party has no host -- login to become host first"},
+                to=sid,
+            )
+            return
+
+        selector_client_id = _client_id_for_sid(party, sid)
+        if not selector_client_id:
+            await sio.emit("error", {"message": "Not a party member"}, to=sid)
+            return
+
         success = await _restart_video_from_beginning(
-            party, party_id, sid, item_id, item_name, item_overview
+            party, party_id, selector_client_id, item_id, item_name, item_overview
         )
         if not success:
             await sio.emit("error", {"message": "Failed to load video"}, to=sid)
@@ -243,7 +306,9 @@ def register(ctx):
 
         if not party or not party.get("current_video"):
             return
-        if party["current_video"].get("selected_by") != sid:
+
+        caller_client_id = _client_id_for_sid(party, sid)
+        if party["current_video"].get("selected_by") != caller_client_id:
             await sio.emit("error", {"message": "Only the selector can stop the video"}, to=sid)
             return
 
@@ -259,6 +324,9 @@ def register(ctx):
             "playing": False, "time": 0, "last_update": datetime.now().isoformat(),
         }
 
+        # PLAYING-ONLY -> LOCKED transition if the host was gone.
+        _wipe_host_if_orphan(party_id, party)
+
         await sio.emit("video_stopped", {
             "message": f"{username} stopped the video", "stopped_by": username,
         }, room=party_id)
@@ -268,11 +336,8 @@ def register(ctx):
     async def handle_change_streams(sid, data):
         """Per-user stream change (audio/subtitle/quality).
 
-        If the party is playing, all clients are force-paused, the target
-        user's stream is swapped, and a party-wide ready check runs. Once
-        every client reports ready, they all resume together from the
-        same position. This prevents the requesting user from desyncing
-        while they buffer the new stream.
+        Silent swap of the requesting user's stream. Other users keep
+        playing normally; no party-wide pause, no ready check.
         """
         party_id = data.get("party_id", "").strip().upper()
         audio_index = data.get("audio_index")
@@ -283,17 +348,27 @@ def register(ctx):
         if not party or not party.get("current_video"):
             return
 
+        # Need a usable host token. Allowed in both UNLOCKED and
+        # PLAYING-ONLY because the in-flight video already has a session
+        # under the stored token -- we just need it for the new transcode.
+        if not party_manager.has_host_token(party_id):
+            await sio.emit(
+                "error",
+                {"message": "Party token has expired"},
+                to=sid,
+            )
+            return
+
         current_video = party["current_video"]
         item_id = current_video["item_id"]
+        access_token, user_id = _host_creds(party)
 
         if not quality or quality not in QUALITY_PRESETS:
             old_stream = party.get("user_streams", {}).get(sid, {})
             quality = old_stream.get("quality", DEFAULT_QUALITY)
 
         # Snapshot the party clock using the same elapsed-time projection
-        # the sync handlers use. This is the position the requesting user
-        # needs to resume at after their new stream loads. Other users
-        # keep playing normally -- this change does NOT disturb them.
+        # the sync handlers use.
         ps = party["playback_state"]
         was_playing = ps.get("playing", False)
         snapshot_time = ps.get("time", 0)
@@ -306,14 +381,9 @@ def register(ctx):
             except Exception:
                 pass
 
-        # Stop this user's old transcode. NOTE: do NOT touch playback_state
-        # here. The party clock keeps running on last_update so non-target
-        # users and the server keep advancing while we rebuild the target's
-        # stream. If we froze it, the other users would drift out of sync
-        # from the authoritative clock.
+        # Stop this user's old transcode. Party clock keeps running.
         _stop_user_stream(party, sid, snapshot_time)
 
-        # Get fresh media info for new PlaySessionId
         preset = QUALITY_PRESETS.get(quality, QUALITY_PRESETS[DEFAULT_QUALITY])
         playback_info = emby_client.get_playback_info(
             item_id,
@@ -321,17 +391,15 @@ def register(ctx):
             subtitle_index=subtitle_index,
             max_streaming_bitrate=preset["bitrate"],
             start_time_ticks=int(snapshot_time * 10_000_000) if snapshot_time > 0 else 0,
+            access_token=access_token,
+            user_id=user_id,
         )
         if not playback_info or "MediaSources" not in playback_info:
             return
 
         media_source = playback_info["MediaSources"][0]
 
-        # Recompute the current party time now that the Emby calls have
-        # taken their time. This is the "real" position at the moment we
-        # emit the new stream URL to the target user. Their StartTimeTicks
-        # uses this position so their fresh transcode starts where the
-        # party actually is now, not where it was when they clicked.
+        # Recompute the current party time after the Emby round-trip.
         current_time = ps.get("time", 0)
         if was_playing and ps.get("last_update"):
             try:
@@ -342,7 +410,6 @@ def register(ctx):
             except Exception:
                 pass
 
-        # Create new stream at the up-to-date party position
         stream = _create_user_stream(
             party, party_id, sid, item_id, media_source,
             audio_index=audio_index, subtitle_index=subtitle_index,
@@ -357,12 +424,6 @@ def register(ctx):
             if user_token:
                 stream_url += f"&token={user_token}"
 
-        # Emit ONLY to the requesting user. Other users are unaffected --
-        # they keep playing normally, no pause, no ready check, no overlay.
-        # The requesting user's VideoPlayer reloads with the new stream
-        # and auto-plays on MANIFEST_PARSED because their store
-        # playbackState.playing is still True (nothing touched it) and
-        # no ready check is active.
         await sio.emit("streams_changed", {
             "video": {
                 "item_id": item_id, "title": current_video["title"],
@@ -396,6 +457,10 @@ def register(ctx):
             "playing": False, "time": 0, "last_update": datetime.now().isoformat(),
         }
         party["ready_check"] = None
+
+        # If host already left, this is the moment we fully lock the party.
+        _wipe_host_if_orphan(party_id, party)
+
         await sio.emit("video_ended", {
             "party_id": party_id, "timestamp": datetime.now().isoformat(),
         }, room=party_id)
@@ -412,14 +477,16 @@ def register(ctx):
         if not user_stream or not user_stream.get("play_session_id"):
             return
 
-        # Only the selector updates the authoritative party clock
+        # Only the selector updates the authoritative party clock.
+        # Match by persistent client_id so a reload preserves the role.
         current_video = party["current_video"]
-        if current_video.get("selected_by") == sid:
+        caller_client_id = _client_id_for_sid(party, sid)
+        if current_video.get("selected_by") == caller_client_id:
             party["playback_state"]["time"] = current_time
             party["playback_state"]["last_update"] = datetime.now().isoformat()
 
-        # Every user reports progress to Emby for their own session
         is_playing = party["playback_state"].get("playing", False)
+        access_token, user_id = _host_creds(party)
         emby_client.report_playback_progress(
             item_id=current_video["item_id"],
             media_source_id=user_stream["media_source_id"],
@@ -428,6 +495,8 @@ def register(ctx):
             audio_index=user_stream.get("audio_index"),
             subtitle_index=user_stream.get("subtitle_index") if user_stream.get("subtitle_index") != -1 else None,
             run_time_seconds=current_video.get("run_time_seconds"),
+            access_token=access_token,
+            user_id=user_id,
         )
 
     @sio.on("stream_ready")

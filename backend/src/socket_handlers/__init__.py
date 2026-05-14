@@ -10,7 +10,8 @@ from backend.src.socket_handlers.chat import register as register_chat
 from backend.src.socket_handlers.drift import register as register_drift
 
 
-def register_all(sio, emby_client, party_manager, token_manager, stream_builder, config, logger):
+def register_all(sio, emby_client, party_manager, token_manager, stream_builder,
+                 config, logger, session_secret=None):
     """Register all socket event handlers"""
     ctx = {
         'sio': sio,
@@ -20,6 +21,7 @@ def register_all(sio, emby_client, party_manager, token_manager, stream_builder,
         'stream_builder': stream_builder,
         'config': config,
         'logger': logger,
+        'session_secret': session_secret,
     }
     register_connection(ctx)
     # playback must register before party so the restart_video_from_beginning

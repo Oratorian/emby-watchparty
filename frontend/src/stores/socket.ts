@@ -28,6 +28,12 @@ export const useSocketStore = defineStore('socket', () => {
       sid.value = null
     })
 
+    // Surface handshake failures so the UI does not silently hang when
+    // the backend rejects the connection or the WS upgrade fails.
+    s.on('connect_error', (err: Error) => {
+      console.warn('Socket connect_error:', err.message)
+    })
+
     socket.value = s
   }
 

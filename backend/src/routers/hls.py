@@ -1,52 +1,76 @@
 """
-HLS Router - Proxy HLS playlists and segments from Emby
+HLS Router - Proxy HLS playlists and segments from Emby.
+
+Auth model: the URL-embedded HLS token (HLSTokenManager) proves the
+caller is a member of the party. The party's host_access_token is then
+used to sign every upstream Emby request. When the host fully leaves
+(token cleared) the route returns 423 -- but during PLAYING-ONLY the
+stored token keeps the current video alive until it ends naturally.
 """
 
 import re
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
 import httpx
 
-from backend.src.dependencies import get_config, get_emby_client, get_token_manager, get_party_manager, get_logger
+from backend.src.dependencies import (
+    get_config, get_emby_client, get_token_manager, get_party_manager, get_logger,
+)
 
 router = APIRouter(prefix="/hls", tags=["hls"])
 
 
-def _validate_token(request: Request, config, token_manager, party_manager, logger, item_id=None):
-    """Validate HLS token if enabled. Returns True if valid or validation disabled."""
-    if not config.ENABLE_HLS_TOKEN_VALIDATION:
-        return True
+def _resolve_host_creds(request: Request, token_manager, party_manager, logger):
+    """Validate the HLS token and return (host_access_token, host_user_id, party_id).
+
+    Returns (None, None, None) when validation or host lookup fails so
+    the caller can render the right HTTP error.
+    """
     token = request.query_params.get("token")
     if not token:
-        logger.debug("Token validation failed: No token provided")
-        return False
-    return token_manager.validate(
+        logger.debug("HLS denied: no token")
+        return None, None, None
+
+    party_id = token_manager.get_party_id(token)
+    if not party_id:
+        logger.debug("HLS denied: token unknown or expired")
+        return None, None, None
+
+    valid = token_manager.validate(
         token,
         party_exists_fn=party_manager.exists,
         user_in_party_fn=lambda pid, sid: (
-            party_manager.get(pid) is not None and sid in party_manager.get(pid)["users"]
+            party_manager.get(pid) is not None
+            and sid in party_manager.get(pid)["users"]
         ),
     )
+    if not valid:
+        logger.debug(f"HLS denied: token failed validation for party {party_id}")
+        return None, None, None
+
+    party = party_manager.get(party_id)
+    if not party or not party.get("host_access_token"):
+        logger.debug(f"HLS denied: party {party_id} has no host token")
+        return None, None, None
+
+    return party["host_access_token"], party.get("host_user_id"), party_id
 
 
 def _rewrite_playlist(content: str, item_id: str, app_prefix: str, emby_url: str, token: str = None):
     """Rewrite Emby URLs in HLS playlists to proxy URLs"""
     escaped_id = re.escape(item_id)
 
-    # Replace absolute Emby URLs
     content = re.sub(
         rf"{re.escape(emby_url)}/emby/Videos/{escaped_id}/",
         f"{app_prefix}/hls/{item_id}/",
         content,
     )
-    # Replace relative URLs
     content = re.sub(
         rf"/emby/Videos/{escaped_id}/",
         f"{app_prefix}/hls/{item_id}/",
         content,
     )
 
-    # Add token to segment URLs
     if token:
         lines = content.split("\n")
         for i, line in enumerate(lines):
@@ -66,13 +90,16 @@ def proxy_hls_master(item_id: str, request: Request,
                      token_manager=Depends(get_token_manager),
                      party_manager=Depends(get_party_manager),
                      logger=Depends(get_logger)):
-    emby_url = None
     try:
-        if not _validate_token(request, config, token_manager, party_manager, logger, item_id):
-            return Response(content='{"error": "Unauthorized"}', status_code=401,
-                            media_type="application/json")
+        access_token, user_id, _ = _resolve_host_creds(
+            request, token_manager, party_manager, logger
+        )
+        if not access_token:
+            return Response(
+                content='{"error": "Unauthorized"}', status_code=401,
+                media_type="application/json",
+            )
 
-        # Build Emby URL with all query params except token
         query_params = {k: v for k, v in request.query_params.items() if k != "token"}
         query_string = "&".join(f"{k}={v}" for k, v in query_params.items())
         emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/master.m3u8"
@@ -80,7 +107,7 @@ def proxy_hls_master(item_id: str, request: Request,
             emby_url += f"?{query_string}"
 
         logger.debug(f"Proxying HLS master: {emby_url}")
-        emby_resp = httpx.get(emby_url, headers=emby_client.headers)
+        emby_resp = httpx.get(emby_url, headers=emby_client._headers(access_token, user_id))
         emby_resp.raise_for_status()
 
         token = request.query_params.get("token") if config.ENABLE_HLS_TOKEN_VALIDATION else None
@@ -112,11 +139,15 @@ def proxy_hls_segment(item_id: str, subpath: str, request: Request,
                       token_manager=Depends(get_token_manager),
                       party_manager=Depends(get_party_manager),
                       logger=Depends(get_logger)):
-    emby_url = None
     try:
-        if not _validate_token(request, config, token_manager, party_manager, logger, item_id):
-            return Response(content='{"error": "Unauthorized"}', status_code=401,
-                            media_type="application/json")
+        access_token, user_id, _ = _resolve_host_creds(
+            request, token_manager, party_manager, logger
+        )
+        if not access_token:
+            return Response(
+                content='{"error": "Unauthorized"}', status_code=401,
+                media_type="application/json",
+            )
 
         query_params = {k: v for k, v in request.query_params.items() if k != "token"}
         query_string = "&".join(f"{k}={v}" for k, v in query_params.items())
@@ -126,9 +157,8 @@ def proxy_hls_segment(item_id: str, subpath: str, request: Request,
 
         logger.debug(f"Proxying HLS segment: {subpath} -> {emby_url}")
 
-        # For playlists, fetch and rewrite
         if subpath.endswith(".m3u8"):
-            emby_resp = httpx.get(emby_url, headers=emby_client.headers)
+            emby_resp = httpx.get(emby_url, headers=emby_client._headers(access_token, user_id))
             emby_resp.raise_for_status()
             token = request.query_params.get("token") if config.ENABLE_HLS_TOKEN_VALIDATION else None
             playlist = _rewrite_playlist(
@@ -143,8 +173,7 @@ def proxy_hls_segment(item_id: str, subpath: str, request: Request,
                 },
             )
 
-        # For segments, stream through
-        emby_resp = httpx.get(emby_url, headers=emby_client.headers)
+        emby_resp = httpx.get(emby_url, headers=emby_client._headers(access_token, user_id))
         emby_resp.raise_for_status()
 
         content_type = "video/MP2T" if subpath.endswith(".ts") else "application/octet-stream"

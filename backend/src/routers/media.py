@@ -1,25 +1,43 @@
 """
-Media Router - Intro info, image proxy, subtitle proxy
+Media Router - Intro info, image proxy, subtitle proxy.
+
+`/intro` requires require_party_unlocked (the host's library is being
+queried). `/image` and `/subtitles` only require require_host_token so
+that the poster art and subtitles of the in-flight video keep working
+during the PLAYING-ONLY state after the host leaves.
 """
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 import requests as http_requests
 
-from backend.src.dependencies import get_config, get_emby_client, get_logger
+from backend.src.dependencies import (
+    PartySession,
+    get_config,
+    get_emby_client,
+    get_logger,
+    require_host_token,
+    require_party_unlocked,
+)
 from backend.src.schemas import IntroResponse
 
 router = APIRouter(prefix="/api", tags=["media"])
 
 
 @router.get("/intro/{item_id}", response_model=IntroResponse)
-def get_intro_info(item_id: str, config=Depends(get_config),
-                   emby_client=Depends(get_emby_client), logger=Depends(get_logger)):
+def get_intro_info(
+    item_id: str,
+    config=Depends(get_config),
+    emby_client=Depends(get_emby_client),
+    logger=Depends(get_logger),
+    party_session: PartySession = Depends(require_party_unlocked),
+):
     logger.debug(f"Fetching intro info for item ID: {item_id}")
+    access_token = party_session.party["host_access_token"]
     try:
         resp = http_requests.get(
             f"{config.EMBY_SERVER_URL}/emby/Items/Intros",
-            params={"api_key": emby_client.api_key},
+            params={"api_key": access_token},
             headers={"Content-Type": "application/json"},
             timeout=5,
         )
@@ -37,11 +55,20 @@ def get_intro_info(item_id: str, config=Depends(get_config),
 
 
 @router.get("/image/{item_id}")
-def api_image(item_id: str, type: str = Query("Primary"),
-              emby_client=Depends(get_emby_client), logger=Depends(get_logger)):
-    image_url = emby_client.get_image_url(item_id, type)
+def api_image(
+    item_id: str,
+    type: str = Query("Primary"),
+    emby_client=Depends(get_emby_client),
+    logger=Depends(get_logger),
+    party_session: PartySession = Depends(require_host_token),
+):
+    access_token = party_session.party["host_access_token"]
+    user_id = party_session.party["host_user_id"]
+    image_url = emby_client.get_image_url(item_id, type, access_token=access_token)
     try:
-        emby_resp = http_requests.get(image_url, headers=emby_client.headers)
+        emby_resp = http_requests.get(
+            image_url, headers=emby_client._headers(access_token, user_id)
+        )
         if emby_resp.status_code == 200:
             ct = emby_resp.headers.get("Content-Type", "image/jpeg")
             if not ct.startswith("image/"):
@@ -58,15 +85,25 @@ def api_image(item_id: str, type: str = Query("Primary"),
 
 
 @router.get("/subtitles/{item_id}/{media_source_id}/{subtitle_index}")
-def api_subtitles(item_id: str, media_source_id: str, subtitle_index: int,
-                  config=Depends(get_config), emby_client=Depends(get_emby_client),
-                  logger=Depends(get_logger)):
+def api_subtitles(
+    item_id: str,
+    media_source_id: str,
+    subtitle_index: int,
+    config=Depends(get_config),
+    emby_client=Depends(get_emby_client),
+    logger=Depends(get_logger),
+    party_session: PartySession = Depends(require_host_token),
+):
+    access_token = party_session.party["host_access_token"]
+    user_id = party_session.party["host_user_id"]
     try:
         subtitle_url = (
             f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/{media_source_id}"
-            f"/Subtitles/{subtitle_index}/Stream.vtt?api_key={emby_client.api_key}"
+            f"/Subtitles/{subtitle_index}/Stream.vtt?api_key={access_token}"
         )
-        emby_resp = http_requests.get(subtitle_url, headers=emby_client.headers)
+        emby_resp = http_requests.get(
+            subtitle_url, headers=emby_client._headers(access_token, user_id)
+        )
         if emby_resp.status_code == 200:
             return Response(
                 content=emby_resp.content,

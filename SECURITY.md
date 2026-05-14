@@ -84,8 +84,12 @@ Never commit your `.env` file. It contains sensitive credentials:
 ```bash
 # These should NEVER be in version control
 EMBY_API_KEY=your_api_key
-EMBY_PASSWORD=your_password
 ```
+
+As of 2.0, `EMBY_USERNAME` and `EMBY_PASSWORD` are no longer stored in
+`.env`. Per-user authentication is an in-app action: any party member
+clicks "Login to Become Host" inside the party. The backend keeps no
+long-lived user credentials at rest.
 
 Ensure your `.env` file has restricted permissions:
 

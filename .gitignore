@@ -57,3 +57,7 @@ TODO.md
 config.json
 backend/static
 docs/SOCKET_API.md
+
+# Runtime data (avatar SQLite + uploaded files)
+data/
+images/

@@ -107,6 +107,29 @@ class HLSTokenManager:
             self._logger.debug(f"Generated new token for party {party_id}, sid {sid}: {new_token[:16]}...")
         return new_token
 
+    def get_party_id(self, token: str) -> Optional[str]:
+        """Return the party_id this HLS token was minted for, or None."""
+        data = self._tokens.get(token)
+        if not data:
+            return None
+        if time.time() > data['expires']:
+            return None
+        return data['party_id']
+
+    def revoke_party(self, party_id: str) -> int:
+        """Wipe every token issued for this party. Returns count removed.
+
+        Called when a party is dissolved (static session disabled, party
+        deleted) so leftover tokens can't keep HLS streams alive past
+        the party's lifetime.
+        """
+        victims = [t for t, d in self._tokens.items() if d.get('party_id') == party_id]
+        for token in victims:
+            del self._tokens[token]
+        if victims:
+            self._logger.info(f"Revoked {len(victims)} HLS tokens for party {party_id}")
+        return len(victims)
+
     def _cleanup_expired(self):
         """Remove expired tokens"""
         now = time.time()

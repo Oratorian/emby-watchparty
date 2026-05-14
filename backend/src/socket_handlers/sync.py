@@ -23,6 +23,9 @@ def register(ctx):
                 pass
         return server_time
 
+    def _client_id_for_sid(party, sid):
+        return party.get("sid_client_ids", {}).get(sid)
+
     def _report_emby_progress(party, sid, position, is_paused, event_name):
         """Report playback progress to Emby for a specific user's stream."""
         current_video = party.get("current_video")
@@ -37,6 +40,8 @@ def register(ctx):
             audio_index=user_stream.get("audio_index"),
             subtitle_index=user_stream.get("subtitle_index") if user_stream.get("subtitle_index") != -1 else None,
             run_time_seconds=current_video.get("run_time_seconds"),
+            access_token=party.get("host_access_token"),
+            user_id=party.get("host_user_id"),
         )
 
     @sio.on("play")
@@ -48,7 +53,8 @@ def register(ctx):
             return
 
         current_video = party.get("current_video")
-        is_selector = current_video and current_video.get("selected_by") == sid
+        caller_client_id = _client_id_for_sid(party, sid)
+        is_selector = current_video and current_video.get("selected_by") == caller_client_id
 
         # Everyone can toggle play, but only the selector's time is trusted
         if not is_selector:
@@ -75,7 +81,8 @@ def register(ctx):
             return
 
         current_video = party.get("current_video")
-        is_selector = current_video and current_video.get("selected_by") == sid
+        caller_client_id = _client_id_for_sid(party, sid)
+        is_selector = current_video and current_video.get("selected_by") == caller_client_id
 
         if not is_selector:
             current_time = _get_server_time(party)

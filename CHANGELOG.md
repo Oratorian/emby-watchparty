@@ -16,7 +16,30 @@ Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https:/
 
 ## [2.0.0-dev] - Midnight Premiere
 
-This is the working entry for 2.0. The version is `2.0.0-dev` and the branch is `2.0-Rework`. Nothing here has been cut as a stable release yet -- the entry is updated as the rework progresses.
+2.0 is a top-to-bottom rewrite of Emby Watch Party. The 1.x line was a Flask app with Jinja templates, vanilla JS on the frontend, and a single shared Emby transcode that the whole party watched in lockstep: one stream URL, one audio track, one subtitle, one quality. It worked, but the architecture made every "can I have my own subtitles", "can I lower my quality on hotel wifi", "why am I stuck on Japanese audio because someone else picked it" request a structural impossibility.
+
+2.0 starts over on three foundations:
+
+- **FastAPI + Vue 3 + TypeScript** replaces Flask + Jinja + vanilla JS. Async end-to-end, typed Pydantic schemas with auto-generated OpenAPI docs at `/docs` and `/redoc`, Pinia stores, Vue Router, Vite for dev + build. A single uvicorn process serves the backend and the compiled frontend from the same Docker image.
+- **Per-user transcodes**. Each user gets their own `PlaySessionId` and their own Emby HLS stream. Audio track, subtitle, and quality are now personal settings that can be changed mid-playback without pausing the rest of the party. Drift correction was re-added to keep these independent streams in sync against the authoritative party clock.
+- **Late-joiner vote flow**. Per-user transcodes break the old "everyone gets the same Emby segments" guarantee, so late joiners can no longer be slotted in mid-playback without keyframe misalignment. Existing users now vote on whether to admit a late joiner; if the vote passes, the video restarts from the beginning so every session lands on PTS-aligned segment 0.
+
+Around those pillars: an admin panel at `/admin` with 17 hot-reloadable runtime settings, a unified subtitle dropdown that handles text subs (side-channel proxy) and image subs (burned-in transcode) in the same UI, a mobile chat slide-over, reload-as-rejoin via persistent `client_id`, library browse-position persistence, and a codename system. See **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** for the full end-user walk-through and **[BACKPORT-NOTES.md](BACKPORT-NOTES.md)** for which 1.6.x fixes have been ported.
+
+Codename: **Midnight Premiere**. Branch: `2.0-Rework`. The version is `2.0.0-dev` while in active development; closed-beta images are tagged `2.0.0-betaN` on GHCR. This entry is updated as the rework progresses and will be finalised when 2.0.0 is cut.
+
+### Breaking Changes
+
+- **`EMBY_USERNAME` and `EMBY_PASSWORD` are no longer read from `.env`.** Per-user Emby authentication is now an in-app action: any party member clicks "Login to Become Host" inside the party and supplies their own Emby credentials. The backend never stores long-lived user credentials at rest; only the admin server key (`EMBY_API_KEY`) remains in env. Existing deployments must remove these two lines from `.env` before upgrading.
+- **`REQUIRE_LOGIN` semantics changed** ([#31](https://github.com/Oratorian/emby-watchparty/issues/31)). The setting now gates only party CREATION:
+  - `false` (default): anyone can create a party. Spectators join with just the code. Any member can later click "Login to Become Host" to unlock the library for everyone in the room. Browsing always requires a host with a valid Emby session.
+  - `true`: party creation requires Emby credentials in the request body; the creator becomes host atomically. Spectators still join with just the code, no Emby login prompt.
+  - The setting also moved from `.env` to `config.json` -- it's now a runtime admin-panel toggle, hot-reloadable.
+- **Backend HTTP endpoints now require a party-bound session cookie.** `/api/libraries`, `/api/items`, `/api/search`, `/api/item/<id>...`, `/api/intro`, `/api/image`, `/api/subtitles`, and `/hls/...` all return `401` without a session and `423 Locked` when the party has no host. The frontend obtains the cookie automatically via the new `POST /api/party/<id>/join` step before the socket connection.
+- **`POST /api/party/create` request body changed.** Anonymous create with `REQUIRE_LOGIN=false` accepts an empty body or just `{ client_id }`. With `REQUIRE_LOGIN=true`, the body now requires `{ client_id, display_name, username, password }`.
+- **`/api/auth/login` is now "become host of your current party"**, not a global login. Requires a party-bound session cookie. Body is `{ username, password }`; on success the caller is recorded as host and the room sees a `host_changed` socket event.
+- **Frontend `/login` route removed.** The global LoginView is gone; logging in as host happens inside a party via the "Login to Become Host" button.
+- **`current_video.selected_by` is now a client_id, not a sid.** Selector identity now survives reloads and brief reconnects without re-electing on a fresh sid.
 
 ### Added
 
@@ -31,6 +54,12 @@ This is the working entry for 2.0. The version is `2.0.0-dev` and the branch is 
 - **Library browse position persists across refresh / rejoin / app restart**: drilling into Movies > Action then reloading the page now lands you back in Action with the breadcrumb intact. Saved per-browser in localStorage, falls back to the root if the saved item no longer exists.
 - **Library auto-opens on Stop Video**: clicking Stop Video pops the library open in one gesture instead of leaving everyone on a "Browse Library" button. Fires for every user in the party.
 - **Codename system**: 2.0 carries the codename "Midnight Premiere", shown on the version page and in the startup banner.
+- **Host-provider auth model** (resolves [#31](https://github.com/Oratorian/emby-watchparty/issues/31)). Each party has a host -- the Emby-authenticated member whose `access_token` signs every Emby call for that party. Three-state lock: UNLOCKED (host present), PLAYING-ONLY (host left mid-playback, current video keeps streaming until natural end), LOCKED (no host, library inaccessible). A 5-second grace window around the host's socket disconnect treats a quick refresh as a reclaim, not a departure; longer absences trigger a `host_left` broadcast and the state transition. See [docs/AUTH-DESIGN.md](docs/AUTH-DESIGN.md) for the full model.
+- **Custom chat avatars** (resolves [#36](https://github.com/Oratorian/emby-watchparty/issues/36)). Each user can upload an image, link a Gravatar by email, or restore a previously-set avatar with a memorable three-word recovery code. Hosts who logged in with Emby and have not set their own avatar fall through to their Emby profile picture. Spectators without any avatar still get the deterministic monsterid fallback. Identity is owned by an opaque UUID stored in IndexedDB / localStorage and never tied to chat usernames, so changing your display name does not change your avatar. Recovery codes are bcrypt-hashed at rest; `/api/avatar/recover` is rate-limited to 10 attempts/hour per IP. New endpoints: `POST /api/avatar/upload`, `POST /api/avatar/gravatar`, `POST /api/avatar/recover`, `GET /api/avatar/{uuid}`, `GET /api/avatar/host/{party_id}`. New Docker mount points: `/app/data` (SQLite store), `/app/images/avatars` (uploaded files).
+- **`POST /api/party/<id>/join`**: issues the party-bound session cookie used by every protected route and the Socket.IO handshake. Anonymous (no Emby credentials).
+- **`POST /api/auth/logout`**: drops host status without leaving the party. Emits `host_left` to the room.
+- **`GET /api/auth/status`** returns the caller's relationship to their current party (`{ authenticated, is_host, is_admin, host_username, party_id, party_unlocked, require_login }`).
+- **`EmbyLoginModal` Vue component** reused by both the create-party flow (when `REQUIRE_LOGIN=true`) and the in-party "Login to Become Host" flow.
 
 ### Changed
 
@@ -39,6 +68,8 @@ This is the working entry for 2.0. The version is `2.0.0-dev` and the branch is 
 - **Per-user subtitle delivery**: text subtitles via side-channel proxy (`/api/subtitles/...`), image subtitles burned in via per-user transcode. Unified subtitle dropdown shows both with `text` / `burned in` markers in the label. (NewBlade)
 - **Selector-only sync authority**: only the user who selected the video can issue play/pause/seek. Non-selector events are silently dropped to prevent state corruption.
 - **Admin panel auth**: now Emby-admin-only when login is required, verified via `IsAdministrator` policy from the auth response.
+- **`EmbyClient` is now stateless per identity.** Constructor no longer takes `username` / `password`; every user-scoped method (`get_libraries`, `get_items`, `get_playback_info`, `report_playback_*`, etc.) accepts an explicit `access_token` and `user_id`. The host's token signs each call. Closes the long-standing service-account leak where `.env`-stored credentials signed every Emby request regardless of who initiated it.
+- **Selector identity is keyed on `client_id`**, not socket sid. Refreshing the page no longer transfers the Stop-Video right or party-clock authority to whoever's sid happens to take over.
 
 ### Fixed
 
@@ -56,11 +87,18 @@ This is the working entry for 2.0. The version is `2.0.0-dev` and the branch is 
 - **Static session settings required a full restart** to take effect. Toggling "static session = X" via /admin now applies immediately; renaming the id without restart also works.
 - **Emoji picker right-side cropping** caused by `.party-content`'s `overflow: hidden` clipping the absolutely-positioned panel. Picker now teleports to `<body>` with computed `position: fixed`, escaping the clip context entirely.
 - **Emoji picker scroll jitter** where scrolling the picker shifted it leftward by sub-pixels per wheel tick. Capture-phase scroll listener was firing on the picker's own internal scroll; switched to default-phase so only page-level scroll triggers reposition.
+- **Folder-organised libraries appeared empty** ([#34](https://github.com/Oratorian/emby-watchparty/issues/34)): browsing a Movies library laid out as `Movies/Blade/Blade.mkv` (one folder per title) returned an empty card grid, while flat-file libraries like `Movies/Blade.mkv` worked. Backend now derives `IncludeItemTypes` and `Recursive` from each library's `CollectionType`, so Emby resolves folder shadows to the underlying movies / series regardless of on-disk layout.
+- **Library card posters were cropped** ([#35](https://github.com/Oratorian/emby-watchparty/issues/35)): cards used a hardcoded 2:3 aspect ratio that distorted square collection icons and wide channel banners. Each card now reads its `PrimaryImageAspectRatio` from Emby and styles itself accordingly.
+- **Browser tab title was the Vite default** ([#33](https://github.com/Oratorian/emby-watchparty/issues/33)): updated to "Emby Watch Party - Tonight's Premiere".
+- **"Enter Party Code" placeholder was clipped** ([#37](https://github.com/Oratorian/emby-watchparty/issues/37)): the input's uppercase + 0.15em letter-spacing made the placeholder wider than the input, so Chrome chopped the last few characters. Shortened to "Party code" and added `::placeholder` rules that disable the uppercase/letter-spacing styling for placeholder text only.
+- **Phantom "seeked to..." chat spam during normal playback** in production builds (separate from the HMR-driven version in dev): the `socket.on('seek')` broadcast handler unconditionally assigned `ve.currentTime = streamTime` even when the deltas matched, which queued a fresh `seeked` event that fired after `isSyncing` had already reset, escaping the guard and being rebroadcast to the party. The assignment is now gated behind a 0.3s delta check, and `onVideoSeeked` tracks natural playback progression so spurious browser-fired `seeked` events on startup don't get rebroadcast either.
 
 ### Removed
 
 - **Old Flask frontend** (`src/`, `static/`, `templates/`, `app.py`). The Vue 3 build at `frontend/` produces static assets served from `backend/static/` so a single uvicorn process serves both.
 - **Tracked `config.json`** is now generated from `RuntimeConfig` defaults on first run and gitignored, since values are deployment-specific.
+- **`EMBY_USERNAME` and `EMBY_PASSWORD` env vars.** See Breaking Changes.
+- **Global LoginView** (`/login` route). Replaced by the in-party "Login to Become Host" flow.
 
 ### Contributors
 
@@ -182,6 +220,37 @@ Two bonus improvements added during the rework:
 The admin save endpoint persisted `STATIC_SESSION_ENABLED` and `STATIC_SESSION_ID` to `config.json` and updated the in-memory runtime config, but never told `PartyManager` to actually create the static party in `watch_parties`. Toggling static session ON via /admin would persist the setting but `/party/<id>` returned "Watch party not found" until the next restart -- and even after restart only worked if the user remembered the new id.
 
 `PartyManager` now tracks `_last_static_id` and exposes a new `sync_static_party()` method that reconciles with current config: removes the previous static party if its id no longer matches (rename) or static sessions are now disabled, and creates the configured party if it is missing. The admin handler calls `sync_static_party()` whenever `STATIC_SESSION_ENABLED` or `STATIC_SESSION_ID` is in the changed-fields set, with the party_manager dependency added to the handler signature.
+
+**CollectionType-aware library queries**
+
+1.x always hit the user-scoped `/emby/Users/{userId}/Items` endpoint and Emby's auto-resolution worked because the legacy code paths set `IncludeItemTypes=Movie` and `Recursive=true` for movies. 2.0's initial port queried the global `/emby/Items` endpoint with neither flag set, which returned `Folder` items for folder-organised layouts -- a movie at `Movies/Blade/Blade.mkv` came back as a `Folder` named "Blade" with no metadata, and the frontend filtered Folders out, leaving an empty grid.
+
+`EmbyClient.get_items` now caches the `CollectionType` of every top-level library at startup (`_ensure_library_cache`), and when a `ParentId`-scoped browse comes in without an explicit `item_type`, derives the right query parameters from the parent library's collection type:
+
+- `movies` library: `IncludeItemTypes=Movie`, `Recursive=true` -- folder-per-movie resolves to the movie inside.
+- `tvshows` library: `IncludeItemTypes=Series`, `Recursive=false` -- top level is series, deeper navigation resolves seasons/episodes natively.
+- `boxsets`: `IncludeItemTypes=BoxSet`.
+- `music`: `IncludeItemTypes=MusicArtist`.
+- `homevideos` / `photos`: `IncludeItemTypes=Video,Photo` with `Recursive=true`.
+
+The frontend keeps a defensive fallback: items whose `Type` is in the `displayableTypes` set are kept; if a response contains zero displayable items, Folders are allowed through so a misclassified library is at least navigable rather than empty.
+
+**Per-card aspect ratio for library cards**
+
+Card thumbnails were styled `aspect-ratio: 2 / 3` to match standard movie posters. That distorts every non-poster image Emby returns -- collection icons are typically square, channel banners are 16:9, music album art is square. The `LibraryItem` schema already includes `PrimaryImageAspectRatio` (Emby returns this for every item that has a primary image), so `LibraryBrowser.vue` now computes an inline `aspect-ratio` style per card from that value, falling back to 2:3 only when Emby provides no aspect ratio at all. Tall posters, square album art, square collection icons, and wide channel banners all render at their intended dimensions in the same grid without per-item CSS classes.
+
+**Phantom seek-cascade in per-user transcodes**
+
+Symptom on production builds (not just HMR): chat flooded with "Andrew seeked to 00:01 / 00:02 / 00:03..." during normal playback in a per-user-transcode party. The HMR-stacking fix above eliminated the development reproduction but did not eliminate the production one.
+
+Actual root cause: `socket.on('seek', ({ time }) => { isSyncing.value = true; ve.currentTime = time; ... })`. The assignment was unconditional, so even when the local `currentTime` already matched the broadcast time (within rounding), HTMLMediaElement still fired a fresh `seeked` event a few ticks later. By then the `isSyncing` flag had been cleared in the seek handler's own follow-up, so `onVideoSeeked` saw the spurious event as a real user seek, rebroadcast it via `socket.emit('seek')`, the server fanned it out, every client's `ve.currentTime = time` re-ran, more spurious `seeked` events were queued, and the loop tightened until it was emitting at the engine's tick rate.
+
+Two layered guards:
+
+1. The broadcast handler now only assigns `ve.currentTime` when `Math.abs(ve.currentTime - streamTime) > 0.3`. Matching positions don't trigger the assignment at all, so no spurious `seeked` event is queued.
+2. `onVideoSeeked` tracks `lastNaturalTime` / `lastNaturalAt` on every `timeupdate`, and on a `seeked` event compares the new position to the natural projection. If the position lands within ~0.5s of where playback would have advanced to naturally (engine resync on stream warmup, autoplay nudges, network rebuffer adjustments), the seek is treated as natural progression and not rebroadcast.
+
+The 1.x code never had this because it used one shared Emby transcode for the whole party. The party clock and the player clock were defined to be the same thing, so the broadcast handler's "set local time from server time" simply round-tripped to a no-op. In per-user transcodes, each user has their own stream that drifts independently, so the broadcast handler now has actual work to do -- and got too aggressive about doing it.
 
 ---
 

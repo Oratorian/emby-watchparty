@@ -233,11 +233,12 @@ restart.
 These are defined in `.env` (not editable via admin panel):
 
 - `WATCH_PARTY_BIND`, `WATCH_PARTY_PORT`, `APP_PREFIX`
-- `REQUIRE_LOGIN`, `SESSION_EXPIRY`
-- `EMBY_SERVER_URL`, `EMBY_API_KEY`, `EMBY_USERNAME`, `EMBY_PASSWORD`
+- `SESSION_EXPIRY`
+- `EMBY_SERVER_URL`, `EMBY_API_KEY`
 
 Changing any of these requires editing `.env` and restarting the
-service. Everything else is hot-reloadable via the admin panel.
+service. `REQUIRE_LOGIN` and everything else is hot-reloadable via the
+admin panel.
 
 ## Troubleshooting
 

@@ -38,27 +38,35 @@ def register(ctx):
                 pass
         return current_time
 
-    def _replace_sid(party, old_sid, new_sid, username, client_id=None):
+    def _replace_sid(party, old_sid, new_sid, username, client_id=None,
+                     avatar_uuid=None):
         """Move all sid-keyed party state from an old socket to a new one."""
         if old_sid and old_sid != new_sid:
             party["users"].pop(old_sid, None)
             party.setdefault("join_times", {}).pop(old_sid, None)
             party.setdefault("sid_client_ids", {}).pop(old_sid, None)
 
-            if party.get("current_video") and party["current_video"].get("selected_by") == old_sid:
-                party["current_video"]["selected_by"] = new_sid
+            # selected_by is keyed on client_id (stable across reloads),
+            # so no remapping is needed when sid changes.
 
             old_stream = party.get("user_streams", {}).pop(old_sid, None)
             if old_stream and old_stream.get("play_session_id") and party.get("current_video"):
                 current_time = party["playback_state"].get("time", 0)
+                host_token = party.get("host_access_token")
+                host_user = party.get("host_user_id")
                 emby_client.report_playback_stopped(
                     item_id=party["current_video"]["item_id"],
                     media_source_id=old_stream["media_source_id"],
                     play_session_id=old_stream["play_session_id"],
                     position_seconds=current_time,
                     run_time_seconds=party["current_video"].get("run_time_seconds"),
+                    access_token=host_token,
+                    user_id=host_user,
                 )
-                emby_client.stop_active_encodings(play_session_id=old_stream["play_session_id"])
+                emby_client.stop_active_encodings(
+                    play_session_id=old_stream["play_session_id"],
+                    access_token=host_token,
+                )
 
             drift_strikes = party.get("drift_strikes")
             if drift_strikes and old_sid in drift_strikes:
@@ -76,10 +84,16 @@ def register(ctx):
         party["users"][new_sid] = username
         party.setdefault("join_times", {})[new_sid] = datetime.now().isoformat()
         if client_id:
-            party.setdefault("participants", {})[client_id] = {
+            participants = party.setdefault("participants", {})
+            # Preserve any previously-recorded avatar_uuid if the new
+            # call did not supply one, so a reconnect without
+            # avatar_uuid in the payload does not erase it.
+            existing = participants.get(client_id, {})
+            participants[client_id] = {
                 "username": username,
                 "sid": new_sid,
                 "last_seen": datetime.now().isoformat(),
+                "avatar_uuid": avatar_uuid or existing.get("avatar_uuid"),
             }
             party.setdefault("sid_client_ids", {})[new_sid] = client_id
 
@@ -170,6 +184,7 @@ def register(ctx):
         await sio.emit("user_joined", {
             "username": late_username,
             "users": list(party["users"].values()),
+            "members": party_manager.members_list(party_id),
             "rejoin": False,
         }, room=party_id)
 
@@ -427,6 +442,11 @@ def register(ctx):
         party_id = data.get("party_id", "").strip().upper()
         username = data.get("username", "").strip()
         client_id = str(data.get("client_id", "")).strip()
+        avatar_uuid = data.get("avatar_uuid")
+        if isinstance(avatar_uuid, str):
+            avatar_uuid = avatar_uuid.strip() or None
+        else:
+            avatar_uuid = None
 
         if not username:
             username = generate_random_username()
@@ -450,7 +470,7 @@ def register(ctx):
             if old_sid and old_sid != sid:
                 await sio.leave_room(old_sid, party_id)
                 logger.info(f"Reattached participant {username} in {party_id}: {old_sid} -> {sid}")
-            _replace_sid(party, old_sid, sid, username, client_id)
+            _replace_sid(party, old_sid, sid, username, client_id, avatar_uuid)
         else:
             # Evict stale SID if same username is already in party. This is a
             # fallback for older clients without client_id and duplicate tabs.
@@ -460,7 +480,7 @@ def register(ctx):
                     if stale_client_id:
                         participants.pop(stale_client_id, None)
                     await sio.leave_room(stale_sid, party_id)
-                    _replace_sid(party, stale_sid, sid, username, client_id)
+                    _replace_sid(party, stale_sid, sid, username, client_id, avatar_uuid)
                     rejoin = True
                     logger.info(f"Evicted stale session {stale_sid} for {username}")
                     break
@@ -521,11 +541,19 @@ def register(ctx):
         # with a stale current_video from the static-session edge case)
         # -----------------------------------------------------------------
         await sio.enter_room(sid, party_id)
-        _replace_sid(party, old_sid if known_participant else sid, sid, username, client_id)
+        _replace_sid(party, old_sid if known_participant else sid, sid, username, client_id, avatar_uuid)
+
+        # Fast host-rejoin path. If a grace task is pending because this
+        # client_id was hosting and just dropped, cancel it and tell the
+        # room the party is UNLOCKED again. No re-authentication needed.
+        try_host_reclaim = ctx.get('try_host_reclaim')
+        if try_host_reclaim:
+            await try_host_reclaim(party_id, client_id)
 
         await sio.emit("user_joined", {
             "username": username,
             "users": list(party["users"].values()),
+            "members": party_manager.members_list(party_id),
             "rejoin": rejoin,
         }, room=party_id)
 
@@ -600,14 +628,21 @@ def register(ctx):
             user_stream = party.get("user_streams", {}).get(sid)
             if user_stream and user_stream.get("play_session_id") and party.get("current_video"):
                 current_time = party["playback_state"].get("time", 0)
+                host_token = party.get("host_access_token")
+                host_user = party.get("host_user_id")
                 emby_client.report_playback_stopped(
                     item_id=party["current_video"]["item_id"],
                     media_source_id=user_stream["media_source_id"],
                     play_session_id=user_stream["play_session_id"],
                     position_seconds=current_time,
                     run_time_seconds=party["current_video"].get("run_time_seconds"),
+                    access_token=host_token,
+                    user_id=host_user,
                 )
-                emby_client.stop_active_encodings(play_session_id=user_stream["play_session_id"])
+                emby_client.stop_active_encodings(
+                    play_session_id=user_stream["play_session_id"],
+                    access_token=host_token,
+                )
             party.get("user_streams", {}).pop(sid, None)
 
             await sio.leave_room(sid, party_id)
@@ -643,4 +678,36 @@ def register(ctx):
             await sio.emit("user_left", {
                 "username": username,
                 "users": list(party["users"].values()),
+                "members": party_manager.members_list(party_id),
             }, room=party_id)
+
+    @sio.on("update_avatar")
+    async def handle_update_avatar(sid, data):
+        """Re-bind the caller's avatar_uuid and broadcast the new
+        member roster so every connected client re-renders.
+
+        Used after the avatar setup modal saves an upload, links a
+        Gravatar, or recovers via a code. Without this, only a page
+        refresh would pick up the new avatar.
+        """
+        party_id = data.get("party_id", "").strip().upper()
+        new_uuid = data.get("avatar_uuid")
+        if isinstance(new_uuid, str):
+            new_uuid = new_uuid.strip() or None
+        elif new_uuid is not None:
+            return
+
+        party = party_manager.get(party_id)
+        if not party:
+            return
+        client_id = party.get("sid_client_ids", {}).get(sid)
+        if not client_id:
+            return
+        participant = party.get("participants", {}).get(client_id)
+        if not participant:
+            return
+        participant["avatar_uuid"] = new_uuid
+
+        await sio.emit("members_update", {
+            "members": party_manager.members_list(party_id),
+        }, room=party_id)
