@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useSocketStore } from './socket'
 import { useAvatarStore } from './avatar'
+import { useAuthStore } from './auth'
 import { api } from '@/api/client'
 
 export interface MemberInfo {
@@ -61,6 +62,7 @@ export const usePartyStore = defineStore('party', () => {
   async function join(id: string, name: string) {
     const socket = useSocketStore()
     const avatar = useAvatarStore()
+    const auth = useAuthStore()
     partyId.value = id.toUpperCase()
     username.value = name
     const clientId = getClientId()
@@ -75,6 +77,12 @@ export const usePartyStore = defineStore('party', () => {
     // handshake will use to authenticate this caller.
     try {
       await api.joinParty(partyId.value, clientId, name || 'Guest', avatarUuid)
+      // The cookie is now bound. Re-read auth state so partyUnlocked
+      // and hostUsername reflect this party, not the empty pre-join
+      // status. Otherwise late joiners briefly render "Party is
+      // locked" until the next host_changed event (which never fires
+      // for a party that was already unlocked when they joined).
+      try { await auth.refresh() } catch { /* ignore */ }
     } catch {
       // Best-effort: even if the cookie call fails, the socket join
       // event below carries the same identity so we fall back to

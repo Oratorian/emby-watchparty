@@ -98,9 +98,15 @@ onMounted(async () => {
   // stack duplicate listeners. Without this, repeated mounts caused a
   // single 'seek' broadcast to fire its addSystemMessage callback once
   // per stacked listener, flooding the chat with phantom seek messages.
+  // NOTE: do NOT include 'sync_state' here. The party store owns the
+  // sync_state listener that actually populates currentVideo. If we
+  // off() it before re-registering our own (which only sets the
+  // isInitialSync flag), we strip the party store's handler and late
+  // joiners never receive the current video. The two listeners can
+  // safely coexist on the same socket.
   const partyViewEvents = [
     'chat_message', 'play', 'pause', 'seek', 'force_pause_before_seek',
-    'ready_check_update', 'drift_correction', 'all_ready', 'sync_state',
+    'ready_check_update', 'drift_correction', 'all_ready',
     'error', 'join_rejected', 'join_vote_resolved',
   ]
   for (const e of partyViewEvents) socket.off(e)
@@ -598,7 +604,12 @@ function toStreamTime(mediaTime: number): number {
 }
 
 function onVideoPlay() {
-  if (!party.partyId || isForcePausing || isInitialSync) return
+  // Skip when our own stream is mid-reload. After change_streams the
+  // <video> element's src is replaced, which fires a synthetic play
+  // once HLS.js auto-plays the new manifest. Broadcasting that to the
+  // party would be a no-op at best and a "Andrew started playback"
+  // chat spam at worst.
+  if (!party.partyId || isForcePausing || isInitialSync || myStreamReloading.value) return
   if (pendingPauseTimer) {
     clearTimeout(pendingPauseTimer)
     pendingPauseTimer = null
@@ -622,7 +633,11 @@ function onVideoPlay() {
 }
 
 function onVideoPause() {
-  if (!party.partyId || isForcePausing || isUserSeeking || isInitialSync) return
+  // Same guard as onVideoPlay: change_streams replaces the <video>
+  // src, which fires a native pause event. Without this check the
+  // 250ms debounce would broadcast a real "pause" to the party,
+  // pausing every other watcher because one user switched to PGS subs.
+  if (!party.partyId || isForcePausing || isUserSeeking || isInitialSync || myStreamReloading.value) return
   const ve = videoPlayer.value?.videoEl
   if (!ve || ve.ended) return
   if (videoPlayer.value?.isSyncing) return
@@ -630,7 +645,7 @@ function onVideoPause() {
   if (pendingPauseTimer) clearTimeout(pendingPauseTimer)
   pendingPauseTimer = setTimeout(() => {
     pendingPauseTimer = null
-    if (!party.partyId || isForcePausing || isUserSeeking || isInitialSync) return
+    if (!party.partyId || isForcePausing || isUserSeeking || isInitialSync || myStreamReloading.value) return
     if (videoPlayer.value?.isSyncing) return
     const currentVideoEl = videoPlayer.value?.videoEl
     if (!currentVideoEl || currentVideoEl.ended || !currentVideoEl.paused) return
@@ -650,11 +665,29 @@ function onVideoSeeking() {
     clearTimeout(pendingPauseTimer)
     pendingPauseTimer = null
   }
+  // Synthetic 'seeking' events fire during change_streams (HLS source
+  // swap), drift correction, and other internal player operations. If
+  // we flipped isUserSeeking here unconditionally, the matching
+  // 'seeked' would early-return through onVideoSeeked's isSyncing
+  // guard without clearing the flag -- leaving every subsequent
+  // play/pause emit suppressed for the rest of the session.
+  if (videoPlayer.value?.isSyncing || myStreamReloading.value) return
   wasPlayingBeforeSeek = wasPlayingBeforeSeek || party.playbackState.playing
   isUserSeeking = true
 }
 
 function onVideoSeeked(time: number) {
+  // Always schedule clearing isUserSeeking, even on the early-return
+  // paths below, so the flag can't get stuck across phantom or
+  // synthetic seeks. The broadcast logic at the bottom only runs for
+  // real, large user-initiated seeks.
+  const clearSeekingFlag = () => {
+    isUserSeeking = false
+    seekSettleTimer = null
+  }
+  if (seekSettleTimer) clearTimeout(seekSettleTimer)
+  seekSettleTimer = setTimeout(clearSeekingFlag, 500)
+
   if (!party.partyId || isInitialSync) return
   if (videoPlayer.value?.isSyncing) return
 
@@ -675,11 +708,12 @@ function onVideoSeeked(time: number) {
     }
   }
 
-  // Seek settle timer -- wait 500ms for rapid seeks to settle
+  // Real user seek: extend the settle window and broadcast when it
+  // expires. clearSeekingFlag still runs at the end so the flag clears
+  // either way.
   if (seekSettleTimer) clearTimeout(seekSettleTimer)
   seekSettleTimer = setTimeout(() => {
-    isUserSeeking = false
-    seekSettleTimer = null
+    clearSeekingFlag()
     const ve = videoPlayer.value?.videoEl
     if (!ve) return
 

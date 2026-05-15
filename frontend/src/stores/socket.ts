@@ -8,7 +8,16 @@ export const useSocketStore = defineStore('socket', () => {
   const sid = ref<string | null>(null)
 
   function connect() {
-    if (socket.value?.connected) return
+    // Skip if a socket already exists for this Pinia singleton, even
+    // when it has not finished the handshake yet. The old guard only
+    // checked `connected`, so a second connect() call during the brief
+    // mid-handshake window (Vue dev double-mounts, route re-entries,
+    // HMR re-runs of setup) created a second WebSocket. Listeners
+    // ended up registered on one socket while events arrived on the
+    // other, which surfaced as sync_state being "lost" on late joiners.
+    // socket.io-client auto-reconnects on its own, so we only ever
+    // need to create a single socket per app lifetime.
+    if (socket.value) return
 
     const s = io('', {
       path: '/socket.io',
