@@ -53,7 +53,7 @@ def get_intro_info(
                     return IntroResponse(hasIntro=True, start=start, end=end, duration=end - start)
         return IntroResponse(hasIntro=False)
     except Exception as e:
-        logger.debug(f"Intro fetch failed for {item_id}: {e}")
+        logger.warning(f"Intro fetch failed for {item_id}: {e}")
         return IntroResponse(hasIntro=False)
 
 

@@ -239,6 +239,7 @@ class PartyManager:
 
         if len(party["users"]) == 0 and party_id != self.static_party_id:
             del self.watch_parties[party_id]
+            self._logger.info(f"Party deleted (last user left): {party_id}")
             return True
 
         return False

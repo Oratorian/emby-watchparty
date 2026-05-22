@@ -64,7 +64,7 @@ def register(ctx):
             user_id=user_id,
         )
         if not playback_info or "MediaSources" not in playback_info:
-            logger.warning(f"Failed to get playback info for user stream (sid={sid})")
+            logger.error(f"Failed to get playback info for user stream (sid={sid})")
             return None
 
         user_media_source = playback_info["MediaSources"][0]

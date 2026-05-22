@@ -100,7 +100,7 @@ class EmbyClient:
             is_admin = bool(policy.get("IsAdministrator"))
 
             if not access_token or not user_id:
-                self.logger.warning(
+                self.logger.error(
                     "Emby auth response missing AccessToken or User.Id"
                 )
                 return None

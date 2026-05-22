@@ -21,12 +21,12 @@ def check_for_updates(logger: logging.Logger):
             latest = data.get("tag_name", "").lstrip("v")
 
             if latest and latest != __version__:
-                logger.warning("=" * 60)
-                logger.warning(f"UPDATE AVAILABLE: v{latest} (current: v{__version__})")
-                logger.warning(
+                logger.info("=" * 60)
+                logger.info(f"UPDATE AVAILABLE: v{latest} (current: v{__version__})")
+                logger.info(
                     f"Download: {data.get('html_url', 'https://github.com/Oratorian/emby-watchparty/releases')}"
                 )
-                logger.warning("=" * 60)
+                logger.info("=" * 60)
             else:
                 logger.info(f"Running latest version: v{__version__}")
         else:

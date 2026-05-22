@@ -183,7 +183,7 @@ def api_auth_status(
 
 
 @router.get("/version", response_model=VersionResponse)
-def api_version():
+def api_version(logger=Depends(get_logger)):
     result = VersionResponse(current_version=__version__, codename=__codename__)
     try:
         url = "https://api.github.com/repos/Oratorian/emby-watchparty/releases/latest"
@@ -194,6 +194,6 @@ def api_version():
             result.latest_version = latest
             result.update_available = bool(latest and latest != __version__)
             result.release_url = release.get("html_url")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"GitHub version check failed: {e}")
     return result
