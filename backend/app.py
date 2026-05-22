@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
 
     party_manager = PartyManager(config, logger)
     token_manager = HLSTokenManager(config, logger)
-    stream_builder = StreamBuilder(emby_client, logger)
+    stream_builder = StreamBuilder(emby_client, logger, config)
 
     # Avatar storage lives alongside config.json. The images directory
     # is a sibling so Docker mounts can target it explicitly.

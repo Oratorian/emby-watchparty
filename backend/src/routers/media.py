@@ -33,11 +33,14 @@ def get_intro_info(
     party_session: PartySession = Depends(require_party_unlocked),
 ):
     logger.debug(f"Fetching intro info for item ID: {item_id}")
-    access_token = party_session.party["host_access_token"]
+    # /emby/Items/Intros is an admin-only endpoint and requires the
+    # server API key from .env, NOT the host's user access_token. A
+    # user-scoped token (even from an Emby admin) gets a 403 here.
+    # Carried over from the 1.x fix for issue #29.
     try:
         resp = http_requests.get(
             f"{config.EMBY_SERVER_URL}/emby/Items/Intros",
-            params={"api_key": access_token},
+            params={"api_key": config.EMBY_API_KEY},
             headers={"Content-Type": "application/json"},
             timeout=5,
         )

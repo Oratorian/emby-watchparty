@@ -51,6 +51,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ client_id, display_name, avatar_uuid }),
     }),
+  leaveParty: () => apiFetch('/api/party/leave', { method: 'POST' }),
   partyExists: (party_id: string) => apiFetch(`/api/party/${party_id}/exists`),
   partyInfo: (id: string) => apiFetch(`/api/party/${id}/info`),
 

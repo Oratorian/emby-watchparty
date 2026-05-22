@@ -160,31 +160,55 @@ function onAudioChange() {
   })
 }
 
+// Track whether the previously-selected subtitle was a burned (PGS)
+// one. If it was, a switch to None or to a text sub needs to rebuild
+// the transcode to remove the burn. If it wasn't, we only need the
+// client-side text-track flip and must NOT touch the stream URL --
+// rebuilding the stream re-attaches HLS, which clears the cached cues
+// in the preloaded <track> elements and surfaced as "after None the
+// subs don't come back."
+let wasBurnedSub = false
+
 function onSubtitleChange() {
   const idx = selectedSubtitle.value
   const track = subtitleTracks.value.find((t) => t.index === idx)
 
   if (idx === -1 || !track) {
-    // None selected or clearing -- clear text sub and send stream change
+    // None selected. Clear the text sub locally. Only rebuild the
+    // stream if the previous selection was a burned (PGS) sub --
+    // otherwise we'd needlessly destroy/re-attach HLS.
     emit('change-text-subtitle', { index: -1, url: null })
-    emit('change-streams', {
-      audioIndex: selectedAudio.value,
-      subtitleIndex: -1,
-      quality: selectedQuality.value,
-    })
+    if (wasBurnedSub) {
+      emit('change-streams', {
+        audioIndex: selectedAudio.value,
+        subtitleIndex: -1,
+        quality: selectedQuality.value,
+      })
+    }
+    wasBurnedSub = false
   } else if (track.isPGS) {
-    // Image-based sub -- needs burn-in via stream change
+    // Image-based sub -- needs burn-in via stream change.
     emit('change-text-subtitle', { index: -1, url: null })
     emit('change-streams', {
       audioIndex: selectedAudio.value,
       subtitleIndex: idx,
       quality: selectedQuality.value,
     })
+    wasBurnedSub = true
   } else {
-    // Text-based sub -- load locally per user, no stream change
+    // Text-based sub -- load locally per user. Only rebuild the
+    // stream if leaving a burned sub (to remove the burn).
     if (!props.mediaSourceId) return
     const url = `/api/subtitles/${props.itemId}/${props.mediaSourceId}/${idx}`
     emit('change-text-subtitle', { index: idx, url })
+    if (wasBurnedSub) {
+      emit('change-streams', {
+        audioIndex: selectedAudio.value,
+        subtitleIndex: -1,
+        quality: selectedQuality.value,
+      })
+    }
+    wasBurnedSub = false
   }
 }
 

@@ -74,7 +74,7 @@ def register(ctx):
         start_ticks = int(start_seconds * 10_000_000) if start_seconds > 0 else None
 
         from backend.src.stream_builder import StreamBuilder
-        builder = StreamBuilder(emby_client, logger)
+        builder = StreamBuilder(emby_client, logger, config)
         stream_url_base = builder.build_stream_url(
             item_id=item_id,
             app_prefix=config.APP_PREFIX,

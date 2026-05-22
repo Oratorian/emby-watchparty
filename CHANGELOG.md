@@ -97,6 +97,26 @@ Codename: **Midnight Premiere**. Branch: `2.0-Rework`. The version is `2.0.0-dev
 - **`GET /api/party/<id>/info` and `GET /api/item/<id>` returned 500** when the target was missing: their error-fallback `{"error": ...}` dict didn't satisfy the route's `response_model`, so FastAPI's response validation raised a `ResponseValidationError`. Both now properly return `404` with a `detail` field.
 - **`GET /api/item/<id>/streams` silently swallowed upstream failures** inside a 200 response. The error key was stripped by Pydantic v2's default `extra="ignore"`, so the caller saw empty stream arrays and no signal that anything went wrong. Now returns `502` honestly when stream metadata cannot be fetched.
 - **`GET /api/party/<id>/exists` had no `response_model`** so its OpenAPI entry was untyped. Added `PartyExistsResponse`.
+- **Skip Intro restarted playback from the beginning.** Three independent bugs: `/api/intro` returned 403 because it was signing the request with the spectator's access token instead of the admin server key; `onSkipIntro` issued a redundant local `currentTime = ...` assignment that fought the server-driven seek; and stream-copied sources have wide keyframe spacing that breaks large HLS seeks. Backend now uses `EMBY_API_KEY`, the local seek was dropped, and stream-copy can be force-disabled via the new admin toggle.
+- **Phantom-seek guard rejected real progress-bar seeks.** The delta-based guard compared the new position to `lastNaturalTime`, but `timeupdate` fired before `seeking` and clobbered that reference with the seek target, so the diff was always zero. Replaced with an `isUserSeeking` flag that the VideoPlayer toggles on the genuine user-initiated seek path.
+- **Subtitle default was selected in the dropdown but not displayed.** Setting `track.mode = ...` cast through `(track as any)` was a no-op on the Vue-wrapped `HTMLTrackElement`. Now sets `track.track.mode` after the element is appended.
+- **Choosing "None" left subtitles permanently disabled.** The "None" branch unconditionally emitted `change_streams`, which rebuilt the HLS stream and unloaded the side-channel `<track>` cues. Switched the None branch to `mode = 'hidden'` and added a `wasBurnedSub` latch so `change_streams` only fires when transitioning to/from a burned-in PGS sub.
+- **Sub change paused the whole party.** The native `pause` event fired by HLS during a `change_streams`-driven `src` swap was being broadcast as a party-wide pause. Now suppressed by checking `myStreamReloading` in the play/pause emitters.
+- **Late joiner saw "Party is locked" on first refresh.** `auth.refresh()` ran before the new session cookie was bound, so the joiner appeared to have no party. Now calls `auth.refresh()` immediately after `api.joinParty()` resolves.
+- **Username modal flashed on every rejoin** while auto-join was still resolving. Added an `awaitingAutoJoin` guard that suppresses the modal until the auto-join attempt completes or fails.
+- **`navigator.clipboard` was undefined on LAN deployments** because non-HTTPS contexts don't expose it. Added a hidden-textarea + `execCommand('copy')` fallback in a new `utils/clipboard.ts` helper. Avatar copy button now also flips its label to "Copied!" for 1.5 s to match the party-code button.
+- **Admin button missing for an Emby-admin host.** AdminView is now linked from the party header behind `v-if="auth.isAdmin"`. Logging in via `/admin` and then creating a party also keeps the admin Emby token stashed in the session, so the user is auto-promoted to host on create instead of being asked for credentials again.
+- **"Back to WatchParty" from `/admin` or `/version` always pointed to `/`.** Both views now compute the back target from `auth.partyId` so an admin returning from settings lands back in their active party with the session intact.
+- **`/admin` navigation unbound the party.** PartyView's `onUnmounted` was calling `party.leave()`, which dropped the session cookie. Removed; explicit leave still works via the Leave button.
+- **`party.leave()` left the session cookie in place.** New `POST /api/party/leave` endpoint clears `party_id`, `client_id`, `display_name`, and `avatar_uuid` from the session before the store resets local state.
+
+### Performance
+
+- **Initial bundle slimmed via async-loaded components.** `LibraryBrowser`, `EmojiPicker`, modals (`JoinVoteModal`, `JoinWaitingRoom`, `EmbyLoginModal`, `AvatarSetupModal`), and IndexView's `EmbyLoginModal` are now loaded on demand via `defineAsyncComponent`. `hls.js` is split into its own rollup chunk so it loads only when a stream actually starts. PartyView dropped from ~569 kB to ~36 kB; the home/join flow no longer pays for HLS until playback begins.
+
+### Configuration
+
+- **`FORCE_TRANSCODE`** added to the admin panel under a new "Playback" section (default off). When on, every HLS URL carries `EnableAutoStreamCopy=false` so Emby always re-encodes, producing uniform 6-second segments that HLS.js can seek into cleanly. When off (default), Emby decides per source and h264 content within the bitrate cap is stream-copied for lower CPU/GPU load. Turn this on if large seeks (Skip Intro, dragging the progress bar) restart playback from the beginning.
 
 ### Removed
 

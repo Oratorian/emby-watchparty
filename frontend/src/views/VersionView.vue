@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { api } from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const version = ref({
   current_version: '',
@@ -11,7 +14,14 @@ const version = ref({
 })
 const checkStatus = ref<'loading' | 'done' | 'error'>('loading')
 
+// Match AdminView: return to the user's party if they have one, else
+// fall back to the index. Without this the "Back to Home" link drops
+// the user out of their active party.
+const backTarget = computed(() => (auth.partyId ? `/party/${auth.partyId}` : '/'))
+const backLabel = computed(() => (auth.partyId ? '← Back to Party' : '← Back to Home'))
+
 onMounted(async () => {
+  try { await auth.refresh() } catch { /* ignore */ }
   try {
     version.value = await api.version()
     checkStatus.value = 'done'
@@ -129,7 +139,7 @@ const links = [
     </div>
 
     <div class="back-nav">
-      <router-link to="/" class="btn btn-ghost">&larr; Back to Home</router-link>
+      <router-link :to="backTarget" class="btn btn-ghost">{{ backLabel }}</router-link>
     </div>
   </div>
 </template>

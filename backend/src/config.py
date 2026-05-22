@@ -60,6 +60,18 @@ class RuntimeConfig:
     # False: anyone can create a party; any member can later log in to host.
     REQUIRE_LOGIN: bool = False
 
+    # Force every HLS request to disable Emby's stream-copy fallback.
+    # When False (default), Emby decides per-source: h264 within the
+    # bitrate cap gets stream-copied (CPU/GPU friendly, segments follow
+    # source keyframe spacing). When True, the URL carries
+    # `EnableAutoStreamCopy=false` so Emby always re-encodes, producing
+    # uniform 6-second segments. Re-enable this if large seeks (Skip
+    # Intro, dragging the progress bar a long distance) cause the
+    # player to restart from the beginning -- stream-copied segments
+    # can be 10+ seconds apart at the source's original keyframe
+    # boundaries, which HLS.js can't seek into cleanly.
+    FORCE_TRANSCODE: bool = False
+
     # Logging
     LOG_LEVEL: str = 'INFO'
     LOG_TO_FILE: bool = True
@@ -146,6 +158,7 @@ class RuntimeConfig:
         """Return field info for the admin UI"""
         sections = {
             'Auth': ['REQUIRE_LOGIN'],
+            'Playback': ['FORCE_TRANSCODE'],
             'Logging': ['LOG_LEVEL', 'LOG_TO_FILE', 'LOG_FILE', 'LOG_FORMAT', 'LOG_MAX_SIZE', 'CONSOLE_LOG_LEVEL'],
             'Security': ['MAX_USERS_PER_PARTY', 'ENABLE_HLS_TOKEN_VALIDATION', 'HLS_TOKEN_EXPIRY',
                          'ENABLE_RATE_LIMITING', 'RATE_LIMIT_PARTY_CREATION', 'RATE_LIMIT_API_CALLS'],

@@ -1,10 +1,19 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { api } from '@/api/client'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
+
+// "Back to WatchParty" should return to the party the admin came from,
+// not bounce them to the create-a-party screen. auth.partyId is bound
+// when the caller has a party-bound session cookie (most common path
+// for host-as-admin); fall back to the index for the standalone login
+// flow where there is no party context yet.
+const backToWatchPartyTarget = computed(() => {
+  return auth.partyId ? `/party/${auth.partyId}` : '/'
+})
 
 const authenticated = ref(false)
 const loginUser = ref('')
@@ -130,7 +139,7 @@ onMounted(async () => {
         </div>
         <button type="submit" class="btn btn-primary btn-full">Sign In</button>
       </form>
-      <router-link to="/" class="back-link">Back to Watch Party</router-link>
+      <router-link :to="backToWatchPartyTarget" class="back-link">Back to Watch Party</router-link>
     </div>
   </div>
 
@@ -139,7 +148,7 @@ onMounted(async () => {
     <div class="admin-header">
       <h1>Admin Panel</h1>
       <div class="admin-header-actions">
-        <router-link to="/" class="btn btn-ghost btn-small">Back to WatchParty</router-link>
+        <router-link :to="backToWatchPartyTarget" class="btn btn-ghost btn-small">Back to WatchParty</router-link>
         <button @click="logout" class="btn btn-small btn-danger">Logout</button>
       </div>
     </div>
@@ -158,6 +167,31 @@ onMounted(async () => {
             </span>
           </div>
           <ToggleSwitch v-model="config.REQUIRE_LOGIN" />
+        </div>
+      </div>
+
+      <!-- Playback -->
+      <div class="admin-card card">
+        <h2 class="card-title">Playback</h2>
+        <div class="setting-row">
+          <div class="setting-label">
+            <span>Force Transcode</span>
+            <span class="setting-hint">
+              Off (default): Emby decides per-source. h264 sources within the
+              quality bitrate cap get stream-copied (no re-encode, low CPU/GPU
+              on the Emby host).
+              <br /><br />
+              On: every HLS request carries <code>EnableAutoStreamCopy=false</code>,
+              so Emby always re-encodes. This produces uniform 6-second segments
+              that HLS.js can seek into cleanly at any position.
+              <br /><br />
+              Turn this on if you see large seeks (Skip Intro, dragging the
+              progress bar a long distance) restart the video from the beginning,
+              or if stream-copied content stalls during seeking. Cost: extra
+              CPU/GPU load on the Emby server.
+            </span>
+          </div>
+          <ToggleSwitch v-model="config.FORCE_TRANSCODE" />
         </div>
       </div>
 

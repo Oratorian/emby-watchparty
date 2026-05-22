@@ -6,6 +6,7 @@ Quality presets and HLS stream URL parameter construction
 import logging
 from typing import Optional
 
+from backend.src.config import Config
 from backend.src.emby_client import EmbyClient
 
 
@@ -22,9 +23,11 @@ DEFAULT_QUALITY = "1080p-high"
 class StreamBuilder:
     """Builds HLS stream URL parameters for Emby"""
 
-    def __init__(self, emby_client: EmbyClient, logger: logging.Logger):
+    def __init__(self, emby_client: EmbyClient, logger: logging.Logger,
+                 config: Optional[Config] = None):
         self._emby = emby_client
         self._logger = logger
+        self._config = config
 
     def build_params(
         self,
@@ -79,21 +82,20 @@ class StreamBuilder:
             "MaxAudioChannels=2",
             f"MaxWidth={max_width}",
             f"MaxHeight={max_height}",
-            # Disable automatic stream copy so Emby always re-encodes the
-            # video with controlled keyframe intervals. Without this, Emby
-            # stream-copies h264 sources into HLS segments at the source's
-            # original keyframe boundaries, producing segments with irregular
-            # durations that break seeking in HLS.js (issue #25).
-            # "EnableAutoStreamCopy=false",  # disabled for closed-beta:
-            # the seek-cascade bug it was masking is fixed in 0fd914d,
-            # and phantom HLS.js seeks during stream-copy startup are
-            # suppressed by the natural-progression guard in 4562b03.
-            # Re-enable if seeking on stream-copy sources misbehaves.
             "MinSegments=1",
             "h264-profile=high,main,baseline,constrainedbaseline",
             "h264-level=62",
             f"TranscodeReasons={','.join(transcode_reasons)}",
         ]
+
+        # Runtime-toggleable: when FORCE_TRANSCODE is on we tell Emby
+        # to skip stream-copy and re-encode every h264 source. That
+        # gives uniform 6s HLS segments at the cost of CPU/GPU on the
+        # Emby host. Default off -- only useful when stream-copied
+        # sources misbehave on large seeks (Skip Intro / timeline
+        # drag) or HLS.js can't seek into them cleanly.
+        if self._config and self._config.FORCE_TRANSCODE:
+            params.append("EnableAutoStreamCopy=false")
 
         source_width = None
         for stream in media_source.get("MediaStreams", []):

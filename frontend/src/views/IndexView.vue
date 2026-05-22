@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
-import EmbyLoginModal from '@/components/EmbyLoginModal.vue'
+
+// Modal is only opened in the REQUIRE_LOGIN=true create flow,
+// so defer loading until the user actually clicks Create.
+const EmbyLoginModal = defineAsyncComponent(
+  () => import('@/components/EmbyLoginModal.vue'),
+)
 
 const router = useRouter()
 const auth = useAuthStore()

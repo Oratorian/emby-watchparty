@@ -65,14 +65,28 @@ def admin_login(body: AdminLoginRequest, request: Request,
             return {"success": False, "message": "Invalid credentials"}
 
         data = resp.json()
-        is_admin = data.get("User", {}).get("Policy", {}).get("IsAdministrator", False)
+        user = data.get("User") or {}
+        is_admin = user.get("Policy", {}).get("IsAdministrator", False)
 
         if not is_admin:
             logger.warning(f"Admin login denied for '{body.username}' -- not administrator")
             return {"success": False, "message": "This account does not have administrator privileges"}
 
+        access_token = data.get("AccessToken")
+        user_id = user.get("Id")
+        if not access_token or not user_id:
+            return {"success": False, "message": "Authentication response missing token or user id"}
+
         request.session["admin_authenticated"] = True
-        request.session["admin_username"] = data.get("User", {}).get("Name", body.username)
+        request.session["admin_username"] = user.get("Name", body.username)
+        # Stash the Emby auth so /api/party/create can auto-promote this
+        # admin to host without making them log in a second time. The
+        # cookie is signed by Starlette's SessionMiddleware; storing the
+        # access_token here is the same exposure surface as the cookie
+        # itself, which is already used to bind party-host membership.
+        request.session["admin_emby_token"] = access_token
+        request.session["admin_emby_user_id"] = user_id
+        request.session["admin_emby_is_admin"] = True
         logger.info(f"Admin login: '{request.session['admin_username']}'")
         return {"success": True}
 
@@ -92,6 +106,9 @@ def admin_logout(request: Request):
     """
     request.session.pop("admin_authenticated", None)
     request.session.pop("admin_username", None)
+    request.session.pop("admin_emby_token", None)
+    request.session.pop("admin_emby_user_id", None)
+    request.session.pop("admin_emby_is_admin", None)
     return {"success": True}
 
 

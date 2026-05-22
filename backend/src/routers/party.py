@@ -56,6 +56,43 @@ def create_party(
     body = body or CreatePartyRequest()
     prefix = config.APP_PREFIX
 
+    # If the caller previously logged in via the standalone /api/admin/login
+    # flow, their session carries an Emby access_token. Auto-promote them
+    # to host of the new party instead of forcing a second login. This is
+    # also the path that lets an admin do "configure stuff in /admin, come
+    # back, create a party" without re-typing credentials.
+    session = request.session
+    stashed_token = session.get("admin_emby_token")
+    stashed_user_id = session.get("admin_emby_user_id")
+    stashed_username = session.get("admin_username")
+    stashed_is_admin = session.get("admin_emby_is_admin", False)
+
+    if stashed_token and stashed_user_id and body.client_id:
+        party_id = party_manager.create_party()
+        display_name = body.display_name or stashed_username or "Host"
+        party_manager.set_host(
+            party_id,
+            client_id=body.client_id,
+            user_id=stashed_user_id,
+            access_token=stashed_token,
+            username=stashed_username or "Host",
+            is_admin=bool(stashed_is_admin),
+        )
+        request.session["party_id"] = party_id
+        request.session["client_id"] = body.client_id
+        request.session["display_name"] = display_name
+        logger.info(
+            f"Created party {party_id} with stashed admin '{stashed_username}' "
+            f"auto-promoted to host (admin={stashed_is_admin})"
+        )
+        return CreatePartyResponse(
+            party_id=party_id,
+            url=f"{prefix}/party/{party_id}",
+            is_host=True,
+            host_username=stashed_username,
+            is_admin=bool(stashed_is_admin),
+        )
+
     if config.REQUIRE_LOGIN:
         if not body.username or not body.password:
             return CreatePartyResponse(
@@ -154,6 +191,28 @@ def join_party(
         is_host=(party.get("host_client_id") == body.client_id),
         party_unlocked=party_manager.is_unlocked(party_id),
     )
+
+
+@router.post("/leave")
+def leave_party(request: Request, logger=Depends(get_logger)):
+    """Drop the party-bound session cookie.
+
+    The Socket.IO `leave_party` event handles the in-memory party state
+    (removing the user from `party["users"]` and so on), but it can't
+    touch the HTTP session cookie. Without this endpoint a user who
+    leaves and then visits `/admin` or `/version` would still have
+    `party_id` in their session, and "Back to Party" would relaunch the
+    old (or freshly-empty) party. Calling this on leave keeps the
+    cookie in sync with the user's actual party membership.
+    """
+    session = request.session
+    party_id = session.pop("party_id", None)
+    session.pop("client_id", None)
+    session.pop("display_name", None)
+    session.pop("avatar_uuid", None)
+    if party_id:
+        logger.info(f"Session unbound from party {party_id}")
+    return {"success": True}
 
 
 @router.get("/{party_id}/exists", response_model=PartyExistsResponse)

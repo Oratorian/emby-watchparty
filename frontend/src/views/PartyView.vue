@@ -1,18 +1,38 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSocketStore } from '@/stores/socket'
 import { usePartyStore } from '@/stores/party'
-import LibraryBrowser from '@/components/LibraryBrowser.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 import VideoControls from '@/components/VideoControls.vue'
-import EmojiPicker from '@/components/EmojiPicker.vue'
-import JoinVoteModal from '@/components/JoinVoteModal.vue'
-import JoinWaitingRoom from '@/components/JoinWaitingRoom.vue'
-import EmbyLoginModal from '@/components/EmbyLoginModal.vue'
-import AvatarSetupModal from '@/components/AvatarSetupModal.vue'
+
+// Async-loaded so they don't ship in the initial PartyView bundle.
+// LibraryBrowser pulls in the full library tree + thumbnail helpers,
+// EmojiPicker has its emoji table inline, and the modals are only
+// opened on demand. hls.js is also large but lives inside VideoPlayer,
+// which we deliberately keep sync so the video can start as soon as
+// the route is mounted.
+const LibraryBrowser = defineAsyncComponent(
+  () => import('@/components/LibraryBrowser.vue'),
+)
+const EmojiPicker = defineAsyncComponent(
+  () => import('@/components/EmojiPicker.vue'),
+)
+const JoinVoteModal = defineAsyncComponent(
+  () => import('@/components/JoinVoteModal.vue'),
+)
+const JoinWaitingRoom = defineAsyncComponent(
+  () => import('@/components/JoinWaitingRoom.vue'),
+)
+const EmbyLoginModal = defineAsyncComponent(
+  () => import('@/components/EmbyLoginModal.vue'),
+)
+const AvatarSetupModal = defineAsyncComponent(
+  () => import('@/components/AvatarSetupModal.vue'),
+)
 import { api } from '@/api/client'
 import { avatarUrl as fallbackAvatarUrl } from '@/utils/avatar'
+import { copyToClipboard } from '@/utils/clipboard'
 import { useAuthStore } from '@/stores/auth'
 import { useAvatarStore } from '@/stores/avatar'
 
@@ -56,8 +76,13 @@ function chatAvatarSrc(msg: { username: string; avatar_uuid?: string | null }): 
   return avatarSrc(msg.username)
 }
 
+const STORAGE_KEY = 'emby-watchparty-username'
 const usernameInput = ref('')
 const joined = ref(false)
+// We only need the username modal when we have nothing to auto-join with.
+// Without this flag, the modal flashes on every mount before the socket
+// confirms the auto-join, even when localStorage has a saved name.
+const awaitingAutoJoin = ref(!!localStorage.getItem(STORAGE_KEY))
 const chatMessages = ref<Array<{ username: string; message: string; timestamp: string; system?: boolean }>>([])
 const chatInput = ref('')
 const showLibrary = ref(false)
@@ -76,7 +101,6 @@ let pendingPauseTimer: ReturnType<typeof setTimeout> | null = null
 // onStreamReady when the new stream finishes loading.
 const myStreamReloading = ref(false)
 
-const STORAGE_KEY = 'emby-watchparty-username'
 const versionInfo = ref({ version: '', codename: '' })
 
 onMounted(async () => {
@@ -385,6 +409,9 @@ onMounted(async () => {
       router.push('/')
       return
     }
+    // An error during auto-join means we should fall back to the manual
+    // name prompt; otherwise the spinner sits forever.
+    awaitingAutoJoin.value = false
     addSystemMessage(`Error: ${msg}`)
   })
 
@@ -397,9 +424,9 @@ onMounted(async () => {
 
   // Party was dissolved server-side (e.g. an admin disabled static
   // sessions while we were inside one). Clean up and redirect home.
-  socket.on('party_dissolved', () => {
+  socket.on('party_dissolved', async () => {
     alert('This party has been closed by an administrator.')
-    party.leave()
+    await party.leave()
     router.push('/')
   })
 
@@ -444,7 +471,15 @@ onUnmounted(() => {
     clearTimeout(pendingPauseTimer)
     pendingPauseTimer = null
   }
-  party.leave()
+  // Do NOT call party.leave() here. PartyView unmounts on every
+  // navigation (e.g. clicking the Admin or Version links), and a full
+  // leave would emit leave_party to the backend AND clear the session
+  // cookie -- both of which kick the user out of the party for what is
+  // really just a temporary view change. They should remain a party
+  // member until they explicitly click "Leave" or the party is
+  // dissolved server-side. Tab close / browser exit is handled by the
+  // socket disconnect handler on the backend, which cleans up sids
+  // naturally.
 })
 
 // Preload all text subtitles as hidden tracks when the video or media
@@ -497,9 +532,19 @@ watch(() => party.currentVideo, async (video) => {
       track.label = label
       track.srclang = sub.language || 'und'
       track.src = `/api/subtitles/${video.item_id}/${video.media_source_id}/${sub.index}`
-      const isDefault = defaultSub && sub.index === defaultSub.index
-      ;(track as any).mode = isDefault ? 'showing' : 'hidden'
       ve.appendChild(track)
+      // The mode lives on the TextTrack interface (track.track.mode),
+      // not on the HTMLTrackElement itself. track.track is null until
+      // the element is attached to a <video>, so this must come after
+      // appendChild. The earlier `(track as any).mode = ...` was just
+      // stashing an arbitrary property on the DOM element -- which is
+      // why the default sub was selected in the dropdown but never
+      // actually displayed.
+      const isDefault = defaultSub && sub.index === defaultSub.index
+      const targetMode: TextTrackMode = isDefault ? 'showing' : 'hidden'
+      if (track.track) {
+        track.track.mode = targetMode
+      }
     })
   } catch { /* ignore */ }
 })
@@ -528,6 +573,7 @@ function joinWithName(name: string) {
 watch(() => party.users, (users) => {
   if (users.length > 0 && !joined.value) {
     joined.value = true
+    awaitingAutoJoin.value = false
   }
 }, { deep: true })
 
@@ -548,19 +594,17 @@ function insertEmoji(emoji: string) {
   chatInput.value += emoji
 }
 
-function copyPartyId() {
+async function copyPartyId() {
   const id = (route.params.id as string) || ''
-  navigator.clipboard.writeText(id).then(() => {
-    copyLabel.value = 'Copied!'
-    setTimeout(() => { copyLabel.value = 'Copy' }, 2000)
-  }).catch(() => {
-    copyLabel.value = 'Failed'
-    setTimeout(() => { copyLabel.value = 'Copy' }, 2000)
-  })
+  const ok = await copyToClipboard(id)
+  copyLabel.value = ok ? 'Copied!' : 'Failed'
+  setTimeout(() => { copyLabel.value = 'Copy' }, 2000)
 }
 
-function leaveParty() {
-  party.leave()
+async function leaveParty() {
+  // Await so the session-clear request lands before any subsequent
+  // navigation to /admin or /version reads /api/auth/status.
+  await party.leave()
   router.push('/')
 }
 
@@ -665,13 +709,19 @@ function onVideoSeeking() {
     clearTimeout(pendingPauseTimer)
     pendingPauseTimer = null
   }
-  // Synthetic 'seeking' events fire during change_streams (HLS source
-  // swap), drift correction, and other internal player operations. If
-  // we flipped isUserSeeking here unconditionally, the matching
-  // 'seeked' would early-return through onVideoSeeked's isSyncing
-  // guard without clearing the flag -- leaving every subsequent
-  // play/pause emit suppressed for the rest of the session.
-  if (videoPlayer.value?.isSyncing || myStreamReloading.value) return
+  // VideoPlayer's INTERNAL isSyncing gate already suppresses the
+  // 'seeking' emit during synthetic seeks (HLS source swap, drift
+  // correction, etc.), so we won't get called for those. Any seeking
+  // event reaching this handler is a real user-initiated seek -- set
+  // the flag unconditionally. The earlier guard on
+  // `videoPlayer.value?.isSyncing` here was wrong: it tried to gate
+  // again on the *parent-side* view of isSyncing, which can stay
+  // truthy briefly after various sync events and ended up silently
+  // blocking legitimate progress-bar drags.
+  //
+  // The stuck-flag risk is handled in onVideoSeeked, which always
+  // schedules a 500ms clearSeekingFlag regardless of which early
+  // return triggers.
   wasPlayingBeforeSeek = wasPlayingBeforeSeek || party.playbackState.playing
   isUserSeeking = true
 }
@@ -680,7 +730,7 @@ function onVideoSeeked(time: number) {
   // Always schedule clearing isUserSeeking, even on the early-return
   // paths below, so the flag can't get stuck across phantom or
   // synthetic seeks. The broadcast logic at the bottom only runs for
-  // real, large user-initiated seeks.
+  // real user-initiated seeks.
   const clearSeekingFlag = () => {
     isUserSeeking = false
     seekSettleTimer = null
@@ -689,28 +739,25 @@ function onVideoSeeked(time: number) {
   seekSettleTimer = setTimeout(clearSeekingFlag, 500)
 
   if (!party.partyId || isInitialSync) return
-  if (videoPlayer.value?.isSyncing) return
 
-  // Phantom-seek guard: HLS.js fires 'seeked' events during initial
-  // buffer alignment and segment transitions that look identical to
-  // user seeks at the DOM level. If the seek target is within ~2s of
-  // where natural playback would have advanced to from the last
-  // timeupdate, this is almost certainly a phantom event. Real user
-  // seeks are normally many seconds away from the previous position
-  // (drag the timeline); intra-second adjustments aren't worth
-  // broadcasting and are usually corrections HLS.js is making to its
-  // own buffer.
-  if (lastNaturalAt > 0) {
-    const elapsed = (Date.now() - lastNaturalAt) / 1000
-    const expected = lastNaturalTime + elapsed
-    if (Math.abs(time - expected) < 2.0) {
-      return
-    }
-  }
+  // Phantom-seek guard. The reliable signal is whether onVideoSeeking
+  // ran before this -- it only runs when VideoPlayer's internal
+  // isSyncing was false (player not in attachStream / source-swap)
+  // AND the browser actually dispatched a `seeking` event. Both
+  // conditions together mean this is a user-initiated seek. Anything
+  // else is a phantom from HLS.js segment alignment / drift correction.
+  //
+  // Earlier this used a delta-vs-lastNaturalTime comparison, which
+  // was fragile: it depended on the browser firing `seeking` before
+  // `timeupdate`. Chromium tends to fire timeupdate first with the
+  // seek target, which clobbered lastNaturalTime and made the guard
+  // reject every real seek.
+  if (!isUserSeeking) return
 
   // Real user seek: extend the settle window and broadcast when it
   // expires. clearSeekingFlag still runs at the end so the flag clears
-  // either way.
+  // either way. The setTimeout debounces rapid scrubs (drag the
+  // timeline a few times in a row) into one broadcast per pause.
   if (seekSettleTimer) clearTimeout(seekSettleTimer)
   seekSettleTimer = setTimeout(() => {
     clearSeekingFlag()
@@ -730,12 +777,6 @@ function onVideoSeeked(time: number) {
 let lastProgressReport = 0
 const PROGRESS_INTERVAL = 10000 // 10 seconds
 
-// Track natural playback progression so onVideoSeeked can distinguish
-// real user-initiated seeks from phantom 'seeked' events fired by
-// HLS.js during buffer alignment / initial decode.
-let lastNaturalTime = 0
-let lastNaturalAt = 0
-
 function onVideoTimeUpdate(time: number) {
   // HLS.js reports currentTime as the media position directly, even
   // for late-joiner streams with StartTimeTicks offsets.
@@ -749,11 +790,6 @@ function onVideoTimeUpdate(time: number) {
   if (Math.abs(time - currentTime.value) >= 1) {
     currentTime.value = time
   }
-  // Always update the natural-progression tracker. We need this on
-  // every timeupdate (not just throttled ones) so phantom seek
-  // detection has a fresh reference point.
-  lastNaturalTime = time
-  lastNaturalAt = Date.now()
   if (!party.partyId || isInitialSync) return
   const ve = videoPlayer.value?.videoEl
   if (!ve || !ve.src || ve.readyState < 2 || ve.paused) return
@@ -810,12 +846,16 @@ function onChangeTextSubtitle(payload: { index: number; url: string | null }) {
   const ve = vp?.videoEl
   if (!ve) return
 
-  // "None" selected -- disable every track but leave the preloaded set in
-  // place so the CC button can still switch back later without a refetch.
+  // "None" selected -- mark every preloaded track as hidden (NOT
+  // disabled). 'disabled' unloads the cues, and toggling back to
+  // 'showing' afterwards doesn't reliably reload them in Chromium,
+  // which surfaced as "after None I can't turn subs back on". 'hidden'
+  // keeps the cues loaded but invisible, so switching back is a
+  // single mode flip.
   if (payload.index === -1 || !payload.url) {
     for (let i = 0; i < ve.textTracks.length; i += 1) {
       const tt = ve.textTracks[i]
-      if (tt) tt.mode = 'disabled'
+      if (tt) tt.mode = 'hidden'
     }
     return
   }
@@ -827,11 +867,12 @@ function onChangeTextSubtitle(payload: { index: number; url: string | null }) {
   const target = tracks.find((t) => t.src.endsWith(payload.url!))
 
   if (target) {
-    // Already preloaded -- just flip modes. This is identical to what the
-    // browser's CC button does, so the dropdown and CC stay in sync.
+    // Already preloaded -- flip the target to 'showing' and the rest
+    // back to 'hidden' (not 'disabled' -- same reason as above, we
+    // want them preloaded for future switches without a refetch).
     for (let i = 0; i < ve.textTracks.length; i += 1) {
       const tt = ve.textTracks[i]
-      if (tt) tt.mode = tt === target.track ? 'showing' : 'disabled'
+      if (tt) tt.mode = tt === target.track ? 'showing' : 'hidden'
     }
     return
   }
@@ -858,16 +899,19 @@ function onChangeTextSubtitle(payload: { index: number; url: string | null }) {
 }
 
 function onSkipIntro(endTime: number) {
-  const vp = videoPlayer.value
-  if (!vp?.videoEl) return
-  vp.isSyncing = true
-  vp.videoEl.currentTime = endTime
+  // Match the 1.x flow: emit the seek and let the server-broadcast
+  // drive the actual seek for everyone (including us). Doing a local
+  // ve.currentTime = endTime *before* the emit caused two back-to-back
+  // HLS buffer flushes -- one from the local seek and one from the
+  // server's seek event -- which in some buffer states made HLS.js
+  // bail and re-attach the stream from currentTime=0.
+  if (!party.partyId) return
+  const ve = videoPlayer.value?.videoEl
   socket.emit('seek', {
     party_id: party.partyId,
     time: endTime,
-    was_playing: !vp.videoEl.paused,
+    was_playing: ve ? !ve.paused : true,
   })
-  setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
 }
 
 function toggleLibrary() {
@@ -907,8 +951,18 @@ async function submitBecomeHost(payload: { username: string; password: string })
 </script>
 
 <template>
+  <!-- Auto-join spinner: shown when we have a saved username and are
+       waiting on the socket to confirm the join. Suppresses the name
+       modal flash-of-stale-UI on every mount / refresh. -->
+  <div v-if="!joined && awaitingAutoJoin" class="modal-overlay">
+    <div class="modal-card join-spinner">
+      <span class="spinner" />
+      <p>Joining party…</p>
+    </div>
+  </div>
+
   <!-- Username modal -->
-  <div v-if="!joined" class="modal-overlay">
+  <div v-else-if="!joined" class="modal-overlay">
     <div class="modal-card">
       <h2>Join Watch Party</h2>
       <p>Enter your name (or leave blank for random name):</p>
@@ -918,7 +972,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
   </div>
 
   <!-- Party room -->
-  <div v-else class="party-container">
+  <div v-if="joined" class="party-container">
     <header class="party-header">
       <div class="header-left">
         <strong>Party: {{ route.params.id }}</strong>
@@ -941,6 +995,14 @@ async function submitBecomeHost(payload: { username: string; password: string })
         <span v-if="auth.hostUsername" class="host-badge" :title="`Host: ${auth.hostUsername}`">
           Host: {{ auth.hostUsername }}
         </span>
+        <router-link
+          v-if="auth.isAdmin"
+          to="/admin"
+          class="btn btn-small"
+          title="Open the admin panel (Emby admin policy required)"
+        >
+          Admin
+        </router-link>
         <button @click="showMobileChat = true" class="btn btn-small mobile-chat-toggle">Chat</button>
         <button v-if="party.currentVideo" @click="stopVideo" class="btn btn-small btn-warning">Stop Video</button>
         <button @click="leaveParty" class="btn btn-small btn-danger">Leave</button>
@@ -1161,6 +1223,30 @@ async function submitBecomeHost(payload: { username: string; password: string })
 .modal-card input {
   margin-bottom: var(--space-md);
   text-align: center;
+}
+
+/* ─── Auto-join Spinner ─── */
+.join-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xl);
+}
+
+.join-spinner .spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.join-spinner p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin: 0;
 }
 
 /* ─── Party Layout ─── */

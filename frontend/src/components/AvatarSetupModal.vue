@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useAvatarStore } from '@/stores/avatar'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const emit = defineEmits<{
   close: []
@@ -17,6 +18,7 @@ const file = ref<File | null>(null)
 const filePreview = ref<string | null>(null)
 const email = ref('')
 const recoverCode = ref('')
+const copyLabel = ref('Copy')
 
 function pickFile(ev: Event) {
   const input = ev.target as HTMLInputElement
@@ -78,9 +80,11 @@ async function submitRecover() {
   }
 }
 
-function copyCode() {
+async function copyCode() {
   if (!avatar.pendingCode) return
-  navigator.clipboard.writeText(avatar.pendingCode).catch(() => { /* ignore */ })
+  const ok = await copyToClipboard(avatar.pendingCode)
+  copyLabel.value = ok ? 'Copied!' : 'Failed'
+  setTimeout(() => { copyLabel.value = 'Copy' }, 2000)
 }
 
 function acknowledge() {
@@ -102,7 +106,7 @@ function acknowledge() {
         </p>
         <div class="code-display">{{ avatar.pendingCode }}</div>
         <div class="actions">
-          <button class="btn btn-secondary" @click="copyCode">Copy</button>
+          <button class="btn btn-secondary" @click="copyCode">{{ copyLabel }}</button>
           <button class="btn btn-primary" @click="acknowledge">I saved it</button>
         </div>
       </template>
