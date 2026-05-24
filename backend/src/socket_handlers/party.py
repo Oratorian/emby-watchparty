@@ -325,6 +325,13 @@ def register(ctx):
             return  # Already resolved
 
         logger.info(f"Vote timeout in party {party_id}")
+        # Drop our own task handle before resolving. _resolve_vote_pass /
+        # _resolve_vote_fail cancel pj["timeout_task"] to stop a pending
+        # watchdog, but here the watchdog IS the caller. Cancelling the
+        # running task would raise CancelledError at the next await (the
+        # join_vote_resolved emit), so the resolution would never reach the
+        # clients and the modal would hang forever.
+        pj["timeout_task"] = None
         await _apply_tiebreak(party_id)
 
     async def _start_late_join_vote(party, party_id, late_sid, late_username, client_id=None):
@@ -335,10 +342,18 @@ def register(ctx):
 
         # Snapshot eligible voters: everyone currently in the party
         eligible_voters = set(party["users"].keys())
+        # current_video.selected_by holds the selector's persistent client_id,
+        # but votes are keyed by sid. Resolve the selector's *current* sid so
+        # the tiebreak rule can find their vote.
         selector_sid = None
         cv = party.get("current_video")
         if cv:
-            selector_sid = cv.get("selected_by")
+            selector_client_id = cv.get("selected_by")
+            if selector_client_id:
+                for s, cid in party.get("sid_client_ids", {}).items():
+                    if cid == selector_client_id:
+                        selector_sid = s
+                        break
 
         timeout_seconds = getattr(config, "LATE_JOIN_VOTE_TIMEOUT_SECONDS", 20)
 
