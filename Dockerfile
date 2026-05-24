@@ -36,9 +36,15 @@ COPY --from=frontend-build /app/backend/static ./backend/static/
 # lands somewhere already-writable.
 RUN mkdir -p /app/logs
 
+# Default port; override at runtime with WATCH_PARTY_PORT. EXPOSE is
+# metadata only and cannot read runtime env, so it documents the default.
 EXPOSE 5000
 
+# Shell-form CMD in the healthcheck so ${WATCH_PARTY_PORT} expands against
+# the container's environment; falls back to 5000 when unset.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS http://localhost:5000/api/version || exit 1
+    CMD curl -fsS http://localhost:${WATCH_PARTY_PORT:-5000}/api/health || exit 1
 
-CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "5000"]
+# Launch via the app's own entrypoint so it binds to
+# WATCH_PARTY_BIND:WATCH_PARTY_PORT instead of a hardcoded port.
+CMD ["python", "-m", "backend.app"]

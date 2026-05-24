@@ -147,3 +147,15 @@ if static_dir.exists():
         if index.exists():
             return FileResponse(str(index))
         return {"message": "Frontend not built. Run: cd frontend && npm run build"}
+
+
+if __name__ == "__main__":
+    # Process entrypoint (Docker CMD / bare metal). Binds to
+    # WATCH_PARTY_BIND:WATCH_PARTY_PORT from the environment so the
+    # documented .env knobs actually take effect. The old Docker CMD
+    # invoked `uvicorn ... --port 5000` directly, which hardcoded the
+    # port and silently ignored WATCH_PARTY_PORT.
+    import uvicorn
+
+    _cfg = Config.from_env()
+    uvicorn.run(app, host=_cfg.WATCH_PARTY_BIND, port=_cfg.WATCH_PARTY_PORT)
