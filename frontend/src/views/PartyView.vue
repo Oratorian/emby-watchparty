@@ -122,16 +122,19 @@ onMounted(async () => {
   // stack duplicate listeners. Without this, repeated mounts caused a
   // single 'seek' broadcast to fire its addSystemMessage callback once
   // per stacked listener, flooding the chat with phantom seek messages.
-  // NOTE: do NOT include 'sync_state' here. The party store owns the
-  // sync_state listener that actually populates currentVideo. If we
-  // off() it before re-registering our own (which only sets the
-  // isInitialSync flag), we strip the party store's handler and late
-  // joiners never receive the current video. The two listeners can
-  // safely coexist on the same socket.
+  // NOTE: do NOT include 'sync_state' or 'join_vote_resolved' here. The
+  // party store owns both. sync_state populates currentVideo; off()ing it
+  // would strip the store handler and late joiners never receive the video.
+  // join_vote_resolved is the listener that clears pendingVote (dismisses
+  // the vote modal) -- our handler below only adds the late-joiner redirect
+  // and explicitly relies on the store's handler running. off()ing it here
+  // removed the store's dismissal, so a passed vote left the modal open
+  // forever. The two listeners coexist safely on the same socket; the store
+  // re-offs these on every setupListeners() call, so they do not stack.
   const partyViewEvents = [
     'chat_message', 'play', 'pause', 'seek', 'force_pause_before_seek',
     'ready_check_update', 'drift_correction', 'all_ready',
-    'error', 'join_rejected', 'join_vote_resolved',
+    'error', 'join_rejected',
   ]
   for (const e of partyViewEvents) socket.off(e)
 
