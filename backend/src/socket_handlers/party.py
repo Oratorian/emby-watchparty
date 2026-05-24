@@ -197,7 +197,7 @@ def register(ctx):
 
         success = await restart_video_from_beginning(
             party, party_id,
-            selector_sid=cv.get("selected_by"),
+            selector_client_id=cv.get("selected_by"),
             item_id=cv["item_id"],
             item_name=cv.get("title", "Unknown"),
             item_overview=cv.get("overview", ""),
