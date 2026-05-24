@@ -636,6 +636,47 @@ def register(ctx):
         # If the leaving user is involved in an active vote, handle that first
         await _handle_disconnect_from_vote(party, party_id, sid)
 
+        # Host leaving explicitly (clicked Leave). A disconnect gets a 5s grace
+        # window for refresh-as-rejoin, but an explicit leave is intentional, so
+        # transition the lock state now. This MUST run before the
+        # sid_client_ids pop below, which erases the mapping used to identify
+        # the host (and is why the disconnect handler alone could not catch an
+        # explicit leave).
+        departing_client_id = party.get("sid_client_ids", {}).get(sid)
+        if (
+            departing_client_id
+            and departing_client_id == party.get("host_client_id")
+            and party.get("host_left_at") is None
+        ):
+            host_username = party.get("host_username") or "?"
+            pending = ctx.get("pending_host_clear", {})
+            grace_task = pending.pop(party_id, None)
+            if grace_task and not grace_task.done():
+                grace_task.cancel()
+            if party.get("current_video"):
+                # PLAYING-ONLY: keep the token so the in-flight stream finishes
+                # for everyone else; a later video_ended/stop_video clears it.
+                party_manager.mark_host_left(party_id)
+                logger.info(
+                    f"Host '{host_username}' left party {party_id} during "
+                    f"playback -> PLAYING-ONLY"
+                )
+                await sio.emit("host_left", {
+                    "previous_host": host_username,
+                    "reason": "leave",
+                    "playing_only": True,
+                }, room=party_id, skip_sid=sid)
+            else:
+                party_manager.clear_host(party_id)
+                logger.info(
+                    f"Host '{host_username}' left party {party_id} (no playback) "
+                    f"-> LOCKED"
+                )
+                await sio.emit("host_left", {
+                    "previous_host": host_username,
+                    "reason": "leave",
+                }, room=party_id, skip_sid=sid)
+
         if sid in party["users"]:
             username = party["users"][sid]
 
