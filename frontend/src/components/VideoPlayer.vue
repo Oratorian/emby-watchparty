@@ -258,13 +258,20 @@ defineExpose({ videoEl, isSyncing, getHls: () => hls })
 .video-player {
   position: relative;
   width: 100%;
+  /* Fill the height left in .video-wrapper after the controls bar and
+     info block; min-height:0 lets it shrink below the video's intrinsic
+     height instead of forcing overflow (which clipped the top). */
+  flex: 1;
+  min-height: 0;
   background: #000;
 }
 
 video {
   display: block;
   width: 100%;
-  max-height: calc(100vh - 180px);
+  height: 100%;
+  /* contain letterboxes the frame to the slot, so the video always fits
+     the available space regardless of header/controls/info heights. */
   object-fit: contain;
   background: #000;
 }

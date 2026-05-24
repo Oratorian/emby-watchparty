@@ -1373,7 +1373,8 @@ async function submitBecomeHost(payload: { username: string; password: string })
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: auto;
+  overflow: hidden;
+  min-height: 0;
   background: var(--bg-deep);
 }
 
@@ -1399,6 +1400,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
 .video-wrapper {
   position: relative;
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
