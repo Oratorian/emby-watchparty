@@ -15,6 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from backend.src import __version__, __codename__
 from backend.src.config import Config
+from backend.src.log_levels import apply_log_levels
 from backend.src.emby_client import EmbyClient
 from backend.src.party_manager import PartyManager
 from backend.src.hls_token_manager import HLSTokenManager
@@ -39,6 +40,10 @@ def _setup_logging(config: Config):
         max_size=config.LOG_MAX_SIZE,
         backup_count=5,
     )
+    # setup_logger pins the logger to LOG_LEVEL, which would gate out records
+    # a more-verbose console wants. Re-apply via the shared helper so boot and
+    # admin-panel changes use the same min(logger)/per-handler model.
+    apply_log_levels(config)
     return logger
 
 

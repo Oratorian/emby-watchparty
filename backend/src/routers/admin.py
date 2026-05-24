@@ -12,10 +12,10 @@ Two paths in:
    flag that survives until logout.
 """
 
-import logging
 from fastapi import APIRouter, Depends, Request
 import requests as http_requests
 
+from backend.src.log_levels import apply_log_levels
 from backend.src.dependencies import (
     admin_display_name,
     get_config,
@@ -175,7 +175,11 @@ async def update_config(
         changed = config.update_runtime(body)
 
         if {'LOG_LEVEL', 'CONSOLE_LOG_LEVEL'} & set(changed):
-            _reload_log_levels(config, logger)
+            apply_log_levels(config)
+            logger.info(
+                f"Log levels reloaded: app={config.LOG_LEVEL}, "
+                f"console={config.CONSOLE_LOG_LEVEL}"
+            )
 
         # Static session toggles or id renames need an explicit sync
         # because the static party lives in PartyManager.watch_parties,
@@ -196,15 +200,3 @@ async def update_config(
         return ConfigUpdateResponse(success=False)
 
 
-def _reload_log_levels(config, logger):
-    level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
-    console_level = getattr(logging, config.CONSOLE_LOG_LEVEL.upper(), logging.WARNING)
-    for name in ['emby-watchparty', 'socketio', 'uvicorn']:
-        lg = logging.getLogger(name)
-        lg.setLevel(level)
-        for handler in lg.handlers:
-            if hasattr(handler, 'stream') and hasattr(handler.stream, 'isatty'):
-                handler.setLevel(console_level)
-            else:
-                handler.setLevel(level)
-    logger.info(f"Log levels reloaded: app={config.LOG_LEVEL}, console={config.CONSOLE_LOG_LEVEL}")
