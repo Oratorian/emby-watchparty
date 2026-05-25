@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Emby Watch Party — Cinema Glass (Mockup B)</title>
+<link rel="preconnect" href="https://rsms.me/">
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<style>
+:root{
+  --bg:#0c0a09;
+  --bg-2:#1c1917;
+  --surface:rgba(255,250,240,.04);
+  --surface-hi:rgba(255,250,240,.08);
+  --border:rgba(255,250,240,.06);
+  --border-hi:rgba(255,250,240,.12);
+  --text:#fafaf9;
+  --text-2:#a8a29e;
+  --text-3:#78716c;
+  --amber:#f59e0b;
+  --amber-hi:#fbbf24;
+  --teal:#2dd4bf;
+  --rose:#fb7185;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:'Inter','Inter var',system-ui,sans-serif;
+  font-feature-settings:'cv02','cv11','ss01';
+  background:
+    radial-gradient(1400px 700px at 50% 0%, rgba(245,158,11,.05), transparent 60%),
+    radial-gradient(900px 500px at 0% 100%, rgba(45,212,191,.04), transparent 60%),
+    var(--bg);
+  color:var(--text);
+  overflow:hidden;
+  letter-spacing:-0.011em;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+a{color:inherit;text-decoration:none}
+
+.app{display:grid;grid-template-rows:auto 1fr;height:100vh;padding:18px;gap:18px}
+
+/* ============ TOPBAR ============ */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 22px;
+  background:rgba(28,25,23,.55);
+  backdrop-filter:blur(24px) saturate(180%);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);
+  border:1px solid var(--border);
+  border-radius:18px;
+  box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 20px 50px -20px rgba(0,0,0,.8);
+}
+.topbar-l,.topbar-c,.topbar-r{display:flex;align-items:center;gap:14px}
+.topbar-c{flex:1;justify-content:center}
+.brand{display:flex;align-items:center;gap:11px}
+.brand-mark{
+  width:36px;height:36px;border-radius:11px;
+  background:linear-gradient(135deg,var(--amber-hi) 0%,var(--amber) 50%,#dc2626 100%);
+  display:grid;place-items:center;
+  box-shadow:0 8px 24px -6px rgba(245,158,11,.5), inset 0 1px 0 rgba(255,255,255,.3);
+  position:relative;
+}
+.brand-mark::after{
+  content:'';position:absolute;inset:1px;border-radius:10px;
+  background:linear-gradient(180deg,rgba(255,255,255,.15),transparent 40%);
+  pointer-events:none;
+}
+.brand-name{font-weight:600;font-size:15px;letter-spacing:-.02em}
+.brand-sub{font-size:11px;color:var(--text-3);margin-top:1px;letter-spacing:.04em;text-transform:uppercase}
+
+.party-pill{
+  display:inline-flex;align-items:center;gap:10px;
+  padding:8px 8px 8px 14px;
+  background:rgba(0,0,0,.3);
+  border:1px solid var(--border);
+  border-radius:999px;
+  font-size:13px;
+}
+.party-pill .lbl{color:var(--text-3);font-size:11px;letter-spacing:.05em;text-transform:uppercase}
+.party-pill code{
+  font-family:'JetBrains Mono','SF Mono',monospace;
+  color:var(--amber-hi);font-weight:600;font-size:14px;letter-spacing:.08em;
+}
+.party-pill .copy{
+  display:grid;place-items:center;
+  width:26px;height:26px;border-radius:999px;
+  background:var(--surface);
+  color:var(--text-2);transition:.15s;
+}
+.party-pill .copy:hover{background:var(--surface-hi);color:var(--amber-hi)}
+
+.live-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:7px 14px;border-radius:999px;
+  background:rgba(45,212,191,.1);
+  border:1px solid rgba(45,212,191,.2);
+  font-size:12px;font-weight:500;color:var(--teal);
+}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);box-shadow:0 0 10px var(--teal);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+.avatars{display:flex;align-items:center}
+.avatars .av{
+  width:30px;height:30px;border-radius:50%;
+  border:2px solid var(--bg-2);
+  margin-left:-9px;
+  display:grid;place-items:center;
+  font-size:11px;font-weight:600;letter-spacing:0;
+  position:relative;
+}
+.avatars .av:first-child{margin-left:0}
+.av.a1{background:linear-gradient(135deg,#f59e0b,#dc2626)}
+.av.a2{background:linear-gradient(135deg,#2dd4bf,#0ea5e9)}
+.av.a3{background:linear-gradient(135deg,#a855f7,#ec4899)}
+.av.a4{background:linear-gradient(135deg,#84cc16,#14b8a6);font-size:10px}
+.av .online{position:absolute;bottom:-1px;right:-1px;width:8px;height:8px;border-radius:50%;background:var(--teal);border:2px solid var(--bg-2)}
+
+.ico-btn{
+  width:38px;height:38px;display:grid;place-items:center;
+  border-radius:10px;color:var(--text-2);
+  background:var(--surface);border:1px solid var(--border);
+  transition:.15s;
+}
+.ico-btn:hover{background:var(--surface-hi);color:var(--text);border-color:var(--border-hi)}
+.btn-leave{
+  padding:9px 16px;border-radius:10px;font-size:13px;font-weight:500;
+  background:rgba(251,113,133,.08);color:var(--rose);
+  border:1px solid rgba(251,113,133,.2);
+  display:inline-flex;align-items:center;gap:7px;transition:.15s;
+}
+.btn-leave:hover{background:rgba(251,113,133,.14)}
+
+/* ============ MAIN ============ */
+.main{
+  display:grid;
+  grid-template-columns:1fr 360px;
+  gap:18px;min-height:0;
+}
+.left{display:grid;grid-template-rows:1fr auto;gap:18px;min-height:0}
+
+/* ============ HERO PLAYER ============ */
+.hero{
+  position:relative;
+  border-radius:24px;overflow:hidden;
+  background:#000;
+  box-shadow:0 20px 60px -20px rgba(0,0,0,.8), 0 0 0 1px var(--border);
+}
+.hero-bg{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse at 35% 40%,rgba(251,191,36,.5),transparent 50%),
+    radial-gradient(ellipse at 70% 70%,rgba(220,38,38,.4),transparent 55%),
+    linear-gradient(180deg,#451a03 0%,#1c1917 60%,#000 100%);
+}
+.hero-bg::after{
+  content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(circle at 50% 30%,rgba(0,0,0,0) 0%,rgba(0,0,0,.3) 60%,rgba(0,0,0,.7) 100%),
+    repeating-linear-gradient(0deg,rgba(0,0,0,.025) 0,rgba(0,0,0,.025) 1px,transparent 1px,transparent 4px);
+}
+.hero-content{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;justify-content:space-between;
+  padding:32px 36px;z-index:2;
+}
+.hero-top{display:flex;justify-content:space-between;align-items:flex-start}
+.hero-meta-top{display:flex;gap:8px;flex-wrap:wrap}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:5px 11px;border-radius:999px;
+  background:rgba(0,0,0,.4);backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.1);
+  font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;
+  color:rgba(255,255,255,.85);
+}
+.chip.hot{color:var(--amber-hi);border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.1)}
+.chip svg{opacity:.8}
+
+.hero-center{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  flex:1;gap:18px;
+}
+.play-btn{
+  width:96px;height:96px;border-radius:50%;
+  background:rgba(255,255,255,.12);backdrop-filter:blur(24px);
+  border:1.5px solid rgba(255,255,255,.25);
+  display:grid;place-items:center;
+  transition:.25s cubic-bezier(.4,0,.2,1);
+  box-shadow:0 16px 50px -10px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.1);
+}
+.play-btn:hover{transform:scale(1.06);background:rgba(251,191,36,.18);border-color:rgba(251,191,36,.4);box-shadow:0 20px 60px -10px rgba(251,191,36,.4)}
+.play-btn svg{margin-left:5px}
+
+.hero-bottom{display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+.hero-info h1{
+  font-size:44px;font-weight:600;letter-spacing:-.035em;
+  line-height:1.05;margin-bottom:10px;
+  text-shadow:0 4px 30px rgba(0,0,0,.6);
+}
+.hero-info .meta{
+  display:flex;align-items:center;gap:12px;
+  font-size:13px;color:rgba(255,255,255,.75);
+}
+.meta-dot{width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.4)}
+.rating{display:inline-flex;align-items:center;gap:5px;color:var(--amber-hi);font-weight:600}
+
+.hero-quick{display:flex;gap:8px}
+.quick-btn{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:9px 14px;border-radius:10px;
+  background:rgba(0,0,0,.4);backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.12);
+  font-size:12px;font-weight:500;color:#fff;
+  transition:.15s;
+}
+.quick-btn:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2)}
+
+/* ============ TRANSPORT BAR ============ */
+.transport{
+  background:rgba(28,25,23,.6);
+  backdrop-filter:blur(24px) saturate(180%);
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:16px 20px;
+  display:flex;align-items:center;gap:18px;
+  box-shadow:0 1px 0 rgba(255,255,255,.04) inset;
+}
+.transport-l{display:flex;align-items:center;gap:8px}
+.t-btn{
+  width:38px;height:38px;border-radius:11px;
+  display:grid;place-items:center;
+  background:var(--surface);border:1px solid var(--border);
+  color:var(--text-2);transition:.15s;
+}
+.t-btn:hover{background:var(--surface-hi);color:var(--text)}
+.t-btn.primary{
+  width:44px;height:44px;
+  background:linear-gradient(135deg,var(--amber-hi),var(--amber));
+  color:#1c1917;
+  border:0;box-shadow:0 8px 20px -6px rgba(245,158,11,.5);
+}
+.t-btn.primary:hover{transform:scale(1.04)}
+
+.t-center{flex:1;display:flex;flex-direction:column;gap:8px}
+.t-title{display:flex;align-items:center;justify-content:space-between;font-size:12px}
+.t-now{display:flex;align-items:center;gap:8px;color:var(--text-2)}
+.t-now strong{color:var(--text);font-weight:600}
+.t-time{font-family:'JetBrains Mono',monospace;color:var(--text-3);font-variant-numeric:tabular-nums}
+.t-time span{color:var(--text)}
+
+.bar{position:relative;height:5px;background:rgba(255,255,255,.06);border-radius:999px;cursor:pointer}
+.bar-buf{position:absolute;left:0;top:0;height:100%;width:48%;background:rgba(255,255,255,.1);border-radius:999px}
+.bar-prog{position:absolute;left:0;top:0;height:100%;width:34%;background:linear-gradient(90deg,var(--amber-hi),var(--amber));border-radius:999px;box-shadow:0 0 12px rgba(245,158,11,.5)}
+.bar-knob{position:absolute;left:34%;top:50%;transform:translate(-50%,-50%);width:13px;height:13px;background:#fff;border-radius:50%;box-shadow:0 0 0 4px rgba(255,255,255,.15),0 2px 8px rgba(0,0,0,.4)}
+
+.viewers-on-bar{position:absolute;top:-22px;display:flex}
+.v-mark{position:absolute;width:18px;height:18px;border-radius:50%;border:2px solid var(--bg-2);transform:translateX(-50%)}
+.v-mark.a1{background:linear-gradient(135deg,#f59e0b,#dc2626);left:34%}
+.v-mark.a2{background:linear-gradient(135deg,#2dd4bf,#0ea5e9);left:32%}
+.v-mark.a3{background:linear-gradient(135deg,#a855f7,#ec4899);left:35%}
+
+.transport-r{display:flex;align-items:center;gap:8px}
+.t-select{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:9px 12px;border-radius:10px;
+  background:var(--surface);border:1px solid var(--border);
+  font-size:12px;color:var(--text-2);transition:.15s;
+}
+.t-select:hover{background:var(--surface-hi);color:var(--text)}
+.t-select strong{color:var(--text);font-weight:500}
+.t-select svg{color:var(--text-3)}
+
+/* ============ CHAT PANEL ============ */
+.chat{
+  display:flex;flex-direction:column;min-height:0;
+  background:rgba(28,25,23,.5);
+  backdrop-filter:blur(24px) saturate(180%);
+  border:1px solid var(--border);
+  border-radius:24px;
+  overflow:hidden;
+  box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 20px 60px -20px rgba(0,0,0,.6);
+}
+
+.chat-head{
+  padding:18px 22px 14px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.chat-title h3{font-size:15px;font-weight:600;letter-spacing:-.015em}
+.chat-title .sub{font-size:11px;color:var(--text-3);margin-top:2px;display:flex;align-items:center;gap:5px}
+.chat-title .sub .dot{width:5px;height:5px;border-radius:50%;background:var(--teal);box-shadow:0 0 6px var(--teal)}
+
+.tab-bar{display:flex;gap:2px;padding:8px 14px;border-bottom:1px solid var(--border)}
+.chat-tab{padding:7px 12px;font-size:12px;font-weight:500;color:var(--text-2);border-radius:9px;display:inline-flex;align-items:center;gap:6px;transition:.15s}
+.chat-tab:hover{color:var(--text)}
+.chat-tab.active{color:var(--text);background:var(--surface-hi)}
+.chat-tab .pill{padding:1px 7px;background:rgba(245,158,11,.15);color:var(--amber-hi);border-radius:999px;font-size:10px;font-weight:600}
+
+.messages{flex:1;overflow-y:auto;padding:18px 18px 8px;display:flex;flex-direction:column;gap:16px}
+.msg{display:flex;gap:11px}
+.msg-av{
+  width:32px;height:32px;border-radius:10px;flex-shrink:0;
+  display:grid;place-items:center;font-size:11px;font-weight:600;
+}
+.msg-body{flex:1;min-width:0}
+.msg-head{display:flex;align-items:baseline;gap:8px;margin-bottom:3px}
+.msg-name{font-size:13px;font-weight:600;color:var(--text)}
+.msg-time{font-size:10px;color:var(--text-3);font-variant-numeric:tabular-nums;letter-spacing:.03em}
+.msg-text{font-size:13.5px;line-height:1.5;color:var(--text-2);word-wrap:break-word}
+.msg-text strong{color:var(--text);font-weight:500}
+.msg-text .mention{color:var(--amber-hi);background:rgba(245,158,11,.1);padding:1px 5px;border-radius:5px;font-weight:500}
+
+.sys-msg{
+  font-size:11px;color:var(--text-3);
+  padding:9px 14px;
+  background:rgba(0,0,0,.25);
+  border:1px solid var(--border);
+  border-radius:999px;align-self:center;
+  display:inline-flex;align-items:center;gap:7px;
+}
+.sys-msg svg{color:var(--teal)}
+.sys-msg.warn svg{color:var(--amber)}
+.sys-msg b{color:var(--text-2);font-weight:500}
+
+.reactions{display:flex;gap:5px;margin-top:7px;flex-wrap:wrap}
+.rx{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:3px 8px;background:var(--surface);
+  border:1px solid var(--border);border-radius:999px;
+  font-size:11px;cursor:pointer;transition:.15s;
+}
+.rx:hover{background:var(--surface-hi);border-color:var(--border-hi)}
+.rx.mine{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.25);color:var(--amber-hi)}
+.rx-count{font-weight:600;font-variant-numeric:tabular-nums}
+
+.typing{
+  display:flex;align-items:center;gap:8px;
+  padding:0 18px 10px;font-size:11px;color:var(--text-3);
+}
+.typing-dots{display:flex;gap:3px}
+.typing-dots i{width:4px;height:4px;border-radius:50%;background:var(--text-2);animation:typing 1.4s infinite}
+.typing-dots i:nth-child(2){animation-delay:.2s}
+.typing-dots i:nth-child(3){animation-delay:.4s}
+@keyframes typing{0%,60%,100%{opacity:.2}30%{opacity:1}}
+
+.composer{padding:14px 18px 18px;border-top:1px solid var(--border)}
+.composer-wrap{
+  display:flex;align-items:center;gap:6px;
+  padding:8px 8px 8px 14px;
+  background:rgba(0,0,0,.3);
+  border:1px solid var(--border);
+  border-radius:14px;transition:.15s;
+}
+.composer-wrap:focus-within{border-color:rgba(245,158,11,.4);box-shadow:0 0 0 4px rgba(245,158,11,.08)}
+.composer input{flex:1;background:none;border:0;outline:0;font-size:13.5px;color:var(--text)}
+.composer input::placeholder{color:var(--text-3)}
+.composer-ico{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--text-3);transition:.15s}
+.composer-ico:hover{color:var(--text);background:var(--surface-hi)}
+.composer-send{
+  width:34px;height:34px;border-radius:10px;
+  background:linear-gradient(135deg,var(--amber-hi),var(--amber));
+  display:grid;place-items:center;color:#1c1917;
+  box-shadow:0 4px 12px rgba(245,158,11,.4);
+}
+
+/* ============ LIBRARY (FLOATING / DRAWER STYLE) ============ */
+.library-bar{
+  position:absolute;left:18px;bottom:18px;
+  width:calc((100vw - 18px*3) - 360px);max-width:1000px;
+  background:rgba(28,25,23,.7);
+  backdrop-filter:blur(28px) saturate(180%);
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:14px;
+  box-shadow:0 24px 70px -20px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.04) inset;
+  display:none; /* hidden, this is just for reference */
+}
+
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.06);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.12)}
+
+/* ============ LIBRARY STRIP ============ */
+.library-strip{
+  background:rgba(28,25,23,.5);
+  backdrop-filter:blur(24px) saturate(180%);
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:16px 20px;
+  display:flex;align-items:center;gap:16px;
+  box-shadow:0 1px 0 rgba(255,255,255,.04) inset;
+}
+.strip-head{display:flex;flex-direction:column;gap:2px;min-width:140px}
+.strip-title{font-size:13px;font-weight:600}
+.strip-sub{font-size:11px;color:var(--text-3)}
+.strip-scroll{flex:1;display:flex;gap:12px;overflow-x:auto;padding:4px 0}
+.strip-card{
+  flex-shrink:0;width:128px;cursor:pointer;
+  transition:.2s;
+}
+.strip-card:hover{transform:translateY(-3px)}
+.strip-poster{
+  width:128px;height:184px;border-radius:12px;
+  position:relative;overflow:hidden;
+  box-shadow:0 8px 20px -6px rgba(0,0,0,.6);
+}
+.strip-poster::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,transparent 55%,rgba(0,0,0,.7));
+}
+.strip-poster .ttl{
+  position:absolute;left:10px;right:10px;bottom:8px;z-index:2;
+  font-size:11px;font-weight:600;line-height:1.2;
+  text-shadow:0 1px 4px rgba(0,0,0,.8);
+}
+.strip-name{font-size:12px;font-weight:500;margin-top:8px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip-meta{font-size:10px;color:var(--text-3);margin-top:2px}
+.p1{background:linear-gradient(135deg,#f59e0b 0%,#7c2d12 60%,#1c1917 100%)}
+.p2{background:linear-gradient(135deg,#0ea5e9 0%,#1e3a8a 50%,#0f172a 100%)}
+.p3{background:linear-gradient(135deg,#84cc16 0%,#166534 50%,#052e16 100%)}
+.p4{background:linear-gradient(135deg,#ef4444 0%,#7f1d1d 50%,#18181b 100%)}
+.p5{background:linear-gradient(135deg,#a855f7 0%,#581c87 50%,#1e1b4b 100%)}
+.p6{background:linear-gradient(135deg,#ec4899 0%,#831843 50%,#27272a 100%)}
+.p7{background:linear-gradient(135deg,#14b8a6 0%,#134e4a 50%,#0c0a09 100%)}
+.p8{background:linear-gradient(135deg,#fbbf24 0%,#92400e 60%,#1c1917 100%)}
+.strip-poster.active{outline:2px solid var(--amber-hi);outline-offset:2px}
+.strip-poster .live{
+  position:absolute;top:8px;right:8px;z-index:2;
+  display:inline-flex;align-items:center;gap:4px;
+  padding:3px 8px;border-radius:999px;
+  background:rgba(0,0,0,.6);backdrop-filter:blur(10px);
+  font-size:9px;font-weight:600;color:var(--teal);letter-spacing:.06em;
+}
+.strip-poster .live::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--teal);box-shadow:0 0 6px var(--teal);animation:pulse 2s infinite}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="topbar-l">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#1c1917" stroke="none"><polygon points="6 4 20 12 6 20"/></svg>
+        </div>
+        <div>
+          <div class="brand-name">Watch Party</div>
+          <div class="brand-sub">EMBY · CINEMA</div>
+        </div>
+      </div>
+      <div class="party-pill">
+        <span class="lbl">Code</span>
+        <code>K7N-2QF</code>
+        <button class="copy" title="Copy">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="topbar-c">
+      <div class="live-badge">
+        <span class="live-dot"></span>
+        Synkad uppspelning · 4 tittare
+      </div>
+    </div>
+    <div class="topbar-r">
+      <div class="avatars">
+        <div class="av a1">CG<span class="online"></span></div>
+        <div class="av a2">JK<span class="online"></span></div>
+        <div class="av a3">ML<span class="online"></span></div>
+        <div class="av a4">+1</div>
+      </div>
+      <button class="ico-btn" title="Theme">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 011.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+      </button>
+      <button class="ico-btn" title="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      </button>
+      <button class="btn-leave">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+        Lämna
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN GRID -->
+  <div class="main">
+
+    <!-- LEFT: hero + transport + library strip -->
+    <div class="left">
+
+      <!-- HERO -->
+      <section class="hero">
+        <div class="hero-bg"></div>
+        <div class="hero-content">
+          <div class="hero-top">
+            <div class="hero-meta-top">
+              <span class="chip hot">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>
+                Spelar nu
+              </span>
+              <span class="chip">4K HDR</span>
+              <span class="chip">Dolby Atmos</span>
+              <span class="chip">CC</span>
+            </div>
+            <div class="hero-meta-top">
+              <span class="chip">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                01:14:22 / 02:44:00
+              </span>
+            </div>
+          </div>
+
+          <div class="hero-center">
+            <button class="play-btn">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="white" stroke="none"><polygon points="6 4 20 12 6 20"/></svg>
+            </button>
+          </div>
+
+          <div class="hero-bottom">
+            <div class="hero-info">
+              <h1>Blade Runner 2049</h1>
+              <div class="meta">
+                <span>2017</span><span class="meta-dot"></span>
+                <span>Science Fiction · Drama</span><span class="meta-dot"></span>
+                <span>2h 44m</span><span class="meta-dot"></span>
+                <span class="rating">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15 9 22 9.3 17 14 18.5 21 12 17.3 5.5 21 7 14 2 9.3 9 9 12 2"/></svg>
+                  8.0
+                </span>
+              </div>
+            </div>
+            <div class="hero-quick">
+              <button class="quick-btn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Info
+              </button>
+              <button class="quick-btn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3M21 8V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3M16 21h3a2 2 0 002-2v-3"/></svg>
+                Helskärm
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TRANSPORT -->
+      <section class="transport">
+        <div class="transport-l">
+          <button class="t-btn" title="Previous">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="19 20 9 12 19 4 19 20"/><rect x="3" y="4" width="2" height="16"/></svg>
+          </button>
+          <button class="t-btn" title="-10s">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg>
+          </button>
+          <button class="t-btn primary" title="Pause">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+          </button>
+          <button class="t-btn" title="+10s">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 17l5-5-5-5M6 17l5-5-5-5"/></svg>
+          </button>
+          <button class="t-btn" title="Next">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 4 15 12 5 20 5 4"/><rect x="19" y="4" width="2" height="16"/></svg>
+          </button>
+        </div>
+
+        <div class="t-center">
+          <div class="t-title">
+            <div class="t-now"><strong>Blade Runner 2049</strong> <span>· kapitel 14 — Sea Wall</span></div>
+            <div class="t-time"><span>01:14:22</span> / 02:44:00</div>
+          </div>
+          <div class="bar">
+            <div class="viewers-on-bar">
+              <div class="v-mark a2"></div>
+              <div class="v-mark a1"></div>
+              <div class="v-mark a3"></div>
+            </div>
+            <div class="bar-buf"></div>
+            <div class="bar-prog"></div>
+            <div class="bar-knob"></div>
+          </div>
+        </div>
+
+        <div class="transport-r">
+          <button class="t-select">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg>
+            <span>Ljud</span> <strong>EN 5.1</strong>
+          </button>
+          <button class="t-select">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18v14H3zM7 15h.01M11 15h2"/></svg>
+            <span>Text</span> <strong>SV</strong>
+          </button>
+          <button class="t-select">
+            <strong style="color:var(--amber-hi)">1080p</strong>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- LIBRARY STRIP -->
+      <section class="library-strip">
+        <div class="strip-head">
+          <div class="strip-title">Ditt bibliotek</div>
+          <div class="strip-sub">183 titlar</div>
+        </div>
+        <div class="strip-scroll">
+          <div class="strip-card">
+            <div class="strip-poster p1 active">
+              <span class="live">LIVE</span>
+              <div class="ttl">Blade Runner 2049</div>
+            </div>
+            <div class="strip-name">Blade Runner 2049</div>
+            <div class="strip-meta">2017 · 2h 44m</div>
+          </div>
+          <div class="strip-card">
+            <div class="strip-poster p2"><div class="ttl">Arrival</div></div>
+            <div class="strip-name">Arrival</div>
+            <div class="strip-meta">2016 · 1h 56m</div>
+          </div>
+          <div class="strip-card">
+            <div class="strip-poster p4"><div class="ttl">Dune: Part Two</div></div>
+            <div class="strip-name">Dune: Part Two</div>
+            <div class="strip-meta">2024 · 2h 46m</div>
+          </div>
+          <div class="strip-card">
+            <div class="strip-poster p5"><div class="ttl">Interstellar</div></div>
+            <div class="strip-name">Interstellar</div>
+            <div class="strip-meta">2014 · 2h 49m</div>
+          </div>
+          <div class="strip-card">
+            <div class="strip-poster p7"><div class="ttl">Annihilation</div></div>
+            <div class="strip-name">Annihilation</div>
+            <div class="strip-meta">2018 · 1h 55m</div>
+          </div>
+          <div class="strip-card">
+            <div class="strip-poster p3"><div class="ttl">The Matrix</div></div>
+            <div class="strip-name">The Matrix Resurrections</div>
+            <div class="strip-meta">2021 · 2h 28m</div>
+          </div>
+          <div class="strip-card">
+            <div class="strip-poster p6"><div class="ttl">EEAAO</div></div>
+            <div class="strip-name">Everything Everywhere</div>
+            <div class="strip-meta">2022 · 2h 19m</div>
+          </div>
+          <div class="strip-card">
+            <div class="strip-poster p8"><div class="ttl">Mad Max</div></div>
+            <div class="strip-name">Mad Max: Fury Road</div>
+            <div class="strip-meta">2015 · 2h 0m</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- CHAT -->
+    <aside class="chat">
+      <div class="chat-head">
+        <div class="chat-title">
+          <h3>Chatt</h3>
+          <div class="sub"><span class="dot"></span> 4 anslutna · synkat</div>
+        </div>
+        <button class="ico-btn" style="width:32px;height:32px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </div>
+      <div class="tab-bar">
+        <button class="chat-tab active">Chatt <span class="pill">12</span></button>
+        <button class="chat-tab">Tittare</button>
+        <button class="chat-tab">Reaktioner</button>
+      </div>
+      <div class="messages">
+        <div class="sys-msg">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Synkat <b>01:14:22</b>
+        </div>
+        <div class="msg">
+          <div class="msg-av a1">CG</div>
+          <div class="msg-body">
+            <div class="msg-head"><span class="msg-name">Christian</span><span class="msg-time">19:42</span></div>
+            <div class="msg-text">den här scenen är fortfarande otrolig 🌫️</div>
+            <div class="reactions">
+              <span class="rx mine">🔥 <span class="rx-count">2</span></span>
+              <span class="rx">💯 <span class="rx-count">1</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="msg">
+          <div class="msg-av a2">JK</div>
+          <div class="msg-body">
+            <div class="msg-head"><span class="msg-name">Jonas</span><span class="msg-time">19:43</span></div>
+            <div class="msg-text">Roger Deakins. Säg inte mer.</div>
+          </div>
+        </div>
+        <div class="sys-msg warn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <b>Marie</b> pausade · buffring
+        </div>
+        <div class="msg">
+          <div class="msg-av a3">ML</div>
+          <div class="msg-body">
+            <div class="msg-head"><span class="msg-name">Marie</span><span class="msg-time">19:44</span></div>
+            <div class="msg-text">sorry, en sekund — wifi:et hostar</div>
+          </div>
+        </div>
+        <div class="msg">
+          <div class="msg-av a1">CG</div>
+          <div class="msg-body">
+            <div class="msg-head"><span class="msg-name">Christian</span><span class="msg-time">19:45</span></div>
+            <div class="msg-text">no stress. <span class="mention">@Jonas</span> har du sett The Substance än?</div>
+          </div>
+        </div>
+        <div class="msg">
+          <div class="msg-av a4">+1</div>
+          <div class="msg-body">
+            <div class="msg-head"><span class="msg-name">QuackMasterDan</span><span class="msg-time">19:46</span></div>
+            <div class="msg-text">precis joinade — vad har jag missat?</div>
+          </div>
+        </div>
+      </div>
+      <div class="typing">
+        <div class="typing-dots"><i></i><i></i><i></i></div>
+        Jonas skriver…
+      </div>
+      <div class="composer">
+        <div class="composer-wrap">
+          <button class="composer-ico" title="Emoji">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg>
+          </button>
+          <input type="text" placeholder="Skicka ett meddelande till partyt…">
+          <button class="composer-send" title="Send">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+</body>
+</html>
