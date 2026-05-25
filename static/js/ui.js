@@ -8,6 +8,12 @@
         S.dom.userCountEl.textContent = count === 1 ? '1 user' : count + ' users';
     }
 
+    function updatePartyTitle() {
+        var el = S.dom.partyTitle;
+        if (!el) return;
+        el.textContent = S.hostName ? S.hostName + "'s Watch Party" : 'Watch Party';
+    }
+
     function handleFullscreenChange() {
         var isFullscreen = !!(
             document.fullscreenElement ||
@@ -127,6 +133,11 @@
                 S.username = data.username;
             }
 
+            if (data.host_name && S.hostName !== data.host_name) {
+                S.hostName = data.host_name;
+                updatePartyTitle();
+            }
+
             window.PartyChat.addSystemMessage(data.username + ' joined the party');
             renderParticipantList();
         });
@@ -238,6 +249,7 @@
     window.PartyUI = {
         init: init,
         updateUserCount: updateUserCount,
+        updatePartyTitle: updatePartyTitle,
         showLibraryAfterVideoEnd: showLibraryAfterVideoEnd,
         startAutoplayCountdown: startAutoplayCountdown,
         cancelAutoplay: cancelAutoplay

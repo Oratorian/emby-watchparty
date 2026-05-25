@@ -41,6 +41,7 @@ def register(deps):
         watch_parties[party_id] = {
             "id": party_id,
             "created_at": datetime.now().isoformat(),
+            "host_name": None,
             "users": {},
             "current_video": None,
             "playback_state": {
@@ -97,6 +98,7 @@ def register(deps):
         return jsonify(
             {
                 "id": party["id"],
+                "host_name": party.get("host_name"),
                 "users": list(party["users"].values()),
                 "current_video": party["current_video"],
                 "playback_state": party["playback_state"],

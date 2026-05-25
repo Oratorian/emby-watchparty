@@ -158,6 +158,7 @@ if config.STATIC_SESSION_ENABLED == 'true':
     party_manager.watch_parties[static_id] = {
         "id": static_id,
         "created_at": datetime.now().isoformat(),
+        "host_name": None,
         "users": {},
         "current_video": None,
         "playback_state": {

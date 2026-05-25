@@ -9,6 +9,7 @@
         usernameInput: document.getElementById('usernameInput'),
         joinBtn: document.getElementById('joinBtn'),
         partyCodeEl: document.getElementById('partyCode'),
+        partyTitle: document.getElementById('partyTitle'),
         copyCodeBtn: document.getElementById('copyCodeBtn'),
         showLibraryBtn: document.getElementById('showLibraryBtn'),
         hideLibraryBtn: document.getElementById('hideLibraryBtn'),

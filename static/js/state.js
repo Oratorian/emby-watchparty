@@ -23,6 +23,7 @@
         username: '',
         currentUsers: [],
         isHost: false,
+        hostName: null,
 
         // Sync state
         isSyncing: false,

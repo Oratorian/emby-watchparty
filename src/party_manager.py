@@ -16,6 +16,7 @@ class PartyManager:
         'party_id': {
             'id': str,
             'created_at': str (ISO format),
+            'host_name': str | None (name of first joiner, used for "X's Watch Party" title),
             'users': {socket_id: username},
             'current_video': {
                 'item_id': str,
@@ -53,6 +54,7 @@ class PartyManager:
         self.watch_parties[party_id] = {
             "id": party_id,
             "created_at": datetime.now().isoformat(),
+            "host_name": None,
             "users": {},
             "current_video": None,
             "playback_state": {

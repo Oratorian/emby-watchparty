@@ -37,6 +37,7 @@ def register(deps):
                 watch_parties[party_id] = {
                     "id": party_id,
                     "created_at": datetime.now().isoformat(),
+                    "host_name": None,
                     "users": {},
                     "current_video": None,
                     "playback_state": {

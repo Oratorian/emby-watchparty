@@ -77,6 +77,16 @@ def register(deps):
         # Add user to party
         watch_parties[party_id]["users"][request.sid] = username
 
+        # First joiner becomes the host (skip for static session — it has no owner).
+        # Stored as a string in party dict (not tied to sid), so refresh keeps the title.
+        is_static = (
+            config.STATIC_SESSION_ENABLED == 'true'
+            and party_id == config.STATIC_SESSION_ID
+        )
+        if not is_static and not watch_parties[party_id].get("host_name"):
+            watch_parties[party_id]["host_name"] = username
+            logger.info(f"Set {username} as host of party {party_id}")
+
         # Reclaim selector role if the previous selector is orphaned.
         # When a user disconnects (network drop, tab close), the disconnect
         # handler removes their sid from users before they rejoin with a new
@@ -105,6 +115,7 @@ def register(deps):
             {
                 "username": username,
                 "users": list(watch_parties[party_id]["users"].values()),
+                "host_name": watch_parties[party_id].get("host_name"),
             },
             room=party_id,
         )
@@ -165,7 +176,11 @@ def register(deps):
 
         emit(
             "sync_state",
-            {"current_video": current_video, "playback_state": playback_state},
+            {
+                "current_video": current_video,
+                "playback_state": playback_state,
+                "host_name": party.get("host_name"),
+            },
         )
 
     @socketio.on("leave_party")
