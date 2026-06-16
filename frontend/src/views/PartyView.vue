@@ -1054,37 +1054,68 @@ async function submitBecomeHost(payload: { username: string; password: string })
   <div v-if="joined" class="party-container">
     <header class="party-header">
       <div class="header-left">
-        <strong>Party: {{ route.params.id }}</strong>
-        <button @click="copyPartyId" class="btn-copy" title="Copy party code">
-          {{ copyLabel }}
+        <button
+          v-if="versionInfo.version"
+          class="brand"
+          @click="showVersionModal = true"
+          :title="`Watch Party ${versionInfo.codename || ''}`.trim()"
+        >
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="#04142a" stroke="none"><polygon points="6 4 20 12 6 20"/></svg>
+          </span>
+          <span class="brand-name">Watch Party<span class="brand-subtle">by <a href="https://github.com/oratorian" target="_blank" rel="noopener noreferrer">Oratorian</a></span></span>
         </button>
-        <span class="user-count">{{ party.userCount }} users</span>
-      </div>
-      <div class="header-center" v-if="versionInfo.version" @click="showVersionModal = true">
-        <span class="header-title">Watch Party</span>
-        <span class="header-codename">{{ versionInfo.codename }}</span>
+        <button
+          class="party-pill"
+          @click="copyPartyId"
+          :title="copyLabel === 'Copy' ? 'Copy party code' : copyLabel"
+        >
+          <span class="party-pill-label">Code</span>
+          <code class="party-pill-code">{{ route.params.id }}</code>
+          <span class="party-pill-copy" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </span>
+        </button>
+        <span v-if="auth.hostUsername" class="host-badge" :title="`Host: ${auth.hostUsername}`">
+          Host: {{ auth.hostUsername }}
+        </span>
       </div>
       <div class="header-actions">
-        <button @click="libraryButtonAction" class="btn btn-small">
+        <div class="viewer-chip" :title="`${party.userCount} ${party.userCount === 1 ? 'person' : 'people'} watching`">
+          <span class="viewer-dot" aria-hidden="true"></span>
+          <span>{{ party.userCount }} watching</span>
+          <div class="viewer-avatars">
+            <img
+              v-for="user in party.users.slice(0, 3)"
+              :key="user"
+              :src="avatarSrc(user)"
+              :alt="user"
+              class="av"
+            />
+            <span v-if="party.userCount > 3" class="av av-more">+{{ party.userCount - 3 }}</span>
+          </div>
+        </div>
+        <button @click="libraryButtonAction" class="chip-btn">
           <template v-if="auth.partyUnlocked">
             {{ showLibrary ? 'Hide Library' : 'Browse Library' }}
           </template>
           <template v-else>Login to Become Host</template>
         </button>
-        <span v-if="auth.hostUsername" class="host-badge" :title="`Host: ${auth.hostUsername}`">
-          Host: {{ auth.hostUsername }}
-        </span>
+        <button v-if="party.currentVideo" @click="stopVideo" class="chip-btn chip-btn-warn">Stop Video</button>
         <router-link
           v-if="auth.isAdmin"
           to="/admin"
-          class="btn btn-small"
+          class="ico-btn"
           title="Open the admin panel (Emby admin policy required)"
+          aria-label="Admin"
         >
-          Admin
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         </router-link>
-        <button @click="showMobileChat = true" class="btn btn-small mobile-chat-toggle">Chat</button>
-        <button v-if="party.currentVideo" @click="stopVideo" class="btn btn-small btn-warning">Stop Video</button>
-        <button @click="leaveParty" class="btn btn-small btn-danger">Leave</button>
+        <button @click="showMobileChat = true" class="chip-btn mobile-chat-toggle">Chat</button>
+        <button @click="leaveParty" class="btn-leave" title="Leave party">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          Leave
+        </button>
       </div>
     </header>
 
@@ -1190,7 +1221,10 @@ async function submitBecomeHost(payload: { username: string; password: string })
             :class="['chat-msg', { 'system-msg': msg.system }]"
           >
             <template v-if="msg.system">
-              <em>{{ msg.message }}</em>
+              <div class="sys-msg">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>{{ msg.message }}</span>
+              </div>
             </template>
             <template v-else>
               <div class="msg-bubble-row" :class="{ 'msg-self': msg.username === party.username }">
@@ -1205,9 +1239,18 @@ async function submitBecomeHost(payload: { username: string; password: string })
           </div>
         </div>
         <div class="chat-input">
-          <input v-model="chatInput" @keypress.enter="sendChat" placeholder="Type a message..." />
-          <EmojiPicker @select="insertEmoji" />
-          <button @click="sendChat" class="btn btn-small btn-primary">Send</button>
+          <div class="chat-composer">
+            <EmojiPicker @select="insertEmoji" />
+            <input
+              v-model="chatInput"
+              @keypress.enter="sendChat"
+              placeholder="Type a message..."
+              class="chat-composer-input"
+            />
+            <button @click="sendChat" class="chat-composer-send" title="Send" aria-label="Send message">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
         </div>
       </aside>
       <button
@@ -1341,88 +1384,256 @@ async function submitBecomeHost(payload: { username: string; password: string })
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-sm) var(--space-md);
-  background: var(--bg-secondary);
+  padding: 0 var(--space-md);
+  height: 64px;
+  background: rgba(11, 14, 28, 0.5);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid var(--border-subtle);
   position: relative;
+  z-index: 10;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
+  gap: 12px;
 }
 
-.header-left strong {
-  font-size: 0.95rem;
-  letter-spacing: 0.05em;
-}
-
-.btn-copy {
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  padding: 0.15rem 0.5rem;
-  font-size: 0.75rem;
+/* Brand: cyan->magenta gradient mark + name. Click opens the version
+   modal, replacing the old centred "Watch Party | codename" pair. */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: 0;
+  padding: 0;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  color: inherit;
+  font: inherit;
+}
+
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 12px rgba(34, 211, 238, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.brand-name {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.02em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.brand-subtle {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* Party-code pill: surface bg, cyan code text, copy icon on the right.
+   The whole pill is clickable, copy icon is a visual hint only. */
+.party-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 7px 7px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
   font-family: var(--font-sans);
 }
 
-.btn-copy:hover {
+.party-pill:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
+}
+
+.party-pill-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.party-pill-code {
+  font-family: var(--font-mono);
   color: var(--accent-primary);
-  border-color: var(--accent-primary);
-}
-
-.user-count {
-  color: var(--accent-secondary);
-  font-size: 0.85rem;
-  font-weight: 500;
-}
-
-.header-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1.2;
-  cursor: pointer;
-  pointer-events: auto;
-  transition: opacity var(--transition-fast);
-}
-
-.header-center:hover {
-  opacity: 0.8;
-}
-
-.header-title {
-  font-size: 0.9rem;
   font-weight: 600;
-  color: var(--text-primary);
+  font-size: 13px;
+  letter-spacing: 0.05em;
 }
 
-.header-codename {
-  font-size: 0.7rem;
-  color: var(--accent-secondary);
-  font-style: italic;
+.party-pill-copy {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.party-pill:hover .party-pill-copy {
+  background: var(--bg-surface-hover);
+  color: var(--accent-primary);
 }
 
 .header-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 10px;
+}
+
+/* Viewer chip: live green dot + count + overlapping avatars. The
+   pill itself is non-interactive (no click target), just a visual
+   summary of who's watching with you. */
+.viewer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.viewer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  box-shadow: 0 0 8px var(--accent-green);
+  flex-shrink: 0;
+}
+
+.viewer-avatars {
+  display: flex;
+  margin-left: 4px;
+}
+
+.viewer-avatars .av {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-primary);
+  margin-left: -8px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  object-fit: cover;
+  background: var(--bg-surface-hover);
+  color: var(--text-secondary);
+}
+
+.viewer-avatars .av:first-child {
+  margin-left: 0;
+}
+
+.viewer-avatars .av-more {
+  background: linear-gradient(135deg, var(--accent-violet), var(--accent-primary));
+  color: var(--text-primary);
+  font-size: 9px;
+}
+
+/* Header chip buttons. Same pill language as viewer-chip but
+   interactive. Used for Browse Library, Stop Video, mobile Chat. */
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  font-family: var(--font-sans);
+}
+
+.chip-btn:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
+}
+
+.chip-btn-warn {
+  background: var(--accent-amber-dim);
+  border-color: rgba(251, 191, 36, 0.25);
+  color: var(--accent-amber);
+}
+
+.chip-btn-warn:hover {
+  background: rgba(251, 191, 36, 0.22);
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+/* Square icon button -- used for Admin gear. */
+.ico-btn {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.ico-btn:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+/* Leave: red-tinted to clearly read as a destructive action. */
+.btn-leave {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  background: rgba(244, 63, 94, 0.1);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.2);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+  font-family: var(--font-sans);
+}
+
+.btn-leave:hover {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.3);
 }
 
 .host-badge {
   font-size: 0.75rem;
-  color: var(--accent-secondary);
+  color: var(--accent-amber);
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-full);
+  padding: 0.2rem 0.6rem;
   white-space: nowrap;
 }
 
@@ -1441,7 +1652,12 @@ async function submitBecomeHost(payload: { username: string; password: string })
 .library-panel {
   width: 350px;
   min-width: 300px;
-  background: var(--bg-secondary);
+  /* Match the topbar's glass treatment so the panel reads as part of
+     the same surface stack instead of a solid block. Vertical fade
+     darkens the bottom slightly. */
+  background: linear-gradient(180deg, rgba(11, 14, 28, 0.6) 0%, rgba(6, 7, 13, 0.6) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid var(--border-subtle);
   overflow-y: auto;
   padding: var(--space-md);
@@ -1527,7 +1743,11 @@ async function submitBecomeHost(payload: { username: string; password: string })
 
 .video-info {
   padding: var(--space-sm) var(--space-md);
-  background: var(--bg-secondary);
+  /* Same glass surface as the controls strip directly above and the
+     library / chat / topbar on either side. */
+  background: rgba(11, 14, 28, 0.55);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -1551,7 +1771,11 @@ async function submitBecomeHost(payload: { username: string; password: string })
   width: 320px;
   display: flex;
   flex-direction: column;
-  background: var(--bg-secondary);
+  /* Mirror the library panel's glass surface so left/right shoulders
+     of the layout share the same backdrop treatment as the topbar. */
+  background: linear-gradient(180deg, rgba(11, 14, 28, 0.6) 0%, rgba(6, 7, 13, 0.6) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-left: 1px solid var(--border-subtle);
 }
 
@@ -1613,11 +1837,18 @@ async function submitBecomeHost(payload: { username: string; password: string })
   display: none;
   background: var(--bg-surface);
   color: var(--text-secondary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  padding: 0.2rem 0.5rem;
-  font-size: 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-family: var(--font-sans);
   cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.chat-close-btn:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
 }
 
 .participant-list {
@@ -1723,26 +1954,103 @@ async function submitBecomeHost(payload: { username: string; password: string })
   margin-top: 1px;
 }
 
+/* System message: centered pill bubble with a cyan icon. The outer
+   .chat-msg row is normally left-aligned for user messages; the inline
+   flex on .sys-msg + align-self:center inside a flex column keeps the
+   pill centred within the message stream regardless. */
 .system-msg {
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  font-style: italic;
+  display: flex;
+  justify-content: center;
   padding: var(--space-xs) 0;
-  border-left: 2px solid var(--border-subtle);
-  padding-left: var(--space-sm);
+}
+
+.sys-msg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  max-width: 100%;
+  text-align: center;
+}
+
+.sys-msg svg {
+  color: var(--accent-primary);
+  flex-shrink: 0;
 }
 
 .chat-input {
-  display: flex;
-  padding: var(--space-sm);
-  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
   border-top: 1px solid var(--border-subtle);
 }
 
-.chat-input input {
+/* Unified composer pill: emoji trigger on the left, bare input in the
+   middle, gradient send button on the right. Focus-within lifts the
+   surface and adds a cyan ring so the whole pill reads as one focused
+   element rather than three competing controls. */
+.chat-composer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px 5px 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.chat-composer:focus-within {
+  background: var(--bg-surface-hover);
+  border-color: rgba(34, 211, 238, 0.4);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.08);
+}
+
+.chat-composer-input {
   flex: 1;
-  padding: var(--space-sm);
-  font-size: 0.85rem;
+  min-width: 0;
+  /* Override the global input chip styling -- the surface/border live
+     on the composer pill now, the input itself is bare. */
+  padding: 6px 4px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.chat-composer-input:focus {
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.chat-composer-send {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-violet));
+  color: var(--bg-deep);
+  border: 0;
+  box-shadow: 0 2px 8px rgba(34, 211, 238, 0.3);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.chat-composer-send:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(34, 211, 238, 0.4);
+}
+
+.chat-composer-send:active {
+  transform: translateY(0);
 }
 
 /* ─── Version Modal ─── */
@@ -1806,7 +2114,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
     gap: var(--space-sm);
   }
 
-  .header-center {
+  .brand-name {
     display: none;
   }
 

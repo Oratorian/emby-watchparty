@@ -36,6 +36,7 @@
           v-for="item in items"
           :key="item.Id"
           class="item-card"
+          :class="{ 'item-card-live': item.Id === playingItemId }"
           @click="handleItemClick(item)"
         >
           <div class="item-poster" :style="posterStyle(item)">
@@ -46,11 +47,19 @@
               loading="lazy"
             />
             <div v-else class="no-poster">{{ item.Name.charAt(0) }}</div>
+            <div v-if="item.Id === playingItemId" class="live-badge" aria-label="Currently playing">
+              <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="live-text">LIVE</span>
+            </div>
           </div>
           <div class="item-info">
             <span class="item-name">{{ item.Name }}</span>
-            <span v-if="item.ProductionYear" class="item-year">{{ item.ProductionYear }}</span>
-            <span class="item-type">{{ item.Type }}</span>
+            <span class="item-meta">
+              <span v-if="item.ProductionYear">{{ item.ProductionYear }}</span>
+              <span v-if="item.ProductionYear && itemRuntime(item)" class="sep">·</span>
+              <span v-if="itemRuntime(item)">{{ itemRuntime(item) }}</span>
+              <span v-if="!item.ProductionYear && !itemRuntime(item)" class="item-type">{{ item.Type }}</span>
+            </span>
           </div>
         </div>
         <div v-if="hasMore" ref="sentinel" class="sentinel">
@@ -61,8 +70,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { api } from '@/api/client'
+import { usePartyStore } from '@/stores/party'
+
+const party = usePartyStore()
+// Drives the LIVE badge + EQ animation overlay on the currently-playing
+// card. Falls back to null when nothing is selected so the overlay never
+// renders accidentally on a stale match.
+const playingItemId = computed<string | null>(() => party.currentVideo?.item_id ?? null)
 
 interface EmbyItem {
   Id: string
@@ -72,6 +88,21 @@ interface EmbyItem {
   PrimaryImageAspectRatio?: number
   ProductionYear?: number
   Overview?: string
+  RunTimeTicks?: number
+}
+
+// Emby returns RunTimeTicks as 100-nanosecond units. Format as the
+// library card "Xh Ym" shorthand used by the mockup. Returns null when
+// the item has no runtime so the meta row can drop the separator.
+function itemRuntime(item: EmbyItem): string | null {
+  const ticks = item.RunTimeTicks
+  if (!ticks || ticks <= 0) return null
+  const totalSeconds = Math.floor(ticks / 10_000_000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  if (hours > 0) return `${hours}h ${minutes}m`
+  if (minutes > 0) return `${minutes}m`
+  return null
 }
 
 interface Breadcrumb {
@@ -364,31 +395,36 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.25rem;
-  font-size: 0.9rem;
-  color: var(--text-primary);
+  gap: 0.4rem;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 
 .crumb {
   cursor: pointer;
-  color: var(--cyber-primary);
+  color: var(--accent-primary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .crumb:hover {
-  text-decoration: underline;
+  background: var(--bg-surface);
 }
 
 .crumb.active {
   cursor: default;
   color: var(--text-primary);
+  background: var(--bg-surface-hover);
 }
 
 .crumb.active:hover {
-  text-decoration: none;
+  background: var(--bg-surface-hover);
 }
 
 .crumb-sep {
-  color: var(--cyber-border);
+  color: var(--text-muted);
+  opacity: 0.6;
 }
 
 .search-bar {
@@ -398,29 +434,27 @@ onUnmounted(() => {
 
 .search-bar input {
   flex: 1;
-  padding: 0.4rem 0.6rem;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--cyber-border);
-  border-radius: 4px;
-  outline: none;
-}
-
-.search-bar input:focus {
-  border-color: var(--cyber-primary);
+  /* Inherits the global input chip styling (10px padding, 10px radius,
+     cyan focus glow) -- no local overrides needed. */
 }
 
 .search-bar button {
-  padding: 0.4rem 0.8rem;
-  background: var(--bg-secondary);
+  padding: 7px 14px;
+  background: var(--bg-surface);
   color: var(--text-primary);
-  border: 1px solid var(--cyber-border);
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-sans);
   cursor: pointer;
-  border-radius: 4px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+  white-space: nowrap;
 }
 
 .search-bar button:hover {
-  background: var(--cyber-primary);
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
 }
 
 .loading,
@@ -437,16 +471,25 @@ onUnmounted(() => {
 }
 
 .item-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--cyber-border);
-  border-radius: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   overflow: hidden;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
 
 .item-card:hover {
-  border-color: var(--cyber-primary);
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
+}
+
+.item-card-live {
+  /* Subtle cyan-tinted border + faint glow on the active item so it
+     reads immediately when the library opens over the playing video. */
+  border-color: var(--border-accent);
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.06), transparent);
+  box-shadow: 0 0 0 1px var(--border-accent), 0 0 24px rgba(34, 211, 238, 0.08);
 }
 
 .item-poster {
@@ -456,6 +499,7 @@ onUnmounted(() => {
   aspect-ratio: 2 / 3;
   overflow: hidden;
   background: var(--bg-primary);
+  position: relative;
 }
 
 .item-poster img {
@@ -474,33 +518,89 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   font-size: 2rem;
-  color: var(--cyber-primary);
+  color: var(--accent-primary);
+}
+
+/* LIVE overlay: positioned top-right of the poster so it stays visible
+   when the card title wraps. The animated EQ bars communicate "live"
+   without auto-playing video thumbnails. */
+.live-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 7px;
+  background: rgba(6, 7, 13, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent-primary);
+  pointer-events: none;
+}
+
+.live-badge .eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 8px;
+}
+
+.live-badge .eq i {
+  width: 1.5px;
+  background: var(--accent-primary);
+  border-radius: 1px;
+  animation: lib-eq 1s infinite ease-in-out;
+}
+
+.live-badge .eq i:nth-child(1) { height: 60%; animation-delay: 0s; }
+.live-badge .eq i:nth-child(2) { height: 100%; animation-delay: 0.2s; }
+.live-badge .eq i:nth-child(3) { height: 40%; animation-delay: 0.4s; }
+
+@keyframes lib-eq {
+  0%, 100% { transform: scaleY(0.4); }
+  50%      { transform: scaleY(1); }
 }
 
 .item-info {
-  padding: 0.4rem 0.5rem;
+  padding: 0.5rem 0.6rem 0.6rem;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.2rem;
 }
 
 .item-name {
   font-size: 0.85rem;
+  font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.item-year {
-  font-size: 0.75rem;
-  color: var(--cyber-border);
+.item-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.item-meta .sep {
+  opacity: 0.5;
 }
 
 .item-type {
   font-size: 0.7rem;
-  color: var(--cyber-primary);
+  color: var(--accent-primary);
   text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .sentinel {

@@ -227,7 +227,7 @@ function acknowledge() {
 }
 
 .error {
-  color: var(--danger, #e25555);
+  color: var(--color-danger);
   font-size: 0.85rem;
   margin: var(--space-sm) 0 0;
 }

@@ -185,35 +185,42 @@ function vote(choice: 'yes' | 'no') {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
   font-size: 0.9rem;
 }
 
 .voters li.voted {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-surface-hover);
 }
 
+/* Vote pills mirror the chip language used everywhere else: rounded
+   surface bg, cyan / pink dim tints, no flat saturated rectangles. */
 .mark {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 3px;
+  padding: 2px 9px;
+  border-radius: var(--radius-full);
+  letter-spacing: 0.04em;
 }
 
 .mark.yes {
-  background: #2d8a5c;
-  color: white;
+  background: var(--accent-green-dim);
+  color: var(--accent-green);
+  border: 1px solid rgba(52, 211, 153, 0.25);
 }
 
 .mark.no {
-  background: #8a2d3a;
-  color: white;
+  background: rgba(244, 63, 94, 0.12);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.25);
 }
 
 .mark.pending {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--color-text-muted, #888);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
 }
 </style>

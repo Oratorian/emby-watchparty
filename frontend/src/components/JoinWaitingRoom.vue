@@ -63,7 +63,7 @@ const progressText = computed(() => {
 .waiting-room {
   position: fixed;
   inset: 0;
-  background: var(--color-background, #0a0a0a);
+  background: var(--bg-deep);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -74,14 +74,14 @@ const progressText = computed(() => {
   text-align: center;
   max-width: 440px;
   padding: 40px;
-  color: var(--color-text, #e8e8e8);
+  color: var(--text-primary);
 }
 
 .spinner {
   width: 64px;
   height: 64px;
   border: 4px solid rgba(255, 255, 255, 0.1);
-  border-top-color: var(--color-accent, #6b9fff);
+  border-top-color: var(--accent-primary);
   border-radius: 50%;
   animation: spin 0.9s linear infinite;
   margin: 0 auto 24px;
@@ -98,24 +98,24 @@ h2 {
 
 .explain {
   margin: 0 0 24px;
-  color: var(--color-text-muted, #aaa);
+  color: var(--text-secondary);
   font-size: 0.95rem;
   line-height: 1.5;
 }
 
 .timer {
   font-size: 1rem;
-  color: var(--color-accent, #6b9fff);
+  color: var(--accent-primary);
   margin-bottom: 8px;
 }
 
 .timer strong {
-  font-family: 'Monaco', 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 1.2rem;
 }
 
 .progress {
   font-size: 0.9rem;
-  color: var(--color-text-muted, #888);
+  color: var(--text-muted);
 }
 </style>

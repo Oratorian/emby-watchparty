@@ -5,32 +5,44 @@
 
 /* ─── Design Tokens ─── */
 :root {
-  /* Backgrounds */
-  --bg-deep: #060a14;
-  --bg-primary: #0a0e1a;
-  --bg-secondary: #131829;
+  /* Backgrounds. Slightly cooler/deeper than the previous teal era to
+     let the cyan-magenta-violet glow radials in body::before read as
+     atmospheric instead of dirty-on-teal. */
+  --bg-deep: #06070d;
+  --bg-primary: #0b0e1c;
+  --bg-secondary: #10142a;
   --bg-surface: rgba(255, 255, 255, 0.04);
   --bg-surface-hover: rgba(255, 255, 255, 0.07);
-  --bg-glass: rgba(19, 24, 41, 0.75);
+  --bg-glass: rgba(11, 14, 28, 0.75);
 
-  /* Accents */
-  --accent-primary: #00d4aa;
-  --accent-primary-dim: rgba(0, 212, 170, 0.15);
-  --accent-primary-glow: rgba(0, 212, 170, 0.3);
-  --accent-secondary: #f0a050;
-  --accent-secondary-dim: rgba(240, 160, 80, 0.15);
+  /* Accents. Cyan is THE primary, magenta is the active partner colour
+     (brand-mark gradient end, scrub bar end). Violet shows up in
+     send-button gradients and accent moments. Green is reserved for
+     "live" indicators (viewer dot, active EQ bars). Amber is reserved
+     for the "NOW PLAYING TOGETHER" stage badge. */
+  --accent-primary: #22d3ee;
+  --accent-primary-dim: rgba(34, 211, 238, 0.15);
+  --accent-primary-glow: rgba(34, 211, 238, 0.3);
+  --accent-secondary: #f472b6;
+  --accent-secondary-dim: rgba(244, 114, 182, 0.15);
+  --accent-violet: #a78bfa;
+  --accent-violet-dim: rgba(167, 139, 250, 0.15);
+  --accent-green: #34d399;
+  --accent-green-dim: rgba(52, 211, 153, 0.15);
+  --accent-amber: #fbbf24;
+  --accent-amber-dim: rgba(251, 191, 36, 0.15);
 
   /* Text */
-  --text-primary: #e2e8f0;
-  --text-secondary: #94a3b8;
-  --text-muted: #4a5568;
+  --text-primary: #e6e9f5;
+  --text-secondary: #8a92ab;
+  --text-muted: #5a6280;
   --text-accent: var(--accent-primary);
 
   /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-default: rgba(255, 255, 255, 0.1);
-  --border-hover: rgba(255, 255, 255, 0.18);
-  --border-accent: rgba(0, 212, 170, 0.3);
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-default: rgba(255, 255, 255, 0.12);
+  --border-hover: rgba(255, 255, 255, 0.2);
+  --border-accent: rgba(34, 211, 238, 0.3);
 
   /* Status */
   --color-danger: #ef4444;
@@ -92,6 +104,12 @@ html {
 body {
   min-height: 100vh;
   font-family: var(--font-sans);
+  /* Inter character variants and stylistic sets give the panel chrome
+     a slightly more geometric, less browser-y feel. cv02/cv11 swap the
+     digit and L shapes; ss01/ss03 enable rounded square brackets and
+     the alternate single-storey g. */
+  font-feature-settings: 'cv02', 'cv11', 'ss01', 'ss03';
+  letter-spacing: -0.01em;
   color: var(--text-primary);
   background: var(--bg-deep);
   line-height: 1.6;
@@ -101,14 +119,17 @@ body {
   overflow-x: hidden;
 }
 
-/* Subtle gradient background */
+/* Atmospheric glow. Three soft radials in cyan / magenta / violet anchor
+   the cyber palette as ambient lighting -- they sit behind everything via
+   the #app z-index:1 stack and never block interaction. */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   background:
-    radial-gradient(ellipse at 20% 0%, rgba(0, 212, 170, 0.04) 0%, transparent 60%),
-    radial-gradient(ellipse at 80% 100%, rgba(240, 160, 80, 0.03) 0%, transparent 60%);
+    radial-gradient(1200px 600px at 0% 0%, rgba(34, 211, 238, 0.08), transparent 60%),
+    radial-gradient(1000px 500px at 100% 100%, rgba(244, 114, 182, 0.06), transparent 60%),
+    radial-gradient(800px 400px at 50% 50%, rgba(167, 139, 250, 0.04), transparent 70%);
   pointer-events: none;
   z-index: 0;
 }
@@ -177,41 +198,52 @@ a:hover {
 }
 
 /* ─── Buttons ─── */
+/* Chip-style baseline shared by every .btn variant: rounded 9px corners,
+   compact 7px/14px padding, 13px Inter, subtle border. Variants only
+   change colour. Matches the topbar's chip language so a .btn in any
+   view sits in the same surface stack as the header pills. */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-xs);
-  padding: 0.6rem 1.2rem;
-  font-size: 0.9rem;
+  gap: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
   font-weight: 500;
   font-family: var(--font-sans);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: 9px;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
   white-space: nowrap;
   user-select: none;
+  line-height: 1.2;
 }
 
 .btn:active {
-  transform: scale(0.97);
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-primary {
   background: var(--accent-primary);
   color: var(--bg-deep);
   font-weight: 600;
+  box-shadow: 0 2px 8px rgba(34, 211, 238, 0.25);
 }
 .btn-primary:hover {
-  background: #00e6b8;
-  box-shadow: 0 0 16px var(--accent-primary-glow);
+  background: #67e8f9;
+  box-shadow: 0 0 18px var(--accent-primary-glow);
 }
 
 .btn-secondary {
   background: var(--bg-surface);
   color: var(--text-primary);
-  border-color: var(--border-default);
+  border-color: var(--border-subtle);
 }
 .btn-secondary:hover {
   background: var(--bg-surface-hover);
@@ -229,49 +261,52 @@ a:hover {
 }
 
 .btn-danger {
-  background: var(--color-danger-dim);
-  color: var(--color-danger);
-  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(244, 63, 94, 0.1);
+  color: #fb7185;
+  border-color: rgba(244, 63, 94, 0.2);
 }
 .btn-danger:hover {
-  background: var(--color-danger);
-  color: #fff;
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.3);
 }
 
 .btn-warning {
-  background: var(--color-warning-dim);
-  color: var(--color-warning);
-  border-color: rgba(245, 158, 11, 0.3);
+  background: var(--accent-amber-dim);
+  color: var(--accent-amber);
+  border-color: rgba(251, 191, 36, 0.25);
 }
 .btn-warning:hover {
-  background: var(--color-warning);
-  color: var(--bg-deep);
+  background: rgba(251, 191, 36, 0.22);
+  border-color: rgba(251, 191, 36, 0.4);
 }
 
 .btn-small {
-  padding: 0.35rem 0.75rem;
-  font-size: 0.8rem;
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+  gap: 5px;
 }
 
 /* ─── Inputs ─── */
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"]),
 textarea {
   width: 100%;
-  padding: 0.65rem 0.9rem;
+  padding: 10px 12px;
   font-family: var(--font-sans);
-  font-size: 0.9rem;
+  font-size: 13px;
   color: var(--text-primary);
   background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
   outline: none;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 input:not([type="checkbox"]):not([type="radio"]):focus,
 textarea:focus {
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px var(--accent-primary-dim);
+  border-color: rgba(34, 211, 238, 0.4);
+  background: var(--bg-surface-hover);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.08);
 }
 
 input:not([type="checkbox"]):not([type="radio"])::placeholder,
@@ -280,29 +315,34 @@ textarea::placeholder {
 }
 
 select {
-  padding: 0.45rem 0.65rem;
+  padding: 7px 28px 7px 12px;
   font-family: var(--font-sans);
-  font-size: 0.85rem;
+  font-size: 13px;
   color: var(--text-primary);
   background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
   outline: none;
   cursor: pointer;
-  transition: border-color var(--transition-fast);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238a92ab' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 0.5rem center;
-  padding-right: 1.5rem;
+  background-position: right 8px center;
+}
+
+select:hover {
+  background-color: var(--bg-surface-hover);
+  border-color: var(--border-hover);
 }
 
 select:focus {
-  border-color: var(--accent-primary);
+  border-color: rgba(34, 211, 238, 0.4);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.08);
 }
 
 select option {
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
   color: var(--text-primary);
 }
 

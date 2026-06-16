@@ -343,8 +343,13 @@ onMounted(() => {
   align-items: center;
   gap: 1rem;
   padding: 0.5rem 0.75rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--cyber-border);
+  /* Match the topbar / library / chat glass treatment so the strip
+     reads as part of the same surface stack. The blur over the body
+     gradient lets the atmospheric cyan/magenta bleed through subtly. */
+  background: rgba(11, 14, 28, 0.55);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-subtle);
   border-top: none;
   flex-wrap: wrap;
 }
@@ -361,69 +366,78 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+/* Local overrides for the in-strip selects: tighter than the global
+   12px because the strip is dense, but the focus ring + colour palette
+   inherit from base.css. */
 .control-group select {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--cyber-border);
-  border-radius: 4px;
-  padding: 0.3rem 0.5rem;
-  font-size: 0.8rem;
-  cursor: pointer;
-  outline: none;
-}
-
-.control-group select:focus {
-  border-color: var(--cyber-primary);
+  padding: 5px 24px 5px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+  background-position: right 6px center;
 }
 
 .jump-group {
   margin-left: auto;
   display: flex;
-  gap: 0.3rem;
+  gap: 6px;
   align-items: center;
 }
 
 .jump-label {
-  font-size: 0.8rem;
-  color: var(--text-primary);
+  font-size: 12px;
+  color: var(--text-secondary);
   white-space: nowrap;
-  margin-right: 0.15rem;
+  margin-right: 4px;
 }
 
+/* Jump pills: match the .btn-small chip language with tabular numerals
+   so -10s / +10s / -30s / +30s line up vertically. */
 .jump-btn {
-  padding: 0.3rem 0.55rem;
-  background: var(--bg-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  background: var(--bg-surface);
   color: var(--text-primary);
-  border: 1px solid var(--cyber-border);
-  border-radius: 4px;
-  font-size: 0.78rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  font-family: var(--font-sans);
+  line-height: 1.2;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.05s;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .jump-btn:hover {
-  border-color: var(--cyber-primary);
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
 }
 
 .jump-btn:active {
   transform: translateY(1px);
 }
 
+/* Skip Intro is a one-shot CTA when the intro window is active, so it
+   gets the same solid-cyan treatment as .btn-primary with a subtle
+   glow. Slightly taller than the chip rows to read as "primary". */
 .skip-intro-btn {
-  padding: 0.35rem 1rem;
-  background: var(--cyber-primary);
-  color: var(--bg-secondary);
+  padding: 6px 14px;
+  background: var(--accent-primary);
+  color: var(--bg-deep);
   border: none;
-  border-radius: 4px;
-  font-size: 0.85rem;
+  border-radius: 8px;
+  font-size: 12px;
   font-weight: 600;
+  font-family: var(--font-sans);
   cursor: pointer;
-  transition: opacity 0.2s;
+  box-shadow: 0 2px 8px rgba(34, 211, 238, 0.25);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .skip-intro-btn:hover {
-  opacity: 0.85;
+  background: #67e8f9;
+  box-shadow: 0 0 18px var(--accent-primary-glow);
 }
 </style>
