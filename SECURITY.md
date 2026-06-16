@@ -4,9 +4,12 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.5.x   | :white_check_mark: |
-| 1.4.x   | :white_check_mark: |
-| < 1.3   | :x:                |
+| latest 2.x minor    | :white_check_mark: |
+| 1.6.6 ( EOL 2026-12-31 )  | :white_check_mark: |
+| < 1.6.6 | :x:                |
+
+> Be aware that 1.6.6 is considered a Legacy release, updates to it are only done when there are severe security vulnerabilities. ( This includes but is not limited to remote code execution, authentication bypass, or unauthenticated data exposure.)
+>1.6.6 will reach its EOL by 2026-12-31
 
 We recommend always running the latest version for security updates and improvements.
 
@@ -35,7 +38,7 @@ When reporting a vulnerability, please include:
 
 ### Response Timeline
 
-- **Initial Response**: Within 48 hours
+- **Initial Response**: Within 72 hours
 - **Status Update**: Within 7 days
 - **Resolution Target**: Depends on severity (critical issues prioritized)
 

@@ -115,6 +115,14 @@ jobs:
             emby-watchparty-${{ steps.get_version.outputs.VERSION }}/
 
       # Docker build and push
+      # QEMU is required so the amd64 runner can emulate arm64 / arm/v7
+      # during the build. Without it the build-push step below would only
+      # be able to produce native amd64 layers.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -144,6 +152,14 @@ jobs:
         with:
           context: .
           push: true
+          # amd64 for x86 hosts, arm64 for Raspberry Pi 4/5 + Apple Silicon
+          # under Docker Desktop. arm/v7 (32-bit Pi) is intentionally not
+          # listed: cffi / greenlet (and similar C-extension deps) have no
+          # armv7l cpython-3.12 wheels, so each build would compile from
+          # source under QEMU and require gcc/g++/libffi-dev in the image.
+          # Each tag is published as a multi-arch manifest list so `docker
+          # pull` picks the right image for the host automatically.
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
