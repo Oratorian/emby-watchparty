@@ -12,9 +12,11 @@ import os
 import threading
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Optional
+from typing import Optional, get_origin
 
 from dotenv import load_dotenv
+
+from backend.src.quality import DEFAULT_ENABLED_OPTIONS, QUALITY_TIERS, RESOLUTION_ORDER
 
 
 def _bool(value: str) -> bool:
@@ -71,6 +73,20 @@ class RuntimeConfig:
     # can be 10+ seconds apart at the source's original keyframe
     # boundaries, which HLS.js can't seek into cleanly.
     FORCE_TRANSCODE: bool = False
+
+    # Quality
+    # Which resolution tiers AND which bitrates within each tier the
+    # per-user quality dropdown should expose. Shape:
+    #     {"1080p": [60000, 50000, ...], "720p": [...], "360p": [], ...}
+    # Presence of a key enables the resolution. The value is the subset
+    # of bitrates (kbps) the admin wants exposed, intersected at render
+    # time with the canonical tier list in backend/src/quality.py. For
+    # the resolution-only tiers (360p / 240p / 144p) the value list is
+    # ignored -- they always render as a single entry when enabled.
+    # `Auto` is always added on top unless FORCE_TRANSCODE is on.
+    ENABLED_QUALITY_OPTIONS: dict = field(
+        default_factory=lambda: {res: list(kbps) for res, kbps in DEFAULT_ENABLED_OPTIONS.items()}
+    )
 
     # Logging
     LOG_LEVEL: str = 'INFO'
@@ -134,16 +150,57 @@ class RuntimeConfig:
             current = getattr(self, key)
 
             # Type coercion
+            ftype = field_obj.type
+            is_list = (ftype is list) or (isinstance(ftype, str) and ftype.startswith('list')) \
+                or (get_origin(ftype) is list)
+            is_dict = (ftype is dict) or (isinstance(ftype, str) and ftype.startswith('dict')) \
+                or (get_origin(ftype) is dict)
             try:
-                if field_obj.type == 'bool' or field_obj.type is bool:
+                if ftype == 'bool' or ftype is bool:
                     if isinstance(value, str):
                         value = _bool(value)
                     else:
                         value = bool(value)
-                elif field_obj.type == 'int' or field_obj.type is int:
+                elif ftype == 'int' or ftype is int:
                     value = int(value)
-                elif field_obj.type == 'str' or field_obj.type is str:
+                elif ftype == 'str' or ftype is str:
                     value = str(value)
+                elif is_dict:
+                    if not isinstance(value, dict):
+                        continue
+                    # ENABLED_QUALITY_OPTIONS: keys must be known
+                    # resolutions, values must be lists of ints that
+                    # intersect the canonical bitrate set for that tier.
+                    # Resolution-only tiers (360p / 240p / 144p) always
+                    # store [] -- their bitrate value is ignored on
+                    # render but normalising here keeps config.json
+                    # tidy.
+                    if key == 'ENABLED_QUALITY_OPTIONS':
+                        cleaned: dict[str, list[int]] = {}
+                        for res, kbps_list in value.items():
+                            if res not in RESOLUTION_ORDER:
+                                continue
+                            tier_bitrates = set(QUALITY_TIERS[res]['bitrates_kbps'])
+                            if not tier_bitrates:
+                                cleaned[res] = []
+                                continue
+                            allowed: list[int] = []
+                            for raw in (kbps_list or []):
+                                try:
+                                    kbps = int(raw)
+                                except (ValueError, TypeError):
+                                    continue
+                                if kbps in tier_bitrates and kbps not in allowed:
+                                    allowed.append(kbps)
+                            cleaned[res] = allowed
+                        value = cleaned
+                elif is_list:
+                    if isinstance(value, list):
+                        value = [str(x).strip() for x in value if str(x).strip()]
+                    elif isinstance(value, str):
+                        value = [s.strip() for s in value.split(',') if s.strip()]
+                    else:
+                        continue
             except (ValueError, TypeError):
                 continue
 
@@ -159,6 +216,7 @@ class RuntimeConfig:
         sections = {
             'Auth': ['REQUIRE_LOGIN'],
             'Playback': ['FORCE_TRANSCODE'],
+            'Quality': ['ENABLED_QUALITY_OPTIONS'],
             'Logging': ['LOG_LEVEL', 'LOG_TO_FILE', 'LOG_FILE', 'LOG_FORMAT', 'LOG_MAX_SIZE', 'CONSOLE_LOG_LEVEL'],
             'Security': ['MAX_USERS_PER_PARTY', 'ENABLE_HLS_TOKEN_VALIDATION', 'HLS_TOKEN_EXPIRY',
                          'ENABLE_RATE_LIMITING', 'RATE_LIMIT_PARTY_CREATION', 'RATE_LIMIT_API_CALLS'],

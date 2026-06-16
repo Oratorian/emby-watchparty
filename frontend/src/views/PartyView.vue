@@ -495,62 +495,112 @@ onUnmounted(() => {
 // selection -- both used to fire in parallel and the dropdown's path
 // would create an ad-hoc <track> labelled "Subtitles" before the
 // preloaded set landed, leaving the CC menu with a stray duplicate.
+// User's currently-selected text subtitle index. Survives stream
+// reattach (quality change) so the watcher below can re-apply
+// mode='showing' to the matching <track> after HLS resets the media
+// element. Updated when the user picks from the dropdown or when the
+// auto-show default sub fires on a new item. null = None or PGS.
+const selectedTextSubIndex = ref<number | null>(null)
+
+// We trigger on (item_id, media_source_id, myStreamUrl) because Emby
+// keeps media_source_id stable across transcode sessions for the same
+// item -- a quality change only mints a new stream URL. Without
+// myStreamUrl in the key, the watcher would early-out on quality change
+// and HLS reattach would reset every textTrack.mode to 'disabled' (the
+// element default), which unloads the cues. Toggling back to 'showing'
+// after that doesn't reliably reload the cues in Chromium (see the
+// comment in onChangeTextSubtitle below), so we MUST rebuild the
+// <track> elements when the stream changes.
 let lastSubtitlePreloadKey: string | null = null
-watch(() => party.currentVideo, async (video) => {
-  if (!video?.item_id || !video?.media_source_id) return
+watch(
+  () => {
+    const v = party.currentVideo
+    return [v?.item_id, v?.media_source_id, party.myStreamUrl] as const
+  },
+  async ([itemId, mediaSourceId, streamUrl]) => {
+    if (!itemId || !mediaSourceId || !streamUrl) return
 
-  // Skip re-fire when neither item_id nor media_source_id changed.
-  // A PGS pick triggers change_streams which updates currentVideo by
-  // reference but keeps both ids stable, so re-running the preload
-  // would needlessly clear the user's currently-showing text sub.
-  const key = `${video.item_id}:${video.media_source_id}`
-  if (key === lastSubtitlePreloadKey) return
-  const isNewItem = !lastSubtitlePreloadKey || lastSubtitlePreloadKey.split(':')[0] !== video.item_id
-  lastSubtitlePreloadKey = key
+    const key = `${itemId}:${mediaSourceId}:${streamUrl}`
+    if (key === lastSubtitlePreloadKey) return
+    const prevItemId = lastSubtitlePreloadKey ? lastSubtitlePreloadKey.split(':')[0] : null
+    const isNewItem = prevItemId !== itemId
+    lastSubtitlePreloadKey = key
 
-  await nextTick()
-  const vp = videoPlayer.value
-  const ve = vp?.videoEl
-  if (!ve) return
+    if (isNewItem) {
+      // Fresh item -- drop any sticky selection from the previous one.
+      // The default sub (resolved below) will reseed this ref.
+      selectedTextSubIndex.value = null
+    }
 
-  // Clear any tracks left over from a previous video so the CC menu
-  // does not accumulate stale entries.
-  ve.querySelectorAll('track').forEach((t) => t.remove())
+    await nextTick()
+    const vp = videoPlayer.value
+    const ve = vp?.videoEl
+    if (!ve) return
 
-  try {
-    const streams = await api.itemStreams(video.item_id)
-    const textSubs = (streams.subtitles || []).filter((s: any) => !s.isPGS && s.isTextSubtitleStream)
-    // Only auto-show the default sub when the item actually changed.
-    // For media-source switches on the same item (e.g. dual-format
-    // releases) keep tracks hidden so we do not override a selection
-    // the user already made.
-    const defaultSub = isNewItem ? textSubs.find((s: any) => s.isDefault) : null
-    textSubs.forEach((sub: any) => {
-      const track = document.createElement('track')
-      track.kind = 'subtitles'
-      let label = sub.displayLanguage || sub.language || 'Unknown'
-      if (sub.title) label += ` (${sub.title})`
-      if (sub.isForced) label += ' [Forced]'
-      if (sub.isExternal) label += ' [External]'
-      track.label = label
-      track.srclang = sub.language || 'und'
-      track.src = `/api/subtitles/${video.item_id}/${video.media_source_id}/${sub.index}`
-      ve.appendChild(track)
-      // The mode lives on the TextTrack interface (track.track.mode),
-      // not on the HTMLTrackElement itself. track.track is null until
-      // the element is attached to a <video>, so this must come after
-      // appendChild. The earlier `(track as any).mode = ...` was just
-      // stashing an arbitrary property on the DOM element -- which is
-      // why the default sub was selected in the dropdown but never
-      // actually displayed.
-      const isDefault = defaultSub && sub.index === defaultSub.index
-      const targetMode: TextTrackMode = isDefault ? 'showing' : 'hidden'
-      if (track.track) {
-        track.track.mode = targetMode
+    // Clear any tracks left over from a previous video so the CC menu
+    // does not accumulate stale entries. We rebuild on every stream
+    // change (not just media-source change) because HLS reattach
+    // unloads cues for any track left at mode='disabled', and we can't
+    // recover those without creating fresh <track> elements.
+    ve.querySelectorAll('track').forEach((t) => t.remove())
+
+    try {
+      const streams = await api.itemStreams(itemId)
+      const textSubs = (streams.subtitles || []).filter(
+        (s: any) => !s.isPGS && s.isTextSubtitleStream,
+      )
+      // Fresh item: auto-show the default text sub AND remember it as
+      // the active selection so a later quality switch restores it.
+      // Same item: keep whatever the user picked last.
+      if (isNewItem) {
+        const defaultSub = textSubs.find((s: any) => s.isDefault)
+        if (defaultSub) selectedTextSubIndex.value = defaultSub.index
       }
-    })
-  } catch { /* ignore */ }
-})
+      const targetIndex = selectedTextSubIndex.value
+
+      textSubs.forEach((sub: any) => {
+        const track = document.createElement('track')
+        track.kind = 'subtitles'
+        let label = sub.displayLanguage || sub.language || 'Unknown'
+        if (sub.title) label += ` (${sub.title})`
+        if (sub.isForced) label += ' [Forced]'
+        if (sub.isExternal) label += ' [External]'
+        track.label = label
+        track.srclang = sub.language || 'und'
+        track.src = `/api/subtitles/${itemId}/${mediaSourceId}/${sub.index}`
+        ve.appendChild(track)
+        // The mode lives on the TextTrack interface (track.track.mode),
+        // not on the HTMLTrackElement itself. track.track is null until
+        // the element is attached to a <video>, so this must come after
+        // appendChild.
+        const targetMode: TextTrackMode =
+          targetIndex !== null && sub.index === targetIndex ? 'showing' : 'hidden'
+        if (track.track) {
+          track.track.mode = targetMode
+        }
+      })
+
+      // Belt-and-suspenders: VideoPlayer's streamUrl watcher runs in
+      // parallel with this one. attachStream() calls hls.attachMedia
+      // which sets media.src to an MSE blob URL -- that implicit
+      // media.load() resets every textTrack.mode we just set back to
+      // 'disabled'. Re-apply once the media has settled.
+      if (targetIndex !== null) {
+        const reapply = () => {
+          for (const tEl of Array.from(ve.querySelectorAll('track'))) {
+            if (!tEl.track) continue
+            const m = tEl.src.match(/\/api\/subtitles\/[^/]+\/[^/]+\/(\d+)/)
+            const idx = m ? parseInt(m[1], 10) : null
+            tEl.track.mode = idx === targetIndex ? 'showing' : 'hidden'
+          }
+        }
+        ve.addEventListener('loadeddata', reapply, { once: true })
+      }
+    } catch {
+      /* ignore */
+    }
+  },
+)
 
 function addSystemMessage(msg: string) {
   chatMessages.value.push({ username: 'System', message: msg, timestamp: new Date().toISOString(), system: true })
@@ -845,6 +895,12 @@ function onChangeStreams(opts: { audioIndex?: number; subtitleIndex?: number; qu
 }
 
 function onChangeTextSubtitle(payload: { index: number; url: string | null }) {
+  // Remember the selection so the currentVideo/streamUrl watcher can
+  // restore mode='showing' on the matching <track> after a quality
+  // change rebuilds the track set. A positive index pins this text
+  // sub; -1 (None) or a PGS pick (url=null) clears it.
+  selectedTextSubIndex.value = payload.index >= 0 && payload.url ? payload.index : null
+
   const vp = videoPlayer.value
   const ve = vp?.videoEl
   if (!ve) return
@@ -899,6 +955,26 @@ function onChangeTextSubtitle(payload: { index: number; url: string | null }) {
   track.addEventListener('load', showTrack, { once: true })
   ve.appendChild(track)
   showTrack()
+}
+
+function onJump(seconds: number) {
+  // Same flow as Skip Intro: compute the absolute media time we want,
+  // emit, let the server broadcast the seek back to everyone including
+  // us. Never set ve.currentTime locally first -- that double-flushes
+  // HLS and risks a restart-from-zero (see comment in onSkipIntro).
+  if (!party.partyId) return
+  const ve = videoPlayer.value?.videoEl
+  if (!ve) return
+  const runtime = party.currentVideo?.run_time_seconds
+  const target = Math.max(
+    0,
+    runtime ? Math.min(runtime, toMediaTime(ve.currentTime) + seconds) : toMediaTime(ve.currentTime) + seconds,
+  )
+  socket.emit('seek', {
+    party_id: party.partyId,
+    time: target,
+    was_playing: !ve.paused,
+  })
 }
 
 function onSkipIntro(endTime: number) {
@@ -1069,6 +1145,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
             @change-streams="onChangeStreams"
             @change-text-subtitle="onChangeTextSubtitle"
             @skip-intro="onSkipIntro"
+            @jump="onJump"
           />
           <div class="video-info">
             <h3>{{ party.currentVideo.title }}</h3>

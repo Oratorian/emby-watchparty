@@ -14,7 +14,11 @@ See docs/AUTH-DESIGN.md.
 """
 
 from datetime import datetime
-from backend.src.stream_builder import QUALITY_PRESETS, DEFAULT_QUALITY
+from backend.src.quality import (
+    DEFAULT_QUALITY_ID,
+    normalise_quality_id,
+    resolve_quality,
+)
 
 
 def register(ctx):
@@ -53,12 +57,20 @@ def register(ctx):
         """
         access_token, user_id = _host_creds(party)
         start_ticks_for_info = int(start_seconds * 10_000_000) if start_seconds > 0 else 0
-        preset = QUALITY_PRESETS.get(quality, QUALITY_PRESETS[DEFAULT_QUALITY])
+        # Normalise so a stale / unknown quality stored on the party can't
+        # break stream creation; resolve to a max bitrate (None for Auto
+        # and the resolution-only tiers -- get_playback_info treats None
+        # as "no MaxStreamingBitrate" and lets Emby decide).
+        normalised = normalise_quality_id(
+            quality, force_transcode=bool(config.FORCE_TRANSCODE),
+        )
+        _, _, bitrate_kbps = resolve_quality(normalised)
+        max_streaming_bitrate = bitrate_kbps * 1000 if bitrate_kbps else None
         playback_info = emby_client.get_playback_info(
             item_id,
             audio_index=audio_index,
             subtitle_index=subtitle_index,
-            max_streaming_bitrate=preset["bitrate"],
+            max_streaming_bitrate=max_streaming_bitrate,
             start_time_ticks=start_ticks_for_info,
             access_token=access_token,
             user_id=user_id,
@@ -83,7 +95,7 @@ def register(ctx):
             play_session_id=play_session_id,
             audio_index=audio_index,
             subtitle_index=subtitle_index,
-            quality=quality,
+            quality=normalised,
             start_time_ticks=start_ticks,
         )
 
@@ -93,7 +105,7 @@ def register(ctx):
             "stream_url_base": stream_url_base,
             "audio_index": audio_index,
             "subtitle_index": subtitle_index,
-            "quality": quality,
+            "quality": normalised,
             "ready": False,
         }
 
@@ -232,7 +244,7 @@ def register(ctx):
             stream = _create_user_stream(
                 party, party_id, user_sid, item_id, media_source,
                 audio_index=default_audio, subtitle_index=None,
-                quality=DEFAULT_QUALITY, start_seconds=0,
+                quality=DEFAULT_QUALITY_ID, start_seconds=0,
             )
             if not stream:
                 continue
@@ -249,7 +261,7 @@ def register(ctx):
                     "stream_url": stream_url,
                     "audio_index": default_audio, "subtitle_index": None,
                     "media_source_id": stream["media_source_id"],
-                    "selected_by": selector_client_id, "quality": DEFAULT_QUALITY,
+                    "selected_by": selector_client_id, "quality": DEFAULT_QUALITY_ID,
                 }
             }, to=user_sid)
 
@@ -363,9 +375,16 @@ def register(ctx):
         item_id = current_video["item_id"]
         access_token, user_id = _host_creds(party)
 
-        if not quality or quality not in QUALITY_PRESETS:
-            old_stream = party.get("user_streams", {}).get(sid, {})
-            quality = old_stream.get("quality", DEFAULT_QUALITY)
+        # Resolve / sanitise the requested quality. A client can send the
+        # `Auto` sentinel, a curated `<resolution>-<kbps>` id, or
+        # legacy preset strings carried over from older party state.
+        # When the input is missing, unknown, or `Auto` while
+        # FORCE_TRANSCODE is on (Auto is incompatible with always-
+        # transcode), fall back to either the previously-running stream
+        # or the safe default.
+        force_transcode = bool(config.FORCE_TRANSCODE)
+        candidate = quality or party.get("user_streams", {}).get(sid, {}).get("quality")
+        quality = normalise_quality_id(candidate, force_transcode=force_transcode)
 
         # Snapshot the party clock using the same elapsed-time projection
         # the sync handlers use.
@@ -384,12 +403,13 @@ def register(ctx):
         # Stop this user's old transcode. Party clock keeps running.
         _stop_user_stream(party, sid, snapshot_time)
 
-        preset = QUALITY_PRESETS.get(quality, QUALITY_PRESETS[DEFAULT_QUALITY])
+        _, _, bitrate_kbps = resolve_quality(quality)
+        max_streaming_bitrate = bitrate_kbps * 1000 if bitrate_kbps else None
         playback_info = emby_client.get_playback_info(
             item_id,
             audio_index=audio_index,
             subtitle_index=subtitle_index,
-            max_streaming_bitrate=preset["bitrate"],
+            max_streaming_bitrate=max_streaming_bitrate,
             start_time_ticks=int(snapshot_time * 10_000_000) if snapshot_time > 0 else 0,
             access_token=access_token,
             user_id=user_id,

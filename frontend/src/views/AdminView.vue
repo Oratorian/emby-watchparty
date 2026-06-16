@@ -23,6 +23,32 @@ const config = ref<Record<string, any>>({})
 const saveStatus = ref('')
 const saveClass = ref('')
 
+// Resolution tiers offered by the quality dropdown. Each tier has a
+// master checkbox (= "is this resolution enabled at all?") and, when
+// it has bitrate buckets, a child set of bitrate checkboxes that only
+// appear once the master is ticked. The shape must mirror QUALITY_TIERS
+// in backend/src/quality.py -- if either side adds a bitrate, both
+// need updating.
+const resolutionTiers: Array<{ resolution: string; bitrates: number[] }> = [
+  {
+    resolution: '1080p',
+    bitrates: [60000, 50000, 40000, 30000, 25000, 20000, 15000, 12000, 10000, 8000, 6000, 5000, 4000],
+  },
+  { resolution: '720p', bitrates: [4000, 3000, 2000, 1500, 1000] },
+  { resolution: '480p', bitrates: [1000, 720, 420] },
+  { resolution: '360p', bitrates: [] },
+  { resolution: '240p', bitrates: [] },
+  { resolution: '144p', bitrates: [] },
+]
+
+function formatBitrate(kbps: number): string {
+  // Mirror backend/src/quality.py::_format_bitrate so the dropdown and
+  // the admin checkboxes show the same label for the same bitrate.
+  if (kbps >= 1000 && kbps % 1000 === 0) return `${kbps / 1000} Mbps`
+  if (kbps >= 1000) return `${kbps / 1000} Mbps`
+  return `${kbps} kbps`
+}
+
 // Split rate limit strings into value + unit
 const partyLimitValue = ref(5)
 const partyLimitUnit = ref('per hour')
@@ -60,8 +86,69 @@ async function adminLogin() {
   }
 }
 
+function ensureQualityDict(cfg: Record<string, any>) {
+  // Default a missing or wrong-shaped config to "everything enabled" so
+  // the master/child checkbox grid has something to bind to. A list-shape
+  // value (left over from the older ENABLED_QUALITY_RESOLUTIONS field)
+  // is also replaced -- no migration on purpose, dev box only.
+  const cur = cfg.ENABLED_QUALITY_OPTIONS
+  if (!cur || typeof cur !== 'object' || Array.isArray(cur)) {
+    const defaults: Record<string, number[]> = {}
+    for (const tier of resolutionTiers) defaults[tier.resolution] = [...tier.bitrates]
+    cfg.ENABLED_QUALITY_OPTIONS = defaults
+  }
+}
+
+function isResolutionEnabled(res: string): boolean {
+  const dict = config.value.ENABLED_QUALITY_OPTIONS
+  return !!dict && Object.prototype.hasOwnProperty.call(dict, res)
+}
+
+function setResolutionEnabled(res: string, enabled: boolean) {
+  const dict = config.value.ENABLED_QUALITY_OPTIONS || {}
+  if (enabled) {
+    if (Object.prototype.hasOwnProperty.call(dict, res)) return
+    // Newly enabled -- seed with the full bitrate set so a single flip
+    // is "expose this resolution at every bitrate". The admin can then
+    // untoggle individual bitrates from the disclosure list below.
+    const tier = resolutionTiers.find((t) => t.resolution === res)
+    dict[res] = tier ? [...tier.bitrates] : []
+  } else {
+    if (!Object.prototype.hasOwnProperty.call(dict, res)) return
+    delete dict[res]
+  }
+  config.value.ENABLED_QUALITY_OPTIONS = { ...dict }
+}
+
+function isBitrateEnabled(res: string, kbps: number): boolean {
+  const arr = config.value.ENABLED_QUALITY_OPTIONS?.[res]
+  return Array.isArray(arr) && arr.includes(kbps)
+}
+
+function setBitrateEnabled(res: string, kbps: number, enabled: boolean) {
+  const dict = config.value.ENABLED_QUALITY_OPTIONS || {}
+  if (!Array.isArray(dict[res])) dict[res] = []
+  const idx = dict[res].indexOf(kbps)
+  if (enabled && idx < 0) {
+    dict[res].push(kbps)
+    // Keep the saved order matching the canonical tier order (highest
+    // first) so config.json reads tidy and diffs predictably.
+    const tier = resolutionTiers.find((t) => t.resolution === res)
+    if (tier) {
+      dict[res].sort((a: number, b: number) => tier.bitrates.indexOf(a) - tier.bitrates.indexOf(b))
+    }
+  } else if (!enabled && idx >= 0) {
+    dict[res].splice(idx, 1)
+  } else {
+    return
+  }
+  config.value.ENABLED_QUALITY_OPTIONS = { ...dict }
+}
+
 async function loadConfig() {
-  config.value = await api.adminGetConfig()
+  const cfg = await api.adminGetConfig()
+  ensureQualityDict(cfg)
+  config.value = cfg
   syncRateLimitsFromConfig()
 }
 
@@ -91,7 +178,10 @@ async function saveConfig() {
     const changed = result.changed || []
     saveStatus.value = changed.length ? `Saved: ${changed.join(', ')}` : 'No changes'
     saveClass.value = 'success'
-    if (result.config) config.value = result.config
+    if (result.config) {
+      ensureQualityDict(result.config)
+      config.value = result.config
+    }
     // Settings like REQUIRE_LOGIN are read by other views via the auth
     // store. Refresh so the new value takes effect immediately without
     // requiring a route remount.
@@ -114,6 +204,7 @@ onMounted(async () => {
     const cfg = await api.adminGetConfig()
     if (!cfg.error) {
       authenticated.value = true
+      ensureQualityDict(cfg)
       config.value = cfg
       syncRateLimitsFromConfig()
     }
@@ -192,6 +283,61 @@ onMounted(async () => {
             </span>
           </div>
           <ToggleSwitch v-model="config.FORCE_TRANSCODE" />
+        </div>
+      </div>
+
+      <!-- Quality -->
+      <div class="admin-card card">
+        <h2 class="card-title">Quality</h2>
+        <div class="setting-row quality-row">
+          <div class="setting-label">
+            <span>Enabled Resolutions &amp; Bitrates</span>
+            <span class="setting-hint">
+              Tick a resolution to expose it in the per-user quality
+              dropdown; the bitrate checkboxes only appear once the
+              resolution is enabled and let you trim the list further.
+              360p / 240p / 144p are resolution-only (no bitrate
+              choices).
+              <br /><br />
+              <code>Auto</code> is always available unless
+              <strong>Force Transcode</strong> is on; in that mode it
+              would conflict with always-transcode and is replaced by
+              the 1080p / 10 Mbps preset as the safe default. Bitrate
+              buckets mirror Emby's own table (tuned for software-encode
+              safety on the low end).
+            </span>
+          </div>
+          <div class="quality-tier-list">
+            <div
+              v-for="tier in resolutionTiers"
+              :key="tier.resolution"
+              class="quality-tier"
+            >
+              <div class="quality-master">
+                <ToggleSwitch
+                  :model-value="isResolutionEnabled(tier.resolution)"
+                  @update:model-value="(v: boolean) => setResolutionEnabled(tier.resolution, v)"
+                />
+                <span class="quality-master-label">{{ tier.resolution }}</span>
+              </div>
+              <div
+                v-if="tier.bitrates.length && isResolutionEnabled(tier.resolution)"
+                class="quality-bitrates"
+              >
+                <div
+                  v-for="kbps in tier.bitrates"
+                  :key="kbps"
+                  class="bitrate-row"
+                >
+                  <ToggleSwitch
+                    :model-value="isBitrateEnabled(tier.resolution, kbps)"
+                    @update:model-value="(v: boolean) => setBitrateEnabled(tier.resolution, kbps, v)"
+                  />
+                  <span class="bitrate-label">{{ formatBitrate(kbps) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -423,6 +569,74 @@ onMounted(async () => {
   border-radius: var(--radius-sm);
   margin-bottom: var(--space-md);
   font-size: 0.9rem;
+}
+
+/* Quality section: master checkboxes stack vertically, child bitrate
+   grid only renders when its master is ticked. The setting-row default
+   is a horizontal flex that crams everything onto one line; for this
+   card we override to column so the tier list gets the full width and
+   the hint text sits above instead of fighting for horizontal space. */
+.quality-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-md);
+}
+
+.quality-tier-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.quality-tier {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.quality-tier:last-child {
+  border-bottom: none;
+}
+
+.quality-master {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.quality-master-label {
+  user-select: none;
+}
+
+.quality-bitrates {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  gap: 0.5rem 1.2rem;
+  padding-left: 1.5rem;
+}
+
+.bitrate-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.bitrate-label {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+@media (max-width: 640px) {
+  .quality-bitrates {
+    grid-template-columns: repeat(2, max-content);
+  }
 }
 
 /* ─── Admin Panel ─── */

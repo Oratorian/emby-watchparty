@@ -35,6 +35,9 @@ export const api = {
   intro: (id: string) => apiFetch(`/api/intro/${id}`),
   imageUrl: (id: string, type = 'Primary') => `/api/image/${id}?type=${type}`,
 
+  // Quality
+  qualityOptions: () => apiFetch('/api/quality-options'),
+
   // Party
   createParty: (body?: { client_id?: string; display_name?: string; username?: string; password?: string }) =>
     apiFetch('/api/party/create', {

@@ -22,7 +22,7 @@ from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.stream_builder import StreamBuilder
 from backend.src.avatar_store import AvatarStore
 from backend.src.update_checker import check_for_updates
-from backend.src.routers import auth, library, media, hls, party, admin, avatar, health
+from backend.src.routers import auth, library, media, hls, party, admin, avatar, health, quality
 from backend.src.socket_handlers import register_all as register_socket_handlers
 
 
@@ -135,6 +135,7 @@ app.include_router(party.router)
 app.include_router(admin.router)
 app.include_router(avatar.router)
 app.include_router(health.router)
+app.include_router(quality.router)
 
 # Mount SocketIO
 socket_app = socketio.ASGIApp(sio, socketio_path="socket.io")

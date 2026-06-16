@@ -3,6 +3,7 @@
 import asyncio
 import time
 from datetime import datetime
+from backend.src.quality import DEFAULT_QUALITY_ID
 from backend.src.utils import generate_random_username
 
 
@@ -107,7 +108,7 @@ def register(ctx):
         stream = create_user_stream(
             party, party_id, sid, current_video["item_id"], None,
             audio_index=None, subtitle_index=None,
-            quality=current_video.get("quality", "1080p-high"),
+            quality=current_video.get("quality", DEFAULT_QUALITY_ID),
             start_seconds=current_time,
         )
         if not stream:
@@ -128,7 +129,7 @@ def register(ctx):
             "subtitle_index": stream.get("subtitle_index"),
             "media_source_id": stream.get("media_source_id"),
             "selected_by": current_video.get("selected_by"),
-            "quality": stream.get("quality", current_video.get("quality", "1080p-high")),
+            "quality": stream.get("quality", current_video.get("quality", DEFAULT_QUALITY_ID)),
         }, current_time
 
     def _votes_by_username(party, votes_dict):

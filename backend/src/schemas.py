@@ -111,7 +111,7 @@ class VideoInfoSchema(BaseModel):
     play_session_id: Optional[str] = None
     run_time_seconds: Optional[float] = None
     selected_by: Optional[str] = None
-    quality: str = "1080p-high"
+    quality: str = "1080p-10000"
 
 
 class PartyInfoResponse(BaseModel):
@@ -303,3 +303,28 @@ class PartyListResponse(BaseModel):
     not advertised in that mode."""
     require_login: bool
     parties: list[PartyListItem]
+
+
+class QualityOption(BaseModel):
+    """One entry in the per-user quality dropdown.
+
+    `resolution` is the tier label (e.g. `"1080p"`), `width` / `height`
+    are the per-resolution caps Emby honours, `bitrate_kbps` is null for
+    the `Auto` option and the resolution-only tiers (360p / 240p / 144p).
+    """
+    id: str
+    label: str
+    resolution: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    bitrate_kbps: Optional[int] = None
+
+
+class QualityOptionsResponse(BaseModel):
+    """Returned by GET /api/quality-options. Filtered by the admin's
+    `ENABLED_QUALITY_OPTIONS` setting (resolution -> list of enabled
+    bitrates); `Auto` is omitted when `FORCE_TRANSCODE` is on (it would
+    conflict with always-transcode and let the bitrate balloon on h265
+    sources)."""
+    options: list[QualityOption]
+    default_id: str

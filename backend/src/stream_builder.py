@@ -1,6 +1,11 @@
 """
 Stream Builder
-Quality presets and HLS stream URL parameter construction
+Turn a quality-id into the right Emby HLS URL parameters.
+
+Quality definitions live in `backend.src.quality`. This module only knows
+how to consume a quality id (`auto`, `360p`, `1080p-15000`, etc.) and
+emit the matching `MaxWidth` / `MaxHeight` / `VideoBitrate` triple, plus
+the rest of the static HLS parameter pack.
 """
 
 import logging
@@ -8,20 +13,11 @@ from typing import Optional
 
 from backend.src.config import Config
 from backend.src.emby_client import EmbyClient
-
-
-QUALITY_PRESETS = {
-    "1080p-high": {"max_width": 1920, "max_height": 1080, "bitrate": 10_000_000, "label": "1080p (10 Mbps)"},
-    "1080p":      {"max_width": 1920, "max_height": 1080, "bitrate": 8_000_000,  "label": "1080p (8 Mbps)"},
-    "720p":       {"max_width": 1280, "max_height": 720,  "bitrate": 4_000_000,  "label": "720p (4 Mbps)"},
-    "480p":       {"max_width": 854,  "max_height": 480,  "bitrate": 1_500_000,  "label": "480p (1.5 Mbps)"},
-    "360p":       {"max_width": 640,  "max_height": 360,  "bitrate": 500_000,    "label": "360p (0.5 Mbps)"},
-}
-DEFAULT_QUALITY = "1080p-high"
+from backend.src.quality import resolve_quality
 
 
 class StreamBuilder:
-    """Builds HLS stream URL parameters for Emby"""
+    """Builds HLS stream URL parameters for Emby."""
 
     def __init__(self, emby_client: EmbyClient, logger: logging.Logger,
                  config: Optional[Config] = None):
@@ -39,34 +35,44 @@ class StreamBuilder:
         quality: str,
         start_time_ticks: Optional[int] = None,
     ) -> list:
-        """
-        Build HLS URL parameters for Emby.
+        """Build HLS URL parameters for Emby.
 
-        Returns:
-            list of 'key=value' parameter strings
-        """
-        preset = QUALITY_PRESETS.get(quality, QUALITY_PRESETS[DEFAULT_QUALITY])
-        max_width = preset["max_width"]
-        max_height = preset["max_height"]
-        max_bitrate = preset["bitrate"]
+        `quality` is a quality-id string (see backend/src/quality.py):
+        the sentinel `auto` (no caps), a resolution-only id like `360p`,
+        or a `<resolution>-<kbps>` id like `1080p-15000`. Unknown or
+        legacy ids fall back to the closest current equivalent via
+        `resolve_quality`.
 
-        source_video_codec = None
-        source_video_bitrate = None
+        Returns a list of `key=value` parameter strings (joined later by
+        `build_stream_url`).
+        """
+        max_width, max_height, bitrate_kbps = resolve_quality(quality)
+
+        source_video_codec: Optional[str] = None
+        source_video_bitrate: Optional[int] = None
+        source_width: Optional[int] = None
         for stream in media_source.get("MediaStreams", []):
             if stream.get("Type") == "Video":
                 source_video_codec = (stream.get("Codec") or "").lower()
                 peak_bitrate = stream.get("MaxBitRate") or stream.get("PeakBitrate")
                 avg_bitrate = stream.get("BitRate")
                 source_video_bitrate = peak_bitrate or avg_bitrate
+                source_width = stream.get("Width")
                 self._logger.info(
-                    f"Source video codec: {source_video_codec}, avg_bitrate: {avg_bitrate}, peak_bitrate: {peak_bitrate}"
+                    f"Source video codec: {source_video_codec}, "
+                    f"avg_bitrate: {avg_bitrate}, peak_bitrate: {peak_bitrate}"
                 )
                 break
 
+        # TranscodeReasons is informational -- Emby uses it for logging
+        # and telemetry, not for the transcode-or-copy decision itself.
+        # We only set it when we actually want a transcode (h265 source,
+        # or the user picked an explicit bitrate cap). Auto + h264 leaves
+        # it empty so Emby can stream-copy.
         transcode_reasons = []
         if source_video_codec and source_video_codec != "h264":
             transcode_reasons.append("VideoCodecNotSupported")
-        if not transcode_reasons:
+        elif bitrate_kbps is not None:
             transcode_reasons.append("ContainerBitrateExceedsLimit")
 
         params = [
@@ -80,49 +86,75 @@ class StreamBuilder:
             "AudioBitrate=384000",
             "BreakOnNonKeyFrames=True",
             "MaxAudioChannels=2",
-            f"MaxWidth={max_width}",
-            f"MaxHeight={max_height}",
             "MinSegments=1",
             "h264-profile=high,main,baseline,constrainedbaseline",
             "h264-level=62",
-            f"TranscodeReasons={','.join(transcode_reasons)}",
+            "VideoCodec=h264",
         ]
 
-        # Runtime-toggleable: when FORCE_TRANSCODE is on we tell Emby
-        # to skip stream-copy and re-encode every h264 source. That
-        # gives uniform 6s HLS segments at the cost of CPU/GPU on the
-        # Emby host. Default off -- only useful when stream-copied
-        # sources misbehave on large seeks (Skip Intro / timeline
-        # drag) or HLS.js can't seek into them cleanly.
+        if max_width is not None:
+            params.append(f"MaxWidth={max_width}")
+        if max_height is not None:
+            params.append(f"MaxHeight={max_height}")
+        if transcode_reasons:
+            params.append(f"TranscodeReasons={','.join(transcode_reasons)}")
+
+        # Runtime-toggleable: when FORCE_TRANSCODE is on we tell Emby to
+        # skip stream-copy and re-encode every h264 source. That gives
+        # uniform 6s HLS segments at the cost of CPU/GPU on the Emby
+        # host. Default off -- only useful when stream-copied sources
+        # misbehave on large seeks (Skip Intro / timeline drag) or
+        # HLS.js can't seek into them cleanly.
         if self._config and self._config.FORCE_TRANSCODE:
             params.append("EnableAutoStreamCopy=false")
 
-        source_width = None
-        for stream in media_source.get("MediaStreams", []):
-            if stream.get("Type") == "Video":
-                source_width = stream.get("Width")
-                break
+        # Bitrate cap: only when an explicit kbps was selected. Clamp to
+        # the source bitrate if it is lower (no benefit to a higher
+        # target than what the source has).
+        target_bitrate: Optional[int] = None
+        if bitrate_kbps is not None:
+            target_bitrate = bitrate_kbps * 1000
+            if source_video_bitrate and source_video_bitrate < target_bitrate:
+                target_bitrate = source_video_bitrate
+            params.append(f"VideoBitrate={target_bitrate}")
 
-        needs_downscale = source_width and source_width > max_width
-
-        params.append("VideoCodec=h264")
-        source_br = source_video_bitrate or max_bitrate
-        target_bitrate = min(max_bitrate, source_br)
-        params.append(f"VideoBitrate={target_bitrate}")
-
-        if source_video_codec != "h264":
+        # Human-readable summary of what we asked Emby to do.
+        if source_video_codec and source_video_codec != "h264":
+            if target_bitrate is not None:
+                self._logger.info(
+                    f"Source is {source_video_codec}, transcoding to h264 at "
+                    f"{max_width}x{max_height} / {target_bitrate // 1000} kbps"
+                )
+            elif max_width is not None:
+                self._logger.info(
+                    f"Source is {source_video_codec}, transcoding to h264 at "
+                    f"{max_width}x{max_height} (no bitrate cap)"
+                )
+            else:
+                self._logger.info(
+                    f"Source is {source_video_codec}, transcoding to h264 (Auto, no caps)"
+                )
+        elif target_bitrate is not None:
+            if max_width is not None and source_width and source_width > max_width:
+                self._logger.info(
+                    f"Downscaling from {source_width}px to {max_width}px at "
+                    f"{target_bitrate // 1000} kbps cap"
+                )
+            else:
+                source_mbps = (source_video_bitrate or target_bitrate) // 1_000_000
+                target_mbps = target_bitrate // 1_000_000
+                self._logger.info(
+                    f"Source is h264 at {source_mbps} Mbps, re-encoding at "
+                    f"{target_mbps} Mbps for reliable HLS seeking"
+                )
+        elif max_width is not None:
             self._logger.info(
-                f"Source is {source_video_codec}, transcoding to h264 at {preset['label']}"
-            )
-        elif needs_downscale:
-            self._logger.info(
-                f"Downscaling from {source_width}px to {max_width}px at {preset['label']}"
+                f"Source is h264, capping resolution at {max_width}x{max_height} "
+                f"(no bitrate cap)"
             )
         else:
             self._logger.info(
-                f"Source is h264 at {source_br // 1_000_000}Mbps, "
-                f"re-encoding at {target_bitrate // 1_000_000}Mbps for reliable HLS seeking "
-                f"(auto stream copy disabled)"
+                "Source is h264, Auto quality -> Emby decides (stream-copy possible)"
             )
 
         if audio_index is not None:
@@ -131,11 +163,12 @@ class StreamBuilder:
         else:
             self._logger.debug("No audio stream index specified, Emby will use default")
 
-        # Image subtitles (PGS, VobSub) must be burned in because HLS.js cannot
-        # render bitmap subtitle formats. Text subtitles are NOT delivered via
-        # the HLS manifest -- the frontend preloads them as side-channel
-        # <track> elements via /api/subtitles/<item>/<msid>/<idx>. Two parallel
-        # subtitle delivery systems (manifest + side-channel) fight over
+        # Image subtitles (PGS, VobSub) must be burned in because HLS.js
+        # cannot render bitmap subtitle formats. Text subtitles are NOT
+        # delivered via the HLS manifest -- the frontend preloads them
+        # as side-channel <track> elements via
+        # /api/subtitles/<item>/<msid>/<idx>. Two parallel subtitle
+        # delivery systems (manifest + side-channel) fight over
         # textTrack.mode state, so the manifest path is intentionally off.
         if subtitle_index is not None and subtitle_index != -1:
             is_image_sub = False
@@ -187,13 +220,3 @@ class StreamBuilder:
         param_string = "&".join(params)
         prefix = app_prefix or ""
         return f"{prefix}/hls/{item_id}/master.m3u8?{param_string}"
-
-
-def build_stream_params(emby_client, media_source, media_source_id, play_session_id,
-                        audio_index, subtitle_index, quality, logger):
-    """Standalone shim for backward compatibility with old handler code."""
-    builder = StreamBuilder(emby_client, logger)
-    return builder.build_params(
-        media_source, media_source_id, play_session_id,
-        audio_index, subtitle_index, quality,
-    )

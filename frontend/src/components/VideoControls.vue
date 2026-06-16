@@ -47,6 +47,10 @@ const emit = defineEmits<{
   'change-streams': [payload: { audioIndex: number; subtitleIndex: number; quality: string }]
   'change-text-subtitle': [payload: { index: number; url: string | null }]
   'skip-intro': [endTime: number]
+  // Relative jump in seconds. Sign indicates direction (-30, -10, +10,
+  // +30). PartyView computes the target media time and routes through
+  // the party seek path so everyone moves together.
+  'jump': [seconds: number]
 }>()
 
 const audioTracks = ref<AudioStream[]>([])
@@ -58,13 +62,39 @@ const selectedQuality = ref(props.quality)
 const intro = ref<IntroData | null>(null)
 const appliedInitialSubtitleKey = ref<string | null>(null)
 
-const qualityPresets = [
-  { label: '1080p High (10 Mbps)', value: '1080p-high' },
-  { label: '1080p (8 Mbps)', value: '1080p' },
-  { label: '720p (5 Mbps)', value: '720p' },
-  { label: '480p (2 Mbps)', value: '480p' },
-  { label: '360p (1 Mbps)', value: '360p' },
-]
+// Quality options are fetched from /api/quality-options on mount so the
+// dropdown mirrors Emby's per-resolution table and respects the admin's
+// ENABLED_QUALITY_OPTIONS / FORCE_TRANSCODE settings. See
+// backend/src/quality.py for the source of truth.
+interface QualityOption {
+  id: string
+  label: string
+  resolution: string | null
+  width: number | null
+  height: number | null
+  bitrate_kbps: number | null
+}
+const qualityOptions = ref<QualityOption[]>([])
+const qualityDefaultId = ref<string>('auto')
+
+async function loadQualityOptions() {
+  try {
+    const data = await api.qualityOptions()
+    qualityOptions.value = data.options || []
+    qualityDefaultId.value = data.default_id || 'auto'
+    // If our currently-selected id isn't in the new option set (admin
+    // tweaked the enabled list, or FORCE_TRANSCODE flipped Auto off),
+    // snap to the server-provided default so the dropdown never opens
+    // on a value it can't render.
+    const valid = new Set(qualityOptions.value.map((o) => o.id))
+    if (!valid.has(selectedQuality.value)) {
+      selectedQuality.value = qualityDefaultId.value
+    }
+  } catch {
+    // Leave the dropdown empty on failure; the controls strip still
+    // works (audio / subtitle / skip-intro are independent).
+  }
+}
 
 function formatAudioLabel(track: AudioStream): string {
   const lang = track.displayLanguage || track.language || 'Unknown'
@@ -226,6 +256,10 @@ function onSkipIntro() {
   }
 }
 
+function onJump(seconds: number) {
+  emit('jump', seconds)
+}
+
 watch(
   () => props.itemId,
   () => {
@@ -251,6 +285,7 @@ watch(
 )
 
 onMounted(() => {
+  loadQualityOptions()
   if (props.itemId) {
     fetchStreams()
     fetchIntro()
@@ -279,13 +314,21 @@ onMounted(() => {
       </select>
     </div>
 
-    <div class="control-group">
+    <div class="control-group" v-if="qualityOptions.length">
       <label for="quality-select">Quality</label>
       <select id="quality-select" v-model="selectedQuality" @change="onQualityChange">
-        <option v-for="preset in qualityPresets" :key="preset.value" :value="preset.value">
-          {{ preset.label }}
+        <option v-for="option in qualityOptions" :key="option.id" :value="option.id">
+          {{ option.label }}
         </option>
       </select>
+    </div>
+
+    <div class="jump-group">
+      <button class="jump-btn" @click="onJump(-30)" title="Back 30 seconds">−30s</button>
+      <button class="jump-btn" @click="onJump(-10)" title="Back 10 seconds">−10s</button>
+      <label class="jump-label">Jump/Seek</label>
+      <button class="jump-btn" @click="onJump(10)" title="Forward 10 seconds">+10s</button>
+      <button class="jump-btn" @click="onJump(30)" title="Forward 30 seconds">+30s</button>
     </div>
 
     <button v-show="showIntroButton" class="skip-intro-btn" @click="onSkipIntro">
@@ -333,8 +376,42 @@ onMounted(() => {
   border-color: var(--cyber-primary);
 }
 
-.skip-intro-btn {
+.jump-group {
   margin-left: auto;
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.jump-label {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  margin-right: 0.15rem;
+}
+
+.jump-btn {
+  padding: 0.3rem 0.55rem;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--cyber-border);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.05s;
+}
+
+.jump-btn:hover {
+  border-color: var(--cyber-primary);
+}
+
+.jump-btn:active {
+  transform: translateY(1px);
+}
+
+.skip-intro-btn {
   padding: 0.35rem 1rem;
   background: var(--cyber-primary);
   color: var(--bg-secondary);
