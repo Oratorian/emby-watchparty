@@ -286,3 +286,20 @@ class PartyExistsResponse(BaseModel):
     """Returned by GET /api/party/<id>/exists. Boolean probe used by
     the join screen to validate a party code before issuing the cookie."""
     exists: bool
+
+
+class PartyListItem(BaseModel):
+    """One party in the public index listing (GET /api/party/list)."""
+    code: str
+    title: Optional[str] = None   # what is being watched; None when no video
+    user_count: int
+    playing: bool                 # True when a video is active (join -> vote)
+    locked: bool                  # True when the party has no host (library locked)
+
+
+class PartyListResponse(BaseModel):
+    """Returned by GET /api/party/list. `parties` is empty when
+    REQUIRE_LOGIN is on -- open parties and what they are watching are
+    not advertised in that mode."""
+    require_login: bool
+    parties: list[PartyListItem]

@@ -4,6 +4,7 @@ import { useSocketStore } from './socket'
 import { useAvatarStore } from './avatar'
 import { useAuthStore } from './auth'
 import { api } from '@/api/client'
+import { hideParty } from '@/utils/hiddenParties'
 
 export interface MemberInfo {
   username: string
@@ -336,8 +337,10 @@ export const usePartyStore = defineStore('party', () => {
       pendingVote.value = null
 
       if (result === 'fail' && wasPending) {
-        // The late joiner was rejected -- clear local party state
-        // and redirect home.
+        // The late joiner was rejected. Hide this party on the index so
+        // they are not repeatedly tempted to re-request it (captured
+        // before leave() clears partyId), then clear local party state.
+        hideParty(partyId.value)
         leave()
         // Router redirect is handled by the component watching `partyId`
       } else if (result === 'cancelled') {

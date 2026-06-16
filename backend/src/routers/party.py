@@ -20,6 +20,8 @@ from backend.src.schemas import (
     JoinPartyResponse,
     PartyExistsResponse,
     PartyInfoResponse,
+    PartyListItem,
+    PartyListResponse,
     StaticSessionResponse,
 )
 
@@ -32,6 +34,53 @@ def static_session(config=Depends(get_config)):
     if config.STATIC_SESSION_ENABLED:
         return {"party_id": config.STATIC_SESSION_ID.upper()}
     return {"party_id": None}
+
+
+@router.get("/list", response_model=PartyListResponse)
+def list_parties(
+    config=Depends(get_config),
+    party_manager=Depends(get_party_manager),
+    logger=Depends(get_logger),
+):
+    """Public listing of active parties for the index page.
+
+    Only advertised when REQUIRE_LOGIN is off; otherwise the set of open
+    parties and what they are watching is not exposed. Lists every party
+    that has at least one member (the static-session party is excluded
+    since the index auto-redirects into it). Clicking a listed party
+    joins it, which triggers the late-joiner vote when a video is playing.
+
+    Logging note: this route is polled every ~5s per open index tab, so it
+    deliberately stays at DEBUG (no INFO spam). A malformed party is logged
+    at WARNING and skipped rather than failing the whole listing.
+    """
+    if config.REQUIRE_LOGIN:
+        logger.debug("Party list requested; REQUIRE_LOGIN on, not advertising parties")
+        return PartyListResponse(require_login=True, parties=[])
+
+    static_id = party_manager.static_party_id
+    items: list[PartyListItem] = []
+    for code, party in party_manager.get_all().items():
+        if code == static_id:
+            continue
+        users = party.get("users", {})
+        if not users:
+            continue
+        try:
+            cv = party.get("current_video")
+            items.append(PartyListItem(
+                code=code,
+                title=cv.get("title") if cv else None,
+                user_count=len(users),
+                playing=cv is not None,
+                locked=not party.get("host_access_token"),
+            ))
+        except Exception as e:
+            # One bad party record should not break the whole index listing.
+            logger.warning(f"Skipping party {code} in public listing: {e}")
+
+    logger.debug(f"Party list served: {len(items)} active part{'y' if len(items) == 1 else 'ies'}")
+    return PartyListResponse(require_login=False, parties=items)
 
 
 @router.post("/create", response_model=CreatePartyResponse)
