@@ -35,6 +35,12 @@ import { avatarUrl as fallbackAvatarUrl } from '@/utils/avatar'
 import { copyToClipboard } from '@/utils/clipboard'
 import { useAuthStore } from '@/stores/auth'
 import { useAvatarStore } from '@/stores/avatar'
+// Brand mark asset. Vite resolves this to a hashed URL at build time
+// (and inlines small assets), so the WebP ships with cache-busting and
+// no runtime path drift. Sits on top of the cyan->magenta gradient
+// tile in `.brand-mark` -- the tile colour identity comes from CSS,
+// the silhouette comes from this file.
+import brandMarkUrl from '@/assets/brand-mark.webp'
 
 const route = useRoute()
 const router = useRouter()
@@ -1061,7 +1067,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
           :title="`Watch Party ${versionInfo.codename || ''}`.trim()"
         >
           <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="#04142a" stroke="none"><polygon points="6 4 20 12 6 20"/></svg>
+            <img :src="brandMarkUrl" alt="" class="brand-mark-img" />
           </span>
           <span class="brand-name">Watch Party<span class="brand-subtle">by <a href="https://github.com/oratorian" target="_blank" rel="noopener noreferrer">Oratorian</a></span></span>
         </button>
@@ -1385,7 +1391,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
   justify-content: space-between;
   align-items: center;
   padding: 0 var(--space-md);
-  height: 64px;
+  height: 80px;
   background: rgba(11, 14, 28, 0.5);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -1414,15 +1420,30 @@ async function submitBecomeHost(payload: { username: string; password: string })
   font: inherit;
 }
 
+/* The custom brand logo carries its own background, colour, and
+   silhouette, so the gradient frame the original play-arrow tile used
+   gets dropped. The rounded corners + soft cyan-tinted shadow stay on
+   the wrapper so the mark sits in the same visual idiom as the other
+   rounded chips in the header. Sized to 64px inside the 80px topbar
+   (8px breathing room top/bottom) so the logo reads as the dominant
+   identity element. */
 .brand-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
-  box-shadow: 0 4px 12px rgba(34, 211, 238, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 8px rgba(34, 211, 238, 0.2);
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.brand-mark-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
 }
 
 .brand-name {
