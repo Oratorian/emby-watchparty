@@ -50,8 +50,15 @@ def register(ctx):
         return None
 
     def _create_user_stream(party, party_id, sid, item_id, media_source,
-                            audio_index, subtitle_index, quality, start_seconds=0):
+                            audio_index, subtitle_index, quality, start_seconds=0,
+                            media_source_id=None):
         """Create a per-user Emby stream (own PlaySessionId and transcode).
+
+        `media_source_id` selects between alternate versions when the
+        item has multiple `MediaSources` (issue #43: theatrical /
+        director's cut, mp4 / mkv, etc.). When None, Emby picks the
+        default source (its `MediaSources[0]`) which matches the
+        historical single-version behaviour.
 
         Returns the stream info dict, or None on failure.
         """
@@ -70,6 +77,7 @@ def register(ctx):
             item_id,
             audio_index=audio_index,
             subtitle_index=subtitle_index,
+            media_source_id=media_source_id,
             max_streaming_bitrate=max_streaming_bitrate,
             start_time_ticks=start_ticks_for_info,
             access_token=access_token,
@@ -197,23 +205,41 @@ def register(ctx):
             }, room=party_id)
 
     async def _restart_video_from_beginning(party, party_id, selector_client_id,
-                                              item_id, item_name, item_overview):
+                                              item_id, item_name, item_overview,
+                                              media_source_id=None):
         """Fetch fresh media info, stop existing streams, create per-user
         streams starting at 0, broadcast video_selected + ready_check.
 
         `selector_client_id` is stored as `current_video.selected_by` so
         the selector survives reloads / sid changes.
 
+        `media_source_id` locks the playback to a specific Emby
+        alternate version for the whole party (issue #43). When the
+        selector picks from the library's version modal that id flows
+        in here and gets stored on `current_video.media_source_id`;
+        every subsequent stream operation (change_streams, late-join
+        rejoin, vote-pass restart) reads it from there so the chosen
+        version stays consistent across the playback. When None, Emby
+        falls back to its default MediaSources[0], matching the
+        single-version case.
+
         Returns True on success, False on failure (caller should emit error).
         """
         access_token, user_id = _host_creds(party)
         playback_info = emby_client.get_playback_info(
-            item_id, access_token=access_token, user_id=user_id,
+            item_id,
+            media_source_id=media_source_id,
+            access_token=access_token, user_id=user_id,
         )
         if not playback_info or "MediaSources" not in playback_info:
             return False
 
         media_source = playback_info["MediaSources"][0]
+        # When the caller didn't lock a version, capture whatever Emby
+        # returned as the default so subsequent ops can refer to it
+        # consistently (otherwise the late-join rejoin path would
+        # silently re-default if Emby ever flips its default ordering).
+        resolved_media_source_id = media_source.get("Id") or media_source_id
         default_audio = _default_audio_index(media_source)
         run_time_ticks = media_source.get("RunTimeTicks", 0)
         run_time_seconds = run_time_ticks / 10_000_000 if run_time_ticks else None
@@ -227,6 +253,7 @@ def register(ctx):
         party["current_video"] = {
             "item_id": item_id, "title": item_name, "overview": item_overview,
             "run_time_seconds": run_time_seconds,
+            "media_source_id": resolved_media_source_id,
             "selected_by": selector_client_id,
         }
 
@@ -245,6 +272,7 @@ def register(ctx):
                 party, party_id, user_sid, item_id, media_source,
                 audio_index=default_audio, subtitle_index=None,
                 quality=DEFAULT_QUALITY_ID, start_seconds=0,
+                media_source_id=resolved_media_source_id,
             )
             if not stream:
                 continue
@@ -282,6 +310,10 @@ def register(ctx):
         item_id = data.get("item_id")
         item_name = data.get("item_name", "Unknown")
         item_overview = data.get("item_overview", "")
+        # Optional alternate-version picker output from the library
+        # modal. None for single-version items (or when the selector
+        # didn't pick); the helper falls back to Emby's default source.
+        media_source_id = data.get("media_source_id")
 
         if not party_manager.exists(party_id):
             await sio.emit("error", {"message": "Watch party not found"}, to=sid)
@@ -305,7 +337,8 @@ def register(ctx):
             return
 
         success = await _restart_video_from_beginning(
-            party, party_id, selector_client_id, item_id, item_name, item_overview
+            party, party_id, selector_client_id, item_id, item_name, item_overview,
+            media_source_id=media_source_id,
         )
         if not success:
             await sio.emit("error", {"message": "Failed to load video"}, to=sid)
@@ -346,10 +379,16 @@ def register(ctx):
 
     @sio.on("change_streams")
     async def handle_change_streams(sid, data):
-        """Per-user stream change (audio/subtitle/quality).
+        """Per-user stream change (audio / subtitle / quality).
 
         Silent swap of the requesting user's stream. Other users keep
         playing normally; no party-wide pause, no ready check.
+
+        The alternate Emby version (issue #43) is fixed party-wide at
+        select_video time and stored on `current_video.media_source_id`,
+        so audio / subtitle / quality changes always re-use that
+        version automatically. Callers do not pass `media_source_id`
+        here.
         """
         party_id = data.get("party_id", "").strip().upper()
         audio_index = data.get("audio_index")
@@ -373,6 +412,10 @@ def register(ctx):
 
         current_video = party["current_video"]
         item_id = current_video["item_id"]
+        # The version was locked at select_video time. Pull from the
+        # party's current_video so every per-user stream stays on the
+        # same Emby source for the whole playback.
+        media_source_id = current_video.get("media_source_id")
         access_token, user_id = _host_creds(party)
 
         # Resolve / sanitise the requested quality. A client can send the
@@ -409,6 +452,7 @@ def register(ctx):
             item_id,
             audio_index=audio_index,
             subtitle_index=subtitle_index,
+            media_source_id=media_source_id,
             max_streaming_bitrate=max_streaming_bitrate,
             start_time_ticks=int(snapshot_time * 10_000_000) if snapshot_time > 0 else 0,
             access_token=access_token,
@@ -434,6 +478,7 @@ def register(ctx):
             party, party_id, sid, item_id, media_source,
             audio_index=audio_index, subtitle_index=subtitle_index,
             quality=quality, start_seconds=current_time,
+            media_source_id=media_source_id,
         )
         if not stream:
             return

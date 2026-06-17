@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
+import { withPrefix } from '@/utils/appPrefix'
 import { useAuthStore } from '@/stores/auth'
 import { getHiddenParties } from '@/utils/hiddenParties'
 
@@ -70,7 +71,7 @@ onMounted(async () => {
     await auth.refresh()
   } catch { /* ignore */ }
   try {
-    const res = await fetch('/api/party/static-session')
+    const res = await fetch(withPrefix('/api/party/static-session'))
     const data = await res.json()
     if (data.party_id) {
       router.replace(`/party/${data.party_id}`)

@@ -1,11 +1,17 @@
 /**
- * API client for communicating with the FastAPI backend
+ * API client for communicating with the FastAPI backend.
+ *
+ * Every backend route is mounted under APP_PREFIX on the server, so
+ * the browser-side fetch URL must carry that prefix too. The Vite dev
+ * proxy targets `/api`, `/hls`, and `/socket.io` at root; when running
+ * dev with a non-empty APP_PREFIX the proxy config in vite.config.ts
+ * would need updating to match, but the default (no prefix) "just
+ * works" because withPrefix() is a no-op.
  */
-
-const API_BASE = ''  // Same origin, Vite proxy handles dev
+import { withPrefix } from '@/utils/appPrefix'
 
 export async function apiFetch<T = any>(path: string, options: RequestInit = {}): Promise<T> {
-  const resp = await fetch(`${API_BASE}${path}`, {
+  const resp = await fetch(withPrefix(path), {
     headers: { 'Content-Type': 'application/json', ...options.headers },
     credentials: 'same-origin',
     ...options,
@@ -29,11 +35,17 @@ export const api = {
   },
   search: (q: string) => apiFetch(`/api/search?q=${encodeURIComponent(q)}`),
   itemDetails: (id: string) => apiFetch(`/api/item/${id}`),
-  itemStreams: (id: string) => apiFetch(`/api/item/${id}/streams`),
+  // mediaSourceId optionally scopes the response to one alternate
+  // version. When omitted, the audio/subtitle arrays describe Emby's
+  // default source and `versions` still lists every alternate.
+  itemStreams: (id: string, mediaSourceId?: string) => {
+    const qs = mediaSourceId ? `?media_source_id=${encodeURIComponent(mediaSourceId)}` : ''
+    return apiFetch(`/api/item/${id}/streams${qs}`)
+  },
 
   // Media
   intro: (id: string) => apiFetch(`/api/intro/${id}`),
-  imageUrl: (id: string, type = 'Primary') => `/api/image/${id}?type=${type}`,
+  imageUrl: (id: string, type = 'Primary') => withPrefix(`/api/image/${id}?type=${type}`),
 
   // Quality
   qualityOptions: () => apiFetch('/api/quality-options'),
@@ -63,7 +75,10 @@ export const api = {
   avatarUpload: async (file: File) => {
     const fd = new FormData()
     fd.append('image', file)
-    const resp = await fetch('/api/avatar/upload', {
+    // Direct fetch (bypasses apiFetch) because we need multipart/form-data,
+    // not JSON. Prefix is applied manually so this honours APP_PREFIX
+    // the same way the JSON endpoints do.
+    const resp = await fetch(withPrefix('/api/avatar/upload'), {
       method: 'POST',
       body: fd,
       credentials: 'same-origin',
@@ -80,8 +95,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),
-  avatarSrc: (uuid: string) => `/api/avatar/${uuid}`,
-  hostAvatarSrc: (party_id: string) => `/api/avatar/host/${party_id}`,
+  avatarSrc: (uuid: string) => withPrefix(`/api/avatar/${uuid}`),
+  hostAvatarSrc: (party_id: string) => withPrefix(`/api/avatar/host/${party_id}`),
 
   // Admin
   adminLogin: (username: string, password: string) =>

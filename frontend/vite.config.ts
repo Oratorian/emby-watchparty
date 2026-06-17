@@ -5,6 +5,14 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 export default defineConfig({
+  // Relative base so all asset URLs in the built index.html are
+  // resolved against the document's URL at runtime. That lets the
+  // backend serve the SPA from any APP_PREFIX (e.g. /watchparty)
+  // without rebuilding -- the prefix is decided per-deployment, the
+  // image stays generic. Pair with the `window.APP_PREFIX` runtime
+  // global the backend injects into index.html so Vue Router,
+  // api/client, and the socket.io client know the prefix too.
+  base: './',
   plugins: [
     vue(),
     vueDevTools(),

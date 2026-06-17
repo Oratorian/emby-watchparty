@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { io, Socket } from 'socket.io-client'
+import { APP_PREFIX } from '@/utils/appPrefix'
 
 export const useSocketStore = defineStore('socket', () => {
   const socket = ref<Socket | null>(null)
@@ -19,8 +20,12 @@ export const useSocketStore = defineStore('socket', () => {
     // need to create a single socket per app lifetime.
     if (socket.value) return
 
+    // Socket.IO's `path` is the URL path the client connects to. The
+    // backend mounts the socket app under `${APP_PREFIX}/socket.io`, so
+    // the client has to use the same. Empty APP_PREFIX collapses to
+    // `/socket.io`, matching the no-proxy default.
     const s = io('', {
-      path: '/socket.io',
+      path: `${APP_PREFIX}/socket.io`,
       transports: ['websocket', 'polling'],
     })
 

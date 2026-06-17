@@ -1,5 +1,10 @@
 <script setup lang="ts">
-const model = defineModel<boolean>()
+// Default the model to `false` so the toggle never has an undefined
+// state. With no default, defineModel<boolean>() yields Ref<boolean |
+// undefined>, which forced every @update:model-value handler at every
+// call site to accept (boolean | undefined) -- noisy and incorrect for
+// a control that always represents a definite on/off.
+const model = defineModel<boolean>({ default: false })
 </script>
 
 <template>

@@ -110,6 +110,10 @@ def register(ctx):
             audio_index=None, subtitle_index=None,
             quality=current_video.get("quality", DEFAULT_QUALITY_ID),
             start_seconds=current_time,
+            # Lock the late-joiner to the same Emby version the rest of
+            # the party is watching. Without this they'd silently get
+            # Emby's default source (issue #43).
+            media_source_id=current_video.get("media_source_id"),
         )
         if not stream:
             return None
@@ -202,6 +206,10 @@ def register(ctx):
             item_id=cv["item_id"],
             item_name=cv.get("title", "Unknown"),
             item_overview=cv.get("overview", ""),
+            # Preserve the chosen alternate version across the
+            # vote-pass restart -- otherwise the post-vote re-pick
+            # would silently drop back to Emby's default source.
+            media_source_id=cv.get("media_source_id"),
         )
         if not success:
             logger.error(f"Failed to restart video after vote pass in party {party_id}")

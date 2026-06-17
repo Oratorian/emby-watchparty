@@ -212,10 +212,30 @@ class SubtitleStreamInfo(BaseModel):
     title: str = ""
 
 
+class MediaVersionInfo(BaseModel):
+    """One entry in the multi-version dropdown.
+
+    Emby surfaces alternate versions of the same item (theatrical /
+    director's cut, mp4 / mkv, 1080p / 4K HDR) as separate entries in
+    `MediaSources`. `name` is the user-visible label Emby's own clients
+    show (literally "mp4" / "mkv" for stacked files named
+    `Title-mp4.mp4` / `Title-mkv.mkv`, or any custom label for stacked
+    `Title - Theatrical.mkv` / `Title - Director's Cut.mkv` style).
+    `id` is what we feed back into `MediaSourceId` to switch to that
+    version. Closes [#43](https://github.com/Oratorian/emby-watchparty/issues/43).
+    """
+    id: str
+    name: str
+    container: Optional[str] = None
+    run_time_ticks: Optional[int] = None
+
+
 class StreamsResponse(BaseModel):
     audio: list[AudioStreamInfo]
     subtitles: list[SubtitleStreamInfo]
     media_source_id: Optional[str] = None
+    # Always populated; UI shows a Version dropdown only when len > 1.
+    versions: list[MediaVersionInfo] = []
 
 
 # ============== Version ==============

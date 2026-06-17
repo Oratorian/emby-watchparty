@@ -10,7 +10,10 @@ const MAX_AGE_SECONDS = 60 * 60 * 24 // 1 day
 
 export function getHiddenParties(): string[] {
   const match = document.cookie.match(/(?:^|;\s*)parties_hidden=([^;]*)/)
-  if (!match) return []
+  // match[1] only exists when the regex matched a non-empty capture --
+  // the early-out on `!match` doesn't narrow `match[1]` under strict TS,
+  // so guard explicitly to keep the build happy.
+  if (!match || !match[1]) return []
   return decodeURIComponent(match[1])
     .split(',')
     .map((c) => c.trim().toUpperCase())

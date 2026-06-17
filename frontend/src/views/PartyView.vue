@@ -30,7 +30,11 @@ const EmbyLoginModal = defineAsyncComponent(
 const AvatarSetupModal = defineAsyncComponent(
   () => import('@/components/AvatarSetupModal.vue'),
 )
+const VersionPickerModal = defineAsyncComponent(
+  () => import('@/components/VersionPickerModal.vue'),
+)
 import { api } from '@/api/client'
+import { withPrefix } from '@/utils/appPrefix'
 import { avatarUrl as fallbackAvatarUrl } from '@/utils/avatar'
 import { copyToClipboard } from '@/utils/clipboard'
 import { useAuthStore } from '@/stores/auth'
@@ -573,7 +577,7 @@ watch(
         if (sub.isExternal) label += ' [External]'
         track.label = label
         track.srclang = sub.language || 'und'
-        track.src = `/api/subtitles/${itemId}/${mediaSourceId}/${sub.index}`
+        track.src = withPrefix(`/api/subtitles/${itemId}/${mediaSourceId}/${sub.index}`)
         ve.appendChild(track)
         // The mode lives on the TextTrack interface (track.track.mode),
         // not on the HTMLTrackElement itself. track.track is null until
@@ -596,7 +600,7 @@ watch(
           for (const tEl of Array.from(ve.querySelectorAll('track'))) {
             if (!tEl.track) continue
             const m = tEl.src.match(/\/api\/subtitles\/[^/]+\/[^/]+\/(\d+)/)
-            const idx = m ? parseInt(m[1], 10) : null
+            const idx = m && m[1] ? parseInt(m[1], 10) : null
             tEl.track.mode = idx === targetIndex ? 'showing' : 'hidden'
           }
         }
@@ -667,7 +671,23 @@ async function leaveParty() {
   router.push('/')
 }
 
-function selectVideo(item: any) {
+// Modal state for the multi-version picker (issue #43). When the
+// library item the host clicked has more than one Emby alternate
+// source, we open the modal and stall the select_video emit until
+// the host picks. `pendingSelection` holds the original item so we
+// can finish the emit once the modal resolves.
+interface PendingVersionPick {
+  item: any
+  versions: Array<{
+    id: string
+    name: string
+    container: string | null
+    run_time_ticks: number | null
+  }>
+}
+const versionPickerState = ref<PendingVersionPick | null>(null)
+
+function emitSelectVideo(item: any, mediaSourceId?: string) {
   if (!party.partyId) return
   hasStarted = false
   socket.emit('select_video', {
@@ -676,8 +696,43 @@ function selectVideo(item: any) {
     item_name: item.Name,
     item_overview: item.Overview || '',
     quality: '1080p-high',
+    media_source_id: mediaSourceId,
   })
   showLibrary.value = false
+}
+
+async function selectVideo(item: any) {
+  if (!party.partyId) return
+  // Probe Emby for alternate versions BEFORE emitting. Single-version
+  // items skip the modal entirely; multi-version items pause to let
+  // the host pick one file for the whole party (issue #43).
+  let versions: PendingVersionPick['versions'] = []
+  try {
+    const streams = await api.itemStreams(item.Id)
+    versions = streams.versions || []
+  } catch {
+    // If the lookup fails fall through to the legacy path -- backend
+    // will pick Emby's default source on its own. Better to play
+    // something than to block the host on a transient probe error.
+  }
+
+  if (versions.length > 1) {
+    versionPickerState.value = { item, versions }
+    return
+  }
+
+  emitSelectVideo(item)
+}
+
+function onVersionPick(mediaSourceId: string) {
+  const pending = versionPickerState.value
+  versionPickerState.value = null
+  if (!pending) return
+  emitSelectVideo(pending.item, mediaSourceId)
+}
+
+function onVersionPickCancel() {
+  versionPickerState.value = null
 }
 
 let wasPlayingBeforeSeek = false
@@ -892,6 +947,10 @@ watch(() => party.currentVideo, (newVal, oldVal) => {
 
 function onChangeStreams(opts: { audioIndex?: number; subtitleIndex?: number; quality?: string }) {
   if (!party.partyId) return
+  // The alternate Emby version (issue #43) is locked at select_video
+  // time on the backend (current_video.media_source_id), so this emit
+  // never needs to carry it -- audio/subtitle/quality changes always
+  // resolve to the same version automatically.
   socket.emit('change_streams', {
     party_id: party.partyId,
     audio_index: opts.audioIndex,
@@ -1301,6 +1360,16 @@ async function submitBecomeHost(payload: { username: string; password: string })
   <AvatarSetupModal
     v-if="showAvatarModal"
     @close="showAvatarModal = false"
+  />
+
+  <!-- Multi-version picker. Pops up only when the host clicked a
+       library item with more than one Emby alternate source. -->
+  <VersionPickerModal
+    v-if="versionPickerState"
+    :item-name="versionPickerState.item.Name"
+    :versions="versionPickerState.versions"
+    @select="onVersionPick"
+    @cancel="onVersionPickCancel"
   />
 
   <!-- Become host (any party member can promote themselves) -->

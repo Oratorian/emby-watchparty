@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { api } from '@/api/client'
+import { withPrefix } from '@/utils/appPrefix'
 
 interface AudioStream {
   index: number
@@ -27,6 +28,11 @@ interface SubtitleStream {
 interface StreamsResponse {
   audio: AudioStream[]
   subtitles: SubtitleStream[]
+  media_source_id: string | null
+  // `versions` is still in the response shape (issue #43) but the
+  // version picker now lives in the library, not in this controls
+  // strip -- the host locks the version at select_video time. We
+  // ignore the field here intentionally.
 }
 
 interface IntroData {
@@ -150,7 +156,15 @@ function applyInitialSubtitleSelection() {
 async function fetchStreams() {
   if (!props.itemId) return
   try {
-    const data: StreamsResponse = await api.itemStreams(props.itemId)
+    // Scope to the current version so audio/subtitle dropdowns reflect
+    // the stream that's actually playing. The version itself is locked
+    // at select_video time and chosen via the library picker -- this
+    // strip never switches versions, it just describes the source the
+    // party is on.
+    const data: StreamsResponse = await api.itemStreams(
+      props.itemId,
+      props.mediaSourceId,
+    )
     audioTracks.value = data.audio || []
     subtitleTracks.value = data.subtitles || []
 
@@ -229,7 +243,7 @@ function onSubtitleChange() {
     // Text-based sub -- load locally per user. Only rebuild the
     // stream if leaving a burned sub (to remove the burn).
     if (!props.mediaSourceId) return
-    const url = `/api/subtitles/${props.itemId}/${props.mediaSourceId}/${idx}`
+    const url = withPrefix(`/api/subtitles/${props.itemId}/${props.mediaSourceId}/${idx}`)
     emit('change-text-subtitle', { index: idx, url })
     if (wasBurnedSub) {
       emit('change-streams', {
@@ -279,7 +293,18 @@ watch(
 
 watch(
   () => props.mediaSourceId,
-  () => {
+  (newId, oldId) => {
+    // A media_source_id change while the item_id stays put means
+    // either (a) a different alternate version was picked, or (b) the
+    // host's own PlaySessionId rotated (same source, new transcode).
+    // For (a) the audio/subtitle dropdowns need to be re-fetched so
+    // they describe the new file. For (b) the lists are identical but
+    // an extra fetch is cheap and avoids needing to distinguish the
+    // cases. fetchStreams() also refreshes `selectedVersion` so the
+    // version dropdown lands on the right entry.
+    if (newId && newId !== oldId) {
+      fetchStreams()
+    }
     applyInitialSubtitleSelection()
   },
 )
