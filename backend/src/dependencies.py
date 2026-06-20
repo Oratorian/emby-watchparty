@@ -3,7 +3,7 @@ FastAPI dependency injection
 Replaces the old Flask deps dict pattern.
 
 Plus the party-bound session gates used to protect every route that
-touches Emby on behalf of a watch party. See docs/AUTH-DESIGN.md.
+touches Emby on behalf of a watch party.
 """
 
 from dataclasses import dataclass

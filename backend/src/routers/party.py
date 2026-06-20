@@ -5,7 +5,6 @@ Party Router -- create / join / probe.
 anonymous create when off, Emby-authenticated create-as-host when on.
 `POST /api/party/<id>/join` is always anonymous and issues the
 party-bound session cookie used by every protected route.
-See docs/AUTH-DESIGN.md.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request

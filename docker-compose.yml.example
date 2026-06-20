@@ -1,37 +1,75 @@
-version: '3.8'
-
-# Configuration options:
-# 1. Use .env file: Copy .env.example to .env and configure
-# 2. Use environment variables in this file (override .env)
+# Emby Watch Party 2.0 -- docker-compose example
+#
+# Two volume mounts are required for avatars to survive container
+# restarts (new in 2.0): /app/data holds the SQLite avatar DB,
+# /app/images/avatars holds the uploaded image files. Without them
+# every restart wipes every member's chosen avatar.
+#
+# `version:` is omitted intentionally -- modern Docker Compose v2
+# ignores it and warns on its presence.
 
 services:
   emby-watchparty:
-    build: .
+    # Recommended: pull the pre-built multi-arch image from GHCR.
+    # `:latest` tracks the latest stable, `:devel` / `:nightly` tracks
+    # the current closed-beta build, and `:2.0.0-betaN` pins a
+    # specific beta. Comment this line and uncomment `build: .` below
+    # to build from local source instead.
+    image: ghcr.io/oratorian/emby-watchparty:latest
+    # build: .
+
     container_name: emby-watchparty
+
+    # Map the container port to the host. Bump the right-hand side if
+    # WATCH_PARTY_PORT is changed in .env (or in the environment
+    # overrides below); both sides must match the configured port.
     ports:
-      - "5000:5000"  # Change if using custom WATCH_PARTY_PORT
+      - "5000:5000"
+
+    # Load boot-essential config from .env (created from .env.example).
+    # All mutable runtime settings live in config.json (mounted below)
+    # and are edited via /admin -- they are NOT environment overrides.
     env_file:
-      - .env  # Load configuration from .env file
-    # Uncomment below to override .env settings:
+      - .env
+
+    # Uncomment to override .env values without touching the file
+    # (e.g. driven by an external secrets store). Only the six boot
+    # values from .env.example belong here; everything else is in
+    # config.json via /admin.
     # environment:
-    #   # Application
-    #   - EMBY_SERVER_URL=http://your-emby-server:8096
-    #   - EMBY_API_KEY=your_api_key_here
-    #   - EMBY_USERNAME=your-username
-    #   - EMBY_PASSWORD=your-password
     #   - WATCH_PARTY_BIND=0.0.0.0
     #   - WATCH_PARTY_PORT=5000
-    #   - LOG_TO_FILE=false
-    #   # Reverse proxy prefix (e.g. /watchparty)
-    #   - APP_PREFIX=
-    #   # Require Emby login to access
-    #   - REQUIRE_LOGIN=false
-    #   # Static session mode - persistent party, no create/join page
-    #   - STATIC_SESSION_ENABLED=false
-    #   - STATIC_SESSION_ID=PARTY
+    #   - SESSION_EXPIRY=86400
+    #   - APP_PREFIX=/watchparty
+    #   - EMBY_SERVER_URL=http://your-emby-server:8096
+    #   - EMBY_API_KEY=your_api_key_here
+
     volumes:
-      - ./logs:/app/logs  # Persist logs
-      - ./.env:/app/.env:ro  # Mount .env file (read-only)
+      # Required: persist avatars across restarts. ./data and ./images
+      # are created next to this compose file on first run.
+      - ./data:/app/data                     # SQLite avatar DB (avatars.db)
+      - ./images/avatars:/app/images/avatars # uploaded avatar images
+      # Optional: persist application logs to the host (only useful if
+      # LOG_TO_FILE is enabled via /admin; default is console only).
+      - ./logs:/app/logs
+      # Optional: persist the runtime admin config across container
+      # rebuilds. Without this mount, changes made via /admin survive
+      # restarts of the same container but are wiped if the container
+      # is recreated. IMPORTANT: `touch config.json` on the host BEFORE
+      # the first `docker compose up`, otherwise Docker silently
+      # creates `config.json` as an empty directory and the backend
+      # fails to write its settings.
+      - ./config.json:/app/config.json
+
+    # The Dockerfile already bakes a HEALTHCHECK that hits /api/health
+    # via the configured WATCH_PARTY_PORT, so an explicit healthcheck
+    # block here is not required. Uncomment to tighten the cadence:
+    # healthcheck:
+    #   test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/api/health"]
+    #   interval: 30s
+    #   timeout: 5s
+    #   retries: 3
+
     restart: unless-stopped
     networks:
       - emby-network

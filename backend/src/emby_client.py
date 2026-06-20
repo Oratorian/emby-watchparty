@@ -6,8 +6,6 @@ This module is stateless with respect to user identity. The admin api_key
 is used only for non-user-scoped requests (raw image bytes, server
 diagnostics). Every user-scoped call accepts an `access_token` and
 `user_id` so the host of each party can drive its own Emby session.
-
-See docs/AUTH-DESIGN.md for the model.
 """
 
 import requests

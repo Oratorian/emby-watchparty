@@ -10,8 +10,6 @@ Serving:
   GET  /api/avatar/{uuid}              -- the user's avatar
   GET  /api/avatar/host/{party_id}     -- proxies the current host's
                                           Emby Primary image
-
-See docs/AVATAR_TODO.md.
 """
 
 import asyncio

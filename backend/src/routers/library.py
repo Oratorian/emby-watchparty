@@ -3,7 +3,7 @@ Library Router - Emby library browsing and search.
 
 Every route is gated by `require_party_unlocked`: the caller must hold
 a party-bound session cookie AND the party must have a current host
-whose Emby access_token signs the upstream call. See docs/AUTH-DESIGN.md.
+whose Emby access_token signs the upstream call.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query

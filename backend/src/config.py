@@ -57,7 +57,7 @@ class EnvConfig:
 class RuntimeConfig:
     """Runtime settings from config.json (hot-reloadable)"""
 
-    # Auth gating (see docs/AUTH-DESIGN.md)
+    # Auth gating.
     # True: party creation requires Emby credentials (creator becomes host).
     # False: anyone can create a party; any member can later log in to host.
     REQUIRE_LOGIN: bool = False

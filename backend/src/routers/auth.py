@@ -2,8 +2,7 @@
 Auth Router -- become-host / drop-host / status / version.
 
 `POST /api/auth/login` takes Emby credentials from a party-bound caller
-and promotes them to host of their current party. See
-docs/AUTH-DESIGN.md.
+and promotes them to host of their current party.
 """
 
 import os

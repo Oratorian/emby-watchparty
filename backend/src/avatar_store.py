@@ -4,7 +4,8 @@ Avatar Store -- passwordless persistence for chat avatars.
 Each user is identified by an opaque UUID stored client-side
 (IndexedDB / localStorage). A memorable 3-word recovery code is the
 account-portable handle: type it on a fresh browser to restore the
-uuid. See docs/AVATAR_TODO.md.
+uuid. Recovery codes are bcrypt-hashed at rest and the recover
+endpoint is per-IP rate-limited (10 attempts / hour).
 
 Data lives in SQLite at <project_root>/data/avatars.db; uploaded
 images at <project_root>/images/avatars/<uuid>.<ext>.

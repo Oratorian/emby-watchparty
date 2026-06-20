@@ -9,8 +9,6 @@ Identity model:
   request; the party is LOCKED.
 - After a video ends or is stopped in the PLAYING-ONLY state, the
   stored host token is wiped (full LOCKED).
-
-See docs/AUTH-DESIGN.md.
 """
 
 from datetime import datetime

@@ -10,8 +10,6 @@ import { api } from '@/api/client'
  * localStorage fallback. The recovery code is never persisted -- it
  * is shown once after upload/gravatar creation and the user copies
  * it to safe storage themselves.
- *
- * See docs/AVATAR_TODO.md for the threat model.
  */
 
 const IDB_NAME = 'emby-watchparty-avatar'

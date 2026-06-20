@@ -2,7 +2,7 @@
 
 Adds party-bound session cookie validation on connect and host-leave
 detection on disconnect (with a brief grace window so a refresh does
-not collapse the party to LOCKED). See docs/AUTH-DESIGN.md.
+not collapse the party to LOCKED).
 """
 
 import asyncio

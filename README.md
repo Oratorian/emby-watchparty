@@ -159,8 +159,6 @@ With `REQUIRE_LOGIN=true` (set from the admin panel):
 
 In both modes, when the host disconnects mid-playback the in-flight video keeps streaming until it ends naturally (PLAYING-ONLY state). The library re-locks immediately; any member can click "Login to Become Host" to unlock it again.
 
-See [docs/AUTH-DESIGN.md](docs/AUTH-DESIGN.md) for the full auth model.
-
 ### Joining a Watch Party
 
 1. Click **"Join Watch Party"** on the home page (or open a shared URL)
@@ -172,7 +170,7 @@ If you join **before** a video has been selected, you land directly in
 the party. If you join **while a video is already playing**, the
 existing users will see a vote modal asking whether to restart the
 video from the beginning so you can join in sync. See the
-[User Guide](docs/USER_GUIDE.md#joining-a-party-that-is-already-watching)
+[project wiki](https://github.com/Oratorian/emby-watchparty/wiki)
 for full details of the late-joiner vote flow.
 
 ### Controls
@@ -189,9 +187,9 @@ for full details of the late-joiner vote flow.
 
 ### Documentation
 
-- **[User Guide](docs/USER_GUIDE.md)** - End-user guide covering the
-  full party flow, late-joiner vote, per-user streams, and the admin
-  panel
+- **[Project wiki](https://github.com/Oratorian/emby-watchparty/wiki)** -
+  End-user docs covering the full party flow, late-joiner vote,
+  per-user streams, and the admin panel
 - **[Socket.IO API](docs/SOCKET_API.md)** - Developer reference for
   the Socket.IO event protocol
 - **REST API** - `GET /docs` or `GET /redoc` on a running instance for
@@ -222,13 +220,13 @@ Configuration is split into two tiers:
 | `EMBY_API_KEY` | Emby API key (server admin key) | (required) |
 
 `REQUIRE_LOGIN` was previously here. It now lives in the admin panel as
-a runtime setting; see [docs/AUTH-DESIGN.md](docs/AUTH-DESIGN.md) for
-the semantics.
+a runtime, hot-reloadable setting; see the **Authentication & Library
+Locking** section above for the full semantics.
 
 ### Admin panel (runtime, hot-reloadable)
 
 All of the following settings are editable at `/admin`. See the
-[User Guide](docs/USER_GUIDE.md#admin-panel) for a walkthrough.
+[project wiki](https://github.com/Oratorian/emby-watchparty/wiki) for a walkthrough.
 
 **Logging**
 

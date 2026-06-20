@@ -8,8 +8,7 @@ import { useSocketStore } from './socket'
  *
  * The 2.0 model has no global "logged-in user." Authentication is the
  * act of any party member promoting themselves to that party's host,
- * which unlocks the library for everyone in the room. See
- * docs/AUTH-DESIGN.md.
+ * which unlocks the library for everyone in the room.
  *
  * - `requireLogin` is the runtime admin toggle (REQUIRE_LOGIN). When
  *   true, even creating a party requires Emby credentials.

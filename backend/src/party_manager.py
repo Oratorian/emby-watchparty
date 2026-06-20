@@ -134,9 +134,9 @@ class PartyManager:
             # spam attacks. None or 0 means no cooldown active.
             "join_cooldown_until": 0,
             # Host = the Emby-authenticated member whose access_token signs
-            # every Emby call for this party. See docs/AUTH-DESIGN.md.
-            # host_left_at is set when the host's socket drops; the grace
-            # window in connection.py decides whether to clear or restore.
+            # every Emby call for this party. host_left_at is set when the
+            # host's socket drops; the grace window in connection.py
+            # decides whether to clear or restore.
             "host_client_id": None,
             "host_user_id": None,
             "host_access_token": None,
@@ -286,7 +286,7 @@ class PartyManager:
         return len(self.watch_parties)
 
     # =========================================================================
-    # Host management (see docs/AUTH-DESIGN.md)
+    # Host management
     # =========================================================================
 
     def set_host(
