@@ -47,6 +47,20 @@ Codename: **Midnight Premiere**. Branch: `2.0-Rework`. The version is `2.0.0-dev
 
 Closed-beta builds tagged on GHCR. The version stays `2.0.0-dev` while in active development; each beta below carries only the bullets new to that build. The **Breaking Changes** above and the **Technical details** further down apply to the dev cycle as a whole, not to any individual beta.
 
+#### [2.0.0-beta12] - 2026-06-20 - A-Z library jump bar
+
+##### Added
+
+- **iOS-style A-Z jump bar** to the library browser. A column of `#` + `A` through `Z` buttons renders to the right of the items grid whenever the loaded list has at least 30 items (short folders / seasons stay clean). Letters with no matching items are dim and not clickable; letters that do have matches glow cyan on hover. **Left-click** scrolls the grid to the first item whose name starts with that letter (`scrollIntoView({ behavior: 'smooth' })`). **Right-click** toggles a filter that hides every card except the ones starting with that letter; right-click the same letter again to clear. The active letter pulses on a 1.2-second breathing glow so it's obvious which letter is currently filtering the view; `prefers-reduced-motion` swaps the pulse for a static glow. The filter resets automatically on folder navigation, search, or going back to the library root so it never carries over into an unrelated view.
+
+##### Changed
+
+- **Emby `/Items` query now requests `SortBy=SortName&SortOrder=Ascending`.** Emby strips leading articles for `SortName` -- "The Matrix" sorts under M, "An Inconvenient Truth" under I -- so the A-Z jump bar lands on the letter the user actually reaches for. Doing the sort at the Emby query layer keeps pagination boundaries aligned with the displayed order; a client-side re-sort after fetching would have scrambled page boundaries.
+
+##### Fixed
+
+- **A-Z jump bar letters were dim until the user scrolled.** The library is paginated (50 items per page), so on a fresh mount the bar's dim/active state only reflected page 1's letter range and the rest stayed grey until the IntersectionObserver-driven scroll loader fetched more pages. Pagination was the right perf model for the original "browse and scroll" UX but it broke the new "see which letters have content at a glance" expectation. After the first page returns on a library with `>=30` items (the threshold that shows the bar), a sequential cascade-loader walks the remaining pages in the background so the bar fills out without any scroll input. The scroll-trigger still works in parallel via the existing `loadingMore` gate -- if you scroll past the sentinel before the background loop reaches that page, the sentinel wins, no double-fetch.
+
 #### [2.0.0-beta11] - 2026-06-17 - Reverse-proxy support + multi-version playback
 
 ##### Added
