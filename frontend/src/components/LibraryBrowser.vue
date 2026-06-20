@@ -31,39 +31,68 @@
 
       <div v-else-if="items.length === 0" class="empty">No items found.</div>
 
-      <div v-else class="items-grid">
-        <div
-          v-for="item in items"
-          :key="item.Id"
-          class="item-card"
-          :class="{ 'item-card-live': item.Id === playingItemId }"
-          @click="handleItemClick(item)"
-        >
-          <div class="item-poster" :style="posterStyle(item)">
-            <img
-              v-if="item.ImageTags?.Primary"
-              :src="imageUrl(item.Id)"
-              :alt="item.Name"
-              loading="lazy"
-            />
-            <div v-else class="no-poster">{{ item.Name.charAt(0) }}</div>
-            <div v-if="item.Id === playingItemId" class="live-badge" aria-label="Currently playing">
-              <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span class="live-text">LIVE</span>
+      <div v-else class="library-content">
+        <div class="items-grid">
+          <div
+            v-for="item in displayedItems"
+            :key="item.Id"
+            :data-item-id="item.Id"
+            class="item-card"
+            :class="{ 'item-card-live': item.Id === playingItemId }"
+            @click="handleItemClick(item)"
+          >
+            <div class="item-poster" :style="posterStyle(item)">
+              <img
+                v-if="item.ImageTags?.Primary"
+                :src="imageUrl(item.Id)"
+                :alt="item.Name"
+                loading="lazy"
+              />
+              <div v-else class="no-poster">{{ item.Name.charAt(0) }}</div>
+              <div v-if="item.Id === playingItemId" class="live-badge" aria-label="Currently playing">
+                <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="live-text">LIVE</span>
+              </div>
+            </div>
+            <div class="item-info">
+              <span class="item-name">{{ item.Name }}</span>
+              <span class="item-meta">
+                <span v-if="item.ProductionYear">{{ item.ProductionYear }}</span>
+                <span v-if="item.ProductionYear && itemRuntime(item)" class="sep">·</span>
+                <span v-if="itemRuntime(item)">{{ itemRuntime(item) }}</span>
+                <span v-if="!item.ProductionYear && !itemRuntime(item)" class="item-type">{{ item.Type }}</span>
+              </span>
             </div>
           </div>
-          <div class="item-info">
-            <span class="item-name">{{ item.Name }}</span>
-            <span class="item-meta">
-              <span v-if="item.ProductionYear">{{ item.ProductionYear }}</span>
-              <span v-if="item.ProductionYear && itemRuntime(item)" class="sep">·</span>
-              <span v-if="itemRuntime(item)">{{ itemRuntime(item) }}</span>
-              <span v-if="!item.ProductionYear && !itemRuntime(item)" class="item-type">{{ item.Type }}</span>
-            </span>
+          <div v-if="hasMore" ref="sentinel" class="sentinel">
+            <span v-if="loadingMore">Loading more...</span>
           </div>
         </div>
-        <div v-if="hasMore" ref="sentinel" class="sentinel">
-          <span v-if="loadingMore">Loading more...</span>
+
+        <!-- iOS-style A-Z jump bar. Only renders when the list is long
+             enough that scrolling becomes a chore (>=30 items). Dimmed
+             letters have no matching items and are not clickable.
+             Left-click jumps to the letter; right-click toggles a
+             filter that hides everything except items starting with
+             that letter (right-click the same letter again to clear). -->
+        <div v-if="showAlphabetBar" class="alphabet-bar" aria-label="Jump to letter">
+          <button
+            v-for="letter in ALPHABET"
+            :key="letter"
+            class="alphabet-letter"
+            :class="{
+              dim: !alphabetIndex.has(letter),
+              active: filteredLetter === letter,
+            }"
+            :disabled="!alphabetIndex.has(letter)"
+            @click="jumpToLetter(letter)"
+            @contextmenu="toggleFilterLetter(letter, $event)"
+            :aria-label="filteredLetter === letter
+              ? `Showing only ${letter}; right-click to clear`
+              : `Jump to ${letter}; right-click to show only ${letter}`"
+          >
+            {{ letter }}
+          </button>
         </div>
       </div>
   </div>
@@ -79,6 +108,15 @@ const party = usePartyStore()
 // card. Falls back to null when nothing is selected so the overlay never
 // renders accidentally on a stale match.
 const playingItemId = computed<string | null>(() => party.currentVideo?.item_id ?? null)
+
+// iOS-style A-Z jump bar (rendered on lists with >=30 items so short
+// folders / seasons don't sprout a sidebar for no reason). `#` covers
+// everything starting with a digit, symbol, or non-Latin glyph so the
+// total column height stays constant at 27 buttons regardless of what
+// the library contains.
+const ALPHABET = ['#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+                  'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+const ALPHABET_BAR_MIN_ITEMS = 30
 
 interface EmbyItem {
   Id: string
@@ -175,6 +213,70 @@ function imageUrl(id: string): string {
   return api.imageUrl(id, 'Primary')
 }
 
+// First letter of each item's Name, bucketed for the A-Z jump bar.
+// Returns '#' for digits/symbols so they cluster under one button
+// rather than spreading across letters that don't exist. Articles are
+// already stripped server-side via Emby's SortName (`The Matrix` is
+// sorted as `Matrix`) so the on-screen card order matches the letter
+// the user reaches for.
+function bucketLetter(name: string): string {
+  const first = (name || '').trim().charAt(0).toUpperCase()
+  return /^[A-Z]$/.test(first) ? first : '#'
+}
+
+// Map letter -> first item Id starting with that letter. Always built
+// against the FULL items list (not the filtered view below) so the
+// jump bar can navigate to any letter even while a filter is active.
+const alphabetIndex = computed(() => {
+  const map = new Map<string, string>()
+  for (const item of items.value) {
+    const letter = bucketLetter(item.Name)
+    if (!map.has(letter)) {
+      map.set(letter, item.Id)
+    }
+  }
+  return map
+})
+
+const showAlphabetBar = computed(() => items.value.length >= ALPHABET_BAR_MIN_ITEMS)
+
+// Right-click on a letter restricts the visible grid to items whose
+// names start with that letter. null = no filter, show everything.
+// Cleared automatically whenever the underlying items list is replaced
+// (folder navigation, fresh search, etc.) so a filter never carries
+// over into an unrelated view.
+const filteredLetter = ref<string | null>(null)
+
+const displayedItems = computed(() => {
+  if (!filteredLetter.value) return items.value
+  return items.value.filter((item) => bucketLetter(item.Name) === filteredLetter.value)
+})
+
+function jumpToLetter(letter: string) {
+  // Left-click always shows the full list and jumps to the letter --
+  // otherwise scrolling to letter "A" while filtered to "M" would
+  // silently no-op because A's first item is currently filtered out.
+  filteredLetter.value = null
+  const targetId = alphabetIndex.value.get(letter)
+  if (!targetId) return
+  // Defer the scroll one tick so any DOM updates from clearing the
+  // filter have flushed before we look up the target card.
+  nextTick(() => {
+    const el = document.querySelector(`[data-item-id="${targetId}"]`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+}
+
+function toggleFilterLetter(letter: string, event: MouseEvent) {
+  // Block the native browser context menu -- right-click on the
+  // alphabet bar is "filter" in this UI, not "inspect element".
+  event.preventDefault()
+  if (!alphabetIndex.value.has(letter)) return
+  filteredLetter.value = filteredLetter.value === letter ? null : letter
+}
+
 // Compute the card's aspect ratio from Emby's PrimaryImageAspectRatio.
 // Emby returns this as a float (width/height): 0.667 for 2:3 portrait,
 // 1.778 for 16:9 landscape, ~4.0 for ultra-wide custom banners. By
@@ -220,6 +322,7 @@ async function fetchLibraries() {
     const data = await api.libraries()
     items.value = data.Items ?? data ?? []
     clearLibraryState()
+    filteredLetter.value = null
   } catch {
     items.value = []
   } finally {
@@ -248,6 +351,9 @@ async function fetchItems(parentId: string, append = false) {
     loading.value = true
     items.value = []
     currentParentId.value = parentId
+    // A fresh navigation means a fresh A-Z scope; the previous
+    // letter-filter shouldn't carry over into an unrelated view.
+    filteredLetter.value = null
   }
   try {
     const startIndex = append ? items.value.length : 0
@@ -284,6 +390,26 @@ async function fetchItems(parentId: string, append = false) {
     loading.value = false
     loadingMore.value = false
   }
+  // After the FIRST page returns, if the library is large enough to
+  // want the alphabet bar, cascade-load the remaining pages in the
+  // background so the bar's dim/active state reflects the whole
+  // library rather than just whichever 50 items happened to land
+  // first. The IntersectionObserver-driven scroll loader still wins
+  // races thanks to the loadingMore gate -- the background loop just
+  // makes sure pagination doesn't stall on a list the user never has
+  // a reason to scroll (search results, top-level libraries, etc.).
+  if (!append && hasMore.value && items.value.length >= ALPHABET_BAR_MIN_ITEMS) {
+    void cascadeLoadAll()
+  }
+}
+
+async function cascadeLoadAll() {
+  // Walk subsequent pages sequentially until Emby says we're done.
+  // Sequential (not parallel) so we don't dogpile a slow Emby with
+  // 20 concurrent /api/items hits on a fresh library mount.
+  while (hasMore.value && !loadingMore.value && currentParentId.value) {
+    await fetchItems(currentParentId.value, true)
+  }
 }
 
 function loadMore() {
@@ -297,6 +423,7 @@ async function doSearch() {
   loading.value = true
   isSearching.value = true
   breadcrumbs.value = []
+  filteredLetter.value = null
   try {
     const data = await api.search(q)
     items.value = data.Items ?? data ?? []
@@ -464,10 +591,102 @@ onUnmounted(() => {
   color: var(--text-primary);
 }
 
+/* Flex row that puts the A-Z bar to the right of the grid. The grid
+   gets flex:1 + min-width:0 so it can shrink to make room for the bar
+   without forcing horizontal scroll on the panel. */
+.library-content {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
 .items-grid {
+  flex: 1;
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 0.75rem;
+}
+
+/* The bar is sticky inside the scrolling library panel so it follows
+   the user down the list without being absolutely positioned (which
+   would have required hard-coded scroll-container coordinates).
+   `top: 0` pins it to the top of the visible viewport within the
+   panel; the panel's own padding takes care of breathing room. */
+.alphabet-bar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 2px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  user-select: none;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.alphabet-letter {
+  background: none;
+  border: 0;
+  padding: 0;
+  width: 18px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  font-family: var(--font-sans);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.alphabet-letter:hover:not(:disabled) {
+  background: var(--accent-primary-dim);
+}
+
+/* Active state when the right-click filter is pinned to this letter.
+   Inverted colour so it reads as "this is what's currently selected"
+   at a glance even on a dense column of letters. Adds a glow pulse so
+   the active letter visibly draws the eye -- ~1.2s breathing cycle,
+   slow enough not to read as a strobe but fast enough to be noticeable
+   in peripheral vision while the user is scanning cards. */
+.alphabet-letter.active {
+  background: var(--accent-primary);
+  color: var(--bg-deep);
+  animation: alphabet-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes alphabet-pulse {
+  0%, 30% {
+    box-shadow: 0 0 0 0 var(--accent-primary-glow);
+    background: var(--accent-primary);
+  }
+  100% {
+    box-shadow: 0 0 6px 2px var(--accent-primary-glow);
+    background: #67e8f9;
+  }
+}
+
+/* Respect users who disabled motion in their OS -- show the active
+   state as a static glow without the looping animation. */
+@media (prefers-reduced-motion: reduce) {
+  .alphabet-letter.active {
+    animation: none;
+    box-shadow: 0 0 6px 2px var(--accent-primary-glow);
+  }
+}
+
+.alphabet-letter.dim,
+.alphabet-letter:disabled {
+  color: var(--text-muted);
+  opacity: 0.4;
+  cursor: default;
 }
 
 .item-card {

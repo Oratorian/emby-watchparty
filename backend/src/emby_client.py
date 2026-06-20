@@ -252,6 +252,15 @@ class EmbyClient:
             params = {
                 "Recursive": str(effective_recursive).lower(),
                 "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,ParentIndexNumber,SeriesId,SeasonId",
+                # SortName strips leading articles ("The Matrix" sorts
+                # under M, "An Inconvenient Truth" under I), so the
+                # frontend A-Z jump bar lands on the letter the user
+                # would actually look under. Doing this at the Emby
+                # query layer keeps pagination consistent with the
+                # display order (a client-side re-sort would scramble
+                # page boundaries).
+                "SortBy": "SortName",
+                "SortOrder": "Ascending",
             }
 
             if parent_id:

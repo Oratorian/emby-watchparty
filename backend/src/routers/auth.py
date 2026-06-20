@@ -6,6 +6,8 @@ and promotes them to host of their current party. See
 docs/AUTH-DESIGN.md.
 """
 
+import os
+
 from fastapi import APIRouter, Depends, Request
 import requests as http_requests
 
@@ -18,6 +20,53 @@ from backend.src.schemas import (
 )
 
 router = APIRouter(prefix="/api", tags=["auth"])
+
+
+# Undocumented dev gate. When set in the process environment, the
+# in-party "Login to Become Host" endpoint ignores the request body
+# and authenticates with these pre-stored Emby credentials instead
+# -- so during continuous dev / restart cycles you don't have to
+# retype the same admin password into the modal every time the
+# backend bounces.
+#
+# Two env vars must BOTH be present for the gate to activate:
+#
+#   EMBY_WATCHPARTY_X_DEV_HOST=username:password
+#   EMBY_WATCHPARTY_X_DEV_HOST_ACCEPT_RISK=true
+#
+# The ACCEPT_RISK var is a deliberate second key -- it forces anyone
+# who copies a `.env` from elsewhere (or restores one from backup) to
+# explicitly opt in to "yes I know any party member becomes host for
+# free, this is a dev box". Missing ACCEPT_RISK with DEV_HOST set
+# fails closed: the gate is OFF, the modal works normally, and a
+# loud ERROR fires at startup pointing at the misconfiguration.
+#
+# Both vars are deliberately NOT in `config.py` (would surface on
+# /admin) and NOT in `.env.example` (would be suggested by the
+# templated bootstrap). The variable names are intentionally obscure
+# so a casual reader of /api/admin/config, /admin, or the source
+# tree can't guess at their existence. Operators who want them set
+# them directly in the container env or untracked `.env`.
+def _env_dev_host_risk_accepted() -> bool:
+    return os.getenv("EMBY_WATCHPARTY_X_DEV_HOST_ACCEPT_RISK", "").strip().lower() == "true"
+
+
+def _env_dev_host_creds() -> tuple[str | None, str | None]:
+    raw = os.getenv("EMBY_WATCHPARTY_X_DEV_HOST", "").strip()
+    if not raw or ":" not in raw:
+        return None, None
+    # Fail closed when the acknowledgement is missing or set to
+    # anything other than the literal string "true". This is the
+    # second key that arms the gate -- without it the creds are
+    # treated as if they weren't set at all.
+    if not _env_dev_host_risk_accepted():
+        return None, None
+    user, _, pw = raw.partition(":")
+    user = user.strip()
+    pw = pw.strip()
+    if not user or not pw:
+        return None, None
+    return user, pw
 
 
 @router.post("/auth/login", response_model=LoginResponse)
@@ -57,7 +106,21 @@ async def api_login(
             message="Party no longer exists",
         )
 
-    auth = emby_client.authenticate(body.username, body.password)
+    # Hidden dev shortcut: if EMBY_WATCHPARTY_X_DEV_HOST is set in env
+    # (format `user:pass`), ignore whatever was typed in the modal and
+    # authenticate with the stored creds instead. Lets a dev hit
+    # "Become Host" with junk input and still get promoted across
+    # backend restarts. Loud WARNING on every use so it never goes
+    # unnoticed if accidentally left set in a non-dev environment.
+    dev_user, dev_pw = _env_dev_host_creds()
+    if dev_user and dev_pw:
+        logger.warning(
+            f"Party {party_id}: host login auto-promoted via dev gate "
+            f"(EMBY_WATCHPARTY_X_DEV_HOST set, body credentials ignored)"
+        )
+        auth = emby_client.authenticate(dev_user, dev_pw)
+    else:
+        auth = emby_client.authenticate(body.username, body.password)
     if not auth:
         return LoginResponse(success=False, message="Invalid Emby credentials")
 

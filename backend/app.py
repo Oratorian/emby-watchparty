@@ -81,6 +81,31 @@ async def lifespan(app: FastAPI):
     logger.info(f"Emby Server: {config.EMBY_SERVER_URL}")
     if config.APP_PREFIX:
         logger.info(f"App Prefix: {config.APP_PREFIX}")
+    # Loud startup banner for the hidden dev-host gate. Two env vars
+    # gate this jointly so a stray .env carried in from elsewhere
+    # can't accidentally arm "anyone becomes host" mode: setting
+    # EMBY_WATCHPARTY_X_DEV_HOST alone is intentionally a no-op until
+    # the operator also sets EMBY_WATCHPARTY_X_DEV_HOST_ACCEPT_RISK=true
+    # as an explicit acknowledgement. See backend/src/routers/auth.py
+    # for the gate; the var names are intentionally kept off /admin
+    # and out of .env.example.
+    import os as _os
+    _dev_host_set = bool(_os.getenv("EMBY_WATCHPARTY_X_DEV_HOST", "").strip())
+    _dev_host_ack = _os.getenv("EMBY_WATCHPARTY_X_DEV_HOST_ACCEPT_RISK", "").strip().lower() == "true"
+    if _dev_host_set and _dev_host_ack:
+        logger.warning(
+            "DEV GATE ACTIVE: EMBY_WATCHPARTY_X_DEV_HOST is set and the "
+            "risk is acknowledged. Any /api/auth/login call OR new party "
+            "join will auto-promote the caller using the stored "
+            "credentials. Do NOT leave this set in production deployments."
+        )
+    elif _dev_host_set and not _dev_host_ack:
+        logger.error(
+            "DEV GATE MISCONFIGURED: EMBY_WATCHPARTY_X_DEV_HOST is set "
+            "but EMBY_WATCHPARTY_X_DEV_HOST_ACCEPT_RISK is not 'true'. "
+            "The gate is DISABLED. Set the second var to 'true' to arm it, "
+            "or remove DEV_HOST entirely if you didn't mean to set either."
+        )
     logger.info("Components initialized successfully")
 
     # Store on app.state for dependency injection

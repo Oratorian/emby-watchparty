@@ -11,8 +11,11 @@ See docs/AUTH-DESIGN.md.
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.src.dependencies import (
-    get_config, get_party_manager, get_logger, get_emby_client,
+    get_config, get_party_manager, get_logger, get_emby_client, get_sio,
 )
+# Shared dev-host gate -- single source of truth lives in auth.py so the
+# env var name and value-parsing rules can never drift between modules.
+from backend.src.routers.auth import _env_dev_host_creds
 from backend.src.schemas import (
     CreatePartyRequest,
     CreatePartyResponse,
@@ -200,11 +203,13 @@ def create_party(
 
 
 @router.post("/{party_id}/join", response_model=JoinPartyResponse)
-def join_party(
+async def join_party(
     party_id: str,
     body: JoinPartyRequest,
     request: Request,
     party_manager=Depends(get_party_manager),
+    emby_client=Depends(get_emby_client),
+    sio=Depends(get_sio),
     logger=Depends(get_logger),
 ):
     """Issue the party-bound session cookie used by every protected route.
@@ -234,10 +239,50 @@ def join_party(
         f"(client_id={body.client_id[:8]}...)"
     )
 
+    # Hidden dev gate: when EMBY_WATCHPARTY_X_DEV_HOST is set in env AND
+    # the party has nobody hosting (fresh party / restart / host left),
+    # auto-promote whoever's joining to host so the "Login to Become
+    # Host" modal never appears during a continuous dev / restart loop.
+    # Skipped silently when the party already has a host so existing
+    # members don't get bumped on every new join.
+    dev_user, dev_pw = _env_dev_host_creds()
+    is_host = party.get("host_client_id") == body.client_id
+    if dev_user and dev_pw and not party_manager.is_unlocked(party_id):
+        auth = emby_client.authenticate(dev_user, dev_pw)
+        if auth:
+            party_manager.set_host(
+                party_id,
+                client_id=body.client_id,
+                user_id=auth["user_id"],
+                access_token=auth["access_token"],
+                username=auth["username"],
+                is_admin=auth["is_admin"],
+            )
+            is_host = True
+            logger.warning(
+                f"Party {party_id}: auto-promoted '{body.display_name}' to "
+                f"host via dev gate (EMBY_WATCHPARTY_X_DEV_HOST)"
+            )
+            await sio.emit(
+                "host_changed",
+                {
+                    "host_username": auth["username"],
+                    "host_client_id": body.client_id,
+                    "is_admin": auth["is_admin"],
+                    "unlocked": True,
+                },
+                room=party_id,
+            )
+        else:
+            logger.error(
+                f"Party {party_id}: dev gate is set but Emby auth FAILED for "
+                f"'{dev_user}' -- check EMBY_WATCHPARTY_X_DEV_HOST value"
+            )
+
     return JoinPartyResponse(
         success=True,
         party_id=party_id,
-        is_host=(party.get("host_client_id") == body.client_id),
+        is_host=is_host,
         party_unlocked=party_manager.is_unlocked(party_id),
     )
 
