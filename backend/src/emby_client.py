@@ -250,14 +250,22 @@ class EmbyClient:
             params = {
                 "Recursive": str(effective_recursive).lower(),
                 "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,ParentIndexNumber,SeriesId,SeasonId",
-                # SortName strips leading articles ("The Matrix" sorts
-                # under M, "An Inconvenient Truth" under I), so the
-                # frontend A-Z jump bar lands on the letter the user
-                # would actually look under. Doing this at the Emby
-                # query layer keeps pagination consistent with the
-                # display order (a client-side re-sort would scramble
-                # page boundaries).
-                "SortBy": "SortName",
+                # Three-tier sort that works for every listing type
+                # without needing parent-type detection:
+                #   - ParentIndexNumber (season number) and IndexNumber
+                #     (episode-within-season / season-within-series)
+                #     order content for season + episode listings, so
+                #     "Episode 2" comes after "Episode 1" instead of
+                #     being SortName-shuffled alphabetically by title.
+                #   - SortName breaks ties for everything else (Series,
+                #     Movies, Music, Folders) where the index fields
+                #     are null. Articles are stripped by Emby for
+                #     SortName ("The Matrix" sorts as M), so the A-Z
+                #     jump bar still lands on the letter the user
+                #     reaches for. Pagination boundaries stay aligned
+                #     with the displayed order because the sort
+                #     happens at the Emby query layer.
+                "SortBy": "ParentIndexNumber,IndexNumber,SortName",
                 "SortOrder": "Ascending",
             }
 
@@ -277,6 +285,38 @@ class EmbyClient:
             return response.json()
         except Exception as e:
             self.logger.error(f"Error fetching items: {e}")
+            return {"Items": [], "TotalRecordCount": 0}
+
+    def get_season_episodes(self, season_id, access_token=None, user_id=None):
+        """Return all episodes in a season, in air-date order.
+
+        Used by the binge-watching path to figure out what "next" is
+        after the current episode ends. Sorted by ParentIndexNumber
+        (season number) then IndexNumber so multi-season specials and
+        episode-zero entries land in the right spot rather than getting
+        scrambled by the default SortName ordering (which would put
+        "Episode 10" before "Episode 2").
+        """
+        try:
+            if user_id:
+                url = f"{self.server_url}/emby/Users/{user_id}/Items"
+            else:
+                url = f"{self.server_url}/emby/Items"
+            params = {
+                "ParentId": season_id,
+                "IncludeItemTypes": "Episode",
+                "Recursive": "false",
+                "Fields": "Overview,PrimaryImageAspectRatio,IndexNumber,ParentIndexNumber,SeriesId,SeasonId,RunTimeTicks",
+                "SortBy": "ParentIndexNumber,IndexNumber",
+                "SortOrder": "Ascending",
+            }
+            response = requests.get(
+                url, headers=self._headers(access_token, user_id), params=params
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self.logger.error(f"Error fetching season episodes: {e}")
             return {"Items": [], "TotalRecordCount": 0}
 
     def get_item_details(self, item_id, access_token=None, user_id=None):

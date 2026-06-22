@@ -47,6 +47,16 @@ const props = defineProps<{
   quality: string
   currentTime: number
   mediaSourceId?: string
+  // Binge-watching surface: shown only when the admin's master switch
+  // is on (bingeAvailable), the current item is an Episode, and the
+  // viewer is the host (PartyView gates this -- this component does
+  // not check it again). bingeActive reflects the host's per-party
+  // opt-in. When the modal fires the host (or any user) cancels via
+  // a separate path; this button only toggles the master per-party
+  // active flag.
+  bingeAvailable?: boolean
+  bingeActive?: boolean
+  bingeVisible?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -57,6 +67,7 @@ const emit = defineEmits<{
   // +30). PartyView computes the target media time and routes through
   // the party seek path so everyone moves together.
   'jump': [seconds: number]
+  'toggle-binge': []
 }>()
 
 const audioTracks = ref<AudioStream[]>([])
@@ -348,6 +359,17 @@ onMounted(() => {
       </select>
     </div>
 
+    <button
+      v-if="bingeVisible && bingeAvailable"
+      class="binge-btn"
+      :class="{ active: bingeActive }"
+      :title="bingeActive ? 'Binge-watch: ON (auto-advance enabled). Click to turn off.' : 'Binge-watch: OFF. Click to auto-play the next episode when this one ends.'"
+      @click="emit('toggle-binge')"
+    >
+      <span class="binge-dot" />
+      Binge {{ bingeActive ? 'ON' : 'OFF' }}
+    </button>
+
     <div class="jump-group">
       <button class="jump-btn" @click="onJump(-30)" title="Back 30 seconds">−30s</button>
       <button class="jump-btn" @click="onJump(-10)" title="Back 10 seconds">−10s</button>
@@ -406,6 +428,59 @@ onMounted(() => {
   display: flex;
   gap: 6px;
   align-items: center;
+}
+
+/* When the binge button is in the strip it takes the right-anchor;
+   the jump-group sits inline next to it without re-pushing right. */
+.binge-btn + .jump-group {
+  margin-left: 0;
+}
+
+/* Binge button sits between the dropdowns and the jump-group, pushed
+   right by margin-left:auto so it's anchored to the right side of the
+   strip together with Jump/Skip. Active state gets the cyan-magenta
+   gradient that's used for the LIVE badge -- "currently armed". */
+.binge-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.binge-btn:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
+}
+
+.binge-btn.active {
+  background: linear-gradient(90deg, rgba(0, 224, 255, 0.18), rgba(255, 62, 214, 0.18));
+  border-color: rgba(0, 224, 255, 0.6);
+  color: var(--text-primary);
+  box-shadow: 0 0 12px rgba(0, 224, 255, 0.25);
+}
+
+.binge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+}
+
+.binge-btn.active .binge-dot {
+  background: var(--color-accent-cyan, #00e0ff);
+  box-shadow: 0 0 6px var(--color-accent-cyan, #00e0ff);
 }
 
 .jump-label {

@@ -11,7 +11,8 @@ Identity model:
   stored host token is wiped (full LOCKED).
 """
 
-from datetime import datetime
+import asyncio
+from datetime import datetime, timedelta
 from backend.src.quality import (
     DEFAULT_QUALITY_ID,
     normalise_quality_id,
@@ -34,6 +35,135 @@ def register(ctx):
     def _host_creds(party):
         """Return (access_token, user_id) for the party's current host."""
         return party.get("host_access_token"), party.get("host_user_id")
+
+    def _find_next_episode(episode_list, current_index_number):
+        """Return the episode dict with the smallest IndexNumber strictly
+        greater than current_index_number, or None for end-of-season.
+        Pulled out into a helper so the same logic drives both the
+        binge auto-advance pick at video_ended AND the "next" hint
+        pinned on current_video at selection time (used by the
+        frontend NEXT badge on the library card so the host sees
+        what's queued before the current episode ends).
+        """
+        if current_index_number is None or not episode_list:
+            return None
+        next_ep = None
+        for ep in episode_list:
+            ep_num = ep.get("IndexNumber")
+            if ep_num is None or ep_num <= current_index_number:
+                continue
+            if next_ep is None or ep_num < next_ep.get("IndexNumber"):
+                next_ep = ep
+        return next_ep
+
+    def _resolve_episode_context(party, item_id, access_token, user_id):
+        """Look up Type / SeriesId / SeasonId / IndexNumber for the
+        currently-selected item and (for Episodes) cache the season's
+        full episode list on the party so video_ended can find "next"
+        without re-querying Emby. Returns a dict with keys item_type,
+        series_id, season_id, episode_index -- all may be None for
+        non-Episode items or when Emby fails to return metadata.
+
+        Episode list caching keys on season_id; switching to a different
+        season's episode (or to a non-Episode item) clears the cache.
+        """
+        result = {
+            "item_type": None, "series_id": None,
+            "season_id": None, "episode_index": None,
+            "index_number": None,
+            # Precomputed "what plays after this" so the frontend NEXT
+            # badge can render the moment binge is armed, not just
+            # during the countdown window. None for movies, the last
+            # episode in a season, or anything without IndexNumber.
+            "next_item_id": None,
+            "next_item_title": None,
+        }
+        if not user_id:
+            party["episode_list"] = None
+            party["episode_list_season_id"] = None
+            return result
+
+        details = emby_client.get_item_details(
+            item_id, access_token=access_token, user_id=user_id,
+        )
+        if not details:
+            party["episode_list"] = None
+            party["episode_list_season_id"] = None
+            return result
+
+        item_type = details.get("Type")
+        result["item_type"] = item_type
+        if item_type != "Episode":
+            party["episode_list"] = None
+            party["episode_list_season_id"] = None
+            return result
+
+        series_id = details.get("SeriesId")
+        # Emby exposes the season as ParentId for episodes; SeasonId is
+        # also set but ParentId is the field used elsewhere in this
+        # codebase for the immediate parent.
+        season_id = details.get("SeasonId") or details.get("ParentId")
+        result["series_id"] = series_id
+        result["season_id"] = season_id
+
+        if not season_id:
+            party["episode_list"] = None
+            party["episode_list_season_id"] = None
+            return result
+
+        # Cache hit: same season as last selection, reuse the list.
+        if party.get("episode_list_season_id") != season_id or not party.get("episode_list"):
+            episodes = emby_client.get_season_episodes(
+                season_id, access_token=access_token, user_id=user_id,
+            )
+            items = episodes.get("Items", []) if episodes else []
+            # Trim to the fields binge-watching needs; we don't want to
+            # store full Emby payloads on long-lived party state.
+            party["episode_list"] = [
+                {
+                    "Id": ep.get("Id"),
+                    "Name": ep.get("Name"),
+                    "IndexNumber": ep.get("IndexNumber"),
+                    "ParentIndexNumber": ep.get("ParentIndexNumber"),
+                    "SeriesId": ep.get("SeriesId"),
+                    "SeasonId": ep.get("SeasonId"),
+                }
+                for ep in items
+                if ep.get("Id")
+            ]
+            party["episode_list_season_id"] = season_id
+
+        # Capture both list position AND canonical IndexNumber. The list
+        # position is informational (used for "Episode N of M" display);
+        # IndexNumber is what binge-advance uses to find "next", because
+        # the list can include specials at IndexNumber 0 (which would
+        # mis-sort Ep1 to a non-zero position and make idx+1 jump past
+        # the real next episode).
+        result["index_number"] = details.get("IndexNumber")
+        for idx, ep in enumerate(party["episode_list"]):
+            if ep.get("Id") == item_id:
+                result["episode_index"] = idx
+                break
+
+        next_ep = _find_next_episode(party["episode_list"], result["index_number"])
+        if next_ep:
+            result["next_item_id"] = next_ep.get("Id")
+            result["next_item_title"] = next_ep.get("Name")
+
+        # Debug-log the resolved metadata so users hitting weird auto-advance
+        # behaviour can hand us a log line to diagnose. Includes the season's
+        # IndexNumber distribution so we can spot specials / split-cour
+        # numbering at a glance.
+        list_numbers = [ep.get("IndexNumber") for ep in party["episode_list"]]
+        logger.info(
+            f"Binge ctx resolved: item={item_id} name={details.get('Name')!r} "
+            f"IndexNumber={result['index_number']} "
+            f"ParentIndexNumber={details.get('ParentIndexNumber')} "
+            f"SeasonId={season_id} list_position={result['episode_index']} "
+            f"season_index_numbers={list_numbers}"
+        )
+
+        return result
 
     def _default_audio_index(media_source):
         """Find the default audio track index from a media source."""
@@ -188,6 +318,16 @@ def register(ctx):
         if rc["ready_sids"] >= rc["expected_sids"]:
             party["ready_check"] = None
             playback_state = party.get("playback_state", {})
+            # Auto-play hand-off for binge-advance: when the previous
+            # video ended into auto-advance, the user expectation is
+            # "next episode just keeps playing" -- requiring the host
+            # to click play after every episode defeats the whole
+            # feature. The flag is set on the party when the watchdog
+            # fires the restart and cleared here so a subsequent
+            # manual select still pauses on ready as usual.
+            auto_play_pending = party.pop("auto_play_after_ready", False)
+            if auto_play_pending:
+                playback_state["playing"] = True
             if playback_state.get("playing"):
                 playback_state["last_update"] = datetime.now().isoformat()
             logger.info(f"All users ready in party {party_id}")
@@ -195,6 +335,17 @@ def register(ctx):
                 "time": playback_state.get("time", 0),
                 "playing": playback_state.get("playing", False),
             }, room=party_id)
+            if auto_play_pending:
+                # Mirror the normal "host clicked play" broadcast so
+                # every client's <video> resumes via the same code path
+                # the seek/play handlers already use. Username is None
+                # so the frontend doesn't render a "X resumed playback"
+                # system message for an auto-event.
+                await sio.emit("play", {
+                    "time": playback_state.get("time", 0),
+                    "username": None,
+                    "auto_binge": True,
+                }, room=party_id)
         else:
             ready_names = [party["users"].get(s, "?") for s in rc["ready_sids"]]
             waiting_names = [party["users"].get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]
@@ -246,6 +397,13 @@ def register(ctx):
         prev_time = party["playback_state"].get("time", 0)
         _stop_all_user_streams(party, prev_time)
 
+        # Resolve episode metadata (Type / SeriesId / SeasonId / IndexNumber)
+        # for binge-watching. For Episode-typed items this also primes
+        # the season's episode list cache so video_ended can decide
+        # what "next" is without an extra Emby round-trip when the
+        # episode finishes. Non-Episode items clear the cache.
+        episode_ctx = _resolve_episode_context(party, item_id, access_token, user_id)
+
         # Store shared video info (no per-user fields). selected_by is the
         # persistent client_id, not the current sid.
         party["current_video"] = {
@@ -253,6 +411,13 @@ def register(ctx):
             "run_time_seconds": run_time_seconds,
             "media_source_id": resolved_media_source_id,
             "selected_by": selector_client_id,
+            "item_type": episode_ctx["item_type"],
+            "series_id": episode_ctx["series_id"],
+            "season_id": episode_ctx["season_id"],
+            "episode_index": episode_ctx["episode_index"],
+            "index_number": episode_ctx["index_number"],
+            "next_item_id": episode_ctx["next_item_id"],
+            "next_item_title": episode_ctx["next_item_title"],
         }
 
         party["playback_state"] = {
@@ -288,6 +453,13 @@ def register(ctx):
                     "audio_index": default_audio, "subtitle_index": None,
                     "media_source_id": stream["media_source_id"],
                     "selected_by": selector_client_id, "quality": DEFAULT_QUALITY_ID,
+                    "item_type": episode_ctx["item_type"],
+                    "series_id": episode_ctx["series_id"],
+                    "season_id": episode_ctx["season_id"],
+                    "episode_index": episode_ctx["episode_index"],
+                    "episode_count": len(party.get("episode_list") or []) if episode_ctx["item_type"] == "Episode" else 0,
+                    "next_item_id": episode_ctx["next_item_id"],
+                    "next_item_title": episode_ctx["next_item_title"],
                 }
             }, to=user_sid)
 
@@ -334,6 +506,16 @@ def register(ctx):
             await sio.emit("error", {"message": "Not a party member"}, to=sid)
             return
 
+        # A manual selection overrides any pending auto-advance. Silent
+        # cancel: the upcoming video_selected broadcast is the
+        # authoritative signal, so a stale "auto_advance_cancelled"
+        # would just race the new modal off-screen. Also drop the
+        # "auto-play after ready" flag so a manual pick from the
+        # library doesn't unexpectedly start playing without the
+        # selector having to hit play.
+        await _cancel_pending_auto_advance(party_id, party, silent=True)
+        party.pop("auto_play_after_ready", None)
+
         success = await _restart_video_from_beginning(
             party, party_id, selector_client_id, item_id, item_name, item_overview,
             media_source_id=media_source_id,
@@ -360,6 +542,10 @@ def register(ctx):
         current_time = party["playback_state"].get("time", 0)
 
         _stop_all_user_streams(party, current_time)
+
+        # Pending auto-advance can't apply to a stopped video; tear it
+        # down. Loud cancel so any modal currently up snaps closed.
+        await _cancel_pending_auto_advance(party_id, party, by_username=username)
 
         party["current_video"] = None
         party["ready_check"] = None
@@ -514,6 +700,7 @@ def register(ctx):
 
         logger.info(f"Video ended in party {party_id}")
         final_pos = party.get("current_video", {}).get("run_time_seconds", 0)
+        prev_video = party.get("current_video") or {}
         _stop_all_user_streams(party, final_pos)
 
         party["playback_state"] = {
@@ -522,11 +709,254 @@ def register(ctx):
         party["ready_check"] = None
 
         # If host already left, this is the moment we fully lock the party.
+        # Do this BEFORE the binge-advance check; auto-advance can't start
+        # if the host token is gone (the next _restart_video_from_beginning
+        # would fail at get_playback_info anyway, but skipping early
+        # avoids the failed Emby call + the broadcast that promised one).
         _wipe_host_if_orphan(party_id, party)
 
         await sio.emit("video_ended", {
             "party_id": party_id, "timestamp": datetime.now().isoformat(),
         }, room=party_id)
+
+        # Binge-watching: if conditions are met, queue an auto-advance.
+        # Branches off the just-ended video's stored episode metadata,
+        # not anything from the payload, so a client can't spoof what
+        # plays next.
+        await _maybe_start_auto_advance(party_id, party, prev_video)
+
+    async def _maybe_start_auto_advance(party_id, party, prev_video):
+        """Inspect the just-ended video + party state and either kick off
+        the auto-advance countdown or emit a 'no advance' signal (for
+        end-of-season / not-an-episode / disabled) so the frontend can
+        do the right thing (open the library, drop a system message).
+
+        "Next" is the episode with the smallest IndexNumber strictly
+        greater than the current one -- NOT just the next item in the
+        list. Emby returns specials, theme songs, and extras alongside
+        regular episodes in a season's child collection; sorting by
+        ParentIndexNumber,IndexNumber still leaves IndexNumber=0
+        specials at the top, which means the real Ep1 sits at list
+        position 5+ instead of 0. Resolving by IndexNumber sidesteps
+        that whole class of ordering quirks and gracefully handles
+        gaps (missing Ep6 in a season -> next is Ep7).
+        """
+        # Admin master switch + per-party host opt-in.
+        if not config.BINGE_WATCH_ENABLED or not party.get("binge_watch_active"):
+            return
+        if not party_manager.is_unlocked(party_id):
+            return
+        if prev_video.get("item_type") != "Episode":
+            return
+
+        episode_list = party.get("episode_list") or []
+        current_idx_number = prev_video.get("index_number")
+        if current_idx_number is None or not episode_list:
+            return
+
+        # Find next: smallest IndexNumber strictly greater than current.
+        # Skips specials (IndexNumber 0 / None) and survives gaps.
+        next_episode = None
+        for ep in episode_list:
+            ep_num = ep.get("IndexNumber")
+            if ep_num is None or ep_num <= current_idx_number:
+                continue
+            if next_episode is None or ep_num < next_episode.get("IndexNumber"):
+                next_episode = ep
+
+        # End of season: nothing past the current IndexNumber. Tell the
+        # frontend so it can pop the library and drop a "season
+        # finished" system message.
+        if next_episode is None:
+            await sio.emit("binge_finished", {
+                "series_id": prev_video.get("series_id"),
+                "season_id": prev_video.get("season_id"),
+            }, room=party_id)
+            return
+
+        # Selector still in the party? If they've left we don't have
+        # anyone to anchor the advance against, so skip silently. The
+        # host (if still around) can pick the next episode manually.
+        selector_client_id = prev_video.get("selected_by")
+        if not _selector_still_present(party, selector_client_id):
+            return
+
+        await _queue_auto_advance(party_id, party, prev_video, next_episode)
+
+    def _selector_still_present(party, selector_client_id):
+        if not selector_client_id:
+            return False
+        return selector_client_id in (party.get("sid_client_ids") or {}).values()
+
+    async def _queue_auto_advance(party_id, party, prev_video, next_episode):
+        """Set the pending auto-advance state, emit auto_advance_pending,
+        and start the watchdog that fires _restart_video_from_beginning
+        when the countdown expires."""
+        # Cancel any prior pending advance defensively. video_ended
+        # shouldn't fire while one's already queued, but if a client
+        # bugs out and re-emits, don't pile up watchdog tasks.
+        await _cancel_pending_auto_advance(party_id, party, by_username=None, silent=True)
+
+        countdown = max(1, int(config.BINGE_WATCH_COUNTDOWN_SECONDS))
+        deadline = datetime.now() + timedelta(seconds=countdown)
+        next_item_id = next_episode.get("Id")
+        next_title = next_episode.get("Name") or "Next episode"
+        # Display label uses the next episode's canonical IndexNumber
+        # (Emby's "this is Episode N") rather than its list position.
+        # Total is the highest IndexNumber in the season -- not the
+        # list length, which would include any specials Emby returns.
+        next_index_number = next_episode.get("IndexNumber")
+        total_episodes = max(
+            (ep.get("IndexNumber") or 0) for ep in (party.get("episode_list") or [])
+        ) if party.get("episode_list") else 0
+
+        task = asyncio.create_task(_auto_advance_watchdog(party_id, countdown))
+        party["pending_auto_advance"] = {
+            "next_item_id": next_item_id,
+            "next_title": next_title,
+            "next_index_number": next_index_number,
+            "selector_client_id": prev_video.get("selected_by"),
+            "deadline": deadline.isoformat(),
+            "task": task,
+        }
+        await sio.emit("auto_advance_pending", {
+            "next_item_id": next_item_id,
+            "next_title": next_title,
+            "next_index_number": next_index_number,
+            "total_episodes": total_episodes,
+            "deadline": deadline.isoformat(),
+            "countdown_seconds": countdown,
+        }, room=party_id)
+        logger.info(
+            f"Auto-advance queued in party {party_id}: "
+            f"next={next_item_id} ({next_title}) in {countdown}s"
+        )
+
+    async def _auto_advance_watchdog(party_id, countdown):
+        """Sleep countdown seconds; if the pending advance is still set,
+        kick off the restart. Cancelled by _cancel_pending_auto_advance
+        if the user clicks cancel or the admin flips the toggle off."""
+        try:
+            await asyncio.sleep(countdown)
+        except asyncio.CancelledError:
+            return
+
+        party = party_manager.get(party_id)
+        if not party:
+            return
+        pending = party.get("pending_auto_advance")
+        if not pending:
+            return
+
+        # Re-check the gates -- the host may have left or the admin may
+        # have flipped the toggle off in the interval.
+        if not config.BINGE_WATCH_ENABLED or not party.get("binge_watch_active"):
+            await _cancel_pending_auto_advance(party_id, party, by_username=None)
+            return
+        if not party_manager.is_unlocked(party_id):
+            await _cancel_pending_auto_advance(party_id, party, by_username=None)
+            return
+
+        next_item_id = pending["next_item_id"]
+        next_title = pending["next_title"]
+        selector_client_id = pending["selector_client_id"]
+        party["pending_auto_advance"] = None
+
+        await sio.emit("auto_advance_fired", {
+            "next_item_id": next_item_id,
+            "next_title": next_title,
+        }, room=party_id)
+
+        # Tell _check_all_ready that the next video should kick into
+        # play as soon as everyone's transcode has loaded. Without this
+        # the host would have to click play after every episode -- not
+        # what anyone expects from "binge mode". Set BEFORE the
+        # restart so the new ready-check phase sees it.
+        party["auto_play_after_ready"] = True
+
+        success = await _restart_video_from_beginning(
+            party, party_id, selector_client_id, next_item_id, next_title, "",
+        )
+        if not success:
+            logger.warning(
+                f"Auto-advance failed to start next episode in party {party_id}: "
+                f"{next_item_id}"
+            )
+            await sio.emit("error", {
+                "message": "Failed to auto-advance to next episode"
+            }, room=party_id)
+
+    async def _cancel_pending_auto_advance(party_id, party, by_username=None, silent=False):
+        """Cancel any queued auto-advance and (unless silent) notify the
+        room. silent=True is used when we replace one pending advance
+        with another -- the new auto_advance_pending event is the
+        authoritative signal and an intermediate 'cancelled' would just
+        confuse the UI."""
+        pending = party.get("pending_auto_advance")
+        if not pending:
+            return False
+        task = pending.get("task")
+        if task and not task.done():
+            task.cancel()
+        party["pending_auto_advance"] = None
+        if not silent:
+            await sio.emit("auto_advance_cancelled", {
+                "by_username": by_username,
+            }, room=party_id)
+            logger.info(
+                f"Auto-advance cancelled in party {party_id} "
+                f"(by={by_username or 'system'})"
+            )
+        return True
+
+    # Expose cancel helper so the admin-config and host-leave paths can
+    # tear down a pending auto-advance from outside this module.
+    ctx['cancel_pending_auto_advance'] = _cancel_pending_auto_advance
+
+    @sio.on("auto_advance_cancel")
+    async def handle_auto_advance_cancel(sid, data):
+        party_id = data.get("party_id", "").strip().upper()
+        party = party_manager.get(party_id)
+        if not party:
+            return
+        username = party["users"].get(sid)
+        await _cancel_pending_auto_advance(party_id, party, by_username=username)
+
+    @sio.on("set_binge_watch_active")
+    async def handle_set_binge_watch_active(sid, data):
+        party_id = data.get("party_id", "").strip().upper()
+        active = bool(data.get("active"))
+        party = party_manager.get(party_id)
+        if not party:
+            return
+
+        # Host-only: only the user holding the host token can toggle the
+        # session-level switch. Non-hosts get nothing; we don't even
+        # send back an error because the button shouldn't have been
+        # visible to them in the first place.
+        caller_client_id = _client_id_for_sid(party, sid)
+        if not caller_client_id or party.get("host_client_id") != caller_client_id:
+            return
+        if not config.BINGE_WATCH_ENABLED:
+            # Admin toggle is off -- feature isn't available. Silently
+            # refuse and re-broadcast state so a stale client UI snaps
+            # back to reality.
+            await sio.emit("binge_watch_state_changed", {
+                "available": False, "active": False,
+            }, room=party_id)
+            return
+
+        party["binge_watch_active"] = active
+        # Turning it off mid-countdown should kill the queued advance.
+        if not active:
+            await _cancel_pending_auto_advance(party_id, party, by_username=None)
+        await sio.emit("binge_watch_state_changed", {
+            "available": True, "active": active,
+        }, room=party_id)
+        logger.info(
+            f"Binge-watch {'enabled' if active else 'disabled'} in party {party_id} "
+            f"by {party['users'].get(sid, '?')}"
+        )
 
     @sio.on("report_progress")
     async def handle_report_progress(sid, data):

@@ -134,6 +134,15 @@ def register(ctx):
             "media_source_id": stream.get("media_source_id"),
             "selected_by": current_video.get("selected_by"),
             "quality": stream.get("quality", current_video.get("quality", DEFAULT_QUALITY_ID)),
+            # Carry the binge-watching metadata so a late joiner sees
+            # the same control-strip button visibility and library
+            # NEXT badge as the rest of the room.
+            "item_type": current_video.get("item_type"),
+            "series_id": current_video.get("series_id"),
+            "season_id": current_video.get("season_id"),
+            "episode_index": current_video.get("episode_index"),
+            "next_item_id": current_video.get("next_item_id"),
+            "next_item_title": current_video.get("next_item_title"),
         }, current_time
 
     def _votes_by_username(party, votes_dict):
@@ -598,11 +607,27 @@ def register(ctx):
                     "title": cv.get("title"),
                     "overview": cv.get("overview"),
                     "selected_by": cv.get("selected_by"),
+                    "item_type": cv.get("item_type"),
+                    "series_id": cv.get("series_id"),
+                    "season_id": cv.get("season_id"),
+                    "episode_index": cv.get("episode_index"),
+                    "next_item_id": cv.get("next_item_id"),
+                    "next_item_title": cv.get("next_item_title"),
                 }
 
         await sio.emit("sync_state", {
             "current_video": current_video,
             "playback_state": playback_state,
+            # Binge-watching state is part of the joiner's view of the
+            # room: the control-strip button should render in the right
+            # state from the first frame instead of flickering when a
+            # follow-up event lands. available is read from the live
+            # admin toggle so flipping it off in /admin is reflected on
+            # the very next join.
+            "binge_watch": {
+                "available": bool(config.BINGE_WATCH_ENABLED),
+                "active": bool(party.get("binge_watch_active")),
+            },
         }, to=sid)
 
     @sio.on("join_vote")

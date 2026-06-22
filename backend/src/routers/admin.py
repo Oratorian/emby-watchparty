@@ -192,6 +192,45 @@ async def update_config(
             if dissolved:
                 await _dissolve_party(dissolved, sio, token_manager, logger)
 
+        # Binge-watch master toggle changed: propagate to every live
+        # party so the control-strip button appears / disappears
+        # without anyone needing to refresh. The frontend hides the
+        # button on available=false and closes any open AutoAdvance
+        # modal on the implicit cancel.
+        if 'BINGE_WATCH_ENABLED' in changed:
+            if not config.BINGE_WATCH_ENABLED:
+                # Off: cancel any countdown, force-clear per-party active
+                # flag, then broadcast only to parties that were actually
+                # affected (saves a round-trip on the silent majority).
+                affected = party_manager.disable_binge_watch_globally()
+                for affected_id in affected:
+                    try:
+                        await sio.emit("binge_watch_state_changed", {
+                            "available": False, "active": False,
+                        }, room=affected_id)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to emit binge_watch_state_changed to {affected_id}: {e}"
+                        )
+            else:
+                # On: broadcast available=true to EVERY active party so
+                # the host's control-strip button materialises right
+                # away. The per-party `binge_watch_active` flag is
+                # untouched here -- hosts opt in per session via the
+                # button -- so we surface whatever value is already on
+                # the party (zero for fresh parties, possibly true if
+                # the admin off/on cycled while a host had it armed).
+                for active_id, active_party in party_manager.get_all().items():
+                    try:
+                        await sio.emit("binge_watch_state_changed", {
+                            "available": True,
+                            "active": bool(active_party.get("binge_watch_active")),
+                        }, room=active_id)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to emit binge_watch_state_changed to {active_id}: {e}"
+                        )
+
         actor = admin_display_name(request, party_manager) or "(unknown admin)"
         logger.info(f"Admin config updated by '{actor}': {changed}")
         return ConfigUpdateResponse(success=True, changed=changed, config=config.get_runtime_dict())

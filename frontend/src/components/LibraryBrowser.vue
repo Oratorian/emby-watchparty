@@ -38,7 +38,10 @@
             :key="item.Id"
             :data-item-id="item.Id"
             class="item-card"
-            :class="{ 'item-card-live': item.Id === playingItemId }"
+            :class="{
+              'item-card-live': item.Id === playingItemId,
+              'item-card-next': item.Id === nextItemId,
+            }"
             @click="handleItemClick(item)"
           >
             <div class="item-poster" :style="posterStyle(item)">
@@ -52,6 +55,10 @@
               <div v-if="item.Id === playingItemId" class="live-badge" aria-label="Currently playing">
                 <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
                 <span class="live-text">LIVE</span>
+              </div>
+              <div v-else-if="item.Id === nextItemId" class="next-badge" aria-label="Up next">
+                <span class="next-arrow" aria-hidden="true">&#9654;</span>
+                <span class="next-text">NEXT</span>
               </div>
             </div>
             <div class="item-info">
@@ -108,6 +115,16 @@ const party = usePartyStore()
 // card. Falls back to null when nothing is selected so the overlay never
 // renders accidentally on a stale match.
 const playingItemId = computed<string | null>(() => party.currentVideo?.item_id ?? null)
+// Drives the NEXT badge on the queued-up episode. Backend pins
+// next_item_id on current_video at selection time (precomputed via
+// IndexNumber), so the badge can show the moment the host arms binge
+// rather than waiting for the auto-advance countdown. Gated on the
+// host having opted in via the Binge ON/OFF pill -- otherwise no
+// auto-advance is going to happen and the badge would mislead.
+const nextItemId = computed<string | null>(() => {
+  if (!party.bingeWatch.active) return null
+  return party.currentVideo?.next_item_id ?? null
+})
 
 // iOS-style A-Z jump bar (rendered on lists with >=30 items so short
 // folders / seasons don't sprout a sidebar for no reason). `#` covers
@@ -716,6 +733,16 @@ onUnmounted(() => {
   box-shadow: 0 0 0 1px var(--border-accent), 0 0 24px rgba(34, 211, 238, 0.08);
 }
 
+.item-card-next {
+  /* Magenta-tinted glow on the queued-up episode so the user can see
+     at a glance what binge-watching is about to fire. Distinct hue
+     from .item-card-live (cyan) so the two states never blur into
+     each other when the library is open during the countdown. */
+  border-color: rgba(255, 62, 214, 0.55);
+  background: linear-gradient(180deg, rgba(255, 62, 214, 0.06), transparent);
+  box-shadow: 0 0 0 1px rgba(255, 62, 214, 0.55), 0 0 24px rgba(255, 62, 214, 0.1);
+}
+
 .item-poster {
   /* aspect-ratio is set inline via posterStyle() from each item's
      PrimaryImageAspectRatio so each card matches its image. The
@@ -789,6 +816,37 @@ onUnmounted(() => {
 @keyframes lib-eq {
   0%, 100% { transform: scaleY(0.4); }
   50%      { transform: scaleY(1); }
+}
+
+/* NEXT overlay: same chip shape and position as .live-badge so they
+   read as members of the same family, but a magenta accent (matching
+   the AutoAdvanceModal progress bar gradient) and a tiny play-arrow
+   glyph in place of the EQ animation. Static rather than animated
+   because the countdown itself already provides the urgency cue --
+   doubling up with another pulsing element would just feel busy. */
+.next-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 7px;
+  background: rgba(6, 7, 13, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 62, 214, 0.6);
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--color-accent-magenta, #ff3ed6);
+  pointer-events: none;
+}
+
+.next-badge .next-arrow {
+  font-size: 8px;
+  line-height: 1;
 }
 
 .item-info {
