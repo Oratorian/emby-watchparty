@@ -62,6 +62,22 @@ class RuntimeConfig:
     # False: anyone can create a party; any member can later log in to host.
     REQUIRE_LOGIN: bool = False
 
+    # Make binge-watching (auto-advance to next episode when current ends)
+    # available to hosts. Two-tier toggle: this flag gates whether the
+    # control-strip button appears at all; flipping it on does NOT enable
+    # auto-advance for any party that's already running -- the host still
+    # has to click the button. When the admin flips this OFF mid-session
+    # the server emits binge_watch_state_changed with available=False so
+    # the button disappears and any pending auto-advance is cancelled.
+    BINGE_WATCH_ENABLED: bool = False
+
+    # Countdown shown to the room before auto-advance fires. Any user can
+    # hit Cancel during this window; selector wins, but any cancel stops
+    # it (so a child grabbing the remote can stop the next episode just
+    # by clicking). 4 seconds matches what 1.x used and feels right for
+    # "noticed it / decided not to" without feeling laggy.
+    BINGE_WATCH_COUNTDOWN_SECONDS: int = 4
+
     # Force every HLS request to disable Emby's stream-copy fallback.
     # When False (default), Emby decides per-source: h264 within the
     # bitrate cap gets stream-copied (CPU/GPU friendly, segments follow
@@ -215,7 +231,7 @@ class RuntimeConfig:
         """Return field info for the admin UI"""
         sections = {
             'Auth': ['REQUIRE_LOGIN'],
-            'Playback': ['FORCE_TRANSCODE'],
+            'Playback': ['FORCE_TRANSCODE', 'BINGE_WATCH_ENABLED', 'BINGE_WATCH_COUNTDOWN_SECONDS'],
             'Quality': ['ENABLED_QUALITY_OPTIONS'],
             'Logging': ['LOG_LEVEL', 'LOG_TO_FILE', 'LOG_FILE', 'LOG_FORMAT', 'LOG_MAX_SIZE', 'CONSOLE_LOG_LEVEL'],
             'Security': ['MAX_USERS_PER_PARTY', 'ENABLE_HLS_TOKEN_VALIDATION', 'HLS_TOKEN_EXPIRY',

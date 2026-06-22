@@ -603,6 +603,16 @@ def register(ctx):
         await sio.emit("sync_state", {
             "current_video": current_video,
             "playback_state": playback_state,
+            # Binge-watching state is part of the joiner's view of the
+            # room: the control-strip button should render in the right
+            # state from the first frame instead of flickering when a
+            # follow-up event lands. available is read from the live
+            # admin toggle so flipping it off in /admin is reflected on
+            # the very next join.
+            "binge_watch": {
+                "available": bool(config.BINGE_WATCH_ENABLED),
+                "active": bool(party.get("binge_watch_active")),
+            },
         }, to=sid)
 
     @sio.on("join_vote")

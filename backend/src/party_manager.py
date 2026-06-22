@@ -143,6 +143,28 @@ class PartyManager:
             "host_is_admin": False,
             "host_username": None,
             "host_left_at": None,
+            # Binge-watching: per-party host opt-in (admin gates whether
+            # the host even sees the button). The active flag is only
+            # meaningful when config.BINGE_WATCH_ENABLED is True; if the
+            # admin flips that off mid-session the server emits
+            # binge_watch_state_changed with available=False and any
+            # pending auto-advance is cancelled.
+            "binge_watch_active": False,
+            # Cached episode list for the season the currently-playing
+            # item belongs to. Populated by select_video when the item
+            # is an Episode and we've fetched its siblings; cleared when
+            # a non-Episode item is selected or when a different season
+            # is picked. Each entry is the trimmed Emby item dict (id,
+            # name, IndexNumber, ParentIndexNumber, etc.) sufficient to
+            # decide what "next" is.
+            "episode_list": None,
+            "episode_list_season_id": None,
+            # Auto-advance state. When video_ended fires on an Episode
+            # and binge_watch_active is True with a next episode in the
+            # list, this is populated with the pending advance + a
+            # deadline; the watchdog task either fires it or clears it
+            # on cancel. None when no advance is queued.
+            "pending_auto_advance": None,
         }
 
     def _create_party_dict(self, party_id: str) -> dict:
@@ -345,6 +367,31 @@ class PartyManager:
         """True iff an Emby access token is stored (HLS usable)."""
         party = self.watch_parties.get(party_id)
         return bool(party and party.get("host_access_token"))
+
+    def disable_binge_watch_globally(self) -> list[str]:
+        """Tear down per-party binge state across every party. Used by
+        the admin save path when BINGE_WATCH_ENABLED flips off, so any
+        currently-active session loses its button + countdown
+        immediately rather than waiting for the next page reload.
+
+        Returns a list of party_ids that were affected (so the caller
+        can broadcast binge_watch_state_changed only to rooms that
+        actually had it on).
+        """
+        affected = []
+        for party_id, party in self.watch_parties.items():
+            was_active = bool(party.get("binge_watch_active"))
+            pending = party.get("pending_auto_advance")
+            if not was_active and not pending:
+                continue
+            if pending:
+                task = pending.get("task")
+                if task and not task.done():
+                    task.cancel()
+                party["pending_auto_advance"] = None
+            party["binge_watch_active"] = False
+            affected.append(party_id)
+        return affected
 
     def is_unlocked(self, party_id: str) -> bool:
         """True iff a host is present and the library is browsable."""

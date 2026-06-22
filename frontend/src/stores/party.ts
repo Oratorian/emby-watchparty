@@ -44,6 +44,29 @@ export const usePartyStore = defineStore('party', () => {
   const readyUsers = ref<string[]>([])
   const waitingUsers = ref<string[]>([])
 
+  // Binge-watch state. `available` is the admin master toggle; when
+  // false, the control-strip button is hidden entirely. `active` is
+  // the host's per-party opt-in (only meaningful when available=true).
+  // Both arrive on sync_state at join and on binge_watch_state_changed
+  // when the admin or host toggles them.
+  const bingeWatch = ref<{ available: boolean; active: boolean }>({
+    available: false, active: false,
+  })
+
+  // Pending auto-advance modal state. Non-null only between video_ended
+  // and the next video_selected / video_stopped, while the countdown
+  // is running. timeoutAt is the absolute deadline (ms since epoch);
+  // the modal computes "seconds remaining" against that anchor instead
+  // of holding its own counter, so clients with drifty clocks land in
+  // the same place.
+  const pendingAutoAdvance = ref<{
+    nextItemId: string
+    nextTitle: string
+    nextIndexNumber: number
+    totalEpisodes: number
+    timeoutAt: number
+  } | null>(null)
+
   // Late-joiner vote state. Non-null while a vote is in progress.
   // isPending=true means "I am the late joiner being voted on" (waiting room).
   // isPending=false means "I am an existing user voting on a late joiner" (modal).
@@ -142,6 +165,8 @@ export const usePartyStore = defineStore('party', () => {
       'streams_changed', 'ready_check_update', 'all_ready',
       'join_vote_started', 'join_vote_pending', 'join_vote_update',
       'join_vote_resolved', 'join_rejected',
+      'binge_watch_state_changed', 'auto_advance_pending',
+      'auto_advance_cancelled', 'auto_advance_fired', 'binge_finished',
     ]
     for (const e of events) socket.off(e)
 
@@ -192,6 +217,12 @@ export const usePartyStore = defineStore('party', () => {
       } else {
         streamOffset.value = 0
       }
+      if (data.binge_watch) {
+        bingeWatch.value = {
+          available: !!data.binge_watch.available,
+          active: !!data.binge_watch.active,
+        }
+      }
     })
 
     socket.on('video_selected', (data: any) => {
@@ -235,6 +266,46 @@ export const usePartyStore = defineStore('party', () => {
       if (data.time !== undefined) {
         playbackState.value.time = data.time
       }
+    })
+
+    socket.on('binge_watch_state_changed', (data: any) => {
+      bingeWatch.value = {
+        available: !!data.available,
+        active: !!data.active,
+      }
+      // If the master toggle was just flipped off, any pending modal
+      // is implicitly dismissed. The server also emits its own
+      // auto_advance_cancelled in that case, but clearing here too
+      // makes the UI safe even if events arrive out of order.
+      if (!data.available) pendingAutoAdvance.value = null
+    })
+
+    socket.on('auto_advance_pending', (data: any) => {
+      const deadline = data.deadline ? Date.parse(data.deadline) : Date.now() + 4000
+      pendingAutoAdvance.value = {
+        nextItemId: data.next_item_id,
+        nextTitle: data.next_title,
+        nextIndexNumber: data.next_index_number,
+        totalEpisodes: data.total_episodes,
+        timeoutAt: deadline,
+      }
+    })
+
+    socket.on('auto_advance_cancelled', () => {
+      pendingAutoAdvance.value = null
+    })
+
+    socket.on('auto_advance_fired', () => {
+      // Modal collapses; the upcoming video_selected event will set the
+      // new currentVideo and start the next stream.
+      pendingAutoAdvance.value = null
+    })
+
+    socket.on('binge_finished', () => {
+      // End of season -- consumer (PartyView) decides whether to show
+      // a system message and reopen the library. The store just clears
+      // any leftover pending state.
+      pendingAutoAdvance.value = null
     })
 
     socket.on('streams_changed', (data: any) => {
@@ -358,10 +429,26 @@ export const usePartyStore = defineStore('party', () => {
     })
   }
 
+  function setBingeWatchActive(active: boolean) {
+    const socket = useSocketStore()
+    if (!partyId.value) return
+    socket.emit('set_binge_watch_active', {
+      party_id: partyId.value, active,
+    })
+  }
+
+  function cancelAutoAdvance() {
+    const socket = useSocketStore()
+    if (!partyId.value || !pendingAutoAdvance.value) return
+    socket.emit('auto_advance_cancel', { party_id: partyId.value })
+  }
+
   return {
     partyId, username, users, members, currentVideo, playbackState, userCount,
     myStreamUrl, streamOffset, readyCheckActive, readyUsers, waitingUsers,
     pendingVote,
+    bingeWatch, pendingAutoAdvance,
     join, leave, setupListeners, submitVote,
+    setBingeWatchActive, cancelAutoAdvance,
   }
 })

@@ -284,6 +284,38 @@ onMounted(async () => {
           </div>
           <ToggleSwitch v-model="config.FORCE_TRANSCODE" />
         </div>
+        <div class="setting-row">
+          <div class="setting-label">
+            <span>Binge-Watch</span>
+            <span class="setting-hint">
+              Off (default): the binge-watch button is hidden from the host's
+              control strip entirely; episodes never auto-advance.
+              <br /><br />
+              On: the host gets a "Binge ON/OFF" pill in the control strip
+              while an Episode is playing. When the host turns it on, the
+              next episode in the same season auto-plays after the current
+              one ends (with a countdown that any user can cancel). Movies
+              and standalone items never auto-advance, regardless of this
+              setting.
+              <br /><br />
+              Turning this off mid-session hides the button in every active
+              party and cancels any countdown that's already running.
+            </span>
+          </div>
+          <ToggleSwitch v-model="config.BINGE_WATCH_ENABLED" />
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">
+            <span>Binge Countdown (s)</span>
+            <span class="setting-hint">
+              Seconds shown to the room before the next episode auto-plays.
+              Any user can hit Cancel during this window. 4 seconds is the
+              1.x default; shorter feels snappier, longer gives more time
+              to grab the remote.
+            </span>
+          </div>
+          <input type="number" v-model.number="config.BINGE_WATCH_COUNTDOWN_SECONDS" min="1" max="30" step="1" class="setting-input setting-input-sm" />
+        </div>
       </div>
 
       <!-- Quality -->

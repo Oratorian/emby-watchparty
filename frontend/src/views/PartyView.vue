@@ -2,7 +2,7 @@
 import { ref, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSocketStore } from '@/stores/socket'
-import { usePartyStore } from '@/stores/party'
+import { usePartyStore, getClientId } from '@/stores/party'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 import VideoControls from '@/components/VideoControls.vue'
 
@@ -32,6 +32,9 @@ const AvatarSetupModal = defineAsyncComponent(
 )
 const VersionPickerModal = defineAsyncComponent(
   () => import('@/components/VersionPickerModal.vue'),
+)
+const AutoAdvanceModal = defineAsyncComponent(
+  () => import('@/components/AutoAdvanceModal.vue'),
 )
 import { api } from '@/api/client'
 import { withPrefix } from '@/utils/appPrefix'
@@ -426,6 +429,25 @@ onMounted(async () => {
     // name prompt; otherwise the spinner sits forever.
     awaitingAutoJoin.value = false
     addSystemMessage(`Error: ${msg}`)
+  })
+
+  // Binge-watching: end of season. Backend sent this after video_ended
+  // for an episode that has no next episode in its season. Open the
+  // library so the host can pick another season/series; everyone else
+  // gets the system message so they understand why the player went
+  // back to the lobby state.
+  socket.on('binge_finished', () => {
+    addSystemMessage('Season finished -- pick another from the library.')
+    if (auth.isHost) showLibrary.value = true
+  })
+
+  // Cancel announcements -- the modal closes itself off the store
+  // state, but a system message keeps the chat history coherent.
+  socket.on('auto_advance_cancelled', (data: any) => {
+    const by = data?.by_username
+    if (by) {
+      addSystemMessage(`${by} cancelled auto-advance`)
+    }
   })
 
   // Late-joiner rejection: redirect home with a message
@@ -1022,6 +1044,24 @@ function onChangeTextSubtitle(payload: { index: number; url: string | null }) {
   showTrack()
 }
 
+function onVideoEnded() {
+  // The selector is the authoritative timekeeper for the party; they
+  // also signal end-of-video so the backend gets exactly one ended
+  // event per playthrough rather than one per user as each independent
+  // stream finishes. The backend uses this as the trigger to stop all
+  // per-user transcodes and (when binge-watching is on) queue the
+  // auto-advance to the next episode.
+  if (!party.partyId || !party.currentVideo) return
+  const myClientId = getClientId()
+  if (party.currentVideo.selected_by !== myClientId) return
+  socket.emit('video_ended', { party_id: party.partyId })
+}
+
+function toggleBingeWatch() {
+  if (!party.bingeWatch.available) return
+  party.setBingeWatchActive(!party.bingeWatch.active)
+}
+
 function onJump(seconds: number) {
   // Same flow as Skip Intro: compute the absolute media time we want,
   // emit, let the server broadcast the seek back to everyone including
@@ -1228,9 +1268,14 @@ async function submitBecomeHost(payload: { username: string; password: string })
             @seeking="onVideoSeeking"
             @seeked="onVideoSeeked"
             @timeupdate="onVideoTimeUpdate"
-            @ended="() => {}"
+            @ended="onVideoEnded"
             @ready="onStreamReady"
           />
+          <!-- Auto-advance countdown overlays the video, centered.
+               Lives inside video-wrapper so it pins to the player
+               element and never bleeds onto the chat / topbar / seekbar. -->
+          <AutoAdvanceModal />
+
           <VideoControls
             :party-id="party.partyId!"
             :item-id="party.currentVideo.item_id"
@@ -1238,10 +1283,14 @@ async function submitBecomeHost(payload: { username: string; password: string })
             :quality="party.currentVideo.quality || '1080p-high'"
             :current-time="currentTime"
             :media-source-id="party.currentVideo.media_source_id"
+            :binge-available="party.bingeWatch.available"
+            :binge-active="party.bingeWatch.active"
+            :binge-visible="auth.isHost && party.currentVideo.item_type === 'Episode'"
             @change-streams="onChangeStreams"
             @change-text-subtitle="onChangeTextSubtitle"
             @skip-intro="onSkipIntro"
             @jump="onJump"
+            @toggle-binge="toggleBingeWatch"
           />
           <div class="video-info">
             <h3>{{ party.currentVideo.title }}</h3>
