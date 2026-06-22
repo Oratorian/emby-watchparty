@@ -36,6 +36,26 @@ def register(ctx):
         """Return (access_token, user_id) for the party's current host."""
         return party.get("host_access_token"), party.get("host_user_id")
 
+    def _find_next_episode(episode_list, current_index_number):
+        """Return the episode dict with the smallest IndexNumber strictly
+        greater than current_index_number, or None for end-of-season.
+        Pulled out into a helper so the same logic drives both the
+        binge auto-advance pick at video_ended AND the "next" hint
+        pinned on current_video at selection time (used by the
+        frontend NEXT badge on the library card so the host sees
+        what's queued before the current episode ends).
+        """
+        if current_index_number is None or not episode_list:
+            return None
+        next_ep = None
+        for ep in episode_list:
+            ep_num = ep.get("IndexNumber")
+            if ep_num is None or ep_num <= current_index_number:
+                continue
+            if next_ep is None or ep_num < next_ep.get("IndexNumber"):
+                next_ep = ep
+        return next_ep
+
     def _resolve_episode_context(party, item_id, access_token, user_id):
         """Look up Type / SeriesId / SeasonId / IndexNumber for the
         currently-selected item and (for Episodes) cache the season's
@@ -51,6 +71,12 @@ def register(ctx):
             "item_type": None, "series_id": None,
             "season_id": None, "episode_index": None,
             "index_number": None,
+            # Precomputed "what plays after this" so the frontend NEXT
+            # badge can render the moment binge is armed, not just
+            # during the countdown window. None for movies, the last
+            # episode in a season, or anything without IndexNumber.
+            "next_item_id": None,
+            "next_item_title": None,
         }
         if not user_id:
             party["episode_list"] = None
@@ -118,6 +144,11 @@ def register(ctx):
             if ep.get("Id") == item_id:
                 result["episode_index"] = idx
                 break
+
+        next_ep = _find_next_episode(party["episode_list"], result["index_number"])
+        if next_ep:
+            result["next_item_id"] = next_ep.get("Id")
+            result["next_item_title"] = next_ep.get("Name")
 
         # Debug-log the resolved metadata so users hitting weird auto-advance
         # behaviour can hand us a log line to diagnose. Includes the season's
@@ -385,6 +416,8 @@ def register(ctx):
             "season_id": episode_ctx["season_id"],
             "episode_index": episode_ctx["episode_index"],
             "index_number": episode_ctx["index_number"],
+            "next_item_id": episode_ctx["next_item_id"],
+            "next_item_title": episode_ctx["next_item_title"],
         }
 
         party["playback_state"] = {
@@ -425,6 +458,8 @@ def register(ctx):
                     "season_id": episode_ctx["season_id"],
                     "episode_index": episode_ctx["episode_index"],
                     "episode_count": len(party.get("episode_list") or []) if episode_ctx["item_type"] == "Episode" else 0,
+                    "next_item_id": episode_ctx["next_item_id"],
+                    "next_item_title": episode_ctx["next_item_title"],
                 }
             }, to=user_sid)
 
