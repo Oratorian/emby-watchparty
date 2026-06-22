@@ -40,10 +40,14 @@ RUN mkdir -p /app/logs
 # metadata only and cannot read runtime env, so it documents the default.
 EXPOSE 5000
 
-# Shell-form CMD in the healthcheck so ${WATCH_PARTY_PORT} expands against
-# the container's environment; falls back to 5000 when unset.
+# Shell-form CMD in the healthcheck so ${WATCH_PARTY_PORT} and ${APP_PREFIX}
+# expand against the container's environment. When APP_PREFIX is unset the
+# expansion is empty and the URL stays /api/health; when set to /watchparty
+# the URL becomes /watchparty/api/health, matching the FastAPI router prefix.
+# ${APP_PREFIX%/} strips a trailing slash so operators who wrote
+# APP_PREFIX=/watchparty/ don't end up with a // in the path.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS http://localhost:${WATCH_PARTY_PORT:-5000}/api/health || exit 1
+    CMD curl -fsS "http://localhost:${WATCH_PARTY_PORT:-5000}${APP_PREFIX%/}/api/health" || exit 1
 
 # Launch via the app's own entrypoint so it binds to
 # WATCH_PARTY_BIND:WATCH_PARTY_PORT instead of a hardcoded port.
