@@ -47,6 +47,13 @@ Codename: **Midnight Premiere**. Branch: `2.0-Rework`. The version is `2.0.0-dev
 
 Closed-beta builds tagged on GHCR. The version stays `2.0.0-dev` while in active development; each beta below carries only the bullets new to that build. The **Breaking Changes** above and the **Technical details** further down apply to the dev cycle as a whole, not to any individual beta.
 
+#### [2.0.0-beta13] - 2026-06-22 - Thumbnail sizing + healthcheck behind APP_PREFIX
+
+##### Fixed
+
+- **Library card images now request thumbnail-sized renditions from Emby** (reported by [@xyxxyxxy](https://github.com/xyxxyxxy)). The `/api/image/{id}` proxy was forwarding full-resolution posters straight from Emby -- on libraries with high-quality artwork that meant downloading ~1000px-wide JPEGs (hundreds of KB each) just to render a 140px-wide card, and the library browser felt sluggish on throttled connections. The endpoint now accepts `maxWidth`, `maxHeight`, and `quality` query params and forwards them to Emby's image API, which downscales + re-encodes server-side before the bytes hit the wire (the same shape Emby's own web UI uses). `LibraryBrowser` requests `maxWidth=320 maxHeight=480 quality=90`, matching the auto-fill grid at retina density, so each card image drops from full-resolution to roughly 20-40 KB. No frontend layout change; just a smaller payload per card.
+- **`HEALTHCHECK` in the Docker image now honors `APP_PREFIX`.** With `APP_PREFIX=/watchparty` set, FastAPI's router mounts the health endpoint at `/watchparty/api/health`, but the healthcheck CMD was still probing `/api/health` and getting a 404, so Docker marked the container as unhealthy even though uvicorn was serving correctly. The healthcheck now expands `${APP_PREFIX%/}` into the probe URL so it follows the prefix wherever the operator sets it; the `%/` strip handles operators who write `APP_PREFIX=/watchparty/` with a trailing slash without producing a `//` in the path. Unset `APP_PREFIX` still resolves to `/api/health` exactly as before.
+
 #### [2.0.0-beta12] - 2026-06-20 - A-Z library jump bar
 
 ##### Added
