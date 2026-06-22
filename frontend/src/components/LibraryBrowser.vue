@@ -209,8 +209,13 @@ function loadLibraryState(): LibraryState | null {
   }
 }
 
+// Card grid is auto-fill from 140px-wide minmax, so cards are ~140-200px
+// at CSS pixels and need ~280-400px on a 2x display. 320x480 keeps posters
+// crisp at retina while letting Emby downscale + re-encode server-side
+// (the proxy used to forward full-resolution images, which made the grid
+// crawl on throttled connections -- xyxxyxxy, beta12).
 function imageUrl(id: string): string {
-  return api.imageUrl(id, 'Primary')
+  return api.imageUrl(id, 'Primary', { maxWidth: 320, maxHeight: 480, quality: 90 })
 }
 
 // First letter of each item's Name, bucketed for the A-Z jump bar.

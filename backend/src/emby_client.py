@@ -333,11 +333,26 @@ class EmbyClient:
             self.logger.error(f"Error searching items: {e}")
             return {"Items": []}
 
-    def get_image_url(self, item_id, image_type="Primary", access_token=None):
-        """Build an image URL with an api_key. Images are usually unscoped."""
+    def get_image_url(self, item_id, image_type="Primary", access_token=None,
+                      max_width=None, max_height=None, quality=None):
+        """Build an image URL with an api_key. Images are usually unscoped.
+
+        Optional `max_width` / `max_height` / `quality` are forwarded to
+        Emby so it can downscale + re-encode server-side. Library cards
+        only need ~240x360 thumbnails; without these the backend was
+        proxying full ~1000px posters and clients on slow connections
+        spent seconds per card.
+        """
+        params = [f"api_key={self._auth_param(access_token)}"]
+        if max_width:
+            params.append(f"maxWidth={int(max_width)}")
+        if max_height:
+            params.append(f"maxHeight={int(max_height)}")
+        if quality:
+            params.append(f"quality={int(quality)}")
         return (
             f"{self.server_url}/emby/Items/{item_id}/Images/{image_type}"
-            f"?api_key={self._auth_param(access_token)}"
+            f"?{'&'.join(params)}"
         )
 
     # =========================================================================

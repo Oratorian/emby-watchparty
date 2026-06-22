@@ -45,7 +45,17 @@ export const api = {
 
   // Media
   intro: (id: string) => apiFetch(`/api/intro/${id}`),
-  imageUrl: (id: string, type = 'Primary') => withPrefix(`/api/image/${id}?type=${type}`),
+  imageUrl: (
+    id: string,
+    type = 'Primary',
+    opts?: { maxWidth?: number; maxHeight?: number; quality?: number },
+  ) => {
+    const params = new URLSearchParams({ type })
+    if (opts?.maxWidth) params.set('maxWidth', String(opts.maxWidth))
+    if (opts?.maxHeight) params.set('maxHeight', String(opts.maxHeight))
+    if (opts?.quality) params.set('quality', String(opts.quality))
+    return withPrefix(`/api/image/${id}?${params.toString()}`)
+  },
 
   // Quality
   qualityOptions: () => apiFetch('/api/quality-options'),

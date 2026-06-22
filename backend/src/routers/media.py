@@ -70,13 +70,27 @@ def get_intro_info(
 def api_image(
     item_id: str,
     type: str = Query("Primary"),
+    # Optional sizing forwarded to Emby. Library card thumbnails only
+    # need ~240x360, but the original 2.0 endpoint proxied the full
+    # poster bytes (often ~1000px wide / hundreds of KB) which made
+    # the library card grid feel sluggish on throttled connections
+    # (reported in beta12 by xyxxyxxy). With these params Emby
+    # downscales + re-encodes server-side before sending, so each
+    # card is 20-40 KB instead of hundreds.
+    maxWidth: int | None = Query(None, ge=1, le=4000),
+    maxHeight: int | None = Query(None, ge=1, le=4000),
+    quality: int | None = Query(None, ge=1, le=100),
     emby_client=Depends(get_emby_client),
     logger=Depends(get_logger),
     party_session: PartySession = Depends(require_host_token),
 ):
     access_token = party_session.party["host_access_token"]
     user_id = party_session.party["host_user_id"]
-    image_url = emby_client.get_image_url(item_id, type, access_token=access_token)
+    image_url = emby_client.get_image_url(
+        item_id, type,
+        access_token=access_token,
+        max_width=maxWidth, max_height=maxHeight, quality=quality,
+    )
     try:
         emby_resp = http_requests.get(
             image_url, headers=emby_client._headers(access_token, user_id)
