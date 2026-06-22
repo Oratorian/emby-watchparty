@@ -47,6 +47,32 @@ Codename: **Midnight Premiere**. Branch: `2.0-Rework`. The version is `2.0.0-dev
 
 Closed-beta builds tagged on GHCR. The version stays `2.0.0-dev` while in active development; each beta below carries only the bullets new to that build. The **Breaking Changes** above and the **Technical details** further down apply to the dev cycle as a whole, not to any individual beta.
 
+#### [2.0.0-beta14] - 2026-06-22 - Binge-watching
+
+The 1.x auto-play-next-episode feature ports forward to the 2.0 architecture. Two-tier toggle: an admin master switch in `/admin` exposes the feature to hosts; each host opts in per session via a new "Binge ON/OFF" pill in the control strip. With binge armed, the next episode of the same season auto-plays after the current one ends, with a countdown card overlaying the player and a Cancel button anyone in the room can hit.
+
+##### Added
+
+- **Binge-watching admin toggle** (`BINGE_WATCH_ENABLED`, default off, hot-reloadable). Off keeps the control-strip button hidden entirely; on makes it available to every host without restarting the server. Flipping it off mid-session broadcasts `binge_watch_state_changed{available: false}` to every active party so the button disappears and any running countdown is cancelled in flight. Companion setting `BINGE_WATCH_COUNTDOWN_SECONDS` (default 4) tunes the window the room has to cancel before auto-advance fires.
+- **"Binge ON/OFF" pill in the control strip** for the host only, visible while an Episode is playing. Hidden on Movies, Series roots, and anything else where auto-advance has nothing to advance to. Magenta-tinted active state matching the design language elsewhere; clicking toggles `set_binge_watch_active` party-wide via socket.
+- **Auto-advance countdown card** anchored over the player when an episode ends with binge active. Shows the next episode's title, "Episode N of M" derived from Emby's canonical `IndexNumber`, and a progress bar that ticks down in real time. Any user can hit Cancel during the window; cancel + advance also fire silently when the admin flips the master switch off mid-countdown. After the deadline the next episode auto-plays without anyone clicking, including kicking play() once the per-user transcodes have all loaded.
+- **NEXT badge on the queued-up library card**, mirroring the existing LIVE badge but in magenta with a static play-arrow glyph. Appears the moment the host arms binge -- not just during the countdown -- so the room can see what's coming. Same chip shape and corner as LIVE so they read as members of the same family.
+- **End-of-season handling**: when the current episode is the last in its season, no auto-advance is queued. Backend emits `binge_finished`, frontend drops a "Season finished -- pick another from the library" system message in chat and pops the library open for the host. Movies and standalone items never trigger any of this; the gates check `item_type == "Episode"` before doing anything.
+
+##### Changed
+
+- **Library `/Items` query now sorts by `ParentIndexNumber,IndexNumber,SortName`** (was `SortName` only). Three-tier sort: episodes inside a season order by episode number, seasons inside a series order by season number, everything else (Movies, Series, Music) falls through to `SortName` because the index fields are null. The A-Z jump bar is unaffected because the SortName tiebreaker still drives letter ordering across non-numbered listings. Before this change the library cards inside a season displayed in alphabetical-by-title order, so the first card visible wasn't necessarily Episode 1; with sort fixed the cards line up the way you'd expect them to.
+
+##### Technical details
+
+**Next-episode resolution.** "Next" is resolved by Emby's canonical `IndexNumber` -- specifically, the smallest `IndexNumber` strictly greater than the current episode's. Walking list positions (`episode_list[idx + 1]`) is fragile because Emby returns specials at `IndexNumber=0` mixed in with regular episodes; an early test build had Ep1 land at list position 5 and "next" jump to position 6, which was actually Ep6. Resolving by `IndexNumber` sidesteps specials entirely, survives gaps in numbering (missing Ep6 in a season -> next is Ep7), and lets the modal label episodes by their real `IndexNumber` rather than their list index. The same helper drives the precomputed `current_video.next_item_id` that powers the library NEXT badge, so the two never disagree.
+
+**Auto-play after ready check.** The watchdog firing `_restart_video_from_beginning` for the next episode sets `party["auto_play_after_ready"] = True` before the restart kicks in. When `_check_all_ready` finishes the per-user transcode handshake it pops the flag, sets `playback_state.playing = True`, and emits a `play` event mirroring the normal "host clicked play" broadcast (with `username=null` so the frontend doesn't render a system message for it). Without this the host would have to click play after every episode, defeating the entire feature.
+
+**Hot-cancel paths.** A manual `select_video` from the library silently cancels any pending advance (the upcoming `video_selected` is the authoritative signal, so a stale `auto_advance_cancelled` would just race the new modal off-screen). `stop_video` cancels loudly with the canceller's username. The admin save endpoint walks every party and broadcasts `binge_watch_state_changed` when `BINGE_WATCH_ENABLED` flips -- off cancels any countdown, on materializes the button for hosts without anyone reloading. The watchdog re-checks both gates (admin toggle, host lock) at countdown expiry, so a host leaving mid-countdown doesn't trigger a doomed Emby call.
+
+**`video_ended` is now selector-scoped on the frontend.** Per-user transcodes each fire their own native `ended` event when their HLS stream finishes; without a gate the backend would receive N copies of the event and stop the streams + queue auto-advance N times. PartyView now checks `currentVideo.selected_by === local client_id` before emitting, so exactly one ended event reaches the backend per playthrough.
+
 #### [2.0.0-beta13] - 2026-06-22 - Thumbnail sizing + healthcheck behind APP_PREFIX
 
 ##### Fixed
