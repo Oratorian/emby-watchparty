@@ -69,8 +69,16 @@ def register(ctx):
         _report_emby_progress(party, sid, current_time, is_paused=False, event_name="Unpause")
 
         username = party["users"].get(sid, "Someone")
+        # Broadcast to everyone including the sender. The client-side
+        # handler is idempotent on the sender's own video (already
+        # playing means ve.play() is a no-op, and the position-delta
+        # guard skips re-seeks within 0.3s), and centralising the chat
+        # message on this one broadcast prevents the local-fire +
+        # broadcast-fire duplicate that used to show up whenever the
+        # server broadcasted to the sender (e.g. seek during playback).
+        # See the matching comment in handle_seek.
         await sio.emit("play", {"time": current_time, "username": username},
-                        room=party_id, skip_sid=sid)
+                        room=party_id)
 
     @sio.on("pause")
     async def handle_pause(sid, data):
@@ -95,8 +103,10 @@ def register(ctx):
         _report_emby_progress(party, sid, current_time, is_paused=True, event_name="Pause")
 
         username = party["users"].get(sid, "Someone")
+        # Broadcast to everyone including the sender. See the matching
+        # comment on handle_play / handle_seek for the rationale.
         await sio.emit("pause", {"time": current_time, "username": username},
-                        room=party_id, skip_sid=sid)
+                        room=party_id)
 
     @sio.on("seek")
     async def handle_seek(sid, data):
@@ -151,6 +161,17 @@ def register(ctx):
                 "wait_for_ready": True,
             }, room=party_id)
         else:
+            # Broadcast to everyone including the seeker. The client-side
+            # handler is idempotent on the seeker's own video (it only
+            # re-seeks when its currentTime differs from the broadcast
+            # by >0.3s, and calling pause() on an already-paused video
+            # is a no-op), and centralising the chat message on this
+            # one broadcast means the seeker doesn't have to fire a
+            # second addSystemMessage locally just to see their own
+            # "X seeked to ..." line. Without this, scrubber seeks
+            # during playback (which already broadcast to everyone for
+            # the ready-check handshake) produced a duplicate "seeked
+            # to" message in chat.
             await sio.emit("seek", {
                 "time": seek_time, "playing": False, "username": username,
-            }, room=party_id, skip_sid=sid)
+            }, room=party_id)

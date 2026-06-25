@@ -47,6 +47,24 @@ Codename: **Midnight Premiere**. Branch: `2.0-Rework`. The version is `2.0.0-dev
 
 Closed-beta builds tagged on GHCR. The version stays `2.0.0-dev` while in active development; each beta below carries only the bullets new to that build. The **Breaking Changes** above and the **Technical details** further down apply to the dev cycle as a whole, not to any individual beta.
 
+#### [2.0.0-beta15] - 2026-06-25 - Resume from last position + Jump-to-timestamp
+
+Two requested features from the watchparty Discord community land together: auto-resume from Emby's saved playback position when the host clicks a partially-watched item, and a Jump/Seek input that takes an absolute timestamp instead of forcing the host to chunk through with `+30s` buttons. The watch party has effectively grown into a multiplayer Emby client at this point -- the resume flow uses the same `UserData.PlaybackPositionTicks` Emby tracks for its own Continue Watching rail, so picking up where you left off works whether you watched the last bit via Emby's web UI or through a previous party.
+
+##### Added
+
+- **Resume from last position** (asked by [@stealthydruid](https://github.com/stealthydruid) on Discord, with a complementary suggestion from [@xyxxyxxy](https://github.com/xyxxyxxy)). When the host clicks a library item that has a saved Emby playback position (`UserData.PlaybackPositionTicks > 0`), a "Continue watching?" modal pops up offering "Resume from HH:MM:SS" or "Start over" before the multi-version picker / select emit runs. The position is the host's (the same account that signs all Emby requests for the party), so every member of the room lands at the same offset. Movies and episodes both supported. Works on multi-version items too; resume position is preserved when picking which version to play. Emby's own 5-10% threshold gates trivial positions, so the prompt only appears when there's a real resume point worth offering.
+- **"Played: 1h 2m (41%) of 2h 34m" readout + cyan-magenta progress bar on every library card.** Mirrors Emby's web UI Continue Watching rail at a glance, driven by `UserData.PlayedPercentage` and `PlaybackPositionTicks` so the math is whatever Emby thinks. Hidden when there's no current resume position, even on items that have been finished historically (Played stays true after the first completion but the bar correctly disappears once you're done).
+- **Jump-to-timestamp input** in the controls strip (the other half of stealthydruid's ask). The static "Jump/Seek" label is now a clickable chip that opens a small popover with a single input. Type `1:04:07`, `1:04`, or even raw digits like `10407` (parsed digital-clock-style: pairs from the right become `HH:MM:SS`), preview shows `→ 1:04:07` as you type, Enter or Go commits. Routes through the same `seek` socket path as the `±10s` / `±30s` buttons and Skip Intro, so the server broadcast moves everyone together. Esc / click-outside / Cancel dismisses. Disabled state on Go when the input doesn't parse.
+
+##### Changed
+
+- **`get_items` and `get_season_episodes` now request `UserData` and `MediaSourceCount` explicitly in `Fields=`.** Emby's user-scoped list endpoints don't always include `UserData` by default the way `/Items/{id}` does, so the library cards' progress rendering was missing data for some item types. Explicit `Fields` makes the resume data reliably available end-to-end. `MediaSourceCount` lets the frontend detect multi-version items at list time without a separate `/streams` probe per card if it ever needs to.
+
+##### Fixed
+
+- **Duplicate "X seeked to ..." / "X paused playback" system messages in chat for the action's originator.** The server was broadcasting `play` / `pause` / `seek` with `skip_sid=sid` for the sender (so they wouldn't receive their own message), but the frontend also fired an `addSystemMessage` locally on emit -- so when the seek-during-playback path bypassed `skip_sid` (because the sender needs to participate in the ready-check handshake), the seeker saw their action printed twice. The server now broadcasts to everyone in all three handlers; the client's local `addSystemMessage` calls are gone, and the broadcast handler is the single source of truth for chat lines on these events. Bonus: the "started playback" vs "resumed playback" distinction (previously only the sender's own client tracked it) now shows correctly across all party members on first play of any video.
+
 #### [2.0.0-beta14] - 2026-06-22 - Binge-watching
 
 The 1.x auto-play-next-episode feature ports forward to the 2.0 architecture. Two-tier toggle: an admin master switch in `/admin` exposes the feature to hosts; each host opts in per session via a new "Binge ON/OFF" pill in the control strip. With binge armed, the next episode of the same season auto-plays after the current one ends, with a countdown card overlaying the player and a Cancel button anyone in the room can hit.

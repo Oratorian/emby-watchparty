@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { api } from '@/api/client'
 import { withPrefix } from '@/utils/appPrefix'
 
@@ -47,6 +47,11 @@ const props = defineProps<{
   quality: string
   currentTime: number
   mediaSourceId?: string
+  // Optional total runtime in seconds. Used to clamp the
+  // jump-to-timestamp input so a typo can't seek past the end of
+  // media. When null the popover still works but the validation
+  // only blocks negative / unparseable values.
+  runTimeSeconds?: number | null
   // Binge-watching surface: shown only when the admin's master switch
   // is on (bingeAvailable), the current item is an Episode, and the
   // viewer is the host (PartyView gates this -- this component does
@@ -67,6 +72,11 @@ const emit = defineEmits<{
   // +30). PartyView computes the target media time and routes through
   // the party seek path so everyone moves together.
   'jump': [seconds: number]
+  // Absolute jump-to in media seconds. Emitted by the Jump/Seek
+  // popover when the host commits a timestamp; PartyView routes it
+  // through the same `seek` socket path as the relative jump so the
+  // server-broadcast drives everyone's <video>.
+  'seek-to': [absoluteSeconds: number]
   'toggle-binge': []
 }>()
 
@@ -285,6 +295,131 @@ function onJump(seconds: number) {
   emit('jump', seconds)
 }
 
+// ----- Jump-to-timestamp popover ------------------------------------
+// Clicking the "Jump/Seek" label opens a small popover with a single
+// input. The host types a timestamp + Enter (or clicks Go) to seek
+// the whole party to that absolute media position. Routes through the
+// same `seek` socket path as the +/- buttons via the seek-to emit, so
+// the server broadcast is what actually moves everyone's video.
+const seekPopoverOpen = ref(false)
+const seekInput = ref('')
+const seekInputEl = ref<HTMLInputElement | null>(null)
+const seekRoot = ref<HTMLDivElement | null>(null)
+
+function parseTimestampInput(input: string): number | null {
+  const trimmed = input.trim()
+  if (!trimmed) return null
+
+  // Colon-separated: H:M:S, M:S, or S. Each part must be a non-
+  // negative integer. Sum into seconds.
+  if (trimmed.includes(':')) {
+    const parts = trimmed.split(':')
+    if (parts.length < 1 || parts.length > 3) return null
+    const nums: number[] = []
+    for (const p of parts) {
+      if (!/^\d+$/.test(p)) return null
+      nums.push(parseInt(p, 10))
+    }
+    let seconds = 0
+    if (nums.length === 3) seconds = nums[0]! * 3600 + nums[1]! * 60 + nums[2]!
+    else if (nums.length === 2) seconds = nums[0]! * 60 + nums[1]!
+    else seconds = nums[0]!
+    return seconds
+  }
+
+  // Digit-only: pad to even length on the left, then split into
+  // 2-digit chunks from the right. "104" -> "0104" -> 1:04. Matches
+  // how a digital alarm-clock entry feels. The pairs become
+  // [HH, MM, SS] or [MM, SS] or [SS]. Anything longer than 3 pairs
+  // sums day*86400 + h*3600 + m*60 + s so very long inputs still
+  // resolve to a deterministic seconds value before the runtime
+  // clamp clips them.
+  if (!/^\d+$/.test(trimmed)) return null
+  const padded = trimmed.length % 2 === 0 ? trimmed : '0' + trimmed
+  const pairs: number[] = []
+  for (let i = 0; i < padded.length; i += 2) {
+    pairs.push(parseInt(padded.slice(i, i + 2), 10))
+  }
+  let seconds = 0
+  if (pairs.length === 1) seconds = pairs[0]!
+  else if (pairs.length === 2) seconds = pairs[0]! * 60 + pairs[1]!
+  else if (pairs.length === 3) seconds = pairs[0]! * 3600 + pairs[1]! * 60 + pairs[2]!
+  else if (pairs.length === 4) seconds = pairs[0]! * 86400 + pairs[1]! * 3600 + pairs[2]! * 60 + pairs[3]!
+  else return null
+  return seconds
+}
+
+const parsedSeekSeconds = computed<number | null>(() => parseTimestampInput(seekInput.value))
+
+const seekPreview = computed<string>(() => {
+  const s = parsedSeekSeconds.value
+  if (s === null || s < 0) return ''
+  const clamped = clampSeekTarget(s)
+  return formatSeconds(clamped)
+})
+
+const seekValid = computed<boolean>(() => {
+  const s = parsedSeekSeconds.value
+  return s !== null && s >= 0
+})
+
+function clampSeekTarget(seconds: number): number {
+  let v = Math.max(0, seconds)
+  if (props.runTimeSeconds && props.runTimeSeconds > 5) {
+    v = Math.min(v, props.runTimeSeconds - 5)
+  }
+  return v
+}
+
+function formatSeconds(total: number): string {
+  const s = Math.max(0, Math.floor(total))
+  const hh = Math.floor(s / 3600)
+  const mm = Math.floor((s % 3600) / 60)
+  const ss = s % 60
+  if (hh > 0) {
+    return `${hh}:${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}`
+  }
+  return `${mm}:${ss.toString().padStart(2, '0')}`
+}
+
+async function openSeekPopover() {
+  seekPopoverOpen.value = true
+  seekInput.value = ''
+  await nextTick()
+  seekInputEl.value?.focus()
+}
+
+function closeSeekPopover() {
+  seekPopoverOpen.value = false
+  seekInput.value = ''
+}
+
+function commitSeek() {
+  if (!seekValid.value) return
+  const target = clampSeekTarget(parsedSeekSeconds.value!)
+  emit('seek-to', target)
+  closeSeekPopover()
+}
+
+function onSeekKey(e: KeyboardEvent) {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    commitSeek()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    closeSeekPopover()
+  }
+}
+
+function onDocClick(e: MouseEvent) {
+  if (!seekPopoverOpen.value) return
+  if (seekRoot.value && !seekRoot.value.contains(e.target as Node)) {
+    closeSeekPopover()
+  }
+}
+onMounted(() => document.addEventListener('mousedown', onDocClick))
+onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
+
 watch(
   () => props.itemId,
   () => {
@@ -370,12 +505,36 @@ onMounted(() => {
       Binge {{ bingeActive ? 'ON' : 'OFF' }}
     </button>
 
-    <div class="jump-group">
+    <div class="jump-group" ref="seekRoot">
       <button class="jump-btn" @click="onJump(-30)" title="Back 30 seconds">−30s</button>
       <button class="jump-btn" @click="onJump(-10)" title="Back 10 seconds">−10s</button>
-      <label class="jump-label">Jump/Seek</label>
+      <button
+        class="jump-label-btn"
+        :class="{ open: seekPopoverOpen }"
+        :title="seekPopoverOpen ? 'Close timestamp jump' : 'Jump to a specific timestamp'"
+        @click="seekPopoverOpen ? closeSeekPopover() : openSeekPopover()"
+      >
+        Jump/Seek
+      </button>
       <button class="jump-btn" @click="onJump(10)" title="Forward 10 seconds">+10s</button>
       <button class="jump-btn" @click="onJump(30)" title="Forward 30 seconds">+30s</button>
+
+      <div v-if="seekPopoverOpen" class="seek-popover" role="dialog" aria-label="Jump to timestamp">
+        <input
+          ref="seekInputEl"
+          v-model="seekInput"
+          type="text"
+          inputmode="numeric"
+          placeholder="1:04:07 or 10407"
+          class="seek-input"
+          @keydown="onSeekKey"
+        />
+        <div class="seek-preview" v-if="seekPreview">→ {{ seekPreview }}</div>
+        <div class="seek-actions">
+          <button class="seek-go" :disabled="!seekValid" @click="commitSeek">Go</button>
+          <button class="seek-cancel" @click="closeSeekPopover">Cancel</button>
+        </div>
+      </div>
     </div>
 
     <button v-show="showIntroButton" class="skip-intro-btn" @click="onSkipIntro">
@@ -428,6 +587,9 @@ onMounted(() => {
   display: flex;
   gap: 6px;
   align-items: center;
+  /* Anchor for the absolute-positioned seek popover so it floats
+     above the strip relative to this row, not the viewport. */
+  position: relative;
 }
 
 /* When the binge button is in the strip it takes the right-anchor;
@@ -483,11 +645,124 @@ onMounted(() => {
   box-shadow: 0 0 6px var(--color-accent-cyan, #00e0ff);
 }
 
-.jump-label {
+/* The static "Jump/Seek" label became a clickable chip that opens
+   the timestamp-entry popover. Same colour family as the static
+   label was -- no harsh accent until hovered / open -- so users
+   who don't know it's interactive still read it as a section heading. */
+.jump-label-btn {
   font-size: 12px;
   color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
   white-space: nowrap;
-  margin-right: 4px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.jump-label-btn:hover,
+.jump-label-btn.open {
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.jump-label-btn.open {
+  border-color: var(--color-accent-cyan, #00e0ff);
+}
+
+/* Popover floats just above the jump-group so the host can type
+   without losing context. Surface-bg + subtle border match the other
+   chip dropdowns; cyan accent on the active state marks "this is
+   intercepting your input now". */
+.seek-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  min-width: 260px;
+  background: var(--bg-secondary, #181820);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55),
+              0 0 0 1px rgba(0, 224, 255, 0.1) inset;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.seek-input {
+  width: 100%;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.seek-input:focus {
+  border-color: var(--color-accent-cyan, #00e0ff);
+  box-shadow: 0 0 0 2px rgba(0, 224, 255, 0.2);
+}
+
+.seek-preview {
+  font-size: 12px;
+  color: var(--color-accent-cyan, #00e0ff);
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.seek-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.seek-go,
+.seek-cancel {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border: 1px solid var(--border-subtle);
+  transition: background var(--transition-fast), border-color var(--transition-fast), filter var(--transition-fast);
+}
+
+.seek-go {
+  background: linear-gradient(90deg, rgba(0, 224, 255, 0.22), rgba(255, 62, 214, 0.22));
+  color: var(--text-primary);
+  border-color: rgba(0, 224, 255, 0.55);
+}
+
+.seek-go:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.seek-go:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+
+.seek-cancel {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+.seek-cancel:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
 }
 
 /* Jump pills: match the .btn-small chip language with tabular numerals

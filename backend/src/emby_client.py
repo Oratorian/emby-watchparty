@@ -249,7 +249,17 @@ class EmbyClient:
                 url = f"{self.server_url}/emby/Items"
             params = {
                 "Recursive": str(effective_recursive).lower(),
-                "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,ParentIndexNumber,SeriesId,SeasonId",
+                # UserData is explicit because list-style /Items
+                # responses don't always include it by default,
+                # especially when the user has alternate sources
+                # (multi-version items). Without it the library cards
+                # can't render the resume progress bar / "Played: ..."
+                # line, and clicking a partially-watched item skips
+                # the resume prompt because PlaybackPositionTicks
+                # reads as 0. MediaSourceCount lets the UI detect
+                # multi-version items at list time without a separate
+                # /streams probe per card.
+                "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,ParentIndexNumber,SeriesId,SeasonId,UserData,MediaSourceCount",
                 # Three-tier sort that works for every listing type
                 # without needing parent-type detection:
                 #   - ParentIndexNumber (season number) and IndexNumber
@@ -306,7 +316,7 @@ class EmbyClient:
                 "ParentId": season_id,
                 "IncludeItemTypes": "Episode",
                 "Recursive": "false",
-                "Fields": "Overview,PrimaryImageAspectRatio,IndexNumber,ParentIndexNumber,SeriesId,SeasonId,RunTimeTicks",
+                "Fields": "Overview,PrimaryImageAspectRatio,IndexNumber,ParentIndexNumber,SeriesId,SeasonId,RunTimeTicks,UserData",
                 "SortBy": "ParentIndexNumber,IndexNumber",
                 "SortOrder": "Ascending",
             }

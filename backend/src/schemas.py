@@ -175,6 +175,13 @@ class ItemDetailsResponse(BaseModel):
     Studios: Optional[list[dict]] = None
     MediaSources: Optional[list[dict]] = None
     MediaStreams: Optional[list[dict]] = None
+    # UserData carries the host's per-item state -- specifically
+    # PlaybackPositionTicks (in 10M-ticks-per-second units, same scale
+    # as RunTimeTicks) and Played (bool). Used by the resume-from-
+    # last-position feature: when an item has PlaybackPositionTicks > 0
+    # and Played=false, the frontend offers "Resume at HH:MM:SS /
+    # Start over" instead of jumping straight to time 0.
+    UserData: Optional[dict] = None
 
     class Config:
         extra = "allow"
