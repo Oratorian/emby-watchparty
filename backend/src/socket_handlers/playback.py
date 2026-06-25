@@ -355,9 +355,11 @@ def register(ctx):
 
     async def _restart_video_from_beginning(party, party_id, selector_client_id,
                                               item_id, item_name, item_overview,
-                                              media_source_id=None):
+                                              media_source_id=None,
+                                              start_seconds=0):
         """Fetch fresh media info, stop existing streams, create per-user
-        streams starting at 0, broadcast video_selected + ready_check.
+        streams starting at `start_seconds`, broadcast video_selected +
+        ready_check.
 
         `selector_client_id` is stored as `current_video.selected_by` so
         the selector survives reloads / sid changes.
@@ -371,6 +373,15 @@ def register(ctx):
         version stays consistent across the playback. When None, Emby
         falls back to its default MediaSources[0], matching the
         single-version case.
+
+        `start_seconds` is the resume offset for the whole party. 0
+        (default) starts from the beginning -- matches binge auto-
+        advance, vote-pass restart, and library picks of fresh items.
+        Non-zero comes from the host accepting a "Resume at HH:MM:SS"
+        prompt; the value is the Emby UserData.PlaybackPositionTicks
+        converted to seconds. Clamped below to the runtime so a stale
+        cached resume position can't push the start past the end of
+        the file.
 
         Returns True on success, False on failure (caller should emit error).
         """
@@ -420,8 +431,18 @@ def register(ctx):
             "next_item_title": episode_ctx["next_item_title"],
         }
 
+        # Clamp the requested resume offset to a safe window inside the
+        # runtime so a stale UserData.PlaybackPositionTicks (e.g. from
+        # a media re-encode that shortened the file) can't push past
+        # the end of media or back below zero. Leave a 5s buffer at
+        # the end so we never start at the very last frame.
+        resume_offset = max(0.0, float(start_seconds or 0))
+        if run_time_seconds:
+            resume_offset = min(resume_offset, max(0.0, run_time_seconds - 5))
+
         party["playback_state"] = {
-            "playing": False, "time": 0, "last_update": datetime.now().isoformat(),
+            "playing": False, "time": resume_offset,
+            "last_update": datetime.now().isoformat(),
         }
 
         # Start a ready check so clients show the waiting overlay until
@@ -434,7 +455,7 @@ def register(ctx):
             stream = _create_user_stream(
                 party, party_id, user_sid, item_id, media_source,
                 audio_index=default_audio, subtitle_index=None,
-                quality=DEFAULT_QUALITY_ID, start_seconds=0,
+                quality=DEFAULT_QUALITY_ID, start_seconds=resume_offset,
                 media_source_id=resolved_media_source_id,
             )
             if not stream:
@@ -484,6 +505,18 @@ def register(ctx):
         # modal. None for single-version items (or when the selector
         # didn't pick); the helper falls back to Emby's default source.
         media_source_id = data.get("media_source_id")
+        # Optional resume position in seconds. The frontend reads
+        # UserData.PlaybackPositionTicks from the library response and
+        # offers the host a Resume / Start-over choice when it's > 0
+        # and Played is false. 0 (the default) starts from the
+        # beginning, matching pre-resume behavior. Sanity-clamped to
+        # [0, run_time) below once we know the runtime.
+        try:
+            start_seconds = float(data.get("start_seconds") or 0)
+        except (TypeError, ValueError):
+            start_seconds = 0.0
+        if start_seconds < 0:
+            start_seconds = 0.0
 
         if not party_manager.exists(party_id):
             await sio.emit("error", {"message": "Watch party not found"}, to=sid)
@@ -519,6 +552,7 @@ def register(ctx):
         success = await _restart_video_from_beginning(
             party, party_id, selector_client_id, item_id, item_name, item_overview,
             media_source_id=media_source_id,
+            start_seconds=start_seconds,
         )
         if not success:
             await sio.emit("error", {"message": "Failed to load video"}, to=sid)

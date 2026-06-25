@@ -36,6 +36,9 @@ const VersionPickerModal = defineAsyncComponent(
 const AutoAdvanceModal = defineAsyncComponent(
   () => import('@/components/AutoAdvanceModal.vue'),
 )
+const ResumePromptModal = defineAsyncComponent(
+  () => import('@/components/ResumePromptModal.vue'),
+)
 import { api } from '@/api/client'
 import { withPrefix } from '@/utils/appPrefix'
 import { avatarUrl as fallbackAvatarUrl } from '@/utils/avatar'
@@ -221,7 +224,19 @@ onMounted(async () => {
       }
       setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
     })
-    if (data.username) addSystemMessage(`${data.username} resumed playback`)
+    if (data.username) {
+      // Each client tracks its own hasStarted, reset on every new
+      // video selection. The first play we witness for this video
+      // is "started"; subsequent plays are "resumed". Consistent
+      // across all clients without server-side state because the
+      // broadcast lands in roughly the same order everywhere.
+      if (!hasStarted) {
+        addSystemMessage(`${data.username} started playback`)
+        hasStarted = true
+      } else {
+        addSystemMessage(`${data.username} resumed playback`)
+      }
+    }
   })
 
   socket.on('pause', (data: any) => {
@@ -700,6 +715,7 @@ async function leaveParty() {
 // can finish the emit once the modal resolves.
 interface PendingVersionPick {
   item: any
+  startSeconds: number
   versions: Array<{
     id: string
     name: string
@@ -709,7 +725,18 @@ interface PendingVersionPick {
 }
 const versionPickerState = ref<PendingVersionPick | null>(null)
 
-function emitSelectVideo(item: any, mediaSourceId?: string) {
+// Resume prompt state. Populated when the host clicks a library item
+// that has UserData.PlaybackPositionTicks > 0 and Played === false.
+// User picks Resume (start_seconds = position) or Start over
+// (start_seconds = 0); either way we then fall through to the
+// multi-version picker (or directly to the emit if there's only one).
+const resumePromptState = ref<{
+  item: any
+  resumeSeconds: number
+  runTimeSeconds: number | null
+} | null>(null)
+
+function emitSelectVideo(item: any, mediaSourceId?: string, startSeconds = 0) {
   if (!party.partyId) return
   hasStarted = false
   socket.emit('select_video', {
@@ -719,15 +746,16 @@ function emitSelectVideo(item: any, mediaSourceId?: string) {
     item_overview: item.Overview || '',
     quality: '1080p-high',
     media_source_id: mediaSourceId,
+    start_seconds: startSeconds,
   })
   showLibrary.value = false
 }
 
-async function selectVideo(item: any) {
-  if (!party.partyId) return
-  // Probe Emby for alternate versions BEFORE emitting. Single-version
-  // items skip the modal entirely; multi-version items pause to let
-  // the host pick one file for the whole party (issue #43).
+// Continues the select flow after the resume prompt has been answered.
+// Same body as the second half of selectVideo: probe for alternate
+// versions, route through the version picker if needed, otherwise
+// emit directly.
+async function continueSelectAfterResume(item: any, startSeconds: number) {
   let versions: PendingVersionPick['versions'] = []
   try {
     const streams = await api.itemStreams(item.Id)
@@ -739,18 +767,65 @@ async function selectVideo(item: any) {
   }
 
   if (versions.length > 1) {
-    versionPickerState.value = { item, versions }
+    versionPickerState.value = { item, versions, startSeconds }
     return
   }
 
-  emitSelectVideo(item)
+  emitSelectVideo(item, undefined, startSeconds)
+}
+
+async function selectVideo(item: any) {
+  if (!party.partyId) return
+
+  // Resume check first: if Emby reports a current resume position
+  // for this item (UserData.PlaybackPositionTicks > 0), ask the host
+  // whether to resume or start over before picking a version /
+  // emitting. We deliberately don't gate on UserData.Played -- that
+  // flag is "this item has been completed in history" and stays true
+  // forever after the first completion, but Emby still tracks
+  // PlaybackPositionTicks for re-watches. Emby's own thresholds
+  // already gate small positions (under ~5%) to zero, so any
+  // positive PositionTicks here represents a real resume point.
+  const ud = item?.UserData
+  const positionTicks = Number(ud?.PlaybackPositionTicks ?? 0)
+  if (positionTicks > 0) {
+    const runTimeSeconds = item.RunTimeTicks
+      ? Number(item.RunTimeTicks) / 10_000_000
+      : null
+    resumePromptState.value = {
+      item,
+      resumeSeconds: positionTicks / 10_000_000,
+      runTimeSeconds,
+    }
+    return
+  }
+
+  await continueSelectAfterResume(item, 0)
+}
+
+function onResume() {
+  const pending = resumePromptState.value
+  resumePromptState.value = null
+  if (!pending) return
+  continueSelectAfterResume(pending.item, pending.resumeSeconds)
+}
+
+function onStartOver() {
+  const pending = resumePromptState.value
+  resumePromptState.value = null
+  if (!pending) return
+  continueSelectAfterResume(pending.item, 0)
+}
+
+function onResumeCancel() {
+  resumePromptState.value = null
 }
 
 function onVersionPick(mediaSourceId: string) {
   const pending = versionPickerState.value
   versionPickerState.value = null
   if (!pending) return
-  emitSelectVideo(pending.item, mediaSourceId)
+  emitSelectVideo(pending.item, mediaSourceId, pending.startSeconds)
 }
 
 function onVersionPickCancel() {
@@ -804,12 +879,12 @@ function onVideoPlay() {
 
   wasPlayingBeforeSeek = true
   socket.emit('play', { party_id: party.partyId, time: toMediaTime(ve.currentTime) })
-  if (!hasStarted) {
-    addSystemMessage(`${party.username || 'You'} started playback`)
-    hasStarted = true
-  } else {
-    addSystemMessage(`${party.username || 'You'} resumed playback`)
-  }
+  // Chat message comes from the server-broadcast handler (socket.on
+  // 'play'), which fires for every client including the sender. This
+  // is the single source of truth for play/pause/seek system
+  // messages -- a local fire here would double-print the line once
+  // the broadcast lands.
+  hasStarted = true
 }
 
 function onVideoPause() {
@@ -836,7 +911,7 @@ function onVideoPause() {
 
     wasPlayingBeforeSeek = false
     socket.emit('pause', { party_id: party.partyId, time: toMediaTime(currentVideoEl.currentTime) })
-    addSystemMessage(`${party.username || 'You'} paused playback`)
+    // Chat message handled by socket.on('pause') broadcast handler.
   }, 250)
 }
 
@@ -906,7 +981,7 @@ function onVideoSeeked(time: number) {
       time: mediaTime,
       was_playing: wasPlayingBeforeSeek,
     })
-    addSystemMessage(`${party.username || 'You'} seeked to ${formatTime(mediaTime)}`)
+    // Chat message handled by socket.on('seek') broadcast handler.
   }, 500)
 }
 
@@ -1079,6 +1154,21 @@ function onJump(seconds: number) {
     party_id: party.partyId,
     time: target,
     was_playing: !ve.paused,
+  })
+}
+
+function onSeekTo(absoluteSeconds: number) {
+  // Absolute jump-to: VideoControls' Jump/Seek popover already
+  // clamped to the runtime range. Route through the same seek
+  // socket path as Skip Intro and the +/- jump buttons so the
+  // server-broadcast moves everyone's <video> together; never set
+  // ve.currentTime locally first (see onSkipIntro for why).
+  if (!party.partyId) return
+  const ve = videoPlayer.value?.videoEl
+  socket.emit('seek', {
+    party_id: party.partyId,
+    time: absoluteSeconds,
+    was_playing: ve ? !ve.paused : true,
   })
 }
 
@@ -1283,6 +1373,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
             :quality="party.currentVideo.quality || '1080p-high'"
             :current-time="currentTime"
             :media-source-id="party.currentVideo.media_source_id"
+            :run-time-seconds="party.currentVideo.run_time_seconds"
             :binge-available="party.bingeWatch.available"
             :binge-active="party.bingeWatch.active"
             :binge-visible="auth.isHost && party.currentVideo.item_type === 'Episode'"
@@ -1290,6 +1381,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
             @change-text-subtitle="onChangeTextSubtitle"
             @skip-intro="onSkipIntro"
             @jump="onJump"
+            @seek-to="onSeekTo"
             @toggle-binge="toggleBingeWatch"
           />
           <div class="video-info">
@@ -1419,6 +1511,21 @@ async function submitBecomeHost(payload: { username: string; password: string })
     :versions="versionPickerState.versions"
     @select="onVersionPick"
     @cancel="onVersionPickCancel"
+  />
+
+  <!-- Resume-from-last-position prompt. Pops up when the host clicked
+       a library item that has UserData.PlaybackPositionTicks > 0 and
+       Played === false; intercepts the select flow long enough for
+       the host to choose Resume vs Start over before the multi-version
+       picker (if any) and the actual select_video emit. -->
+  <ResumePromptModal
+    v-if="resumePromptState"
+    :title="resumePromptState.item.Name"
+    :resume-seconds="resumePromptState.resumeSeconds"
+    :run-time-seconds="resumePromptState.runTimeSeconds"
+    @resume="onResume"
+    @start-over="onStartOver"
+    @cancel="onResumeCancel"
   />
 
   <!-- Become host (any party member can promote themselves) -->

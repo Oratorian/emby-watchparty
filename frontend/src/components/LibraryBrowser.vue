@@ -60,6 +60,21 @@
                 <span class="next-arrow" aria-hidden="true">&#9654;</span>
                 <span class="next-text">NEXT</span>
               </div>
+              <!-- Played-progress bar at the bottom of the poster.
+                   Mirrors Emby's web UI Continue Watching rail: the
+                   resume position the host will land on if they pick
+                   Resume from the prompt. Driven by
+                   UserData.PlayedPercentage which Emby pre-computes,
+                   so no arithmetic on our side. Hidden once the item
+                   is fully Played to keep the rail focused on
+                   "in progress" items. -->
+              <div
+                v-if="resumePercent(item) > 0"
+                class="poster-progress"
+                :aria-label="`Watched ${Math.round(resumePercent(item))}%`"
+              >
+                <div class="poster-progress-fill" :style="{ width: resumePercent(item) + '%' }" />
+              </div>
             </div>
             <div class="item-info">
               <span class="item-name">{{ item.Name }}</span>
@@ -69,6 +84,7 @@
                 <span v-if="itemRuntime(item)">{{ itemRuntime(item) }}</span>
                 <span v-if="!item.ProductionYear && !itemRuntime(item)" class="item-type">{{ item.Type }}</span>
               </span>
+              <span v-if="playedLabel(item)" class="item-played">{{ playedLabel(item) }}</span>
             </div>
           </div>
           <div v-if="hasMore" ref="sentinel" class="sentinel">
@@ -115,6 +131,26 @@ const party = usePartyStore()
 // card. Falls back to null when nothing is selected so the overlay never
 // renders accidentally on a stale match.
 const playingItemId = computed<string | null>(() => party.currentVideo?.item_id ?? null)
+// Pulls the resume percentage off an item's UserData. Emby
+// pre-computes PlayedPercentage (0-100, float) on every user-scoped
+// item response. The gating is "is there a current resume position",
+// NOT "has this ever been played", so we check PlaybackPositionTicks
+// rather than the Played flag -- Played goes true on the first
+// completion and never goes back to false, even when the user later
+// starts a re-watch. Emby clears PlaybackPositionTicks on natural
+// completion, so PositionTicks > 0 means "you have a real resume
+// point right now" regardless of how many times the item has been
+// finished historically.
+function resumePercent(item: EmbyItem): number {
+  const ud = (item as any).UserData
+  if (!ud) return 0
+  const positionTicks = Number(ud.PlaybackPositionTicks ?? 0)
+  if (positionTicks <= 0) return 0
+  const pct = Number(ud.PlayedPercentage ?? 0)
+  if (!isFinite(pct) || pct <= 0) return 0
+  return Math.min(100, pct)
+}
+
 // Drives the NEXT badge on the queued-up episode. Backend pins
 // next_item_id on current_video at selection time (precomputed via
 // IndexNumber), so the badge can show the moment the host arms binge
@@ -152,12 +188,30 @@ interface EmbyItem {
 function itemRuntime(item: EmbyItem): string | null {
   const ticks = item.RunTimeTicks
   if (!ticks || ticks <= 0) return null
+  return ticksToShort(ticks)
+}
+
+function ticksToShort(ticks: number): string {
   const totalSeconds = Math.floor(ticks / 10_000_000)
   const hours = Math.floor(totalSeconds / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   if (hours > 0) return `${hours}h ${minutes}m`
   if (minutes > 0) return `${minutes}m`
-  return null
+  return '<1m'
+}
+
+// "Played: 1h 2m (41%) of 2h 34m" -- mirrors Emby's Continue Watching
+// card text so users coming from Emby get the same readout. Returns
+// null when there's no resume position worth surfacing (either fully
+// played, never played, or Emby gated it below its threshold).
+function playedLabel(item: EmbyItem): string | null {
+  const pct = resumePercent(item)
+  if (pct <= 0) return null
+  const ud = (item as any).UserData
+  const playedTicks = Number(ud?.PlaybackPositionTicks ?? 0)
+  const totalTicks = item.RunTimeTicks ?? 0
+  if (!playedTicks || !totalTicks) return null
+  return `Played: ${ticksToShort(playedTicks)} (${Math.round(pct)}%) of ${ticksToShort(totalTicks)}`
 }
 
 interface Breadcrumb {
@@ -849,6 +903,28 @@ onUnmounted(() => {
   line-height: 1;
 }
 
+/* Played-progress overlay across the bottom edge of the poster.
+   Matches Emby's web UI Continue Watching rail visually so users
+   coming from Emby read it instantly. Cyan -> magenta gradient
+   matches the AutoAdvanceModal + ResumePromptModal accent so the
+   "you'll resume from here" affordance is consistent across the
+   surfaces that surface it. */
+.poster-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.poster-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00e0ff, #ff3ed6);
+  transition: width 300ms ease-out;
+}
+
 .item-info {
   padding: 0.5rem 0.6rem 0.6rem;
   display: flex;
@@ -883,6 +959,19 @@ onUnmounted(() => {
   color: var(--accent-primary);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+/* "Played: 1h 2m (41%) of 2h 34m" -- sits on its own line under the
+   year/runtime meta row. Cyan tint signals "this is the resume info"
+   without competing with the poster's progress bar visually. Hidden
+   unless there's a real resume position (helper returns null). */
+.item-played {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: var(--color-accent-cyan, #00e0ff);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
 
 .sentinel {
