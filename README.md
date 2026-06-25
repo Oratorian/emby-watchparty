@@ -16,6 +16,8 @@ Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/pro
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
 
+Thanks to **@stealthydruid** and **@xyxxyxxy** for the bug reports and feature requests on the [Discord support server](https://discord.gg/RWUpxq9xsA) that shaped the late-stage 2.0 betas -- APP_PREFIX healthcheck, A-Z library jump bar, image thumbnail sizing, resume from last position, jump-to-timestamp input, and the seek-bar tooltip thinking that got us there.
+
 ---
 
 ### Discord for more personal support
@@ -385,6 +387,8 @@ Contributions are welcome! Feel free to submit issues or pull requests.
 Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
 
 Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issue!
+
+Thanks to **@stealthydruid** and **@xyxxyxxy** for the bug reports and feature requests on the [Discord support server](https://discord.gg/RWUpxq9xsA) that shaped the late-stage 2.0 betas.
 
 ---
 
