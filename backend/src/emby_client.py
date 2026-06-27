@@ -227,18 +227,27 @@ class EmbyClient:
                 cache_key = user_id or "_anon_"
                 user_cache = self._library_collection_types.get(cache_key, {})
                 collection_type = user_cache.get(parent_id)
+                # Recursive=True on every library type. A library can
+                # span multiple physical paths (e.g. /media/Anime plus
+                # /media/Anime (Subbed)), in which case Recursive=False
+                # makes Emby return one Folder wrapper per path instead
+                # of the actual Series / BoxSet / MusicArtist items.
+                # Combined with a strict IncludeItemTypes, Recursive=True
+                # walks past the path-folder layer and returns only the
+                # top-level content type, never descending into Seasons /
+                # Episodes / Albums.
                 if collection_type == "movies":
                     effective_type = "Movie"
                     effective_recursive = True
                 elif collection_type == "tvshows":
                     effective_type = "Series"
-                    effective_recursive = False
+                    effective_recursive = True
                 elif collection_type == "boxsets":
                     effective_type = "BoxSet"
-                    effective_recursive = False
+                    effective_recursive = True
                 elif collection_type == "music":
                     effective_type = "MusicArtist"
-                    effective_recursive = False
+                    effective_recursive = True
                 elif collection_type == "homevideos" or collection_type == "photos":
                     effective_type = "Movie,Video,Photo"
                     effective_recursive = True

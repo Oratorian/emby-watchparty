@@ -47,6 +47,14 @@ Codename: **Midnight Premiere**. Branch: `2.0-Rework`. The version is `2.0.0-dev
 
 Closed-beta builds tagged on GHCR. The version stays `2.0.0-dev` while in active development; each beta below carries only the bullets new to that build. The **Breaking Changes** above and the **Technical details** further down apply to the dev cycle as a whole, not to any individual beta.
 
+#### [2.0.0-beta16] - 2026-06-27 - Multi-path library flattening
+
+Bug-fix beta. Libraries that span more than one physical path (e.g. an Anime library configured with both `/media/Anime` and `/media/Anime (Subbed)`) were rendering as two separate `Folder` tiles inside the library browser instead of flattening into the actual `Series` / `BoxSet` / `MusicArtist` items the way Emby's own web client does. Reported by [@xyxxyxxy](https://github.com/xyxxyxxy) on the Discord support server.
+
+##### Fixed
+
+- **Multi-path libraries now flatten correctly when browsed** (reported by [@xyxxyxxy](https://github.com/xyxxyxxy) on Discord). `get_items` was passing `Recursive=False` for `tvshows`, `boxsets`, and `music` collection types, which made Emby return one `Folder` wrapper per physical path on multi-path libraries instead of recursing past that layer to find the real items. With `IncludeItemTypes` already pinned to `Series` / `BoxSet` / `MusicArtist`, flipping `Recursive=True` walks past the path-folder layer and returns only the top-level content type without descending into Seasons / Episodes / Albums. `movies` and `homevideos` were already `Recursive=True` and unaffected. Hits any library where the user has added more than one folder under the same Emby library definition.
+
 #### [2.0.0-beta15] - 2026-06-25 - Resume from last position + Jump-to-timestamp
 
 Two requested features from the watchparty Discord community land together: auto-resume from Emby's saved playback position when the host clicks a partially-watched item, and a Jump/Seek input that takes an absolute timestamp instead of forcing the host to chunk through with `+30s` buttons. The watch party has effectively grown into a multiplayer Emby client at this point -- the resume flow uses the same `UserData.PlaybackPositionTicks` Emby tracks for its own Continue Watching rail, so picking up where you left off works whether you watched the last bit via Emby's web UI or through a previous party.
