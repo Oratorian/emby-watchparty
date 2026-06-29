@@ -233,6 +233,19 @@ const hasMore = ref(false)
 const currentParentId = ref<string | null>(null)
 const PAGE_SIZE = 50
 
+// Per-tab nav token. Bumped on every navigation (root, breadcrumb,
+// folder click, search). Every async fetch captures the token at
+// start and drops its result on resolve if the token has moved on,
+// so a late page-1 from a folder we already navigated away from
+// can't paint over the new view (xyxxyxxy: "shows libraries AND
+// movies in the list" after fast back-nav on a large library).
+let navToken = 0
+function bumpNavToken(reason: string): number {
+  navToken += 1
+  console.debug('[LibraryBrowser] navToken bump', { token: navToken, reason })
+  return navToken
+}
+
 const browsableTypes = new Set(['CollectionFolder', 'Folder', 'Series', 'Season'])
 const playableTypes = new Set(['Movie', 'Episode'])
 
@@ -376,6 +389,7 @@ function posterStyle(item: EmbyItem): Record<string, string> {
 }
 
 async function goToRoot() {
+  bumpNavToken('goToRoot')
   breadcrumbs.value = []
   isSearching.value = false
   searchQuery.value = ''
@@ -385,6 +399,7 @@ async function goToRoot() {
 }
 
 async function goToCrumb(index: number) {
+  bumpNavToken(`goToCrumb:${index}`)
   const crumb = breadcrumbs.value[index]
   breadcrumbs.value = breadcrumbs.value.slice(0, index + 1)
   isSearching.value = false
@@ -393,16 +408,22 @@ async function goToCrumb(index: number) {
 }
 
 async function fetchLibraries() {
+  const myToken = navToken
   loading.value = true
   try {
     const data = await api.libraries()
+    if (myToken !== navToken) {
+      console.debug('[LibraryBrowser] fetchLibraries STALE — dropping result', { startedAt: myToken, current: navToken })
+      return
+    }
     items.value = data.Items ?? data ?? []
     clearLibraryState()
     filteredLetter.value = null
   } catch {
+    if (myToken !== navToken) return
     items.value = []
   } finally {
-    loading.value = false
+    if (myToken === navToken) loading.value = false
   }
 }
 
@@ -421,6 +442,10 @@ const displayableTypes = new Set([
 ])
 
 async function fetchItems(parentId: string, append = false) {
+  // Append-paths inherit the current nav token (they're a continuation
+  // of the same nav); fresh navigations get a new token via the caller
+  // (handleItemClick / goToCrumb / etc.) before fetchItems runs.
+  const myToken = navToken
   if (append) {
     loadingMore.value = true
   } else {
@@ -434,6 +459,10 @@ async function fetchItems(parentId: string, append = false) {
   try {
     const startIndex = append ? items.value.length : 0
     const data = await api.items({ parentId, startIndex, limit: PAGE_SIZE })
+    if (myToken !== navToken) {
+      console.debug('[LibraryBrowser] fetchItems STALE — dropping result', { startedAt: myToken, current: navToken, parentId, append })
+      return
+    }
     const rawItems: EmbyItem[] = data.Items ?? data ?? []
     // Only filter raw Folder items when the response also contains
     // other displayable types -- in that case the Folders are
@@ -460,11 +489,14 @@ async function fetchItems(parentId: string, append = false) {
     hasMore.value = items.value.length < totalCount
     if (!append && !isSearching.value) saveLibraryState()
   } catch {
+    if (myToken !== navToken) return
     if (!append) items.value = []
     hasMore.value = false
   } finally {
-    loading.value = false
-    loadingMore.value = false
+    if (myToken === navToken) {
+      loading.value = false
+      loadingMore.value = false
+    }
   }
   // After the FIRST page returns, if the library is large enough to
   // want the alphabet bar, cascade-load the remaining pages in the
@@ -496,17 +528,23 @@ function loadMore() {
 async function doSearch() {
   const q = searchQuery.value.trim()
   if (!q) return
+  const myToken = bumpNavToken(`doSearch:${q}`)
   loading.value = true
   isSearching.value = true
   breadcrumbs.value = []
   filteredLetter.value = null
   try {
     const data = await api.search(q)
+    if (myToken !== navToken) {
+      console.debug('[LibraryBrowser] doSearch STALE — dropping result', { startedAt: myToken, current: navToken, q })
+      return
+    }
     items.value = data.Items ?? data ?? []
   } catch {
+    if (myToken !== navToken) return
     items.value = []
   } finally {
-    loading.value = false
+    if (myToken === navToken) loading.value = false
   }
 }
 
@@ -523,6 +561,7 @@ async function handleItemClick(item: EmbyItem) {
   }
 
   if (browsableTypes.has(item.Type)) {
+    bumpNavToken(`handleItemClick:${item.Type}:${item.Id}`)
     breadcrumbs.value.push({ id: item.Id, name: item.Name })
     await fetchItems(item.Id)
   }
@@ -553,6 +592,7 @@ watch(hasMore, async (val) => {
 })
 
 async function restoreOrFetchRoot() {
+  bumpNavToken('restoreOrFetchRoot')
   const saved = loadLibraryState()
   if (!saved) {
     await fetchLibraries()
@@ -565,6 +605,7 @@ async function restoreOrFetchRoot() {
   breadcrumbs.value = saved.breadcrumbs
   await fetchItems(saved.parentId)
   if (items.value.length === 0) {
+    bumpNavToken('restoreOrFetchRoot:fallback')
     clearLibraryState()
     breadcrumbs.value = []
     currentParentId.value = null
