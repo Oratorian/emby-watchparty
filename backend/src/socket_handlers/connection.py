@@ -14,7 +14,10 @@ from http.cookies import SimpleCookie
 from itsdangerous import TimestampSigner, BadSignature
 
 
-SESSION_COOKIE_NAME = "session"
+# Must stay in sync with the `session_cookie` kwarg passed to
+# SessionMiddleware in backend/app.py; otherwise the socket handshake
+# reads the wrong cookie name and _decode_session always returns None.
+SESSION_COOKIE_NAME = "ewp_session"
 SESSION_MAX_AGE = 14 * 24 * 60 * 60  # Starlette SessionMiddleware default
 HOST_GRACE_SECONDS = 5
 
@@ -126,11 +129,20 @@ def register(ctx):
 
         pending_host_clear.pop(party_id, None)
 
-    async def _try_host_reclaim(party_id: str, client_id: str) -> bool:
+    async def _try_host_reclaim(party_id: str, client_id: str, sid: str) -> bool:
         """Cancel a pending grace task when the host's client_id rejoins.
 
         Called from party.py after `_replace_sid` has migrated state to
         the new sid. Returns True iff a reclaim event was emitted.
+
+        Auth model: client_id alone is NOT proof of identity, because
+        the host's client_id is broadcast in the `host_changed` event to
+        every party member. Reclaim additionally requires the socket to
+        carry a valid session cookie signed by this server for the same
+        party_id + client_id. HTTP `/api/party/<id>/join` is the only
+        route that mints such a cookie, so a co-attendee who scraped
+        the host's client_id from the socket stream still can't reclaim
+        without the signed cookie.
         """
         party = party_manager.get(party_id)
         if not party:
@@ -138,6 +150,26 @@ def register(ctx):
         if party.get("host_client_id") != client_id:
             return False
         if party.get("host_left_at") is None:
+            return False
+
+        # Session-cookie proof gate.
+        environ = sio.get_environ(sid) or {}
+        session = _decode_session(environ, session_secret)
+        if not session:
+            logger.warning(
+                f"Host reclaim REJECTED for {party_id}: sid={sid} has no "
+                f"valid session cookie (client_id {client_id[:8]}... may "
+                f"be scraped from host_changed broadcast)"
+            )
+            return False
+        cookie_party = (session.get("party_id") or "").upper()
+        cookie_client = session.get("client_id")
+        if cookie_party != party_id or cookie_client != client_id:
+            logger.warning(
+                f"Host reclaim REJECTED for {party_id}: cookie "
+                f"party={cookie_party}/client={cookie_client and cookie_client[:8]} "
+                f"does not match rejoin party/client"
+            )
             return False
 
         task = pending_host_clear.pop(party_id, None)

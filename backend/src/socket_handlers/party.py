@@ -16,6 +16,27 @@ def register(ctx):
     token_manager = ctx['token_manager']
     restart_video_from_beginning = ctx['restart_video_from_beginning']
     create_user_stream = ctx.get('create_user_stream')
+    session_secret = ctx.get('session_secret')
+
+    def _cookie_session(environ):
+        """Read the party-bound session cookie off the raw ASGI environ.
+
+        Same decoder as connection.py:_decode_session; broken out here
+        so join_party can gate the eviction path on cookie proof.
+        Returns the decoded session dict or None. Session cookie name +
+        max-age are kept in sync with SessionMiddleware config in
+        backend/app.py.
+        """
+        if not session_secret:
+            return None
+        raw = environ.get("HTTP_COOKIE", "")
+        if not raw:
+            return None
+        # Reuse connection.py helpers rather than duplicating parse
+        # logic; a stray drift between the two parsers would silently
+        # break auth on one side.
+        from backend.src.socket_handlers.connection import _decode_session
+        return _decode_session(environ, session_secret)
 
     # -------------------------------------------------------------------------
     # Late-joiner vote helpers
@@ -505,10 +526,44 @@ def register(ctx):
                 logger.info(f"Reattached participant {username} in {party_id}: {old_sid} -> {sid}")
             _replace_sid(party, old_sid, sid, username, client_id, avatar_uuid)
         else:
-            # Evict stale SID if same username is already in party. This is a
-            # fallback for older clients without client_id and duplicate tabs.
+            # Historically this evicted any existing member with a
+            # matching display name (with a different client_id) so
+            # duplicate-tab / lost-client_id refreshes would land on
+            # their seat. But username is a public string and there is
+            # no party password, so anyone knowing (party code, member
+            # name) could kick the real member off their seat, inherit
+            # their ready_check membership, and DoS their Emby transcode
+            # via _replace_sid's teardown.
+            #
+            # Gate the eviction on a valid session cookie carrying the
+            # SAME client_id as the joiner. HTTP /api/party/<id>/join
+            # is the only route that mints those cookies, and it stores
+            # the caller-supplied client_id verbatim -- so a legitimate
+            # duplicate-tab / same-browser user matches, but a random
+            # attacker with just the party code + username does not.
+            environ = sio.get_environ(sid) or {}
+            cookie_session = _cookie_session(environ)
+            cookie_client_id = cookie_session.get("client_id") if cookie_session else None
+            cookie_party_id = (cookie_session.get("party_id") or "").upper() if cookie_session else ""
+            same_browser = (
+                cookie_client_id == client_id and cookie_party_id == party_id
+            )
             for stale_sid, existing_name in list(party["users"].items()):
                 if existing_name == username and stale_sid != sid:
+                    if not same_browser:
+                        logger.warning(
+                            f"Join eviction REJECTED in {party_id}: "
+                            f"caller sid={sid} lacks session-cookie proof "
+                            f"for username '{username}'; refusing to evict "
+                            f"stale_sid={stale_sid}"
+                        )
+                        await sio.emit("error", {
+                            "message": (
+                                "That username is already in use. Pick "
+                                "another display name."
+                            )
+                        }, to=sid)
+                        return
                     stale_client_id = sid_client_ids.get(stale_sid)
                     if stale_client_id:
                         participants.pop(stale_client_id, None)
@@ -581,7 +636,7 @@ def register(ctx):
         # room the party is UNLOCKED again. No re-authentication needed.
         try_host_reclaim = ctx.get('try_host_reclaim')
         if try_host_reclaim:
-            await try_host_reclaim(party_id, client_id)
+            await try_host_reclaim(party_id, client_id, sid)
 
         await sio.emit("user_joined", {
             "username": username,

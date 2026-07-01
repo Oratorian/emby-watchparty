@@ -12,6 +12,10 @@ Two paths in:
    flag that survives until logout.
 """
 
+import time as _time
+from collections import deque
+from threading import Lock
+
 from fastapi import APIRouter, Depends, Request
 import requests as http_requests
 
@@ -26,6 +30,46 @@ from backend.src.dependencies import (
     get_token_manager,
     is_admin_authenticated,
 )
+
+
+# --- /api/admin/login rate limiter -------------------------------------
+# In-memory sliding window per client IP. Hardcoded because the
+# admin-panel ENABLE_RATE_LIMITING / RATE_LIMIT_* fields are documented
+# as advisory and don't drive any real limiter today (audit finding);
+# rewiring that plumbing is out of scope for this hardening pass, and a
+# working limit on the credential-oracle endpoint is much more
+# important than making it configurable. Values match typical brute-
+# force protection: 10 attempts / 15 minutes per IP.
+_LOGIN_MAX_ATTEMPTS = 10
+_LOGIN_WINDOW_SECS = 15 * 60
+_LOGIN_ATTEMPTS: dict[str, deque[float]] = {}
+_LOGIN_ATTEMPTS_LOCK = Lock()
+
+
+def _login_rate_limited(client_ip: str) -> tuple[bool, int]:
+    """Return (is_limited, retry_after_seconds)."""
+    now = _time.monotonic()
+    cutoff = now - _LOGIN_WINDOW_SECS
+    with _LOGIN_ATTEMPTS_LOCK:
+        bucket = _LOGIN_ATTEMPTS.setdefault(client_ip, deque())
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+        if len(bucket) >= _LOGIN_MAX_ATTEMPTS:
+            retry_after = int(_LOGIN_WINDOW_SECS - (now - bucket[0])) + 1
+            return True, max(1, retry_after)
+        bucket.append(now)
+        return False, 0
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort caller IP. Trusts X-Forwarded-For's LAST hop (nearest
+    reverse-proxy) since the app is expected to sit behind one; a
+    misbehaving direct client can only spoof their own bucket, not
+    another IP's."""
+    xff = request.headers.get("x-forwarded-for", "").strip()
+    if xff:
+        return xff.split(",")[-1].strip()
+    return request.client.host if request.client else "0.0.0.0"
 from backend.src.schemas import (
     AdminLoginRequest,
     AdminLoginResponse,
@@ -45,7 +89,24 @@ def admin_login(body: AdminLoginRequest, request: Request,
     Hosts who are already inside a party with admin policy do NOT need
     to call this -- their party-bound cookie already grants /admin
     access via is_admin_authenticated().
+
+    Rate limited per IP (see _login_rate_limited). Prevents this
+    endpoint from being used as a credential-stuffing oracle against
+    every Emby admin account -- previously there was no throttle at
+    all and the endpoint returned a clean success/failure signal.
     """
+    ip = _client_ip(request)
+    limited, retry_after = _login_rate_limited(ip)
+    if limited:
+        logger.warning(
+            f"Admin login rate-limited for IP {ip} (retry in {retry_after}s)"
+        )
+        return {
+            "success": False,
+            "message": (
+                f"Too many login attempts. Try again in {retry_after} seconds."
+            ),
+        }
     try:
         url = f"{emby_client.server_url}/emby/Users/AuthenticateByName"
         headers = {
