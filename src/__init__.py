@@ -1,8 +1,8 @@
 """
 Emby Watch Party - Source Modules
-Version: 1.6.6
+Version: 1.6.7
 Codename: Synced Popcorn
 """
 
-__version__ = "1.6.6"
+__version__ = "1.6.7"
 __codename__ = "Synced Popcorn"

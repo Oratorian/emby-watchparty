@@ -15,6 +15,26 @@ Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https:/
 
 ---
 
+## [1.6.7] - 2026-07-01
+
+### Security
+
+- Bumped `python-socketio` minimum from the pinned `==5.14.0` to `>=5.16.2,<6.0` ([CVE-2026-48804](https://github.com/advisories/GHSA-5w7q-77mv-v69f)).
+
+### Technical details
+
+**python-socketio DoS via binary attachment accumulation** ([CVE-2026-48804](https://github.com/advisories/GHSA-5w7q-77mv-v69f) / GHSA-5w7q-77mv-v69f)
+
+`python-socketio` versions through `5.16.1` were vulnerable to a denial-of-service via unbounded binary packet fragment accumulation: a client can keep sending binary attachment fragments the server buffers without a memory cap, eventually exhausting memory. `flask-socketio` >=5.4.0 depends on `python-socketio`, so 1.6.6 (`python-socketio==5.14.0` pinned exactly) shipped an affected version.
+
+Fixed upstream in `python-socketio 5.16.2`. The requirements floor is now `>=5.16.2,<6.0`; the upper bound guards against a future major bump introducing an API break during `pip install --upgrade`. Verified `flask-socketio 5.4.0+` resolves cleanly against the new floor (pip pulls the latest 5.6.x line).
+
+Security-only release. No functional changes. Safe drop-in for anyone on `:latest` / `:1.6.6`.
+
+Per the security policy, 1.6.6 is in security-only maintenance through 2026-12-31; this is the first patch under that policy.
+
+---
+
 ## [1.6.6] - 2026-05-05
 
 ### Fixed
