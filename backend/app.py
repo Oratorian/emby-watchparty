@@ -152,8 +152,36 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down...")
 
 
-# Create SocketIO server
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+# Create SocketIO server.
+#
+# max_http_buffer_size: 128 KiB. Default is 1 MB; nothing legitimate on
+# our wire needs more (chat messages, small JSON events). Shrinking the
+# ceiling defangs the socketio DoS vector we just patched around
+# (CVE-2026-48804) and caps any future single-packet amplification
+# attempt at the transport layer.
+#
+# ping_timeout / ping_interval: default socket.io values (60s / 25s)
+# leave a dead client eating a slot for a full minute. Halving both
+# means a client-crash / zombie-tab reconnect storm reclaims resources
+# ~2x faster.
+#
+# cors_allowed_origins: read from env. Comma-separated list; the
+# historical default '*' means "any origin can XHR-poll the server",
+# which combined with the missing per-IP throttle amplifies cross-
+# origin DoS. Production deploys should pin to their actual origin(s).
+import os as _os_sio
+_allowed_origins_raw = _os_sio.getenv("CORS_ALLOWED_ORIGINS", "*").strip()
+if _allowed_origins_raw == "*":
+    _cors_origins = "*"
+else:
+    _cors_origins = [o.strip() for o in _allowed_origins_raw.split(",") if o.strip()]
+sio = socketio.AsyncServer(
+    async_mode='asgi',
+    cors_allowed_origins=_cors_origins,
+    max_http_buffer_size=128 * 1024,
+    ping_timeout=30,
+    ping_interval=12,
+)
 
 # Create FastAPI app
 app = FastAPI(

@@ -20,6 +20,41 @@ from backend.src.dependencies import (
 router = APIRouter(prefix="/hls", tags=["hls"])
 
 
+# Upstream Emby HTTP timeout. Without an explicit bound, a slow or
+# misbehaving Emby can pin uvicorn worker slots until the OS TCP
+# timeout, exhausting the thread pool for everyone. Enough for a large
+# segment on a fresh transcode; a healthy Emby returns segments in
+# well under this.
+_EMBY_HTTP_TIMEOUT = 30.0
+
+
+# Allowlist of query params that legitimately flow from client -> Emby.
+# The old passthrough (`{k: v for k, v in query_params if k != 'token'}`)
+# let a caller with a valid HLS token supply arbitrary Emby params
+# (including `api_key=`, `Static=true`, `redirect=`) which some Emby
+# versions honor and which could bypass the intended transcode
+# configuration. This set is the concrete list of names StreamBuilder
+# and the frontend can emit.
+_ALLOWED_EMBY_PARAMS = {
+    "MediaSourceId", "PlaySessionId", "DeviceId",
+    "SegmentContainer", "TranscodingMaxAudioChannels", "AudioCodec",
+    "AudioBitrate", "BreakOnNonKeyFrames", "MaxAudioChannels",
+    "MinSegments", "h264-profile", "h264-level", "VideoCodec",
+    "MaxWidth", "MaxHeight", "TranscodeReasons",
+    "EnableAutoStreamCopy", "VideoBitrate",
+    "AudioStreamIndex", "SubtitleStreamIndex", "SubtitleMethod",
+    "StartTimeTicks",
+}
+
+
+def _sanitize_query(query_items):
+    """Drop `token` (our own) and anything not on the Emby allowlist."""
+    return {
+        k: v for k, v in query_items
+        if k != "token" and k in _ALLOWED_EMBY_PARAMS
+    }
+
+
 def _resolve_host_creds(request: Request, token_manager, party_manager, logger):
     """Validate the HLS token and return (host_access_token, host_user_id, party_id).
 
@@ -110,14 +145,14 @@ def proxy_hls_master(item_id: str, request: Request,
                 media_type="application/json",
             )
 
-        query_params = {k: v for k, v in request.query_params.items() if k != "token"}
+        query_params = _sanitize_query(request.query_params.items())
         query_string = "&".join(f"{k}={v}" for k, v in query_params.items())
         emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/master.m3u8"
         if query_string:
             emby_url += f"?{query_string}"
 
         logger.debug(f"Proxying HLS master: {emby_url}")
-        emby_resp = httpx.get(emby_url, headers=emby_client._headers(access_token, user_id))
+        emby_resp = httpx.get(emby_url, headers=emby_client._headers(access_token, user_id), timeout=_EMBY_HTTP_TIMEOUT)
         emby_resp.raise_for_status()
 
         token = request.query_params.get("token") if config.ENABLE_HLS_TOKEN_VALIDATION else None
@@ -173,7 +208,7 @@ def proxy_hls_segment(item_id: str, subpath: str, request: Request,
                 media_type="application/json",
             )
 
-        query_params = {k: v for k, v in request.query_params.items() if k != "token"}
+        query_params = _sanitize_query(request.query_params.items())
         query_string = "&".join(f"{k}={v}" for k, v in query_params.items())
         emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/{subpath}"
         if query_string:
@@ -197,7 +232,7 @@ def proxy_hls_segment(item_id: str, subpath: str, request: Request,
                 },
             )
 
-        emby_resp = httpx.get(emby_url, headers=emby_client._headers(access_token, user_id))
+        emby_resp = httpx.get(emby_url, headers=emby_client._headers(access_token, user_id), timeout=_EMBY_HTTP_TIMEOUT)
         emby_resp.raise_for_status()
 
         content_type = "video/MP2T" if subpath.endswith(".ts") else "application/octet-stream"

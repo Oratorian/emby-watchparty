@@ -12,6 +12,7 @@ Identity model:
 """
 
 import asyncio
+import time
 from datetime import datetime, timedelta
 from backend.src.quality import (
     DEFAULT_QUALITY_ID,
@@ -1076,6 +1077,16 @@ def register(ctx):
             f"by {party['users'].get(sid, '?')}"
         )
 
+    # report_progress throttle. The handler fires a synchronous outbound
+    # Emby HTTP call on every emit; previously there was no cap, so a
+    # joined member could 1000-Hz spam and (a) pin the asyncio event
+    # loop via the sync requests.post and (b) hammer Emby with one
+    # POST per emit under the host's access_token. Cap to one report
+    # per sid every 4 seconds (frontend fires at ~5s cadence in normal
+    # operation, so this only clips abuse).
+    _REPORT_PROGRESS_MIN_INTERVAL = 4.0
+    _last_report_progress: dict[str, float] = {}
+
     @sio.on("report_progress")
     async def handle_report_progress(sid, data):
         party_id = data.get("party_id", "").strip().upper()
@@ -1095,6 +1106,13 @@ def register(ctx):
         if current_video.get("selected_by") == caller_client_id:
             party["playback_state"]["time"] = current_time
             party["playback_state"]["last_update"] = datetime.now().isoformat()
+
+        # Throttle Emby-facing reports per sid.
+        now = time.monotonic()
+        last = _last_report_progress.get(sid, 0.0)
+        if now - last < _REPORT_PROGRESS_MIN_INTERVAL:
+            return
+        _last_report_progress[sid] = now
 
         is_playing = party["playback_state"].get("playing", False)
         access_token, user_id = _host_creds(party)
