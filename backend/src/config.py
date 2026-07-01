@@ -219,7 +219,17 @@ class RuntimeConfig:
         rejected: list[dict] = []
         valid_fields = {f.name: f for f in fields(self)}
 
+        # Response-only wrapper keys the admin GET /config endpoint
+        # returns alongside the real fields (schemas.py:RuntimeConfigResponse
+        # ships `error: Optional[str]` as a status slot). The frontend
+        # re-submits its whole config object on Save, so these leak into
+        # the payload every time. Silently drop them instead of listing
+        # them in `rejected` where they'd show up as a scary "Not
+        # applied: error (unknown field)" line after a plain no-op Save.
+        _RESPONSE_WRAPPER_KEYS = {"error"}
         for key, value in data.items():
+            if key in _RESPONSE_WRAPPER_KEYS:
+                continue
             if key not in valid_fields:
                 rejected.append({"key": key, "reason": "unknown field"})
                 continue
