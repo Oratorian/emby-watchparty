@@ -12,6 +12,7 @@ Identity model:
 """
 
 import asyncio
+import time
 from datetime import datetime, timedelta
 from backend.src.quality import (
     DEFAULT_QUALITY_ID,
@@ -450,7 +451,15 @@ def register(ctx):
         _start_ready_check(party, party_id)
         waiting_names = [party["users"].get(s, "?") for s in party["ready_check"]["expected_sids"]]
 
-        # Create per-user streams and emit individually
+        # Create per-user streams and emit individually. When a user's
+        # stream fails to build (Emby playback_info transient error,
+        # MediaSources missing, etc.) we MUST drop that sid from
+        # expected_sids or the ready-check hangs forever: the sid never
+        # receives video_selected, so it never emits stream_ready, so
+        # ready_sids >= expected_sids is unreachable. Frontend has a
+        # 15s safety timeout that dismisses the overlay, but the party
+        # is still in a broken state (ready_check dict never cleared,
+        # auto_play_after_ready never consumed) unless we cleanup here.
         for user_sid in list(party["users"].keys()):
             stream = _create_user_stream(
                 party, party_id, user_sid, item_id, media_source,
@@ -459,6 +468,19 @@ def register(ctx):
                 media_source_id=resolved_media_source_id,
             )
             if not stream:
+                logger.warning(
+                    f"_create_user_stream failed for sid={user_sid} in {party_id}; "
+                    f"dropping from ready_check.expected_sids to prevent deadlock"
+                )
+                rc = party.get("ready_check")
+                if rc:
+                    rc["expected_sids"].discard(user_sid)
+                # Notify the failed client so they don't stare at a
+                # blank player waiting for a video_selected that will
+                # never come.
+                await sio.emit("error", {
+                    "message": "Could not start your stream. Ask the host to re-select the video.",
+                }, to=user_sid)
                 continue
 
             stream_url = stream["stream_url_base"]
@@ -484,10 +506,23 @@ def register(ctx):
                 }
             }, to=user_sid)
 
-        # Tell everyone the ready check is in progress
+        # Tell everyone the ready check is in progress.
+        # Recompute waiting_names from the LIVE expected_sids because
+        # some may have been discarded due to stream-creation failures
+        # above; otherwise the overlay lists ghosts nobody is waiting on.
+        rc = party.get("ready_check") or {}
+        live_expected = rc.get("expected_sids") or set()
+        waiting_names = [party["users"].get(s, "?") for s in live_expected]
         await sio.emit("ready_check_update", {
             "ready": [], "waiting": waiting_names,
         }, room=party_id)
+
+        # Edge case: every user's stream failed. expected_sids is now
+        # empty, so the natural stream_ready path would never fire
+        # _check_all_ready. Run it once here to complete the check and
+        # consume auto_play_after_ready cleanly.
+        if not live_expected:
+            await _check_all_ready(party_id, party)
 
         return True
 
@@ -732,15 +767,51 @@ def register(ctx):
         if not party:
             return
 
+        # Caller-identity gate. Previously any client (or a browser
+        # extension / racing HLS.js end-of-stream double-fire) could
+        # emit video_ended and unconditionally stop every user's
+        # transcode + reset playback_state + trigger LOCKED-state
+        # transition via _wipe_host_if_orphan. Only the selector may
+        # signal end-of-video; if there is no selector on record we
+        # fall back to the host so vote-pass / binge-fired states still
+        # work.
+        caller_client_id = party.get("sid_client_ids", {}).get(sid)
+        current_video = party.get("current_video") or {}
+        selected_by = current_video.get("selected_by")
+        host_client_id = party.get("host_client_id")
+        allowed = (
+            (selected_by and caller_client_id == selected_by)
+            or (not selected_by and host_client_id and caller_client_id == host_client_id)
+        )
+        if not allowed:
+            logger.info(
+                f"handle_video_ended REJECTED: sid={sid} "
+                f"client_id={caller_client_id} is not selector/host of {party_id}"
+            )
+            return
+
+        # Idempotency: current_video is cleared at the end of this
+        # handler, so a duplicate emit re-enters with prev_video empty
+        # and skips the destructive path. Previously duplicate emits
+        # (HLS.js ENDED twice, retry loops) would silently re-arm
+        # _queue_auto_advance and reset the countdown from full.
+        if not current_video.get("item_id"):
+            return
+
         logger.info(f"Video ended in party {party_id}")
-        final_pos = party.get("current_video", {}).get("run_time_seconds", 0)
-        prev_video = party.get("current_video") or {}
+        final_pos = current_video.get("run_time_seconds", 0)
+        prev_video = current_video
         _stop_all_user_streams(party, final_pos)
 
         party["playback_state"] = {
             "playing": False, "time": 0, "last_update": datetime.now().isoformat(),
         }
         party["ready_check"] = None
+        # Clear current_video BEFORE the auto-advance check so a
+        # duplicate video_ended emit bails at the idempotency guard
+        # above. _maybe_start_auto_advance still has prev_video in its
+        # closure so binge lookup still works.
+        party["current_video"] = None
 
         # If host already left, this is the moment we fully lock the party.
         # Do this BEFORE the binge-advance check; auto-advance can't start
@@ -786,6 +857,15 @@ def register(ctx):
         episode_list = party.get("episode_list") or []
         current_idx_number = prev_video.get("index_number")
         if current_idx_number is None or not episode_list:
+            # Can't compute "next episode" without an IndexNumber (rare;
+            # happens on freshly-added episodes before Emby's metadata
+            # fetch completes) or without a cached season list. Emit
+            # binge_finished so the frontend opens the library and drops
+            # the "pick another" system message instead of leaving the
+            # player stuck on the just-ended episode.
+            await sio.emit("binge_finished", {
+                "reason": "no_index" if current_idx_number is None else "no_episode_list",
+            }, room=party_id)
             return
 
         # Find next: smallest IndexNumber strictly greater than current.
@@ -912,6 +992,11 @@ def register(ctx):
             party, party_id, selector_client_id, next_item_id, next_title, "",
         )
         if not success:
+            # Restart failed -- clear the flag we optimistically set
+            # above so a later restart (via vote-pass, or a manual
+            # select-then-play) doesn't inherit it and auto-play a
+            # different video without the host clicking play.
+            party.pop("auto_play_after_ready", None)
             logger.warning(
                 f"Auto-advance failed to start next episode in party {party_id}: "
                 f"{next_item_id}"
@@ -992,6 +1077,16 @@ def register(ctx):
             f"by {party['users'].get(sid, '?')}"
         )
 
+    # report_progress throttle. The handler fires a synchronous outbound
+    # Emby HTTP call on every emit; previously there was no cap, so a
+    # joined member could 1000-Hz spam and (a) pin the asyncio event
+    # loop via the sync requests.post and (b) hammer Emby with one
+    # POST per emit under the host's access_token. Cap to one report
+    # per sid every 4 seconds (frontend fires at ~5s cadence in normal
+    # operation, so this only clips abuse).
+    _REPORT_PROGRESS_MIN_INTERVAL = 4.0
+    _last_report_progress: dict[str, float] = {}
+
     @sio.on("report_progress")
     async def handle_report_progress(sid, data):
         party_id = data.get("party_id", "").strip().upper()
@@ -1011,6 +1106,13 @@ def register(ctx):
         if current_video.get("selected_by") == caller_client_id:
             party["playback_state"]["time"] = current_time
             party["playback_state"]["last_update"] = datetime.now().isoformat()
+
+        # Throttle Emby-facing reports per sid.
+        now = time.monotonic()
+        last = _last_report_progress.get(sid, 0.0)
+        if now - last < _REPORT_PROGRESS_MIN_INTERVAL:
+            return
+        _last_report_progress[sid] = now
 
         is_playing = party["playback_state"].get("playing", False)
         access_token, user_id = _host_creds(party)

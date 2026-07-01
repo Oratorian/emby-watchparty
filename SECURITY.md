@@ -87,12 +87,20 @@ Never commit your `.env` file. It contains sensitive credentials:
 ```bash
 # These should NEVER be in version control
 EMBY_API_KEY=your_api_key
+SESSION_SECRET=your_session_signing_key
 ```
 
 As of 2.0, `EMBY_USERNAME` and `EMBY_PASSWORD` are no longer stored in
 `.env`. Per-user authentication is an in-app action: any party member
 clicks "Login to Become Host" inside the party. The backend keeps no
 long-lived user credentials at rest.
+
+As of 2.0.0-beta18, `SESSION_SECRET` MUST be set for any production
+deployment. It's the signing key for the party-bound session cookie;
+if left empty, an ephemeral random key is generated at each boot and
+every existing user session is invalidated on restart. Generate ONCE
+with `openssl rand -hex 32` and treat it like any other long-lived
+signing key -- rotate on suspected compromise, otherwise leave stable.
 
 Ensure your `.env` file has restricted permissions:
 
@@ -111,13 +119,25 @@ chmod 600 .env
 
 #### Rate Limiting
 
-Enable rate limiting to prevent abuse:
+The following rate limits are hardcoded in code and always active
+(they cannot be disabled from `/admin`):
 
-```env
-ENABLE_RATE_LIMITING=true
-```
+- **`/api/admin/login`** — 10 attempts / 15 minutes per IP. Blocks
+  credential-stuffing against Emby admin accounts. Trusts the last
+  hop of `X-Forwarded-For` for reverse-proxied deployments.
+- **`chat_message`** — 5 messages / 3 seconds per socket, hard cap
+  of 2 KiB per message. Blocks room-wide amplification via oversized
+  or high-rate chat payloads.
+- **`report_progress`** — one Emby-facing progress POST per socket
+  every 4 seconds. Blocks event-loop-pinning spam from a malicious
+  client under the host's Emby access token.
+- **`/api/avatar/recover`** — per-IP recovery-code check bucket.
 
-The application uses Flask-Limiter to protect against brute force and DoS attempts.
+The admin-panel `ENABLE_RATE_LIMITING` / `RATE_LIMIT_PARTY_CREATION`
+/ `RATE_LIMIT_API_CALLS` fields persist to `config.json` but do not
+drive an active limiter yet -- treat them as advisory. A dedicated
+HTTP-layer limiter is planned post-2.0.0. The above hardcoded limits
+cover the most sensitive vectors in the meantime.
 
 #### Token Validation
 
@@ -128,11 +148,39 @@ ENABLE_HLS_TOKEN_VALIDATION=true
 HLS_TOKEN_EXPIRY=86400  # 24 hours in seconds
 ```
 
+Query parameters forwarded to Emby from the `/hls/...` proxy are
+filtered against an allowlist as of 2.0.0-beta18, so a caller with
+a valid HLS token cannot smuggle `Static=true`, `redirect=...`, or a
+rogue `api_key=` into the upstream Emby request.
+
 #### Session Security
 
-- Sessions expire after configurable time (`SESSION_EXPIRY`)
-- Cookies use `SameSite=Lax` for CSRF protection
-- Session tokens are cryptographically generated using Python's `secrets` module
+- Cookie signing key comes from `SESSION_SECRET` in `.env` (new in
+  2.0.0-beta18). Persistent across restarts and workers. Empty =
+  ephemeral fallback with loud warning at boot.
+- Cookie name is `ewp_session` (was `session` prior to beta18; the
+  rename means upgrading from earlier 2.0 betas invalidates every
+  existing session and re-prompts users to join).
+- `SameSite=Lax` for CSRF protection on cross-site POST navigations.
+- `Secure` flag driven by `SESSION_COOKIE_SECURE` env var. Set
+  `true` for any HTTPS deployment; leave `false` for local dev.
+- 14-day `max_age` on the cookie; content is cryptographically
+  signed with `itsdangerous.TimestampSigner`.
+
+#### Socket.IO Hardening (2.0.0-beta18)
+
+- `max_http_buffer_size=128 KiB` (was 1 MB default). Caps any single
+  packet at 128 KiB to shrink the CVE-2026-48804 binary-buffer
+  amplification surface.
+- `ping_timeout=30`, `ping_interval=12`. Zombie reconnect storms
+  clear ~2x faster than at defaults.
+- `cors_allowed_origins` from `CORS_ALLOWED_ORIGINS` env var
+  (default `*` for backwards compat). Pin to real origin(s) in
+  production.
+- All `play` / `pause` / `seek` / `video_ended` handlers gate on the
+  caller's `client_id` matching either the video's `selected_by` or
+  the party's `host_client_id`. Spectators cannot drive party-wide
+  playback.
 
 #### Party Size Limits
 
@@ -186,7 +234,9 @@ CONSOLE_LOG_LEVEL=ERROR
 ### WebSocket Security
 
 - WebSocket connections should be protected by the same TLS termination as HTTP
-- Rate limiting applies to WebSocket events
+- Per-sid rate limiting on chat and report_progress (see above)
+- Client-supplied playback events (play/pause/seek/video_ended) are
+  authorized against `selected_by` / `host_client_id`
 - Invalid messages are rejected and logged
 
 ## Security Updates

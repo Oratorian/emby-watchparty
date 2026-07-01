@@ -147,6 +147,13 @@ function setBitrateEnabled(res: string, kbps: number, enabled: boolean) {
 
 async function loadConfig() {
   const cfg = await api.adminGetConfig()
+  // Strip the response-only `error` wrapper so it doesn't leak back
+  // into the POST payload on Save (where the backend would flag it
+  // as an unknown field). Belt-and-braces: backend also silently
+  // drops it, but scrubbing here keeps the UI + wire model clean.
+  if (cfg && typeof cfg === 'object' && 'error' in cfg) {
+    delete cfg.error
+  }
   ensureQualityDict(cfg)
   config.value = cfg
   syncRateLimitsFromConfig()
@@ -176,8 +183,25 @@ async function saveConfig() {
   const result = await api.adminUpdateConfig(config.value)
   if (result.success) {
     const changed = result.changed || []
-    saveStatus.value = changed.length ? `Saved: ${changed.join(', ')}` : 'No changes'
-    saveClass.value = 'success'
+    const rejected = result.rejected || []
+    const restart = result.restart_required || []
+    const parts: string[] = []
+    if (changed.length) {
+      parts.push(`Saved: ${changed.join(', ')}`)
+    } else {
+      parts.push('No changes')
+    }
+    if (restart.length) {
+      parts.push(`Restart required for: ${restart.join(', ')}`)
+    }
+    if (rejected.length) {
+      parts.push(
+        `Not applied: ${rejected.map((r: any) => `${r.key} (${r.reason})`).join('; ')}`,
+      )
+    }
+    saveStatus.value = parts.join(' | ')
+    // Mixed outcome: rejects present -> warn, else success.
+    saveClass.value = rejected.length ? 'warning' : 'success'
     if (result.config) {
       ensureQualityDict(result.config)
       config.value = result.config
@@ -202,8 +226,12 @@ async function logout() {
 onMounted(async () => {
   try {
     const cfg = await api.adminGetConfig()
-    if (!cfg.error) {
+    // `error` on the raw response signals "not authenticated" (see
+    // RuntimeConfigResponse). Check BEFORE the scrub-and-assign path
+    // so the auth signal isn't lost.
+    if (cfg && !cfg.error) {
       authenticated.value = true
+      if ('error' in cfg) delete cfg.error
       ensureQualityDict(cfg)
       config.value = cfg
       syncRateLimitsFromConfig()

@@ -134,32 +134,104 @@ class RuntimeConfig:
 
     @classmethod
     def from_file(cls, path: Path = CONFIG_JSON_PATH) -> 'RuntimeConfig':
-        """Load from config.json, falling back to defaults for missing fields"""
+        """Load from config.json, falling back to defaults for missing fields.
+
+        If config.json is corrupted (truncated / not valid JSON) we still
+        return defaults, but we side-move the bad file to
+        `<path>.corrupt-<timestamp>` and log at warning level so the
+        operator has both a signal AND a recoverable copy. Previously
+        this was a silent `pass` -- the next admin save would then
+        overwrite config.json with defaults, permanently losing every
+        prior admin tuning.
+        """
+        import time as _t
+        import shutil
+        import logging as _logging
         instance = cls()
         if path.exists():
             try:
                 with open(path, 'r') as f:
                     data = json.load(f)
                 instance.update_from_dict(data)
-            except (json.JSONDecodeError, OSError):
-                pass
+            except json.JSONDecodeError as e:
+                backup = path.with_name(f"{path.name}.corrupt-{int(_t.time())}")
+                try:
+                    shutil.copy2(path, backup)
+                except OSError:
+                    backup = None
+                _logging.getLogger("emby-watchparty").warning(
+                    f"config.json is corrupted ({e}); reverted to defaults. "
+                    f"Backup at {backup} for recovery."
+                )
+            except OSError as e:
+                _logging.getLogger("emby-watchparty").warning(
+                    f"config.json could not be read ({e}); using defaults."
+                )
         return instance
 
     def save(self, path: Path = CONFIG_JSON_PATH):
-        """Persist current runtime settings to config.json"""
-        with open(path, 'w') as f:
-            json.dump(self.to_dict(), f, indent=2)
+        """Persist current runtime settings atomically.
+
+        Write to a sibling temp file and os.replace() onto the target.
+        Prevents the crash-mid-write case where truncating config.json
+        via `open(path, 'w')` and then dying (OOM, power-loss, exception
+        during json.dump) leaves a partial or empty file, which
+        from_file() then silently swallowed as "use defaults", erasing
+        every admin-tuned setting.
+        """
+        import os
+        import tempfile
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Same directory so os.replace() is atomic (rename across
+        # filesystems can partial-succeed). NamedTemporaryFile with
+        # delete=False so we control the final rename ourselves.
+        with tempfile.NamedTemporaryFile(
+            mode='w', dir=path.parent, prefix=path.name + '.',
+            suffix='.tmp', delete=False, encoding='utf-8',
+        ) as tmp:
+            json.dump(self.to_dict(), tmp, indent=2)
+            tmp.flush()
+            try:
+                os.fsync(tmp.fileno())
+            except OSError:
+                pass
+            tmp_name = tmp.name
+        os.replace(tmp_name, path)
 
     def to_dict(self) -> dict:
         return {f.name: getattr(self, f.name) for f in fields(self)}
 
-    def update_from_dict(self, data: dict) -> list:
-        """Apply validated changes. Returns list of changed field names."""
+    def update_from_dict(self, data: dict) -> tuple[list, list]:
+        """Apply validated changes.
+
+        Returns `(changed, rejected)`:
+        - changed: field names whose value was updated.
+        - rejected: list of `{key, reason}` dicts describing values that
+          were dropped because they had the wrong shape or failed
+          coercion. Previously these were silently `continue`d and the
+          admin UI still rendered "Saved" -- so an invalid HLS_TOKEN_EXPIRY
+          or a null LOG_MAX_SIZE left the server on the old value with
+          no user-visible signal. The admin router surfaces the reject
+          list in the response so the UI can show "Saved (but X was
+          not applied: <reason>)".
+        """
         changed = []
+        rejected: list[dict] = []
         valid_fields = {f.name: f for f in fields(self)}
 
+        # Response-only wrapper keys the admin GET /config endpoint
+        # returns alongside the real fields (schemas.py:RuntimeConfigResponse
+        # ships `error: Optional[str]` as a status slot). The frontend
+        # re-submits its whole config object on Save, so these leak into
+        # the payload every time. Silently drop them instead of listing
+        # them in `rejected` where they'd show up as a scary "Not
+        # applied: error (unknown field)" line after a plain no-op Save.
+        _RESPONSE_WRAPPER_KEYS = {"error"}
         for key, value in data.items():
+            if key in _RESPONSE_WRAPPER_KEYS:
+                continue
             if key not in valid_fields:
+                rejected.append({"key": key, "reason": "unknown field"})
                 continue
 
             field_obj = valid_fields[key]
@@ -178,11 +250,18 @@ class RuntimeConfig:
                     else:
                         value = bool(value)
                 elif ftype == 'int' or ftype is int:
+                    if value is None:
+                        rejected.append({"key": key, "reason": "null not allowed for int"})
+                        continue
                     value = int(value)
                 elif ftype == 'str' or ftype is str:
+                    if value is None:
+                        rejected.append({"key": key, "reason": "null not allowed for str"})
+                        continue
                     value = str(value)
                 elif is_dict:
                     if not isinstance(value, dict):
+                        rejected.append({"key": key, "reason": "expected dict"})
                         continue
                     # ENABLED_QUALITY_OPTIONS: keys must be known
                     # resolutions, values must be lists of ints that
@@ -216,15 +295,17 @@ class RuntimeConfig:
                     elif isinstance(value, str):
                         value = [s.strip() for s in value.split(',') if s.strip()]
                     else:
+                        rejected.append({"key": key, "reason": "expected list or comma-separated string"})
                         continue
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:
+                rejected.append({"key": key, "reason": f"coercion failed: {e}"})
                 continue
 
             if value != current:
                 setattr(self, key, value)
                 changed.append(key)
 
-        return changed
+        return changed, rejected
 
     @classmethod
     def field_metadata(cls) -> list:
@@ -284,15 +365,23 @@ class Config:
         runtime = RuntimeConfig.from_file()
         return cls(env, runtime)
 
-    def update_runtime(self, data: dict) -> list:
-        """Update runtime settings, persist to config.json. Returns changed field names."""
+    def update_runtime(self, data: dict) -> tuple[list, list]:
+        """Update runtime settings, persist to config.json.
+
+        Returns (changed_field_names, rejected_entries). rejected is a
+        list of {key, reason} dicts describing values dropped due to
+        wrong shape / failed coercion; surfaced by the admin router so
+        the UI can tell the operator "Saved (but HLS_TOKEN_EXPIRY was
+        not applied: expected int)" instead of silently pretending
+        the change stuck.
+        """
         lock = object.__getattribute__(self, '_lock')
         runtime = object.__getattribute__(self, '_runtime')
         with lock:
-            changed = runtime.update_from_dict(data)
+            changed, rejected = runtime.update_from_dict(data)
             if changed:
                 runtime.save()
-            return changed
+            return changed, rejected
 
     def get_runtime_dict(self) -> dict:
         """Get all runtime settings as a dict (for admin API)"""

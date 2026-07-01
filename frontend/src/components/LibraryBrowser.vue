@@ -441,7 +441,7 @@ const displayableTypes = new Set([
   'MusicAlbum', 'MusicArtist', 'Audio',
 ])
 
-async function fetchItems(parentId: string, append = false) {
+async function fetchItems(parentId: string, append = false): Promise<'ok' | 'stale' | 'error'> {
   // Append-paths inherit the current nav token (they're a continuation
   // of the same nav); fresh navigations get a new token via the caller
   // (handleItemClick / goToCrumb / etc.) before fetchItems runs.
@@ -461,7 +461,7 @@ async function fetchItems(parentId: string, append = false) {
     const data = await api.items({ parentId, startIndex, limit: PAGE_SIZE })
     if (myToken !== navToken) {
       console.debug('[LibraryBrowser] fetchItems STALE — dropping result', { startedAt: myToken, current: navToken, parentId, append })
-      return
+      return 'stale'
     }
     const rawItems: EmbyItem[] = data.Items ?? data ?? []
     // Only filter raw Folder items when the response also contains
@@ -489,9 +489,10 @@ async function fetchItems(parentId: string, append = false) {
     hasMore.value = items.value.length < totalCount
     if (!append && !isSearching.value) saveLibraryState()
   } catch {
-    if (myToken !== navToken) return
+    if (myToken !== navToken) return 'stale'
     if (!append) items.value = []
     hasMore.value = false
+    return 'error'
   } finally {
     if (myToken === navToken) {
       loading.value = false
@@ -509,6 +510,7 @@ async function fetchItems(parentId: string, append = false) {
   if (!append && hasMore.value && items.value.length >= ALPHABET_BAR_MIN_ITEMS) {
     void cascadeLoadAll()
   }
+  return 'ok'
 }
 
 async function cascadeLoadAll() {
@@ -599,12 +601,14 @@ async function restoreOrFetchRoot() {
     return
   }
   // Optimistically restore the breadcrumb chain so the header reflects
-  // the saved depth while items load. If the parent no longer exists,
-  // fetchItems comes back empty -- in that case fall back to the root
-  // and clear the stale state.
+  // the saved depth while items load. Only fall back to root when the
+  // fetch actually errored (parent gone, network fail). A legitimately
+  // empty folder (Season with 0 visible Episodes, empty BoxSet) is a
+  // valid destination and used to wipe the LibraryState on every
+  // mount here, silently discarding the user's browsing position.
   breadcrumbs.value = saved.breadcrumbs
-  await fetchItems(saved.parentId)
-  if (items.value.length === 0) {
+  const status = await fetchItems(saved.parentId)
+  if (status === 'error') {
     bumpNavToken('restoreOrFetchRoot:fallback')
     clearLibraryState()
     breadcrumbs.value = []

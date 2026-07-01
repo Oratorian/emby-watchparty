@@ -25,10 +25,14 @@ const secondsRemaining = computed(() => {
 const progressPercent = computed(() => {
   if (!party.pendingAutoAdvance) return 0
   const remaining = party.pendingAutoAdvance.timeoutAt - now.value
-  const total = remaining + (Date.now() - now.value) || 1
-  // total is wonky on first tick; fall back to seconds-based bar.
+  // Denominator = the total countdown window in ms. Server sends this
+  // via countdownSeconds so the bar sizes correctly for any admin-
+  // configured BINGE_WATCH_COUNTDOWN_SECONDS. Previously hardcoded to
+  // 4000ms, which broke every value except the default 4s (10s config
+  // sat at 0% for the first 6s; 2s config overshot 100% instantly).
+  const totalMs = (party.pendingAutoAdvance.countdownSeconds || 4) * 1000
   if (secondsRemaining.value <= 0) return 100
-  return Math.max(0, Math.min(100, (1 - remaining / 4000) * 100))
+  return Math.max(0, Math.min(100, (1 - remaining / totalMs) * 100))
 })
 
 function cancel() {
@@ -41,7 +45,7 @@ function cancel() {
     <div class="autoadvance-modal">
       <div class="label">Up next</div>
       <h2 class="title">{{ party.pendingAutoAdvance.nextTitle }}</h2>
-      <div class="meta">
+      <div v-if="party.pendingAutoAdvance.nextIndexNumber !== null" class="meta">
         Episode {{ party.pendingAutoAdvance.nextIndexNumber }}
         of {{ party.pendingAutoAdvance.totalEpisodes }}
       </div>
@@ -79,7 +83,12 @@ function cancel() {
 }
 
 .autoadvance-modal {
-  background: var(--bg-surface, #181820);
+  /* Solid (not glass) -- --bg-surface is the translucent topbar/
+     library-panel token, which lets the video underneath bleed
+     through and washes out the "Up Next" title against bright frames.
+     --bg-secondary is the same solid token ResumePromptModal +
+     VersionPickerModal use, so the three pickers read as one family. */
+  background: var(--bg-secondary, #181820);
   color: var(--color-text, #e8e8e8);
   border: 1px solid var(--border-subtle);
   border-radius: 14px;

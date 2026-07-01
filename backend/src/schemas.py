@@ -289,6 +289,16 @@ class ConfigUpdateResponse(BaseModel):
     success: bool
     changed: list[str] = []
     config: Optional[dict] = None
+    # Values dropped by update_from_dict because they failed type
+    # coercion or the shape check (wrong type, null on non-nullable
+    # field, unknown key). Frontend surfaces these as "Saved (but X
+    # was not applied: <reason>)" so an admin sees the discrepancy
+    # instead of a green Saved that quietly kept the old value.
+    rejected: list[dict] = []
+    # Field names whose value was applied to config.json but where the
+    # in-memory subsystem needs a restart to pick it up (LOG_FILE etc).
+    # Frontend can render a "restart required" banner listing these.
+    restart_required: list[str] = []
 
 
 class RuntimeConfigResponse(BaseModel):

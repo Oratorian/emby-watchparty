@@ -14,7 +14,10 @@ from http.cookies import SimpleCookie
 from itsdangerous import TimestampSigner, BadSignature
 
 
-SESSION_COOKIE_NAME = "session"
+# Must stay in sync with the `session_cookie` kwarg passed to
+# SessionMiddleware in backend/app.py; otherwise the socket handshake
+# reads the wrong cookie name and _decode_session always returns None.
+SESSION_COOKIE_NAME = "ewp_session"
 SESSION_MAX_AGE = 14 * 24 * 60 * 60  # Starlette SessionMiddleware default
 HOST_GRACE_SECONDS = 5
 
@@ -126,11 +129,20 @@ def register(ctx):
 
         pending_host_clear.pop(party_id, None)
 
-    async def _try_host_reclaim(party_id: str, client_id: str) -> bool:
+    async def _try_host_reclaim(party_id: str, client_id: str, sid: str) -> bool:
         """Cancel a pending grace task when the host's client_id rejoins.
 
         Called from party.py after `_replace_sid` has migrated state to
         the new sid. Returns True iff a reclaim event was emitted.
+
+        Auth model: client_id alone is NOT proof of identity, because
+        the host's client_id is broadcast in the `host_changed` event to
+        every party member. Reclaim additionally requires the socket to
+        carry a valid session cookie signed by this server for the same
+        party_id + client_id. HTTP `/api/party/<id>/join` is the only
+        route that mints such a cookie, so a co-attendee who scraped
+        the host's client_id from the socket stream still can't reclaim
+        without the signed cookie.
         """
         party = party_manager.get(party_id)
         if not party:
@@ -138,6 +150,26 @@ def register(ctx):
         if party.get("host_client_id") != client_id:
             return False
         if party.get("host_left_at") is None:
+            return False
+
+        # Session-cookie proof gate.
+        environ = sio.get_environ(sid) or {}
+        session = _decode_session(environ, session_secret)
+        if not session:
+            logger.warning(
+                f"Host reclaim REJECTED for {party_id}: sid={sid} has no "
+                f"valid session cookie (client_id {client_id[:8]}... may "
+                f"be scraped from host_changed broadcast)"
+            )
+            return False
+        cookie_party = (session.get("party_id") or "").upper()
+        cookie_client = session.get("client_id")
+        if cookie_party != party_id or cookie_client != client_id:
+            logger.warning(
+                f"Host reclaim REJECTED for {party_id}: cookie "
+                f"party={cookie_party}/client={cookie_client and cookie_client[:8]} "
+                f"does not match rejoin party/client"
+            )
             return False
 
         task = pending_host_clear.pop(party_id, None)
@@ -261,6 +293,18 @@ def register(ctx):
                     if rc["ready_sids"] >= rc["expected_sids"] and rc["expected_sids"]:
                         party["ready_check"] = None
                         playback_state = party.get("playback_state", {})
+                        # Consume auto_play_after_ready flag exactly like
+                        # _check_all_ready in playback.py does. Without
+                        # this the binge auto-advance flow can complete
+                        # its ready check via a disconnect, land the room
+                        # on the next episode with playing=False, and
+                        # leave the flag stale on the party dict where
+                        # it inappropriately fires on a later manual
+                        # select. Mirror the playback.py:326-348 logic
+                        # to keep the two completion paths in lockstep.
+                        auto_play_pending = party.pop("auto_play_after_ready", False)
+                        if auto_play_pending:
+                            playback_state["playing"] = True
                         if playback_state.get("playing"):
                             playback_state["last_update"] = datetime.now().isoformat()
                         logger.info(f"All users ready in party {party_id} (after disconnect)")
@@ -268,9 +312,18 @@ def register(ctx):
                             "time": playback_state.get("time", 0),
                             "playing": playback_state.get("playing", False),
                         }, room=party_id)
+                        if auto_play_pending:
+                            await sio.emit("play", {
+                                "time": playback_state.get("time", 0),
+                                "username": None,
+                                "auto_binge": True,
+                            }, room=party_id)
                     elif not rc["expected_sids"]:
                         # No one left to wait for -- cancel the check entirely
                         party["ready_check"] = None
+                        # And drop the auto-play flag so it doesn't leak
+                        # into an unrelated future ready check.
+                        party.pop("auto_play_after_ready", None)
                     else:
                         ready_names = [party["users"].get(s, "?") for s in rc["ready_sids"]]
                         waiting_names = [party["users"].get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]

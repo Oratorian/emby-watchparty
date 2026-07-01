@@ -112,37 +112,68 @@ def create_party(
     # to host of the new party instead of forcing a second login. This is
     # also the path that lets an admin do "configure stuff in /admin, come
     # back, create a party" without re-typing credentials.
+    #
+    # Two guardrails vs. earlier versions:
+    # 1. Only fires when `admin_authenticated=True` is also set on the
+    #    session. Previously the presence of a stashed token alone was
+    #    enough; on a shared/public browser, any subsequent visitor with
+    #    a fresh cookie was NOT affected (their session had no admin_*
+    #    keys), but a session that had been through /api/admin/login
+    #    kept those keys until explicit logout -- so the same browser
+    #    minting parties before/after was a real risk. The explicit
+    #    flag makes the reuse condition an active choice.
+    # 2. Revalidate the stashed access_token against Emby before
+    #    granting host. Previously an expired or revoked token was
+    #    still trusted; now a 401 from Emby clears the session and
+    #    the request falls through to the credential-based path.
     session = request.session
     stashed_token = session.get("admin_emby_token")
     stashed_user_id = session.get("admin_emby_user_id")
     stashed_username = session.get("admin_username")
     stashed_is_admin = session.get("admin_emby_is_admin", False)
+    admin_authenticated = bool(session.get("admin_authenticated"))
 
-    if stashed_token and stashed_user_id and body.client_id:
-        party_id = party_manager.create_party()
-        display_name = body.display_name or stashed_username or "Host"
-        party_manager.set_host(
-            party_id,
-            client_id=body.client_id,
-            user_id=stashed_user_id,
-            access_token=stashed_token,
-            username=stashed_username or "Host",
-            is_admin=bool(stashed_is_admin),
-        )
-        request.session["party_id"] = party_id
-        request.session["client_id"] = body.client_id
-        request.session["display_name"] = display_name
-        logger.info(
-            f"Created party {party_id} with stashed admin '{stashed_username}' "
-            f"auto-promoted to host (admin={stashed_is_admin})"
-        )
-        return CreatePartyResponse(
-            party_id=party_id,
-            url=f"{prefix}/party/{party_id}",
-            is_host=True,
-            host_username=stashed_username,
-            is_admin=bool(stashed_is_admin),
-        )
+    if (
+        admin_authenticated
+        and stashed_token
+        and stashed_user_id
+        and body.client_id
+    ):
+        if not emby_client.verify_access_token(stashed_token, stashed_user_id):
+            logger.warning(
+                f"Stashed admin token failed revalidation for user "
+                f"{stashed_user_id}; clearing session and falling back to "
+                f"credential login"
+            )
+            for k in ("admin_authenticated", "admin_emby_token",
+                      "admin_emby_user_id", "admin_username",
+                      "admin_emby_is_admin"):
+                session.pop(k, None)
+        else:
+            party_id = party_manager.create_party()
+            display_name = body.display_name or stashed_username or "Host"
+            party_manager.set_host(
+                party_id,
+                client_id=body.client_id,
+                user_id=stashed_user_id,
+                access_token=stashed_token,
+                username=stashed_username or "Host",
+                is_admin=bool(stashed_is_admin),
+            )
+            request.session["party_id"] = party_id
+            request.session["client_id"] = body.client_id
+            request.session["display_name"] = display_name
+            logger.info(
+                f"Created party {party_id} with stashed admin '{stashed_username}' "
+                f"auto-promoted to host (admin={stashed_is_admin})"
+            )
+            return CreatePartyResponse(
+                party_id=party_id,
+                url=f"{prefix}/party/{party_id}",
+                is_host=True,
+                host_username=stashed_username,
+                is_admin=bool(stashed_is_admin),
+            )
 
     if config.REQUIRE_LOGIN:
         if not body.username or not body.password:

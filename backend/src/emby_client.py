@@ -167,6 +167,31 @@ class EmbyClient:
         except Exception as e:
             self.logger.warning(f"Failed to register device capabilities: {e}")
 
+    def verify_access_token(self, access_token: str, user_id: str) -> bool:
+        """Return True iff Emby still accepts this (access_token, user_id).
+
+        Used by the stashed-admin create_party path to reject expired /
+        revoked tokens carried in a session cookie -- previously the
+        stashed token was reused without checking, so a browser could
+        mint a party as the admin even after the admin logged out or
+        the token expired server-side. Two-second timeout because this
+        blocks the party-creation request; a slow Emby shouldn't block
+        the party-create UX more than briefly.
+        """
+        if not access_token or not user_id:
+            return False
+        try:
+            url = f"{self.server_url}/emby/Users/{user_id}"
+            response = requests.get(
+                url,
+                headers=self._headers(access_token, user_id),
+                timeout=2,
+            )
+            return response.status_code == 200
+        except Exception as e:
+            self.logger.warning(f"verify_access_token error: {e}")
+            return False
+
     # =========================================================================
     # Library navigation
     # =========================================================================
@@ -379,7 +404,17 @@ class EmbyClient:
             params = {
                 "SearchTerm": query,
                 "Recursive": "true",
-                "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear",
+                # UserData + RunTimeTicks parity with get_items so a
+                # search-launched item shows the resume prompt + progress
+                # bar + "Played:" meta line the same way a browse-launched
+                # one does. Without these Fields, PlaybackPositionTicks
+                # reads as 0 on the frontend and the resume prompt is
+                # silently skipped.
+                "Fields": (
+                    "Overview,PrimaryImageAspectRatio,ProductionYear,"
+                    "UserData,RunTimeTicks,MediaSourceCount,"
+                    "IndexNumber,ParentIndexNumber,SeriesId,SeasonId"
+                ),
                 "IncludeItemTypes": "Movie,Series",
                 "api_key": self._auth_param(access_token),
             }

@@ -44,6 +44,25 @@ def register(ctx):
             user_id=party.get("host_user_id"),
         )
 
+    def _authorized_controller(party, sid):
+        """Only the selector (or the host, when there IS no selector, e.g.
+        during a vote-pass restart) drives play/pause/seek. Spectators
+        emitting these events used to overwrite playback_state and
+        broadcast to the entire room, letting anyone in the party pause
+        or scrub for everyone else.
+
+        Returns (caller_client_id, allowed_bool).
+        """
+        caller_client_id = _client_id_for_sid(party, sid)
+        current_video = party.get("current_video") or {}
+        selected_by = current_video.get("selected_by")
+        host_client_id = party.get("host_client_id")
+        if selected_by and caller_client_id == selected_by:
+            return caller_client_id, True
+        if not selected_by and host_client_id and caller_client_id == host_client_id:
+            return caller_client_id, True
+        return caller_client_id, False
+
     @sio.on("play")
     async def handle_play(sid, data):
         party_id = data.get("party_id", "").strip().upper()
@@ -52,13 +71,13 @@ def register(ctx):
         if not party:
             return
 
-        current_video = party.get("current_video")
-        caller_client_id = _client_id_for_sid(party, sid)
-        is_selector = current_video and current_video.get("selected_by") == caller_client_id
-
-        # Everyone can toggle play, but only the selector's time is trusted
-        if not is_selector:
-            current_time = _get_server_time(party)
+        caller_client_id, allowed = _authorized_controller(party, sid)
+        if not allowed:
+            logger.info(
+                f"handle_play REJECTED: sid={sid} client_id={caller_client_id} "
+                f"is not the selector/host of party {party_id}"
+            )
+            return
 
         party["playback_state"] = {
             "playing": True, "time": current_time,
@@ -88,12 +107,13 @@ def register(ctx):
         if not party:
             return
 
-        current_video = party.get("current_video")
-        caller_client_id = _client_id_for_sid(party, sid)
-        is_selector = current_video and current_video.get("selected_by") == caller_client_id
-
-        if not is_selector:
-            current_time = _get_server_time(party)
+        caller_client_id, allowed = _authorized_controller(party, sid)
+        if not allowed:
+            logger.info(
+                f"handle_pause REJECTED: sid={sid} client_id={caller_client_id} "
+                f"is not the selector/host of party {party_id}"
+            )
+            return
 
         party["playback_state"] = {
             "playing": False, "time": current_time,
@@ -117,6 +137,14 @@ def register(ctx):
         if not party:
             return
 
+        caller_client_id, allowed = _authorized_controller(party, sid)
+        if not allowed:
+            logger.info(
+                f"handle_seek REJECTED: sid={sid} client_id={caller_client_id} "
+                f"is not the selector/host of party {party_id}"
+            )
+            return
+
         # Ignore seek events while a ready check is active. During a
         # ready check, clients are still buffering their streams and
         # may emit stray native `seeked` events (from HLS.js initial
@@ -129,6 +157,12 @@ def register(ctx):
             logger.debug(f"Ignoring seek from {sid}: ready check active in {party_id}")
             return
 
+        # `was_playing` reflects the true playback state -- the selector
+        # is authoritative here, so trust their claim without
+        # reconciling against server state (previous versions did
+        # `party['playback_state']['playing'] = was_playing`
+        # unconditionally from any sender, letting a stale local flag
+        # from a spectator pause the party).
         party["playback_state"]["playing"] = was_playing
         party["playback_state"]["time"] = seek_time
         party["playback_state"]["last_update"] = datetime.now().isoformat()

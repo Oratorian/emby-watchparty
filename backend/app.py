@@ -81,6 +81,24 @@ async def lifespan(app: FastAPI):
     logger.info(f"Emby Server: {config.EMBY_SERVER_URL}")
     if config.APP_PREFIX:
         logger.info(f"App Prefix: {config.APP_PREFIX}")
+    # Loud warning for the ephemeral-session-secret case. See app.py:151
+    # for the SESSION_SECRET load logic. When this path fires, every
+    # restart invalidates all cookies (fine for dev, not for prod), and
+    # under gunicorn/uvicorn --workers >1 each worker signs with its
+    # own key so session state becomes non-deterministic per request.
+    if _session_ephemeral:
+        logger.warning(
+            "SESSION_SECRET env var is empty; using an ephemeral random "
+            "key. All party cookies invalidate on next restart, and "
+            "multi-worker deployments will exhibit non-deterministic "
+            "session state. Generate a stable key with "
+            "`openssl rand -hex 32` and set SESSION_SECRET in .env."
+        )
+    if not _session_cookie_secure:
+        logger.info(
+            "SESSION_COOKIE_SECURE=false: session cookie will ride "
+            "plain HTTP. Set SESSION_COOKIE_SECURE=true in production."
+        )
     # Loud startup banner for the hidden dev-host gate. Two env vars
     # gate this jointly so a stray .env carried in from elsewhere
     # can't accidentally arm "anyone becomes host" mode: setting
@@ -134,8 +152,36 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down...")
 
 
-# Create SocketIO server
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+# Create SocketIO server.
+#
+# max_http_buffer_size: 128 KiB. Default is 1 MB; nothing legitimate on
+# our wire needs more (chat messages, small JSON events). Shrinking the
+# ceiling defangs the socketio DoS vector we just patched around
+# (CVE-2026-48804) and caps any future single-packet amplification
+# attempt at the transport layer.
+#
+# ping_timeout / ping_interval: default socket.io values (60s / 25s)
+# leave a dead client eating a slot for a full minute. Halving both
+# means a client-crash / zombie-tab reconnect storm reclaims resources
+# ~2x faster.
+#
+# cors_allowed_origins: read from env. Comma-separated list; the
+# historical default '*' means "any origin can XHR-poll the server",
+# which combined with the missing per-IP throttle amplifies cross-
+# origin DoS. Production deploys should pin to their actual origin(s).
+import os as _os_sio
+_allowed_origins_raw = _os_sio.getenv("CORS_ALLOWED_ORIGINS", "*").strip()
+if _allowed_origins_raw == "*":
+    _cors_origins = "*"
+else:
+    _cors_origins = [o.strip() for o in _allowed_origins_raw.split(",") if o.strip()]
+sio = socketio.AsyncServer(
+    async_mode='asgi',
+    cors_allowed_origins=_cors_origins,
+    max_http_buffer_size=128 * 1024,
+    ping_timeout=30,
+    ping_interval=12,
+)
 
 # Create FastAPI app
 app = FastAPI(
@@ -145,11 +191,43 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Session middleware. Secret is reused by the socket connect handler to
-# decode the same cookie, so we generate it once and stash it on app.state
-# (see lifespan above for the assignment).
-SESSION_SECRET = secrets.token_hex(32)
-app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
+# Session middleware. Secret is loaded from the SESSION_SECRET env var
+# and MUST persist across process restarts and across every uvicorn
+# worker so signed cookies remain verifiable. Previously this was
+# `secrets.token_hex(32)` at module load, which meant every restart
+# ejected every user from their party (401 on the next request), and
+# with --workers >1 each worker signed with a different key so session
+# state became non-deterministic per request. When the env var is
+# absent, we generate an ephemeral key AND log a loud warning -- fine
+# for local dev, catastrophic in production. Ops docs point at
+# `openssl rand -hex 32` as the recipe.
+#
+# Cookie hardening:
+# - same_site='lax'  keeps top-level GET navigations working (needed
+#                    for share links landing on /party/<code>) while
+#                    blocking cross-site POST CSRF against /api/party/*.
+# - https_only        read from SESSION_COOKIE_SECURE env var. True in
+#                    production, False in local dev (default). When True
+#                    the cookie only rides HTTPS requests, closing the
+#                    plaintext-leak vector on the party-bound session.
+# - max_age          14 days matches the Starlette default explicitly.
+import os as _os_session
+SESSION_SECRET = _os_session.getenv("SESSION_SECRET", "").strip()
+_session_ephemeral = False
+if not SESSION_SECRET:
+    SESSION_SECRET = secrets.token_hex(32)
+    _session_ephemeral = True
+_session_cookie_secure = _os_session.getenv(
+    "SESSION_COOKIE_SECURE", "false"
+).strip().lower() == "true"
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    session_cookie="ewp_session",
+    max_age=14 * 24 * 60 * 60,
+    same_site="lax",
+    https_only=_session_cookie_secure,
+)
 
 # APP_PREFIX is read once at module load (this is also the moment the
 # routers and mounts below are registered, before the lifespan handler
