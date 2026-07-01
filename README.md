@@ -130,11 +130,25 @@ docker run -d \
   -p 5000:5000 \
   -e EMBY_SERVER_URL=http://your-emby-server:8096 \
   -e EMBY_API_KEY=your-api-key \
+  -e SESSION_SECRET=$(openssl rand -hex 32) \
+  -e SESSION_COOKIE_SECURE=true \
+  -e CORS_ALLOWED_ORIGINS=https://watchparty.example.com \
   -e LOG_TO_FILE=false \
   -v /your/path/data:/app/data \
   -v /your/path/images:/app/images \
   ghcr.io/oratorian/emby-watchparty:latest
 ```
+
+`SESSION_SECRET` is new in 2.0.0-beta18: it's the signing key for the
+party-bound session cookie. Set it once (`openssl rand -hex 32`) and
+leave the value stable across restarts and across every uvicorn
+worker. When unset, an ephemeral key is generated at boot with a loud
+warning -- every restart kicks all users out of their party, and
+multi-worker deploys become non-deterministic per request. Pair with
+`SESSION_COOKIE_SECURE=true` on any HTTPS deployment and pin
+`CORS_ALLOWED_ORIGINS` to your real origin(s) (the historical `*`
+default remains for backwards compat). Full block in
+[`.env.example`](.env.example).
 
 The two volume mounts keep the avatar database (`/app/data/avatars.db`)
 and uploaded avatar files (`/app/images/avatars/`) outside the
@@ -217,6 +231,11 @@ Configuration is split into two tiers:
 | `WATCH_PARTY_PORT` | Port to run on | `5000` |
 | `APP_PREFIX` | URL prefix for reverse proxy deployments (e.g. `/watchparty`) | (empty) |
 | `SESSION_EXPIRY` | Session expiry in seconds | `86400` |
+| **Session Cookie** _(new in 2.0.0-beta18)_ | | |
+| `SESSION_SECRET` | Signing key for the party-bound session cookie. Generate ONCE with `openssl rand -hex 32` and leave it. Empty = ephemeral random per boot with a loud warning (every restart kicks users out; multi-worker deploys are non-deterministic). | (generated) |
+| `SESSION_COOKIE_SECURE` | When `true`, the session cookie carries the `Secure` flag (HTTPS-only). Set `true` in every deployment behind TLS; leave `false` for `http://localhost` dev. | `false` |
+| **Socket.IO CORS** _(new in 2.0.0-beta18)_ | | |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for the Socket.IO server (`https://a.example.com,https://b.example.com`). `*` accepts any origin (historical default). Pin to your real origin(s) in production. | `*` |
 | **Emby Server** | | |
 | `EMBY_SERVER_URL` | Your Emby server URL | `http://localhost:8096` |
 | `EMBY_API_KEY` | Emby API key (server admin key) | (required) |

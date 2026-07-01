@@ -30,121 +30,6 @@ Around those pillars: an admin panel at `/admin` with 17 hot-reloadable runtime 
 
 Codename: **Midnight Premiere**. Branch: `2.0-Rework`. The version is `2.0.0-dev` while in active development; closed-beta images are tagged `2.0.0-betaN` on GHCR. This entry is updated as the rework progresses and will be finalised when 2.0.0 is cut.
 
-<!--
-## Unreleased — internal audit-hardening batch (NOT for public changelog)
-
-Landed on `fix/audit-hardening-batch` off `2.0-Rework` on 2026-07-01.
-Multi-agent functional + security audit produced 27 confirmed findings
-before the 2.0.0 cut; every one landed as a fix in this branch.
-
-Security / auth
-- stream_builder.py: dropped `api_key=` from the HLS URL. Admin
-  EMBY_API_KEY was embedded in the URL sent to every viewer, so any
-  member could read `<video>.src` in DevTools and gain full admin
-  access to the Emby server. The /hls proxy uses the party's
-  host_access_token, so the raw URL never needs credentials.
-- app.py SessionMiddleware: SESSION_SECRET is now loaded from env with
-  an ephemeral fallback + loud warning. Previously `secrets.token_hex(32)`
-  at module load meant every restart invalidated every party cookie,
-  and --workers >1 produced non-deterministic session state per
-  worker. Also set same_site=lax, custom cookie name (ewp_session),
-  https_only=SESSION_COOKIE_SECURE env toggle, explicit max_age. New
-  env var: SESSION_SECRET (recommended: `openssl rand -hex 32`).
-  SESSION_COOKIE_SECURE=true in production.
-- app.py socketio server: max_http_buffer_size=128 KiB (was 1 MB),
-  ping_timeout=30, ping_interval=12, CORS_ALLOWED_ORIGINS env var.
-- sync.py play/pause/seek: gate on selector-or-host client_id match.
-  Any spectator could previously drive party-wide playback and DoS
-  the room by looping seek-with-ready-check.
-- playback.py handle_video_ended: caller-identity gate + idempotent
-  clear of current_video. Duplicate emits (HLS.js ENDED double-fire,
-  browser extensions) used to unconditionally stop every transcode
-  and could force PLAYING-ONLY -> LOCKED.
-- connection.py host reclaim: require session-cookie proof matching
-  party+client. Host client_id is broadcast in host_changed, so any
-  member used to be able to hijack the host on rejoin.
-- party.py join eviction: require session-cookie proof to evict a
-  member by matching username. Otherwise anyone knowing (party
-  code, username) could kick + steal seats.
-- routers/party.py stashed-admin: gate on admin_authenticated=True
-  AND revalidate the stashed access_token against Emby via new
-  emby_client.verify_access_token method. Prevents shared-browser
-  attackers from minting a party as admin using an expired token.
-- admin.py /login: per-IP sliding-window rate limit (10/15min).
-  Endpoint was previously an unthrottled credential-stuffing oracle.
-- hls.py: 30s httpx timeout + Emby query-param allowlist. Slow
-  Emby could pin worker slots; caller could smuggle arbitrary params
-  (Static=true, redirect=, api_key=) past the proxy.
-- chat.py chat_message: coerce-str + truncate to 2 KiB + per-sid
-  sliding-window throttle. Was a 900 KB-per-emit N-fold amplification
-  primitive for any joined member.
-- chat.py toggle_library: host-only. Non-hosts could flip the panel
-  for the whole room.
-- playback.py report_progress: per-sid throttle (1 Emby POST per 4s).
-  Was a 1000-Hz spam vector that pinned the asyncio loop and DoS'd
-  Emby under the host's access_token.
-
-Correctness / functional
-- playback.py _restart_video_from_beginning: drop failed sids from
-  ready_check.expected_sids on stream-creation failure + notify
-  affected client. Previously a transient Emby error for one user
-  deadlocked the ready-check for the entire room (masked only by
-  the frontend's 15s safety timeout).
-- connection.py disconnect ready-check completion: consume
-  auto_play_after_ready + emit follow-up play event, mirroring
-  playback.py:328. Binge auto-advance completing via a disconnect
-  used to land paused with a stale flag on the party.
-- playback.py _auto_advance_watchdog: pop auto_play_after_ready on
-  restart failure so a later restart doesn't inherit stale True.
-- playback.py _maybe_start_auto_advance: emit binge_finished for the
-  IndexNumber=None case so the frontend opens the library instead of
-  leaving the player stuck.
-- party.py sync_state: include pending_auto_advance so rejoiners
-  during a countdown see the modal + Cancel.
-- AutoAdvanceModal.vue: dynamic countdownSeconds instead of hardcoded
-  4000ms denominator; hide "Episode N of M" when nextIndexNumber
-  is null.
-- emby_client.py search_items: request UserData + RunTimeTicks +
-  MediaSourceCount + episode metadata in Fields so search-launched
-  items show the resume prompt + progress bar + Played: meta.
-- LibraryBrowser.vue restoreOrFetchRoot: fall back to root only on
-  fetch error, not on empty response. A legitimately empty Season
-  used to wipe LibraryState on every mount.
-- PartyView.vue onVersionPick: clamp resume startSeconds against the
-  PICKED version's runtime. Shorter alternate cuts used to land
-  mid-credits (backend silent clamp to runtime-5s).
-- PartyView.vue currentVideo watcher: reset hasStarted on every
-  video change (not just for the selector) so all clients say
-  "started" on the first play of the new video.
-
-Config / admin
-- config.py runtime save: atomic write via temp-file + os.replace.
-  Was `open(path, 'w')` + json.dump; a crash mid-write left partial
-  JSON that from_file silently swallowed as defaults.
-- config.py from_file: JSONDecodeError side-moves file to
-  <path>.corrupt-<ts> + logs warning instead of silent pass.
-- config.py update_from_dict: returns (changed, rejected) so callers
-  can surface dropped values.
-- admin.py save handler: response now carries `rejected` + a
-  `restart_required` list for the log-file / rate-limit fields that
-  don't hot-reload.
-- admin.py BINGE_WATCH_ENABLED=false: broadcast to every active
-  party, not just parties that had binge armed. Was leaving the pill
-  visible on parties where the host hadn't clicked it.
-- AdminView.vue saveConfig: surface rejected + restart_required in
-  the save-status line.
-
-Not touched here (intentional):
-- ENABLE_RATE_LIMITING / RATE_LIMIT_PARTY_CREATION / RATE_LIMIT_API_CALLS
-  are still surfaced in the admin panel with no consumer. Fixing this
-  properly requires wiring a real limiter (slowapi/fastapi-limiter);
-  out of scope for a hardening pass. Admin now sees them in the
-  restart_required list, and the credential-oracle path (/api/admin/
-  login) is separately rate-limited above.
-
-Not yet released. Merge into 2.0-Rework when the manual test pass on
-this branch is clean.
--->
 
 
 ### Breaking Changes (cumulative across the 2.0 dev cycle)
@@ -159,10 +44,62 @@ this branch is clean.
 - **`/api/auth/login` is now "become host of your current party"**, not a global login. Requires a party-bound session cookie. Body is `{ username, password }`; on success the caller is recorded as host and the room sees a `host_changed` socket event.
 - **Frontend `/login` route removed.** The global LoginView is gone; logging in as host happens inside a party via the "Login to Become Host" button.
 - **`current_video.selected_by` is now a client_id, not a sid.** Selector identity now survives reloads and brief reconnects without re-electing on a fresh sid.
+- **New `.env` values as of beta18** (session cookie hardening, see beta18 entry below):
+  - **`SESSION_SECRET`** — the signing key for the party-bound session cookie. Must persist across process restarts and across every uvicorn worker or existing cookies stop verifying. Previously an anonymous per-process random; now loaded from env. When empty, an ephemeral key is generated with a loud warning at boot — fine for local dev, catastrophic in production. Generate once with `openssl rand -hex 32`.
+  - **`SESSION_COOKIE_SECURE`** (default `false`) — when `true`, the session cookie carries the `Secure` flag so it only rides HTTPS requests. Set `true` in every deployment behind TLS. Left `false` in local dev so the cookie still works over `http://localhost`.
+  - **`CORS_ALLOWED_ORIGINS`** (default `*`) — comma-separated origin allowlist for the Socket.IO server. The historical `*` remains for backwards compat; production deploys should pin to their actual origin(s) (e.g. `https://watchparty.example.com`) so cross-origin XHR polling from unrelated pages can't open sockets against the server.
+- **Session cookie name changed from `session` to `ewp_session` (beta18).** All existing party-bound cookies stop verifying on upgrade; every user is re-prompted to join their party. Sessions issued after the upgrade persist across restarts as long as `SESSION_SECRET` is stable.
+- **HLS stream URL no longer carries `api_key=` (beta18).** The URL is now credential-free; the `/hls/...` proxy signs upstream Emby requests via the party's host access token. External tools that grabbed a full HLS URL from a party and expected to hit Emby directly with the embedded key no longer work — the URL only makes sense as a request to the WatchParty proxy from a session-cookie'd browser.
 
 ### Release history
 
 Closed-beta builds tagged on GHCR. The version stays `2.0.0-dev` while in active development; each beta below carries only the bullets new to that build. The **Breaking Changes** above and the **Technical details** further down apply to the dev cycle as a whole, not to any individual beta.
+
+#### [2.0.0-beta18] - 2026-07-01 - Deeper security Audit after python-socketio CVE
+
+Pre-cut hardening pass. A multi-agent functional + security audit of the 2.0-Rework branch produced 27 confirmed findings across auth, playback control, socket DoS surface, binge / library / resume flows, and admin/config bifurcation; every one landed as a fix in this beta. Nothing in here is a new feature -- this beta closes the gap between "everything works" and "we can put a version number on it and walk away". The bulk of the impact is in three places: closing paths that let a spectator drive party-wide playback, replacing the ephemeral per-process session secret with a real env-loaded one, and shrinking the socket DoS surface to something that survives contact with a curious user.
+
+##### Breaking Changes (beta18-specific)
+
+- **`SESSION_SECRET` must be set in `.env`.** The signing key for the party-bound session cookie was previously `secrets.token_hex(32)` at module load, which meant every process restart invalidated every existing cookie AND under `--workers >1` each worker signed with its own key so session state was non-deterministic per request. Now loaded from env; when empty an ephemeral key is generated with a loud warning at boot. Generate once with `openssl rand -hex 32` and set as `SESSION_SECRET=...` in `.env`. Existing deployments that skip this step keep running (dev-mode fallback) but every restart kicks everyone out of their party with a 401.
+- **`SESSION_COOKIE_SECURE=true` for HTTPS deployments.** New env toggle (default `false`). When `true` the session cookie carries the `Secure` flag so browsers only send it over HTTPS -- closes the plaintext-leak vector on the party-bound cookie. Local dev leaves it `false` so cookies still work over `http://localhost`; production behind TLS should always set `true`.
+- **`CORS_ALLOWED_ORIGINS` env var replaces the hardcoded `*` for Socket.IO.** Comma-separated origin allowlist (`https://foo.example.com,https://bar.example.com`) or the historical `*` fallback for backwards compat. Pinning to real origins in production means cross-origin XHR polling from unrelated pages can't open sockets against your server.
+- **Session cookie name changed** from Starlette's default `session` to `ewp_session`. All existing party cookies stop verifying on upgrade; every current user gets re-prompted to join their party. Post-upgrade sessions persist across restarts as long as `SESSION_SECRET` is stable. No config action required, but expect a "why did everyone drop out?" moment during the rollout.
+- **HLS stream URL no longer carries `api_key=`.** External tools that scraped a full HLS URL from a party and expected to hit Emby directly using the embedded key no longer work; the URL is only meaningful as a request to the WatchParty proxy from a session-cookie'd browser. Prior behavior leaked the admin `EMBY_API_KEY` to every viewer through `<video>.src`.
+
+##### Security
+
+- **Dropped `EMBY_API_KEY` from the HLS stream URL.** Previously every per-user stream URL sent to viewers carried the admin API key as a query param, so any party member could open DevTools, read `<video>.src`, and gain full admin access to the Emby server (server config, user management, plugin install). The `/hls/...` proxy authenticates upstream via the party's `host_access_token`, so the URL never needed credentials.
+- **`SessionMiddleware` hardened.** Persistent secret loaded from env, `same_site=lax`, custom cookie name (`ewp_session`), `https_only` toggle, explicit `max_age=14 days`. See breaking changes above for the new env vars.
+- **`socketio.AsyncServer` hardened.** `max_http_buffer_size=128 KiB` (was 1 MB, matching CVE-2026-48804 mitigations), `ping_timeout=30` / `ping_interval=12` (halved from defaults so zombie reconnect storms clear faster), `cors_allowed_origins` now env-driven.
+- **`play` / `pause` / `seek` now gate on selector-or-host client_id.** Any joined spectator could previously drive party-wide playback: pause the room, scrub the timeline, or loop a seek-with-ready-check to permanently stutter playback for everyone. Non-authorized emits now drop silently.
+- **`video_ended` now requires caller identity.** Previously any client could emit `video_ended` and the server would unconditionally stop every user's transcode + reset `playback_state` + trigger the `PLAYING-ONLY -> LOCKED` transition. HLS.js can also emit ENDED twice on some sources, which used to re-arm the auto-advance countdown from full on the duplicate. Now gated on selector-or-host + idempotent via a `current_video` clear at handler entry.
+- **Host reclaim on rejoin now requires session-cookie proof.** The host's `client_id` is broadcast in the `host_changed` event to every party member, so previously any co-attendee could rejoin during the grace window and inherit the host's Emby token + admin flag. Now the reclaimer must present a session cookie signed by this server for the same party + client, which only `POST /api/party/<id>/join` mints.
+- **`join_party` username-eviction now requires session-cookie proof.** Historically the "existing member with matching username but different client_id" path called `_replace_sid` (evict socket, kill Emby transcode, migrate ready_check membership) as a fallback for duplicate tabs. Without cookie proof, anyone knowing (party code, a visible username) could kick the real member off their seat. Legitimate same-browser refresh / duplicate-tab still works because the HTTP join route mints a cookie carrying the browser's `client_id`.
+- **Stashed-admin party creation now revalidates the token.** The `/api/party/create` short-circuit that let an admin who'd previously logged in via `/api/admin/login` skip the party-create login step used to trust the stashed `admin_emby_token` unconditionally. Now gated on the explicit `admin_authenticated=True` session flag AND a live token check against Emby via the new `emby_client.verify_access_token(access_token, user_id)` method. Expired / revoked tokens clear the session and the request falls through to the credential-based path.
+- **`/api/admin/login` per-IP rate limit.** Sliding window at 10 attempts / 15 min per IP. Previously the endpoint was an unthrottled credential-stuffing oracle against every Emby admin account; now brute-force attempts against a real Emby user hit a wall long before completing.
+- **HLS proxy hardened.** Explicit 30s `httpx` timeout on every upstream Emby request (previously unbounded, so a slow Emby could pin worker slots until the OS TCP timeout). Query params passed through to Emby now filtered against an allowlist so a caller with a valid HLS token can't smuggle `Static=true`, `redirect=...`, or a rogue `api_key=` into the upstream URL.
+- **`chat_message` bounded.** Payload coerced to string, truncated to 2 KiB, and per-sid sliding-window rate-limited at 5 msgs / 3s. Was previously an N-fold amplification primitive: a single spammer sending 900 KB messages fanned each one out to every party member with no throttle.
+- **`toggle_library` is host-only.** Non-hosts could previously flip the library panel visibility for the whole room.
+- **`report_progress` per-sid throttle.** Previously fired one synchronous Emby HTTP POST per emit under the host's access token, so a 1000-Hz spam pinned the asyncio loop AND DoS'd the Emby server. Now capped at one report per sid every 4 seconds (normal client cadence is 5s, so this only clips abuse).
+
+##### Fixed
+
+- **Ready-check deadlock on transient Emby error.** If `_create_user_stream` failed for one user during `_restart_video_from_beginning` (Emby playback_info timeout, MediaSources missing), their sid stayed in `expected_sids` but never received `video_selected`, so `stream_ready` never fired, so `all_ready` was unreachable. Whole party waited on the frontend's 15s safety-net timeout. Now drops the failed sid from `expected_sids` + notifies the affected client + completes the ready-check cleanly if every stream failed.
+- **`auto_play_after_ready` consumed on disconnect-completed ready-check.** The disconnect-driven completion path in `connection.py` never popped the flag or emitted the follow-up `play` event, so a binge auto-advance whose ready check completed because the last blocking user disconnected landed paused AND left the flag stale on the party dict (where it could inappropriately auto-play a later manual select). Now mirrors the normal `_check_all_ready` completion path.
+- **`auto_play_after_ready` cleared on restart failure.** The auto-advance watchdog set the flag before calling `_restart_video_from_beginning`; if that failed, the flag stayed True and leaked into a subsequent vote-pass restart or manual select. Now popped on the failure branch.
+- **End-of-season / IndexNumber=None binge handling.** Episodes with `IndexNumber=None` (freshly-added shows before Emby metadata sync) used to silently return from `_maybe_start_auto_advance`, leaving the player stuck on the just-ended episode with no binge_finished signal. Now emits `binge_finished` so the library auto-opens with the "Season finished" chat line.
+- **Rejoining during the binge countdown now shows the modal.** `sync_state` used to omit `pending_auto_advance` entirely, so a user who F5'd during the countdown never saw the AutoAdvance modal and couldn't cancel; the watchdog fired unattended. Now hydrated on rejoin, with the deadline + remaining countdown seconds preserved.
+- **Binge countdown progress bar respects admin config.** The bar denominator was hardcoded to 4000ms, so any `BINGE_WATCH_COUNTDOWN_SECONDS` other than 4 rendered a broken bar (10s config sat at 0% for the first 6s; 2s config overshot instantly). Server now emits `countdown_seconds` in `auto_advance_pending`; frontend sizes the bar dynamically.
+- **AutoAdvanceModal background solid instead of glass.** Pre-existing regression: `--bg-surface` is the translucent topbar/library-panel token, so bright video frames bled through the "Up Next" card and washed out the title. Swapped to `--bg-secondary`, same solid token `ResumePromptModal` + `VersionPickerModal` use.
+- **Search results show resume prompt + progress bar + "Played:" meta.** `search_items` was omitting `UserData` and `RunTimeTicks` from Fields, so any partially-watched item opened from search skipped the resume prompt entirely (`PlaybackPositionTicks` read as 0 on the frontend). Now requests the same Fields as `get_items`.
+- **Library-state persistence tolerates empty folders.** `restoreOrFetchRoot` used to treat any empty response as "parent folder no longer exists" and wipe the saved LibraryState, so a Season with zero visible Episodes (permission-filtered, or emptied server-side) discarded the user's browsing position on every mount. Now falls back to root only on actual fetch error.
+- **Version picker + resume don't land mid-credits on a shorter cut.** The resume prompt was built from the item's aggregate `RunTimeTicks`; picking a shorter alternate version silently clamped the position to `runtime - 5s` on the backend, landing the room 15+ minutes past the intended resume point. Now clamps client-side against the picked version's `run_time_ticks` before emitting select_video.
+- **"X started playback" vs "X resumed playback" now correct on all clients.** `hasStarted` was per-client and only reset on the selector's `emitSelectVideo`, so non-selector clients kept `hasStarted=true` from the previous video and announced "resumed" on the first play of a new video. Now reset via a `watch(currentVideo)` so all clients reset symmetrically.
+- **Admin panel now shows "Not applied" list on save.** `update_from_dict` silently dropped invalid values (bad type, unknown key, null on non-nullable) via bare `continue` and returned only the successful changes; the admin saw a green "Saved" while the server kept the old value. Now returns `(changed, rejected)`; the response carries a `rejected` array and the AdminView surfaces it as "Not applied: X (reason)".
+- **Admin panel now shows "Restart required" list on save.** File-logging (`LOG_TO_FILE`, `LOG_FILE`, `LOG_FORMAT`, `LOG_MAX_SIZE`) and rate-limit settings persist to `config.json` but the underlying subsystems only read them at boot. Now flagged in the response so the admin sees "Restart required for: LOG_FILE".
+- **`config.json` atomic write.** `runtime.save()` used to truncate the file with `open(path, 'w')` and then `json.dump`; a crash mid-write left a partial or empty file, which `from_file` then silently swallowed as "use defaults", permanently wiping every admin-tuned setting on next boot. Now writes to a sibling temp file and `os.replace`s onto the target; `from_file` also side-moves any corrupt config to `config.json.corrupt-<ts>` and logs a warning instead of silent pass.
+- **Admin `BINGE_WATCH_ENABLED=false` propagates to every active party.** Previously only broadcast to parties that had binge actively armed, so parties where the host hadn't clicked the pill kept rendering the button until reload. Now hits every active party.
 
 #### [2.0.0-beta17] - 2026-07-01 - Security: python-socketio DoS
 
