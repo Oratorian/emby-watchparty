@@ -83,7 +83,12 @@ function cancel() {
 }
 
 .autoadvance-modal {
-  background: var(--bg-surface, #181820);
+  /* Solid (not glass) -- --bg-surface is the translucent topbar/
+     library-panel token, which lets the video underneath bleed
+     through and washes out the "Up Next" title against bright frames.
+     --bg-secondary is the same solid token ResumePromptModal +
+     VersionPickerModal use, so the three pickers read as one family. */
+  background: var(--bg-secondary, #181820);
   color: var(--color-text, #e8e8e8);
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
