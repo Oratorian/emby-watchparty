@@ -47,6 +47,14 @@ Codename: **Midnight Premiere**. Branch: `2.0-Rework`. The version is `2.0.0-dev
 
 Closed-beta builds tagged on GHCR. The version stays `2.0.0-dev` while in active development; each beta below carries only the bullets new to that build. The **Breaking Changes** above and the **Technical details** further down apply to the dev cycle as a whole, not to any individual beta.
 
+#### [2.0.0-beta17] - 2026-07-01 - Security: python-socketio DoS
+
+Security bump. `python-socketio` at the previous minimum version (`5.14.0` through `5.16.1`) was affected by [CVE-2026-48804](https://github.com/advisories/GHSA-5w7q-77mv-v69f) / [GHSA-5w7q-77mv-v69f]: binary attachment accumulation can cause denial of service (a client sending unbounded binary packet fragments makes the server buffer them without a memory cap). Fixed upstream in `5.16.2`.
+
+##### Security
+
+- **Bumped `python-socketio` minimum from `>=5.14.0` to `>=5.16.2,<6.0`** ([CVE-2026-48804](https://github.com/advisories/GHSA-5w7q-77mv-v69f)). The loose lower bound previously allowed a fresh `pip install` to resolve to an affected version if pip's resolver picked low; the pinned floor forces the patched release. The upper bound `<6.0` guards against a future major bump introducing an API break during `pip install --upgrade`.
+
 #### [2.0.0-beta16] - 2026-06-27 - Multi-path library flattening + library nav race fix
 
 Bug-fix beta. Libraries that span more than one physical path (e.g. an Anime library configured with both `/media/Anime` and `/media/Anime (Subbed)`) were rendering as two separate `Folder` tiles inside the library browser instead of flattening into the actual `Series` / `BoxSet` / `MusicArtist` items the way Emby's own web client does. A second, related symptom on large libraries: fast back-navigation could leave the just-painted root view contaminated with movies from the folder the user had just left, because in-flight paginated fetches resolved after the navigation. Both reported by [@xyxxyxxy](https://github.com/xyxxyxxy) on the Discord support server.
