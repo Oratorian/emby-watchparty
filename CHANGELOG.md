@@ -30,6 +30,123 @@ Around those pillars: an admin panel at `/admin` with 17 hot-reloadable runtime 
 
 Codename: **Midnight Premiere**. Branch: `2.0-Rework`. The version is `2.0.0-dev` while in active development; closed-beta images are tagged `2.0.0-betaN` on GHCR. This entry is updated as the rework progresses and will be finalised when 2.0.0 is cut.
 
+<!--
+## Unreleased — internal audit-hardening batch (NOT for public changelog)
+
+Landed on `fix/audit-hardening-batch` off `2.0-Rework` on 2026-07-01.
+Multi-agent functional + security audit produced 27 confirmed findings
+before the 2.0.0 cut; every one landed as a fix in this branch.
+
+Security / auth
+- stream_builder.py: dropped `api_key=` from the HLS URL. Admin
+  EMBY_API_KEY was embedded in the URL sent to every viewer, so any
+  member could read `<video>.src` in DevTools and gain full admin
+  access to the Emby server. The /hls proxy uses the party's
+  host_access_token, so the raw URL never needs credentials.
+- app.py SessionMiddleware: SESSION_SECRET is now loaded from env with
+  an ephemeral fallback + loud warning. Previously `secrets.token_hex(32)`
+  at module load meant every restart invalidated every party cookie,
+  and --workers >1 produced non-deterministic session state per
+  worker. Also set same_site=lax, custom cookie name (ewp_session),
+  https_only=SESSION_COOKIE_SECURE env toggle, explicit max_age. New
+  env var: SESSION_SECRET (recommended: `openssl rand -hex 32`).
+  SESSION_COOKIE_SECURE=true in production.
+- app.py socketio server: max_http_buffer_size=128 KiB (was 1 MB),
+  ping_timeout=30, ping_interval=12, CORS_ALLOWED_ORIGINS env var.
+- sync.py play/pause/seek: gate on selector-or-host client_id match.
+  Any spectator could previously drive party-wide playback and DoS
+  the room by looping seek-with-ready-check.
+- playback.py handle_video_ended: caller-identity gate + idempotent
+  clear of current_video. Duplicate emits (HLS.js ENDED double-fire,
+  browser extensions) used to unconditionally stop every transcode
+  and could force PLAYING-ONLY -> LOCKED.
+- connection.py host reclaim: require session-cookie proof matching
+  party+client. Host client_id is broadcast in host_changed, so any
+  member used to be able to hijack the host on rejoin.
+- party.py join eviction: require session-cookie proof to evict a
+  member by matching username. Otherwise anyone knowing (party
+  code, username) could kick + steal seats.
+- routers/party.py stashed-admin: gate on admin_authenticated=True
+  AND revalidate the stashed access_token against Emby via new
+  emby_client.verify_access_token method. Prevents shared-browser
+  attackers from minting a party as admin using an expired token.
+- admin.py /login: per-IP sliding-window rate limit (10/15min).
+  Endpoint was previously an unthrottled credential-stuffing oracle.
+- hls.py: 30s httpx timeout + Emby query-param allowlist. Slow
+  Emby could pin worker slots; caller could smuggle arbitrary params
+  (Static=true, redirect=, api_key=) past the proxy.
+- chat.py chat_message: coerce-str + truncate to 2 KiB + per-sid
+  sliding-window throttle. Was a 900 KB-per-emit N-fold amplification
+  primitive for any joined member.
+- chat.py toggle_library: host-only. Non-hosts could flip the panel
+  for the whole room.
+- playback.py report_progress: per-sid throttle (1 Emby POST per 4s).
+  Was a 1000-Hz spam vector that pinned the asyncio loop and DoS'd
+  Emby under the host's access_token.
+
+Correctness / functional
+- playback.py _restart_video_from_beginning: drop failed sids from
+  ready_check.expected_sids on stream-creation failure + notify
+  affected client. Previously a transient Emby error for one user
+  deadlocked the ready-check for the entire room (masked only by
+  the frontend's 15s safety timeout).
+- connection.py disconnect ready-check completion: consume
+  auto_play_after_ready + emit follow-up play event, mirroring
+  playback.py:328. Binge auto-advance completing via a disconnect
+  used to land paused with a stale flag on the party.
+- playback.py _auto_advance_watchdog: pop auto_play_after_ready on
+  restart failure so a later restart doesn't inherit stale True.
+- playback.py _maybe_start_auto_advance: emit binge_finished for the
+  IndexNumber=None case so the frontend opens the library instead of
+  leaving the player stuck.
+- party.py sync_state: include pending_auto_advance so rejoiners
+  during a countdown see the modal + Cancel.
+- AutoAdvanceModal.vue: dynamic countdownSeconds instead of hardcoded
+  4000ms denominator; hide "Episode N of M" when nextIndexNumber
+  is null.
+- emby_client.py search_items: request UserData + RunTimeTicks +
+  MediaSourceCount + episode metadata in Fields so search-launched
+  items show the resume prompt + progress bar + Played: meta.
+- LibraryBrowser.vue restoreOrFetchRoot: fall back to root only on
+  fetch error, not on empty response. A legitimately empty Season
+  used to wipe LibraryState on every mount.
+- PartyView.vue onVersionPick: clamp resume startSeconds against the
+  PICKED version's runtime. Shorter alternate cuts used to land
+  mid-credits (backend silent clamp to runtime-5s).
+- PartyView.vue currentVideo watcher: reset hasStarted on every
+  video change (not just for the selector) so all clients say
+  "started" on the first play of the new video.
+
+Config / admin
+- config.py runtime save: atomic write via temp-file + os.replace.
+  Was `open(path, 'w')` + json.dump; a crash mid-write left partial
+  JSON that from_file silently swallowed as defaults.
+- config.py from_file: JSONDecodeError side-moves file to
+  <path>.corrupt-<ts> + logs warning instead of silent pass.
+- config.py update_from_dict: returns (changed, rejected) so callers
+  can surface dropped values.
+- admin.py save handler: response now carries `rejected` + a
+  `restart_required` list for the log-file / rate-limit fields that
+  don't hot-reload.
+- admin.py BINGE_WATCH_ENABLED=false: broadcast to every active
+  party, not just parties that had binge armed. Was leaving the pill
+  visible on parties where the host hadn't clicked it.
+- AdminView.vue saveConfig: surface rejected + restart_required in
+  the save-status line.
+
+Not touched here (intentional):
+- ENABLE_RATE_LIMITING / RATE_LIMIT_PARTY_CREATION / RATE_LIMIT_API_CALLS
+  are still surfaced in the admin panel with no consumer. Fixing this
+  properly requires wiring a real limiter (slowapi/fastapi-limiter);
+  out of scope for a hardening pass. Admin now sees them in the
+  restart_required list, and the credential-oracle path (/api/admin/
+  login) is separately rate-limited above.
+
+Not yet released. Merge into 2.0-Rework when the manual test pass on
+this branch is clean.
+-->
+
+
 ### Breaking Changes (cumulative across the 2.0 dev cycle)
 
 - **`EMBY_USERNAME` and `EMBY_PASSWORD` are no longer read from `.env`.** Per-user Emby authentication is now an in-app action: any party member clicks "Login to Become Host" inside the party and supplies their own Emby credentials. The backend never stores long-lived user credentials at rest; only the admin server key (`EMBY_API_KEY`) remains in env. Existing deployments must remove these two lines from `.env` before upgrading.
