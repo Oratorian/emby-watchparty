@@ -261,6 +261,18 @@ def register(ctx):
                     if rc["ready_sids"] >= rc["expected_sids"] and rc["expected_sids"]:
                         party["ready_check"] = None
                         playback_state = party.get("playback_state", {})
+                        # Consume auto_play_after_ready flag exactly like
+                        # _check_all_ready in playback.py does. Without
+                        # this the binge auto-advance flow can complete
+                        # its ready check via a disconnect, land the room
+                        # on the next episode with playing=False, and
+                        # leave the flag stale on the party dict where
+                        # it inappropriately fires on a later manual
+                        # select. Mirror the playback.py:326-348 logic
+                        # to keep the two completion paths in lockstep.
+                        auto_play_pending = party.pop("auto_play_after_ready", False)
+                        if auto_play_pending:
+                            playback_state["playing"] = True
                         if playback_state.get("playing"):
                             playback_state["last_update"] = datetime.now().isoformat()
                         logger.info(f"All users ready in party {party_id} (after disconnect)")
@@ -268,9 +280,18 @@ def register(ctx):
                             "time": playback_state.get("time", 0),
                             "playing": playback_state.get("playing", False),
                         }, room=party_id)
+                        if auto_play_pending:
+                            await sio.emit("play", {
+                                "time": playback_state.get("time", 0),
+                                "username": None,
+                                "auto_binge": True,
+                            }, room=party_id)
                     elif not rc["expected_sids"]:
                         # No one left to wait for -- cancel the check entirely
                         party["ready_check"] = None
+                        # And drop the auto-play flag so it doesn't leak
+                        # into an unrelated future ready check.
+                        party.pop("auto_play_after_ready", None)
                     else:
                         ready_names = [party["users"].get(s, "?") for s in rc["ready_sids"]]
                         waiting_names = [party["users"].get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]

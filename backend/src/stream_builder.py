@@ -75,11 +75,17 @@ class StreamBuilder:
         elif bitrate_kbps is not None:
             transcode_reasons.append("ContainerBitrateExceedsLimit")
 
+        # NO api_key in the stream URL. Historically this embedded the
+        # admin EMBY_API_KEY so any party viewer could read the value
+        # from `<video>.src` in DevTools and gain full admin access to
+        # the Emby server. The /hls/... proxy authenticates upstream via
+        # the party's host_access_token (routers/hls.py:_resolve_host_creds),
+        # so the raw URL never needs to carry credentials to Emby. Keep
+        # this out of every future param dict.
         params = [
             f"MediaSourceId={media_source_id}",
             f"PlaySessionId={play_session_id}",
             f"DeviceId={self._emby.device_id}",
-            f"api_key={self._emby.api_key}",
             "SegmentContainer=ts",
             "TranscodingMaxAudioChannels=2",
             "AudioCodec=aac,mp3",
