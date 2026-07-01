@@ -176,8 +176,25 @@ async function saveConfig() {
   const result = await api.adminUpdateConfig(config.value)
   if (result.success) {
     const changed = result.changed || []
-    saveStatus.value = changed.length ? `Saved: ${changed.join(', ')}` : 'No changes'
-    saveClass.value = 'success'
+    const rejected = result.rejected || []
+    const restart = result.restart_required || []
+    const parts: string[] = []
+    if (changed.length) {
+      parts.push(`Saved: ${changed.join(', ')}`)
+    } else {
+      parts.push('No changes')
+    }
+    if (restart.length) {
+      parts.push(`Restart required for: ${restart.join(', ')}`)
+    }
+    if (rejected.length) {
+      parts.push(
+        `Not applied: ${rejected.map((r: any) => `${r.key} (${r.reason})`).join('; ')}`,
+      )
+    }
+    saveStatus.value = parts.join(' | ')
+    // Mixed outcome: rejects present -> warn, else success.
+    saveClass.value = rejected.length ? 'warning' : 'success'
     if (result.config) {
       ensureQualityDict(result.config)
       config.value = result.config

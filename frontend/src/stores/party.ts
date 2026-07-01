@@ -62,9 +62,14 @@ export const usePartyStore = defineStore('party', () => {
   const pendingAutoAdvance = ref<{
     nextItemId: string
     nextTitle: string
-    nextIndexNumber: number
+    nextIndexNumber: number | null
     totalEpisodes: number
     timeoutAt: number
+    // Total countdown window in seconds (BINGE_WATCH_COUNTDOWN_SECONDS
+    // from admin config). Sent by the server so the modal progress bar
+    // can size the denominator correctly instead of assuming a hardcoded
+    // 4s window.
+    countdownSeconds: number | null
   } | null>(null)
 
   // Late-joiner vote state. Non-null while a vote is in progress.
@@ -223,6 +228,22 @@ export const usePartyStore = defineStore('party', () => {
           active: !!data.binge_watch.active,
         }
       }
+      // Hydrate a running binge countdown so a rejoiner during the
+      // countdown window sees the modal (and Cancel button). Without
+      // this, the watchdog fires unattended and the selector loses
+      // the ability to cancel the advance because the modal never
+      // rendered on their client.
+      const pa = data.pending_auto_advance
+      if (pa && pa.deadline) {
+        pendingAutoAdvance.value = {
+          nextItemId: pa.next_item_id,
+          nextTitle: pa.next_title,
+          nextIndexNumber: pa.next_index_number ?? null,
+          totalEpisodes: pa.total_episodes ?? 0,
+          timeoutAt: new Date(pa.deadline).getTime(),
+          countdownSeconds: pa.countdown_seconds ?? null,
+        }
+      }
     })
 
     socket.on('video_selected', (data: any) => {
@@ -285,9 +306,10 @@ export const usePartyStore = defineStore('party', () => {
       pendingAutoAdvance.value = {
         nextItemId: data.next_item_id,
         nextTitle: data.next_title,
-        nextIndexNumber: data.next_index_number,
+        nextIndexNumber: data.next_index_number ?? null,
         totalEpisodes: data.total_episodes,
         timeoutAt: deadline,
+        countdownSeconds: data.countdown_seconds ?? null,
       }
     })
 

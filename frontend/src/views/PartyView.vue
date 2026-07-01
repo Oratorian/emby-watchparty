@@ -825,7 +825,27 @@ function onVersionPick(mediaSourceId: string) {
   const pending = versionPickerState.value
   versionPickerState.value = null
   if (!pending) return
-  emitSelectVideo(pending.item, mediaSourceId, pending.startSeconds)
+  // Clamp the resume seconds against the PICKED version's runtime.
+  // The prompt was built from the item's aggregate RunTimeTicks (the
+  // default version); if the host picks a shorter alternate cut, the
+  // stored position can exceed the picked version's length. Backend
+  // clamps to (runtime - 5s) silently, landing mid-credits instead
+  // of where the modal promised. Recompute here so the emitted
+  // start_seconds matches the actual picked-version geometry.
+  let startSeconds = pending.startSeconds
+  const picked = pending.versions.find((v) => v.id === mediaSourceId)
+  if (picked?.run_time_ticks && startSeconds > 0) {
+    const versionRuntime = Number(picked.run_time_ticks) / 10_000_000
+    const maxResume = Math.max(0, versionRuntime - 5)
+    if (startSeconds > maxResume) {
+      console.debug(
+        '[PartyView] clamping resume position for alternate version',
+        { original: startSeconds, clamped: maxResume, versionRuntime },
+      )
+      startSeconds = 0
+    }
+  }
+  emitSelectVideo(pending.item, mediaSourceId, startSeconds)
 }
 
 function onVersionPickCancel() {
@@ -1039,6 +1059,15 @@ function stopVideo() {
 watch(() => party.currentVideo, (newVal, oldVal) => {
   if (oldVal && !newVal) {
     showLibrary.value = true
+  }
+  // Reset hasStarted whenever the video changes (any client, not just
+  // the selector). Previously emitSelectVideo set hasStarted=false
+  // only for the emitter, so on B/C the first play of the new video
+  // announced "resumed" instead of "started". Watching the video id
+  // on the store lands on every client symmetrically via the
+  // video_selected broadcast the store applies.
+  if (newVal?.item_id !== oldVal?.item_id) {
+    hasStarted = false
   }
 })
 

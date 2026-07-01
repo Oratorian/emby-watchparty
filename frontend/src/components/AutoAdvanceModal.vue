@@ -25,10 +25,14 @@ const secondsRemaining = computed(() => {
 const progressPercent = computed(() => {
   if (!party.pendingAutoAdvance) return 0
   const remaining = party.pendingAutoAdvance.timeoutAt - now.value
-  const total = remaining + (Date.now() - now.value) || 1
-  // total is wonky on first tick; fall back to seconds-based bar.
+  // Denominator = the total countdown window in ms. Server sends this
+  // via countdownSeconds so the bar sizes correctly for any admin-
+  // configured BINGE_WATCH_COUNTDOWN_SECONDS. Previously hardcoded to
+  // 4000ms, which broke every value except the default 4s (10s config
+  // sat at 0% for the first 6s; 2s config overshot 100% instantly).
+  const totalMs = (party.pendingAutoAdvance.countdownSeconds || 4) * 1000
   if (secondsRemaining.value <= 0) return 100
-  return Math.max(0, Math.min(100, (1 - remaining / 4000) * 100))
+  return Math.max(0, Math.min(100, (1 - remaining / totalMs) * 100))
 })
 
 function cancel() {
@@ -41,7 +45,7 @@ function cancel() {
     <div class="autoadvance-modal">
       <div class="label">Up next</div>
       <h2 class="title">{{ party.pendingAutoAdvance.nextTitle }}</h2>
-      <div class="meta">
+      <div v-if="party.pendingAutoAdvance.nextIndexNumber !== null" class="meta">
         Episode {{ party.pendingAutoAdvance.nextIndexNumber }}
         of {{ party.pendingAutoAdvance.totalEpisodes }}
       </div>

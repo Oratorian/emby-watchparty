@@ -670,6 +670,39 @@ def register(ctx):
                     "next_item_title": cv.get("next_item_title"),
                 }
 
+        # Pending auto-advance state. A user who refreshes / rejoins
+        # while the binge countdown is running should see the modal +
+        # Cancel button. Without this block their client hydrates with
+        # pendingAutoAdvance=null, so the modal never renders and the
+        # watchdog fires unattended -- the selector loses the ability
+        # to cancel the advance because they never see it. Fields
+        # mirror the auto_advance_pending event so the frontend store
+        # (party.ts) can reuse the same hydration path.
+        pending_advance_payload = None
+        pending = party.get("pending_auto_advance")
+        if pending:
+            deadline = pending.get("deadline")
+            countdown_seconds = None
+            if deadline:
+                try:
+                    remaining = (
+                        datetime.fromisoformat(deadline) - datetime.now()
+                    ).total_seconds()
+                    countdown_seconds = max(0, int(remaining))
+                except Exception:
+                    countdown_seconds = None
+            pending_advance_payload = {
+                "next_item_id": pending.get("next_item_id"),
+                "next_title": pending.get("next_title"),
+                "next_index_number": pending.get("next_index_number"),
+                "total_episodes": max(
+                    (ep.get("IndexNumber") or 0)
+                    for ep in (party.get("episode_list") or [])
+                ) if party.get("episode_list") else 0,
+                "deadline": deadline,
+                "countdown_seconds": countdown_seconds,
+            }
+
         await sio.emit("sync_state", {
             "current_video": current_video,
             "playback_state": playback_state,
@@ -683,6 +716,7 @@ def register(ctx):
                 "available": bool(config.BINGE_WATCH_ENABLED),
                 "active": bool(party.get("binge_watch_active")),
             },
+            "pending_auto_advance": pending_advance_payload,
         }, to=sid)
 
     @sio.on("join_vote")

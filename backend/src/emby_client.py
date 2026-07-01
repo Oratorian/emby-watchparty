@@ -404,7 +404,17 @@ class EmbyClient:
             params = {
                 "SearchTerm": query,
                 "Recursive": "true",
-                "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear",
+                # UserData + RunTimeTicks parity with get_items so a
+                # search-launched item shows the resume prompt + progress
+                # bar + "Played:" meta line the same way a browse-launched
+                # one does. Without these Fields, PlaybackPositionTicks
+                # reads as 0 on the frontend and the resume prompt is
+                # silently skipped.
+                "Fields": (
+                    "Overview,PrimaryImageAspectRatio,ProductionYear,"
+                    "UserData,RunTimeTicks,MediaSourceCount,"
+                    "IndexNumber,ParentIndexNumber,SeriesId,SeasonId"
+                ),
                 "IncludeItemTypes": "Movie,Series",
                 "api_key": self._auth_param(access_token),
             }

@@ -228,12 +228,12 @@ async def update_config(
         'SESSION_EXPIRY',
         'EMBY_SERVER_URL', 'EMBY_API_KEY',
     }
-    rejected = [k for k in body.keys() if k in env_only]
-    if rejected:
+    env_only_hit = [k for k in body.keys() if k in env_only]
+    if env_only_hit:
         return ConfigUpdateResponse(success=False)
 
     try:
-        changed = config.update_runtime(body)
+        changed, rejected = config.update_runtime(body)
 
         if {'LOG_LEVEL', 'CONSOLE_LOG_LEVEL'} & set(changed):
             apply_log_levels(config)
@@ -241,6 +241,17 @@ async def update_config(
                 f"Log levels reloaded: app={config.LOG_LEVEL}, "
                 f"console={config.CONSOLE_LOG_LEVEL}"
             )
+
+        # File-logging settings can be tuned via the admin panel but the
+        # underlying handlers were only built once at boot. Flag these
+        # so the UI can show a "restart required" banner instead of
+        # silently pretending the change took effect.
+        _RESTART_REQUIRED = {'LOG_TO_FILE', 'LOG_FILE', 'LOG_FORMAT',
+                             'LOG_MAX_SIZE',
+                             'ENABLE_RATE_LIMITING',
+                             'RATE_LIMIT_PARTY_CREATION',
+                             'RATE_LIMIT_API_CALLS'}
+        restart_required = sorted(set(changed) & _RESTART_REQUIRED)
 
         # Static session toggles or id renames need an explicit sync
         # because the static party lives in PartyManager.watch_parties,
@@ -260,18 +271,23 @@ async def update_config(
         # modal on the implicit cancel.
         if 'BINGE_WATCH_ENABLED' in changed:
             if not config.BINGE_WATCH_ENABLED:
-                # Off: cancel any countdown, force-clear per-party active
-                # flag, then broadcast only to parties that were actually
-                # affected (saves a round-trip on the silent majority).
-                affected = party_manager.disable_binge_watch_globally()
-                for affected_id in affected:
+                # Off: cancel any countdown + force-clear the per-party
+                # active flag on parties that had it armed, THEN
+                # broadcast available=false to every active party. The
+                # "only affected" optimisation used to skip parties
+                # where the host hadn't clicked the pill, which meant
+                # those parties kept rendering the button until reload
+                # (contradicting the admin-panel hint). Broadcasting to
+                # everyone is cheap and matches the "on" branch's shape.
+                party_manager.disable_binge_watch_globally()
+                for pid in party_manager.get_all().keys():
                     try:
                         await sio.emit("binge_watch_state_changed", {
                             "available": False, "active": False,
-                        }, room=affected_id)
+                        }, room=pid)
                     except Exception as e:
                         logger.warning(
-                            f"Failed to emit binge_watch_state_changed to {affected_id}: {e}"
+                            f"Failed to emit binge_watch_state_changed to {pid}: {e}"
                         )
             else:
                 # On: broadcast available=true to EVERY active party so
@@ -293,8 +309,17 @@ async def update_config(
                         )
 
         actor = admin_display_name(request, party_manager) or "(unknown admin)"
-        logger.info(f"Admin config updated by '{actor}': {changed}")
-        return ConfigUpdateResponse(success=True, changed=changed, config=config.get_runtime_dict())
+        logger.info(
+            f"Admin config updated by '{actor}': changed={changed} "
+            f"rejected={rejected} restart_required={restart_required}"
+        )
+        return ConfigUpdateResponse(
+            success=True,
+            changed=changed,
+            config=config.get_runtime_dict(),
+            rejected=rejected,
+            restart_required=restart_required,
+        )
     except Exception as e:
         logger.error(f"Config update failed: {e}")
         return ConfigUpdateResponse(success=False)
