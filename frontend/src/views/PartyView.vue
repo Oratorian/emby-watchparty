@@ -39,6 +39,9 @@ const AutoAdvanceModal = defineAsyncComponent(
 const ResumePromptModal = defineAsyncComponent(
   () => import('@/components/ResumePromptModal.vue'),
 )
+const AdminPanel = defineAsyncComponent(
+  () => import('@/components/AdminPanel.vue'),
+)
 import { api } from '@/api/client'
 import { withPrefix } from '@/utils/appPrefix'
 import { avatarUrl as fallbackAvatarUrl } from '@/utils/avatar'
@@ -106,6 +109,9 @@ const copyLabel = ref('Copy')
 const showVersionModal = ref(false)
 const showParticipants = ref(false)
 const showMobileChat = ref(false)
+const showAdminModal = ref(false)
+const adminTriggerBtn = ref<HTMLButtonElement | null>(null)
+const adminModalShellRef = ref<HTMLElement | null>(null)
 const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const currentTime = ref(0)
 let pendingPauseTimer: ReturnType<typeof setTimeout> | null = null
@@ -118,6 +124,40 @@ let pendingPauseTimer: ReturnType<typeof setTimeout> | null = null
 const myStreamReloading = ref(false)
 
 const versionInfo = ref({ version: '', codename: '' })
+
+function onAdminEscKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && showAdminModal.value) {
+    showAdminModal.value = false
+  }
+}
+
+// Document-level ESC listener works even when focus is inside admin
+// inputs. Focus moves into the modal shell on open and back to the
+// gear trigger on close.
+watch(showAdminModal, (open, prev) => {
+  if (open) {
+    document.addEventListener('keydown', onAdminEscKey)
+    nextTick(() => {
+      adminModalShellRef.value?.focus()
+    })
+  } else {
+    document.removeEventListener('keydown', onAdminEscKey)
+    if (prev) {
+      nextTick(() => {
+        adminTriggerBtn.value?.focus()
+      })
+    }
+  }
+})
+
+// Auto-close the admin modal when a vote or ready check arrives, so
+// the admin doesn't miss party-blocking prompts stacked underneath.
+watch(() => party.pendingVote, (v) => {
+  if (v && showAdminModal.value) showAdminModal.value = false
+})
+watch(() => party.readyCheckActive, (active) => {
+  if (active && showAdminModal.value) showAdminModal.value = false
+})
 
 onMounted(async () => {
   socket.connect()
@@ -521,6 +561,7 @@ onUnmounted(() => {
     clearTimeout(pendingPauseTimer)
     pendingPauseTimer = null
   }
+  document.removeEventListener('keydown', onAdminEscKey)
   // Do NOT call party.leave() here. PartyView unmounts on every
   // navigation (e.g. clicking the Admin or Version links), and a full
   // leave would emit leave_party to the backend AND clear the session
@@ -1326,15 +1367,17 @@ async function submitBecomeHost(payload: { username: string; password: string })
           <template v-else>Login to Become Host</template>
         </button>
         <button v-if="party.currentVideo" @click="stopVideo" class="chip-btn chip-btn-warn">Stop Video</button>
-        <router-link
+        <button
           v-if="auth.isAdmin"
-          to="/admin"
+          ref="adminTriggerBtn"
+          type="button"
           class="ico-btn"
           title="Open the admin panel (Emby admin policy required)"
           aria-label="Admin"
+          @click="showAdminModal = true"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-        </router-link>
+        </button>
         <button @click="showMobileChat = true" class="chip-btn mobile-chat-toggle">Chat</button>
         <button @click="leaveParty" class="btn-leave" title="Leave party">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
@@ -1568,6 +1611,38 @@ async function submitBecomeHost(payload: { username: string; password: string })
     @submit="submitBecomeHost"
     @cancel="showBecomeHostModal = false"
   />
+
+  <!-- Admin panel modal. Mounted over PartyView so the router does NOT
+       unmount VideoPlayer / the HLS.js instance, which would otherwise
+       restart the local stream from the transcode's original offset.
+       See onUnmounted comment above for the sibling rationale. -->
+  <div
+    v-if="showAdminModal"
+    class="admin-modal-backdrop"
+    @click.self="showAdminModal = false"
+  >
+    <div
+      ref="adminModalShellRef"
+      class="admin-modal-shell glass"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Admin Panel"
+      tabindex="-1"
+    >
+      <div class="admin-modal-header">
+        <h2>Admin Panel</h2>
+        <button
+          type="button"
+          class="btn btn-small btn-ghost"
+          aria-label="Close admin panel"
+          @click="showAdminModal = false"
+        >Close</button>
+      </div>
+      <div class="admin-modal-body">
+        <AdminPanel @unauthorized="showAdminModal = false" />
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -2443,5 +2518,49 @@ async function submitBecomeHost(payload: { username: string; password: string })
     padding: 0;
     cursor: pointer;
   }
+}
+
+/* Admin Panel Modal. z-index 10000 sits above every existing modal
+   (JoinWaitingRoom at 9500 is the current ceiling) and leaves the
+   10000-19999 band reserved for admin-context sub-modals. */
+.admin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+  z-index: 10000;
+}
+
+.admin-modal-shell {
+  position: relative;
+  width: 100%;
+  max-width: 1100px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  outline: none;
+}
+
+.admin-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.admin-modal-header h2 {
+  margin: 0;
+}
+
+.admin-modal-body {
+  padding: var(--space-lg);
+  overflow-y: auto;
+  flex: 1 1 auto;
 }
 </style>
