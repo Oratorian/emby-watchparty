@@ -55,7 +55,7 @@ Codename: **Midnight Premiere**. Branch: `2.0-Rework`. The version is `2.0.0-dev
 
 Closed-beta builds tagged on GHCR. The version stays `2.0.0-dev` while in active development; each beta below carries only the bullets new to that build. The **Breaking Changes** above and the **Technical details** further down apply to the dev cycle as a whole, not to any individual beta.
 
-#### [2.0.0-beta18] - 2026-07-01 - Deeper security Audit after python-socketio CVE
+### [2.0.0-beta18] - 2026-07-03 - Deeper security Audit after python-socketio CVE
 
 Pre-cut hardening pass. A multi-agent functional + security audit of the 2.0-Rework branch produced 27 confirmed findings across auth, playback control, socket DoS surface, binge / library / resume flows, and admin/config bifurcation; every one landed as a fix in this beta. Nothing in here is a new feature -- this beta closes the gap between "everything works" and "we can put a version number on it and walk away". The bulk of the impact is in three places: closing paths that let a spectator drive party-wide playback, replacing the ephemeral per-process session secret with a real env-loaded one, and shrinking the socket DoS surface to something that survives contact with a curious user.
 
@@ -101,7 +101,7 @@ Pre-cut hardening pass. A multi-agent functional + security audit of the 2.0-Rew
 - **`config.json` atomic write.** `runtime.save()` used to truncate the file with `open(path, 'w')` and then `json.dump`; a crash mid-write left a partial or empty file, which `from_file` then silently swallowed as "use defaults", permanently wiping every admin-tuned setting on next boot. Now writes to a sibling temp file and `os.replace`s onto the target; `from_file` also side-moves any corrupt config to `config.json.corrupt-<ts>` and logs a warning instead of silent pass.
 - **Admin `BINGE_WATCH_ENABLED=false` propagates to every active party.** Previously only broadcast to parties that had binge actively armed, so parties where the host hadn't clicked the pill kept rendering the button until reload. Now hits every active party.
 
-#### [2.0.0-beta17] - 2026-07-01 - Security: python-socketio DoS
+### [2.0.0-beta17] - 2026-07-01 - Security: python-socketio DoS
 
 Security bump. `python-socketio` at the previous minimum version (`5.14.0` through `5.16.1`) was affected by [CVE-2026-48804](https://github.com/advisories/GHSA-5w7q-77mv-v69f) / [GHSA-5w7q-77mv-v69f]: binary attachment accumulation can cause denial of service (a client sending unbounded binary packet fragments makes the server buffer them without a memory cap). Fixed upstream in `5.16.2`.
 
@@ -109,7 +109,7 @@ Security bump. `python-socketio` at the previous minimum version (`5.14.0` throu
 
 - **Bumped `python-socketio` minimum from `>=5.14.0` to `>=5.16.2,<6.0`** ([CVE-2026-48804](https://github.com/advisories/GHSA-5w7q-77mv-v69f)). The loose lower bound previously allowed a fresh `pip install` to resolve to an affected version if pip's resolver picked low; the pinned floor forces the patched release. The upper bound `<6.0` guards against a future major bump introducing an API break during `pip install --upgrade`.
 
-#### [2.0.0-beta16] - 2026-06-27 - Multi-path library flattening + library nav race fix
+### [2.0.0-beta16] - 2026-06-27 - Multi-path library flattening + library nav race fix
 
 Bug-fix beta. Libraries that span more than one physical path (e.g. an Anime library configured with both `/media/Anime` and `/media/Anime (Subbed)`) were rendering as two separate `Folder` tiles inside the library browser instead of flattening into the actual `Series` / `BoxSet` / `MusicArtist` items the way Emby's own web client does. A second, related symptom on large libraries: fast back-navigation could leave the just-painted root view contaminated with movies from the folder the user had just left, because in-flight paginated fetches resolved after the navigation. Both reported by [@xyxxyxxy](https://github.com/xyxxyxxy) on the Discord support server.
 
@@ -118,7 +118,7 @@ Bug-fix beta. Libraries that span more than one physical path (e.g. an Anime lib
 - **Multi-path libraries now flatten correctly when browsed** (reported by [@xyxxyxxy](https://github.com/xyxxyxxy) on Discord). `get_items` was passing `Recursive=False` for `tvshows`, `boxsets`, and `music` collection types, which made Emby return one `Folder` wrapper per physical path on multi-path libraries instead of recursing past that layer to find the real items. With `IncludeItemTypes` already pinned to `Series` / `BoxSet` / `MusicArtist`, flipping `Recursive=True` walks past the path-folder layer and returns only the top-level content type without descending into Seasons / Episodes / Albums. `movies` and `homevideos` were already `Recursive=True` and unaffected. Hits any library where the user has added more than one folder under the same Emby library definition.
 - **Library view no longer shows libraries AND items mixed together after fast back-navigation** (also reported by [@xyxxyxxy](https://github.com/xyxxyxxy) on Discord). On large libraries, clicking into a folder kicks off a page-1 fetch plus -- as soon as the IntersectionObserver crosses the bottom sentinel -- one or more page-N appends. Clicking back to the root before those finished left the late responses to land on top of the freshly-painted libraries list, producing a hybrid view of `CollectionFolder` tiles intermixed with `Movie` cards from the previous folder. The library browser now carries a per-tab navigation token: every navigation entry point (root, breadcrumb, folder click, search, mount) bumps the token, and every async fetch captures the token at start. When a response resolves, it's discarded if the token has moved on. Server-side and socket layer untouched -- the client is just refereeing its own in-flight responses. Hardest to reproduce on small libraries because page 1 returns before the second fetch can be queued; xyxxyxxy was hitting it on a movies library big enough to need multiple pages.
 
-#### [2.0.0-beta15] - 2026-06-25 - Resume from last position + Jump-to-timestamp
+### [2.0.0-beta15] - 2026-06-25 - Resume from last position + Jump-to-timestamp
 
 Two requested features from the watchparty Discord community land together: auto-resume from Emby's saved playback position when the host clicks a partially-watched item, and a Jump/Seek input that takes an absolute timestamp instead of forcing the host to chunk through with `+30s` buttons. The watch party has effectively grown into a multiplayer Emby client at this point -- the resume flow uses the same `UserData.PlaybackPositionTicks` Emby tracks for its own Continue Watching rail, so picking up where you left off works whether you watched the last bit via Emby's web UI or through a previous party.
 
@@ -136,7 +136,7 @@ Two requested features from the watchparty Discord community land together: auto
 
 - **Duplicate "X seeked to ..." / "X paused playback" system messages in chat for the action's originator.** The server was broadcasting `play` / `pause` / `seek` with `skip_sid=sid` for the sender (so they wouldn't receive their own message), but the frontend also fired an `addSystemMessage` locally on emit -- so when the seek-during-playback path bypassed `skip_sid` (because the sender needs to participate in the ready-check handshake), the seeker saw their action printed twice. The server now broadcasts to everyone in all three handlers; the client's local `addSystemMessage` calls are gone, and the broadcast handler is the single source of truth for chat lines on these events. Bonus: the "started playback" vs "resumed playback" distinction (previously only the sender's own client tracked it) now shows correctly across all party members on first play of any video.
 
-#### [2.0.0-beta14] - 2026-06-22 - Binge-watching
+### [2.0.0-beta14] - 2026-06-22 - Binge-watching
 
 The 1.x auto-play-next-episode feature ports forward to the 2.0 architecture. Two-tier toggle: an admin master switch in `/admin` exposes the feature to hosts; each host opts in per session via a new "Binge ON/OFF" pill in the control strip. With binge armed, the next episode of the same season auto-plays after the current one ends, with a countdown card overlaying the player and a Cancel button anyone in the room can hit.
 
@@ -162,14 +162,14 @@ The 1.x auto-play-next-episode feature ports forward to the 2.0 architecture. Tw
 
 **`video_ended` is now selector-scoped on the frontend.** Per-user transcodes each fire their own native `ended` event when their HLS stream finishes; without a gate the backend would receive N copies of the event and stop the streams + queue auto-advance N times. PartyView now checks `currentVideo.selected_by === local client_id` before emitting, so exactly one ended event reaches the backend per playthrough.
 
-#### [2.0.0-beta13] - 2026-06-22 - Thumbnail sizing + healthcheck behind APP_PREFIX
+### [2.0.0-beta13] - 2026-06-22 - Thumbnail sizing + healthcheck behind APP_PREFIX
 
 ##### Fixed
 
 - **Library card images now request thumbnail-sized renditions from Emby** (reported by [@xyxxyxxy](https://github.com/xyxxyxxy)). The `/api/image/{id}` proxy was forwarding full-resolution posters straight from Emby -- on libraries with high-quality artwork that meant downloading ~1000px-wide JPEGs (hundreds of KB each) just to render a 140px-wide card, and the library browser felt sluggish on throttled connections. The endpoint now accepts `maxWidth`, `maxHeight`, and `quality` query params and forwards them to Emby's image API, which downscales + re-encodes server-side before the bytes hit the wire (the same shape Emby's own web UI uses). `LibraryBrowser` requests `maxWidth=320 maxHeight=480 quality=90`, matching the auto-fill grid at retina density, so each card image drops from full-resolution to roughly 20-40 KB. No frontend layout change; just a smaller payload per card.
 - **`HEALTHCHECK` in the Docker image now honors `APP_PREFIX`** (also reported by [@xyxxyxxy](https://github.com/xyxxyxxy)). With `APP_PREFIX=/watchparty` set, FastAPI's router mounts the health endpoint at `/watchparty/api/health`, but the healthcheck CMD was still probing `/api/health` and getting a 404, so Docker marked the container as unhealthy even though uvicorn was serving correctly. The healthcheck now expands `${APP_PREFIX%/}` into the probe URL so it follows the prefix wherever the operator sets it; the `%/` strip handles operators who write `APP_PREFIX=/watchparty/` with a trailing slash without producing a `//` in the path. Unset `APP_PREFIX` still resolves to `/api/health` exactly as before.
 
-#### [2.0.0-beta12] - 2026-06-20 - A-Z library jump bar
+### [2.0.0-beta12] - 2026-06-20 - A-Z library jump bar
 
 ##### Added
 
@@ -183,7 +183,7 @@ The 1.x auto-play-next-episode feature ports forward to the 2.0 architecture. Tw
 
 - **A-Z jump bar letters were dim until the user scrolled.** The library is paginated (50 items per page), so on a fresh mount the bar's dim/active state only reflected page 1's letter range and the rest stayed grey until the IntersectionObserver-driven scroll loader fetched more pages. Pagination was the right perf model for the original "browse and scroll" UX but it broke the new "see which letters have content at a glance" expectation. After the first page returns on a library with `>=30` items (the threshold that shows the bar), a sequential cascade-loader walks the remaining pages in the background so the bar fills out without any scroll input. The scroll-trigger still works in parallel via the existing `loadingMore` gate -- if you scroll past the sentinel before the background loop reaches that page, the sentinel wins, no double-fetch.
 
-#### [2.0.0-beta11] - 2026-06-17 - Reverse-proxy support + multi-version playback
+### [2.0.0-beta11] - 2026-06-17 - Reverse-proxy support + multi-version playback
 
 ##### Added
 
@@ -200,7 +200,7 @@ The 1.x auto-play-next-episode feature ports forward to the 2.0 architecture. Tw
 - **Asset 404s + MIME-type errors on hard refresh of any nested SPA route under `APP_PREFIX`.** Vite's `base: './'` makes built `index.html` reference assets as `./assets/...`, which the browser resolves against the page URL. At `/watchparty/` that gives `/watchparty/assets/...` (correct), but at `/watchparty/party/CODE` it gives `/watchparty/party/assets/...` -- the SPA catch-all then served HTML for the missing JS path, which the browser rejected as a JS module ("not allowed by MIME type 'text/html'"). Backend's SPA handler now injects `<base href="${APP_PREFIX}/">` as the first element in `<head>` so the browser always resolves relative URLs against the SPA root regardless of how deep the current route is.
 - **Pre-existing strict-TS errors that blocked `npm run build`** (`vue-tsc --build`, stricter than the `--noEmit` smoke we'd been running during development). `hiddenParties.ts` and `PartyView.vue` matched a regex and dereferenced the capture group without proving it was defined; both now guard explicitly. Caught while preparing this beta -- not user-visible, but `npm run build` is the CI entry point for every Docker image build.
 
-#### [2.0.0-beta10] - 2026-06-16 - Refined Cyber refresh + bitrate-granular quality
+### [2.0.0-beta10] - 2026-06-16 - Refined Cyber refresh + bitrate-granular quality
 
 The "Refined Cyber" design language is adapted from a mockup by [Christian Gillinger](https://github.com/cgillinger). Design credit in [Special Thanks](#special-thanks).
 
@@ -222,7 +222,7 @@ The "Refined Cyber" design language is adapted from a mockup by [Christian Gilli
 
 - **Subtitles disappeared on every quality switch and could not be toggled back on.** Emby returns the same `media_source_id` across transcode sessions for the same item, so a quality change only changed the per-user stream URL, not the media-source key the subtitle-preload watcher was keyed on. The watcher early-outed, HLS reattach reset every `textTrack.mode` to `'disabled'`, which unloaded the cues, and the existing Chromium-bug workaround for `'disabled' -> 'showing'` no-op meant toggling None and back from the dropdown never reloaded them either. The watcher now keys on `(item_id, media_source_id, myStreamUrl)`, the user's selected text-sub index is tracked in Vue state (so it survives the HLS-driven mode reset) and re-applied after the next `loadeddata`, and the preload rebuilds the `<track>` set on every stream change so the cues are fetched fresh.
 
-#### [2.0.0-beta9] - 2026-05-24 - Vote resolve + Docker fixes
+### [2.0.0-beta9] - 2026-05-24 - Vote resolve + Docker fixes
 
 ##### Fixed
 
@@ -236,7 +236,7 @@ The "Refined Cyber" design language is adapted from a mockup by [Christian Gilli
 - **`LOG_LEVEL` / `CONSOLE_LOG_LEVEL` changes from the admin panel had no effect until a restart.** The logger was built once at startup and never reconfigured. Levels are now re-applied live, with the logger held at the most verbose of the two so a more-verbose console handler actually receives records (e.g. `CONSOLE_LOG_LEVEL=DEBUG` surfaces debug on stdout without flooding the log file). Applied identically at boot and on admin-panel changes. *(Post-beta9 hotfix included in this section.)*
 - **Library did not lock when the host left the party explicitly.** Host-leave handling lived only in the socket `disconnect` path; clicking "Leave Party" fires `leave_party`, which keeps the socket connected and erases the host's sid mapping before the disconnect handler could use it, so remaining users kept an unlocked library. `leave_party` now detects the departing host and transitions the lock immediately (PLAYING-ONLY while a video is active so others' streams finish, otherwise LOCKED), emitting `host_left`. *(Post-beta9 hotfix included in this section.)*
 
-#### [2.0.0-beta8] - 2026-05-22 - Skip Intro, subtitles, FORCE_TRANSCODE, bundle slim
+### [2.0.0-beta8] - 2026-05-22 - Skip Intro, subtitles, FORCE_TRANSCODE, bundle slim
 
 ##### Added
 
@@ -260,7 +260,7 @@ The "Refined Cyber" design language is adapted from a mockup by [Christian Gilli
 
 - **Initial bundle slimmed via async-loaded components.** `LibraryBrowser`, `EmojiPicker`, modals (`JoinVoteModal`, `JoinWaitingRoom`, `EmbyLoginModal`, `AvatarSetupModal`), and IndexView's `EmbyLoginModal` are now loaded on demand via `defineAsyncComponent`. `hls.js` is split into its own rollup chunk so it loads only when a stream actually starts. PartyView dropped from ~569 kB to ~36 kB; the home/join flow no longer pays for HLS until playback begins.
 
-#### [2.0.0-beta7] - 2026-05-15 - Late-join + change-streams stability pass
+### [2.0.0-beta7] - 2026-05-15 - Late-join + change-streams stability pass
 
 ##### Added
 
@@ -272,7 +272,7 @@ The "Refined Cyber" design language is adapted from a mockup by [Christian Gilli
 - **`GET /api/item/<id>/streams` silently swallowed upstream failures** inside a 200 response. The error key was stripped by Pydantic v2's default `extra="ignore"`, so the caller saw empty stream arrays and no signal that anything went wrong. Now returns `502` honestly when stream metadata cannot be fetched.
 - **`GET /api/party/<id>/exists` had no `response_model`** so its OpenAPI entry was untyped. Added `PartyExistsResponse`.
 
-#### [2.0.0-beta6] - 2026-05-14 - Host-provider auth model + chat avatars
+### [2.0.0-beta6] - 2026-05-14 - Host-provider auth model + chat avatars
 
 ##### Added
 
@@ -294,7 +294,7 @@ The "Refined Cyber" design language is adapted from a mockup by [Christian Gilli
 
 - **`/admin` navigation unbound the party.** PartyView's `onUnmounted` was calling `party.leave()`, which dropped the session cookie. Removed; explicit leave still works via the Leave button.
 
-#### [2.0.0-beta5] - 2026-05-10 - Library navigation, UX polish, subtitle finalisation
+### [2.0.0-beta5] - 2026-05-10 - Library navigation, UX polish, subtitle finalisation
 
 ##### Added
 
@@ -316,7 +316,7 @@ The "Refined Cyber" design language is adapted from a mockup by [Christian Gilli
 - **"Enter Party Code" placeholder was clipped** ([#37](https://github.com/Oratorian/emby-watchparty/issues/37)): the input's uppercase + 0.15em letter-spacing made the placeholder wider than the input, so Chrome chopped the last few characters. Shortened to "Party code" and added `::placeholder` rules that disable the uppercase/letter-spacing styling for placeholder text only.
 - **Phantom "seeked to..." chat spam during normal playback** in production builds (separate from the HMR-driven version in dev): the `socket.on('seek')` broadcast handler unconditionally assigned `ve.currentTime = streamTime` even when the deltas matched, which queued a fresh `seeked` event that fired after `isSyncing` had already reset, escaping the guard and being rebroadcast to the party. The assignment is now gated behind a 0.3s delta check, and `onVideoSeeked` tracks natural playback progression so spurious browser-fired `seeked` events on startup don't get rebroadcast either.
 
-#### [2.0.0-beta1] - 2026-05-08 - Initial closed beta (foundation)
+### [2.0.0-beta1] - 2026-05-08 - Initial closed beta (foundation)
 
 Beta1 was the first build cut from `2.0-Rework` for closed testing. Beta2 through beta4 followed in the next 48 hours as rapid iterations with no separate release notes; their content is rolled into this section.
 
