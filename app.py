@@ -67,8 +67,6 @@ logger.info(f"=" * 80)
 
 # Separate logger for SocketIO/EngineIO
 # Reset rotation flag so each log file gets rotated independently on startup
-import rsyslog_logger.logger as _rl
-_rl._log_rotated = False
 socketio_log_file = "logs/socketio.log" if config.LOG_TO_FILE == 'true' else None
 socketio_logger = setup_logger(
     name="socketio",
@@ -95,7 +93,6 @@ socketio = SocketIO(
 # Redirect Flask/Werkzeug HTTP access logs
 werkzeug_logger = logging.getLogger('werkzeug')
 werkzeug_logger.handlers.clear()
-_rl._log_rotated = False
 access_log_file = "logs/access.log" if config.LOG_TO_FILE == 'true' else None
 werkzeug_custom_logger = setup_logger(
     name="werkzeug",

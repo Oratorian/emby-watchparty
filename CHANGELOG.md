@@ -835,6 +835,7 @@ Flask backend with Socket.IO for real-time communication. HLS.js for adaptive bi
 
 ## Version History Summary
 
+- **1.6.7**  (2026-07-01): Security bump python-socketio to >=5.16.2 (CVE-2026-48804)
 - **v1.6.6** (2026-05-05): CC button switching fix, subtitle 401 fix, label clarity
 - **v1.6.5** (2026-05-03): PGS subtitles fixed, Skip Intro 403 fixed
 - **v1.6.4** (2026-04-21): Pause/seek after host reconnect fixed
