@@ -48,15 +48,9 @@ old152
 merge-to-main.ps1
 *.backup
 
-# Documentations
-EMBY_PARTIES_API_RESEARCH.md
-SKIP_INTRO_IMPLEMENTATION.md
-TODO.md
-
 #Configurations
 config.json
 backend/static
-docs/SOCKET_API.md
 
 # Runtime data (avatar SQLite + uploaded files)
 data/
