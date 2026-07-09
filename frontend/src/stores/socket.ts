@@ -7,6 +7,11 @@ export const useSocketStore = defineStore('socket', () => {
   const socket = ref<Socket | null>(null)
   const connected = ref(false)
   const sid = ref<string | null>(null)
+  // True once we've completed the initial handshake at least once.
+  // Consumers use this to distinguish a cold connect ("first time")
+  // from a reconnect ("we dropped and came back"), so re-join logic
+  // only fires on the reconnect edge.
+  const hasEverConnected = ref(false)
 
   function connect() {
     // Skip if a socket already exists for this Pinia singleton, even
@@ -31,6 +36,7 @@ export const useSocketStore = defineStore('socket', () => {
 
     s.on('connect', () => {
       connected.value = true
+      hasEverConnected.value = true
     })
 
     s.on('connected', (data: { sid: string }) => {
@@ -70,5 +76,15 @@ export const useSocketStore = defineStore('socket', () => {
     socket.value?.off(event, handler)
   }
 
-  return { socket, connected, sid, connect, disconnect, emit, on, off }
+  return {
+    socket,
+    connected,
+    sid,
+    hasEverConnected,
+    connect,
+    disconnect,
+    emit,
+    on,
+    off,
+  }
 })

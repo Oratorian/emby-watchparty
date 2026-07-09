@@ -1317,6 +1317,21 @@ async function submitBecomeHost(payload: { username: string; password: string })
 
   <!-- Party room -->
   <div v-if="joined" class="party-container">
+    <!-- Reconnecting banner: shown when the socket has dropped and
+         socket.io-client is attempting to reconnect. Without this, a
+         mid-party disconnect looks identical to a healthy connection
+         (playback keeps rolling but pause/play events silently no-op).
+         Only shows AFTER we've been connected at least once, so it
+         does not flash during the initial handshake. -->
+    <div
+      v-if="!socket.connected && socket.hasEverConnected"
+      class="reconnect-banner"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="spinner spinner-inline" />
+      Reconnecting to party…
+    </div>
     <header class="party-header">
       <div class="header-left">
         <button
@@ -1705,6 +1720,30 @@ async function submitBecomeHost(payload: { username: string; password: string })
   color: var(--text-secondary);
   font-size: 0.9rem;
   margin: 0;
+}
+
+/* ─── Reconnect Banner ─── */
+.reconnect-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(255, 170, 0, 0.15);
+  color: #ffcf6b;
+  border-bottom: 1px solid rgba(255, 170, 0, 0.35);
+  font-size: 0.9rem;
+  font-weight: 500;
+  z-index: 100;
+}
+
+.spinner-inline {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 207, 107, 0.3);
+  border-top-color: #ffcf6b;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 /* ─── Party Layout ─── */
