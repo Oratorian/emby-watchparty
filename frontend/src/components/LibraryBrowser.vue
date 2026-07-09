@@ -487,7 +487,14 @@ async function fetchItems(parentId: string, append = false): Promise<'ok' | 'sta
     }
     const totalCount = data.TotalRecordCount ?? newItems.length
     hasMore.value = items.value.length < totalCount
-    if (!append && !isSearching.value) saveLibraryState()
+    // Only pin the current location as the restore target when the
+    // response actually contained items. An empty response is ambiguous
+    // with a mid-scan Emby state (files replaced, indexer hasn't caught
+    // up yet). Pinning an empty parent_id would then re-hydrate the
+    // empty grid on every reload until the user manually navigates
+    // elsewhere. In-session navigation into an empty folder still
+    // works -- it just doesn't get persisted.
+    if (!append && !isSearching.value && newItems.length > 0) saveLibraryState()
   } catch {
     if (myToken !== navToken) return 'stale'
     if (!append) items.value = []

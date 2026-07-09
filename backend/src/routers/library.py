@@ -6,8 +6,10 @@ a party-bound session cookie AND the party must have a current host
 whose Emby access_token signs the upstream call.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from typing import Optional
+
+import requests
 
 from backend.src.dependencies import (
     PartySession,
@@ -41,6 +43,7 @@ def api_libraries(
 
 @router.get("/items", response_model=LibraryItemsResponse)
 def api_items(
+    response: Response,
     parentId: Optional[str] = None,
     type: Optional[str] = None,
     recursive: bool = False,
@@ -50,15 +53,19 @@ def api_items(
     emby_client=Depends(get_emby_client),
 ):
     access_token, user_id = _host_creds(party_session)
-    return emby_client.get_items(
-        parent_id=parentId,
-        item_type=type,
-        recursive=recursive,
-        start_index=startIndex,
-        limit=limit,
-        access_token=access_token,
-        user_id=user_id,
-    )
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return emby_client.get_items(
+            parent_id=parentId,
+            item_type=type,
+            recursive=recursive,
+            start_index=startIndex,
+            limit=limit,
+            access_token=access_token,
+            user_id=user_id,
+        )
+    except requests.exceptions.RequestException:
+        raise HTTPException(status_code=502, detail="Emby upstream unavailable")
 
 
 @router.get("/search", response_model=LibraryItemsResponse)

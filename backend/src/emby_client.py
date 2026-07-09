@@ -322,14 +322,20 @@ class EmbyClient:
             if limit is not None:
                 params["Limit"] = limit
 
-            response = requests.get(
-                url, headers=self._headers(access_token, user_id), params=params
-            )
+            headers = self._headers(access_token, user_id)
+            headers["Cache-Control"] = "no-cache"
+            response = requests.get(url, headers=headers, params=params, timeout=15)
             response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            self.logger.error(f"Error fetching items: {e}")
-            return {"Items": [], "TotalRecordCount": 0}
+            data = response.json()
+            total = data.get("TotalRecordCount")
+            self.logger.info(
+                f"get_items parent={parent_id} type={effective_type} "
+                f"recursive={effective_recursive} total={total}"
+            )
+            return data
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error fetching items parent={parent_id}: {e}")
+            raise
 
     def get_season_episodes(self, season_id, access_token=None, user_id=None):
         """Return all episodes in a season, in air-date order.
