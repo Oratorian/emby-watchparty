@@ -12,6 +12,8 @@ from fastapi.responses import Response
 import requests as http_requests
 
 from backend.src.dependencies import (
+    PARTY_HOST_TOKEN_RESPONSES,
+    PARTY_UNLOCKED_RESPONSES,
     PartySession,
     get_config,
     get_emby_client,
@@ -24,7 +26,11 @@ from backend.src.schemas import IntroResponse
 router = APIRouter(prefix="/api", tags=["media"])
 
 
-@router.get("/intro/{item_id}", response_model=IntroResponse)
+@router.get(
+    "/intro/{item_id}",
+    response_model=IntroResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
 def get_intro_info(
     item_id: str,
     config=Depends(get_config),
@@ -65,6 +71,7 @@ def get_intro_info(
             "description": "Item poster / image bytes proxied from Emby",
         },
         404: {"description": "No such image"},
+        **PARTY_HOST_TOKEN_RESPONSES,
     },
 )
 def api_image(
@@ -118,6 +125,7 @@ def api_image(
             "description": "WebVTT subtitle stream",
         },
         404: {"description": "Subtitle stream unavailable"},
+        **PARTY_HOST_TOKEN_RESPONSES,
     },
 )
 def api_subtitles(

@@ -73,6 +73,7 @@ def _client_ip(request: Request) -> str:
 from backend.src.schemas import (
     AdminLoginRequest,
     AdminLoginResponse,
+    ConfigUpdateRequest,
     ConfigUpdateResponse,
     RuntimeConfigResponse,
     SuccessResponse,
@@ -213,7 +214,7 @@ async def _dissolve_party(party_id: str, sio, token_manager, logger):
 @router.put("/config", response_model=ConfigUpdateResponse)
 async def update_config(
     request: Request,
-    body: dict,
+    body: ConfigUpdateRequest,
     config=Depends(get_config),
     party_manager=Depends(get_party_manager),
     token_manager=Depends(get_token_manager),
@@ -223,17 +224,23 @@ async def update_config(
     if not is_admin_authenticated(request, party_manager):
         return ConfigUpdateResponse(success=False)
 
+    # ConfigUpdateRequest allows extra fields (the runtime key set is
+    # driven by RuntimeConfig, not a fixed schema), so flatten to a dict
+    # for downstream validation. Passing `exclude_unset=True` keeps the
+    # env-only guard from tripping on defaulted-but-absent keys.
+    payload = body.model_dump(exclude_unset=True)
+
     env_only = {
         'WATCH_PARTY_BIND', 'WATCH_PARTY_PORT', 'APP_PREFIX',
         'SESSION_EXPIRY',
         'EMBY_SERVER_URL', 'EMBY_API_KEY',
     }
-    env_only_hit = [k for k in body.keys() if k in env_only]
+    env_only_hit = [k for k in payload.keys() if k in env_only]
     if env_only_hit:
         return ConfigUpdateResponse(success=False)
 
     try:
-        changed, rejected = config.update_runtime(body)
+        changed, rejected = config.update_runtime(payload)
 
         if {'LOG_LEVEL', 'CONSOLE_LOG_LEVEL'} & set(changed):
             apply_log_levels(config)

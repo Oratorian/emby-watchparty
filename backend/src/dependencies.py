@@ -194,3 +194,43 @@ def admin_display_name(request: Request, party_manager: PartyManager) -> Optiona
         ):
             return party.get("host_username")
     return session.get("admin_username")
+
+
+# =============================================================================
+# Shared `responses={}` dicts for OpenAPI docs
+# =============================================================================
+#
+# FastAPI's `responses={code: {...}}` decorator arg populates the
+# OpenAPI spec so consumers see every status code an endpoint can
+# return, not just the 200 path. Grouped here so the same gate ->
+# same declared responses everywhere.
+
+# Routes gated by `require_party_session` alone -- must have a cookie
+# and the party must still exist. No host requirement.
+PARTY_SESSION_RESPONSES: dict = {
+    401: {"description": "No party-bound session cookie"},
+    404: {"description": "Party no longer exists"},
+}
+
+# Routes gated by `require_party_unlocked` -- must have a cookie AND
+# the party must currently have a host whose Emby ACL is active.
+PARTY_UNLOCKED_RESPONSES: dict = {
+    401: {"description": "No party-bound session cookie"},
+    404: {"description": "Party no longer exists"},
+    423: {"description": "Party has no host (LOCKED)"},
+}
+
+# Routes gated by `require_host_token` -- must have a cookie AND the
+# party must still have a usable host token (UNLOCKED *or* PLAYING-ONLY).
+PARTY_HOST_TOKEN_RESPONSES: dict = {
+    401: {"description": "No party-bound session cookie"},
+    404: {"description": "Party no longer exists"},
+    423: {"description": "Party token has expired"},
+}
+
+# Admin gate -- host+admin, or standalone-admin session.
+PARTY_ADMIN_RESPONSES: dict = {
+    401: {"description": "No party-bound session cookie"},
+    403: {"description": "Not the host or host is not an Emby admin"},
+    404: {"description": "Party no longer exists"},
+}

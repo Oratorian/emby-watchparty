@@ -285,6 +285,26 @@ class SuccessResponse(BaseModel):
     success: bool
 
 
+class ConfigUpdateRequest(BaseModel):
+    """Request body for PUT /api/admin/config.
+
+    The set of updatable runtime keys is driven by the config module
+    (RuntimeConfig) rather than a fixed schema, so this model allows
+    arbitrary extra fields; the server validates each one against the
+    live config's expected type and rejects unknown / mistyped keys via
+    the `rejected` list in the response.
+
+    Boot-only env keys (WATCH_PARTY_BIND / WATCH_PARTY_PORT /
+    APP_PREFIX / SESSION_EXPIRY / EMBY_SERVER_URL / EMBY_API_KEY) are
+    rejected up front with `success: false` and no partial write.
+
+    Example: `{"LOG_LEVEL": "DEBUG", "REQUIRE_LOGIN": true}`.
+    """
+
+    class Config:
+        extra = "allow"
+
+
 class ConfigUpdateResponse(BaseModel):
     success: bool
     changed: list[str] = []

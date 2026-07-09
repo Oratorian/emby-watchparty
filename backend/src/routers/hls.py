@@ -127,6 +127,7 @@ def _rewrite_playlist(content: str, item_id: str, app_prefix: str, emby_url: str
             "description": "HLS master playlist (rewritten to proxy URLs)",
         },
         401: {"description": "HLS token missing, invalid, or party has no host"},
+        500: {"description": "Internal proxy error"},
         502: {"description": "Upstream Emby request failed"},
     },
 )
@@ -190,6 +191,7 @@ def proxy_hls_master(item_id: str, request: Request,
             "description": "HLS variant playlist or .ts segment",
         },
         401: {"description": "HLS token missing, invalid, or party has no host"},
+        500: {"description": "Internal proxy error"},
         502: {"description": "Upstream Emby request failed"},
     },
 )

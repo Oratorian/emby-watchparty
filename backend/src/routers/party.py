@@ -25,6 +25,7 @@ from backend.src.schemas import (
     PartyListItem,
     PartyListResponse,
     StaticSessionResponse,
+    SuccessResponse,
 )
 
 router = APIRouter(prefix="/api/party", tags=["party"])
@@ -317,7 +318,7 @@ async def join_party(
     )
 
 
-@router.post("/leave")
+@router.post("/leave", response_model=SuccessResponse)
 def leave_party(request: Request, logger=Depends(get_logger)):
     """Drop the party-bound session cookie.
 
@@ -336,7 +337,7 @@ def leave_party(request: Request, logger=Depends(get_logger)):
     session.pop("avatar_uuid", None)
     if party_id:
         logger.info(f"Session unbound from party {party_id}")
-    return {"success": True}
+    return SuccessResponse(success=True)
 
 
 @router.get("/{party_id}/exists", response_model=PartyExistsResponse)
@@ -349,7 +350,11 @@ def party_exists(party_id: str, party_manager=Depends(get_party_manager)):
     return PartyExistsResponse(exists=party_manager.exists(party_id.upper()))
 
 
-@router.get("/{party_id}/info", response_model=PartyInfoResponse)
+@router.get(
+    "/{party_id}/info",
+    response_model=PartyInfoResponse,
+    responses={404: {"description": "Party not found"}},
+)
 def party_info(party_id: str, party_manager=Depends(get_party_manager)):
     party = party_manager.get(party_id.upper())
     if not party:

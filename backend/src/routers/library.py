@@ -12,6 +12,7 @@ from typing import Optional
 import requests
 
 from backend.src.dependencies import (
+    PARTY_UNLOCKED_RESPONSES,
     PartySession,
     get_emby_client,
     get_logger,
@@ -32,7 +33,11 @@ def _host_creds(party_session: PartySession) -> tuple[str, str]:
     return party["host_access_token"], party["host_user_id"]
 
 
-@router.get("/libraries", response_model=LibraryItemsResponse)
+@router.get(
+    "/libraries",
+    response_model=LibraryItemsResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
 def api_libraries(
     party_session: PartySession = Depends(require_party_unlocked),
     emby_client=Depends(get_emby_client),
@@ -41,7 +46,14 @@ def api_libraries(
     return emby_client.get_libraries(access_token=access_token, user_id=user_id)
 
 
-@router.get("/items", response_model=LibraryItemsResponse)
+@router.get(
+    "/items",
+    response_model=LibraryItemsResponse,
+    responses={
+        **PARTY_UNLOCKED_RESPONSES,
+        502: {"description": "Emby upstream unavailable"},
+    },
+)
 def api_items(
     response: Response,
     parentId: Optional[str] = None,
@@ -68,7 +80,11 @@ def api_items(
         raise HTTPException(status_code=502, detail="Emby upstream unavailable")
 
 
-@router.get("/search", response_model=LibraryItemsResponse)
+@router.get(
+    "/search",
+    response_model=LibraryItemsResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
 def api_search(
     q: str = Query(""),
     party_session: PartySession = Depends(require_party_unlocked),
@@ -80,7 +96,14 @@ def api_search(
     return emby_client.search_items(q.strip(), access_token=access_token, user_id=user_id)
 
 
-@router.get("/item/{item_id}", response_model=ItemDetailsResponse)
+@router.get(
+    "/item/{item_id}",
+    response_model=ItemDetailsResponse,
+    responses={
+        **PARTY_UNLOCKED_RESPONSES,
+        404: {"description": "Item not found in Emby"},
+    },
+)
 def api_item_details(
     item_id: str,
     party_session: PartySession = Depends(require_party_unlocked),
@@ -96,7 +119,14 @@ def api_item_details(
     raise HTTPException(status_code=404, detail="Item not found")
 
 
-@router.get("/item/{item_id}/streams", response_model=StreamsResponse)
+@router.get(
+    "/item/{item_id}/streams",
+    response_model=StreamsResponse,
+    responses={
+        **PARTY_UNLOCKED_RESPONSES,
+        502: {"description": "Could not fetch stream info from Emby"},
+    },
+)
 def api_item_streams(
     item_id: str,
     media_source_id: Optional[str] = None,

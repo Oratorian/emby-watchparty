@@ -158,7 +158,13 @@ def create_gravatar(
     return AvatarCreatedResponse(success=True, uuid=avatar_uuid, code=code)
 
 
-@router.post("/recover", response_model=RecoverResponse)
+@router.post(
+    "/recover",
+    response_model=RecoverResponse,
+    responses={
+        429: {"description": "Rate-limited (10 attempts per IP per hour)"},
+    },
+)
 def recover(
     body: RecoverRequest,
     request: Request,
