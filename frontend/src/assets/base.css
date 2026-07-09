@@ -1,0 +1,404 @@
+/*
+ * Emby Watch Party 2.0 - "Midnight Premiere" Design System
+ * Clean, cinematic dark theme with glass morphism
+ */
+
+/* ─── Design Tokens ─── */
+:root {
+  /* Backgrounds. Slightly cooler/deeper than the previous teal era to
+     let the cyan-magenta-violet glow radials in body::before read as
+     atmospheric instead of dirty-on-teal. */
+  --bg-deep: #06070d;
+  --bg-primary: #0b0e1c;
+  --bg-secondary: #10142a;
+  --bg-surface: rgba(255, 255, 255, 0.04);
+  --bg-surface-hover: rgba(255, 255, 255, 0.07);
+  --bg-glass: rgba(11, 14, 28, 0.75);
+
+  /* Accents. Cyan is THE primary, magenta is the active partner colour
+     (brand-mark gradient end, scrub bar end). Violet shows up in
+     send-button gradients and accent moments. Green is reserved for
+     "live" indicators (viewer dot, active EQ bars). Amber is reserved
+     for the "NOW PLAYING TOGETHER" stage badge. */
+  --accent-primary: #22d3ee;
+  --accent-primary-dim: rgba(34, 211, 238, 0.15);
+  --accent-primary-glow: rgba(34, 211, 238, 0.3);
+  --accent-secondary: #f472b6;
+  --accent-secondary-dim: rgba(244, 114, 182, 0.15);
+  --accent-violet: #a78bfa;
+  --accent-violet-dim: rgba(167, 139, 250, 0.15);
+  --accent-green: #34d399;
+  --accent-green-dim: rgba(52, 211, 153, 0.15);
+  --accent-amber: #fbbf24;
+  --accent-amber-dim: rgba(251, 191, 36, 0.15);
+
+  /* Text */
+  --text-primary: #e6e9f5;
+  --text-secondary: #8a92ab;
+  --text-muted: #5a6280;
+  --text-accent: var(--accent-primary);
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-default: rgba(255, 255, 255, 0.12);
+  --border-hover: rgba(255, 255, 255, 0.2);
+  --border-accent: rgba(34, 211, 238, 0.3);
+
+  /* Status */
+  --color-danger: #ef4444;
+  --color-danger-dim: rgba(239, 68, 68, 0.15);
+  --color-warning: #f59e0b;
+  --color-warning-dim: rgba(245, 158, 11, 0.15);
+  --color-success: #10b981;
+  --color-info: #3b82f6;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px var(--accent-primary-glow);
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow: 400ms ease;
+
+  /* Spacing */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Legacy variable aliases for component compat */
+  --cyber-primary: var(--accent-primary);
+  --cyber-border: var(--border-default);
+  --cyber-gold: var(--accent-secondary);
+}
+
+/* ─── Reset & Base ─── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: clamp(14px, 0.85vw + 8px, 18px);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  /* Inter character variants and stylistic sets give the panel chrome
+     a slightly more geometric, less browser-y feel. cv02/cv11 swap the
+     digit and L shapes; ss01/ss03 enable rounded square brackets and
+     the alternate single-storey g. */
+  font-feature-settings: 'cv02', 'cv11', 'ss01', 'ss03';
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  background: var(--bg-deep);
+  line-height: 1.6;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Atmospheric glow. Three soft radials in cyan / magenta / violet anchor
+   the cyber palette as ambient lighting -- they sit behind everything via
+   the #app z-index:1 stack and never block interaction. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(1200px 600px at 0% 0%, rgba(34, 211, 238, 0.08), transparent 60%),
+    radial-gradient(1000px 500px at 100% 100%, rgba(244, 114, 182, 0.06), transparent 60%),
+    radial-gradient(800px 400px at 50% 50%, rgba(167, 139, 250, 0.04), transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#app {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── Typography ─── */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text-primary);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+h1 { font-size: 2rem; letter-spacing: -0.02em; }
+h2 { font-size: 1.5rem; letter-spacing: -0.01em; }
+h3 { font-size: 1.15rem; }
+
+p { color: var(--text-secondary); }
+
+a {
+  color: var(--accent-primary);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+a:hover {
+  color: var(--text-primary);
+}
+
+/* ─── Glass Panels ─── */
+.glass {
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.glass-light {
+  background: var(--bg-surface);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+/* ─── Cards ─── */
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.card:hover {
+  border-color: var(--border-hover);
+}
+
+.card-interactive:hover {
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-glow);
+  cursor: pointer;
+}
+
+/* ─── Buttons ─── */
+/* Chip-style baseline shared by every .btn variant: rounded 9px corners,
+   compact 7px/14px padding, 13px Inter, subtle border. Variants only
+   change colour. Matches the topbar's chip language so a .btn in any
+   view sits in the same surface stack as the header pills. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+  white-space: nowrap;
+  user-select: none;
+  line-height: 1.2;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  color: var(--bg-deep);
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(34, 211, 238, 0.25);
+}
+.btn-primary:hover {
+  background: #67e8f9;
+  box-shadow: 0 0 18px var(--accent-primary-glow);
+}
+
+.btn-secondary {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+}
+.btn-secondary:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: transparent;
+}
+.btn-ghost:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+
+.btn-danger {
+  background: rgba(244, 63, 94, 0.1);
+  color: #fb7185;
+  border-color: rgba(244, 63, 94, 0.2);
+}
+.btn-danger:hover {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.3);
+}
+
+.btn-warning {
+  background: var(--accent-amber-dim);
+  color: var(--accent-amber);
+  border-color: rgba(251, 191, 36, 0.25);
+}
+.btn-warning:hover {
+  background: rgba(251, 191, 36, 0.22);
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.btn-small {
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+  gap: 5px;
+}
+
+/* ─── Inputs ─── */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"]),
+textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):focus,
+textarea:focus {
+  border-color: rgba(34, 211, 238, 0.4);
+  background: var(--bg-surface-hover);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.08);
+}
+
+input:not([type="checkbox"]):not([type="radio"])::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+}
+
+select {
+  padding: 7px 28px 7px 12px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238a92ab' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+
+select:hover {
+  background-color: var(--bg-surface-hover);
+  border-color: var(--border-hover);
+}
+
+select:focus {
+  border-color: rgba(34, 211, 238, 0.4);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.08);
+}
+
+select option {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* ─── Badges ─── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+}
+
+.badge-primary {
+  background: var(--accent-primary-dim);
+  color: var(--accent-primary);
+}
+
+.badge-secondary {
+  background: var(--accent-secondary-dim);
+  color: var(--accent-secondary);
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-default) transparent;
+}
+
+/* ─── Selection ─── */
+::selection {
+  background: var(--accent-primary-dim);
+  color: var(--text-primary);
+}
+
+/* ─── Utility ─── */
+.text-muted { color: var(--text-muted); }
+.text-secondary { color: var(--text-secondary); }
+.text-accent { color: var(--accent-primary); }
+.text-warning { color: var(--accent-secondary); }

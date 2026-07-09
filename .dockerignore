@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+
+# Node (installed fresh by `npm ci` in the build; host copies from a
+# Windows/SMB share lack the executable bit and break `vite`)
+node_modules/
+**/node_modules/
+frontend/dist/
+backend/static/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Config
+config.py
+config.json
+
+# Documentation
+*.md
+LICENSE
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore

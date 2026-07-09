@@ -1,0 +1,220 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Docker image tag (e.g. 1.4.1-alpha1)'
+        required: false
+        default: 'dev'
+      docker_only:
+        description: 'Build Docker image only (no release)'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Get the version
+        id: get_version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+            if [[ "$VERSION" =~ (alpha|beta|rc|dev) ]]; then
+              echo "IS_PRERELEASE=true" >> $GITHUB_OUTPUT
+            else
+              echo "IS_PRERELEASE=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+            # Check if this is a pre-release (contains alpha, beta, rc, or dev)
+            if [[ "$VERSION" =~ (alpha|beta|rc|dev) ]]; then
+              echo "IS_PRERELEASE=true" >> $GITHUB_OUTPUT
+            else
+              echo "IS_PRERELEASE=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Extract changelog for this version
+        if: github.event_name != 'workflow_dispatch'
+        id: changelog
+        run: |
+          # Extract the changelog section for this version
+          VERSION="${GITHUB_REF#refs/tags/v}"
+
+          # Use awk to extract content between version headers
+          CHANGELOG=$(awk -v version="$VERSION" '
+            /^## \[/ {
+              if (found) exit;
+              if ($0 ~ "\\[" version "\\]") {
+                found=1;
+                next;
+              }
+            }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md)
+
+          # If no changelog found, use a default message
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="See [CHANGELOG.md](https://github.com/Oratorian/emby-watchparty/blob/main/CHANGELOG.md) for details."
+          fi
+
+          # Save to output (escape for multiline)
+          {
+            echo 'NOTES<<EOF'
+            echo "$CHANGELOG"
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+      - name: Create release archive
+        if: github.event_name != 'workflow_dispatch'
+        run: |
+          # Create directory with version name directly
+          mkdir -p emby-watchparty-${{ steps.get_version.outputs.VERSION }}
+
+          # Copy application files directly to versioned directory
+          rsync -a . emby-watchparty-${{ steps.get_version.outputs.VERSION }}/ \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='logs/' \
+            --exclude='.env' \
+            --exclude='.vscode' \
+            --exclude='.idea' \
+            --exclude='*.swp' \
+            --exclude='.DS_Store' \
+            --exclude='venv/' \
+            --exclude='env/' \
+            --exclude='.venv/' \
+            --exclude='*.log' \
+            --exclude='emby-watchparty-*'
+
+          # Create the zip file
+          zip -r emby-watchparty-${{ steps.get_version.outputs.VERSION }}.zip \
+            emby-watchparty-${{ steps.get_version.outputs.VERSION }}/
+
+      # Docker build and push
+      # QEMU is required so the amd64 runner can emulate arm64 / arm/v7
+      # during the build. Without it the build-push step below would only
+      # be able to produce native amd64 layers.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}},enable=${{ github.event_name != 'workflow_dispatch' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name != 'workflow_dispatch' && steps.get_version.outputs.IS_PRERELEASE != 'true' }}
+            type=raw,value=latest,enable=${{ github.event_name != 'workflow_dispatch' && steps.get_version.outputs.IS_PRERELEASE != 'true' }}
+            type=raw,value=${{ steps.get_version.outputs.VERSION }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=${{ steps.get_version.outputs.VERSION }},enable=${{ steps.get_version.outputs.IS_PRERELEASE == 'true' }}
+            type=raw,value=nightly,enable=${{ steps.get_version.outputs.IS_PRERELEASE == 'true' }}
+            type=raw,value=devel,enable=${{ steps.get_version.outputs.IS_PRERELEASE == 'true' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          # amd64 for x86 hosts, arm64 for Raspberry Pi 4/5 + Apple Silicon
+          # under Docker Desktop. arm/v7 (32-bit Pi) is intentionally not
+          # listed: cffi / greenlet (and similar C-extension deps) have no
+          # armv7l cpython-3.12 wheels, so each build would compile from
+          # source under QEMU and require gcc/g++/libffi-dev in the image.
+          # Each tag is published as a multi-arch manifest list so `docker
+          # pull` picks the right image for the host automatically.
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create Release
+        if: github.event_name != 'workflow_dispatch'
+        id: create_release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: emby-watchparty-${{ steps.get_version.outputs.VERSION }}.zip
+          body: |
+            ## Emby Watch Party v${{ steps.get_version.outputs.VERSION }}
+
+            ${{ steps.changelog.outputs.NOTES }}
+
+            ---
+
+            ### Installation
+
+            #### Option 1: Docker (Recommended)
+
+            Version specific:
+            ```bash
+            docker pull ghcr.io/oratorian/emby-watchparty:${{ steps.get_version.outputs.VERSION }}
+            ```
+            Or always latest ${{ steps.get_version.outputs.IS_PRERELEASE == 'true' && 'pre-release' || 'stable' }} version:
+            ```bash
+            docker pull ghcr.io/oratorian/emby-watchparty:${{ steps.get_version.outputs.IS_PRERELEASE == 'true' && 'devel' || 'latest' }}
+            ```
+            Or use docker-compose with the provided `docker-compose.yml.example`
+
+            #### Option 2: Manual Installation
+            1. Download and extract `emby-watchparty-${{ steps.get_version.outputs.VERSION }}.zip`
+            2. Copy `.env.example` to `.env` and configure your Emby server details
+            3. Install dependencies: `pip install -r requirements.txt`
+            4. Run: `python app.py`
+            5. Open browser to `http://localhost:5000`
+
+            ### What's Included
+            - Complete application source code
+            - Docker support with pre-built images
+            - Requirements file for easy dependency installation
+            - Example configuration file
+            - README with full documentation
+            - MIT License
+
+            ### Requirements
+            - Python 3.8 or higher (manual install)
+            - Docker (container install)
+            - Emby server with API key
+            - Modern web browser
+
+            See [README.md](https://github.com/Oratorian/emby-watchparty/blob/main/README.md) for full documentation.
+          draft: false
+          prerelease: ${{ steps.get_version.outputs.IS_PRERELEASE == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

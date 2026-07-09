@@ -1,0 +1,228 @@
+"""
+Stream Builder
+Turn a quality-id into the right Emby HLS URL parameters.
+
+Quality definitions live in `backend.src.quality`. This module only knows
+how to consume a quality id (`auto`, `360p`, `1080p-15000`, etc.) and
+emit the matching `MaxWidth` / `MaxHeight` / `VideoBitrate` triple, plus
+the rest of the static HLS parameter pack.
+"""
+
+import logging
+from typing import Optional
+
+from backend.src.config import Config
+from backend.src.emby_client import EmbyClient
+from backend.src.quality import resolve_quality
+
+
+class StreamBuilder:
+    """Builds HLS stream URL parameters for Emby."""
+
+    def __init__(self, emby_client: EmbyClient, logger: logging.Logger,
+                 config: Optional[Config] = None):
+        self._emby = emby_client
+        self._logger = logger
+        self._config = config
+
+    def build_params(
+        self,
+        media_source: dict,
+        media_source_id: str,
+        play_session_id: str,
+        audio_index: Optional[int],
+        subtitle_index: Optional[int],
+        quality: str,
+        start_time_ticks: Optional[int] = None,
+    ) -> list:
+        """Build HLS URL parameters for Emby.
+
+        `quality` is a quality-id string (see backend/src/quality.py):
+        the sentinel `auto` (no caps), a resolution-only id like `360p`,
+        or a `<resolution>-<kbps>` id like `1080p-15000`. Unknown or
+        legacy ids fall back to the closest current equivalent via
+        `resolve_quality`.
+
+        Returns a list of `key=value` parameter strings (joined later by
+        `build_stream_url`).
+        """
+        max_width, max_height, bitrate_kbps = resolve_quality(quality)
+
+        source_video_codec: Optional[str] = None
+        source_video_bitrate: Optional[int] = None
+        source_width: Optional[int] = None
+        for stream in media_source.get("MediaStreams", []):
+            if stream.get("Type") == "Video":
+                source_video_codec = (stream.get("Codec") or "").lower()
+                peak_bitrate = stream.get("MaxBitRate") or stream.get("PeakBitrate")
+                avg_bitrate = stream.get("BitRate")
+                source_video_bitrate = peak_bitrate or avg_bitrate
+                source_width = stream.get("Width")
+                self._logger.info(
+                    f"Source video codec: {source_video_codec}, "
+                    f"avg_bitrate: {avg_bitrate}, peak_bitrate: {peak_bitrate}"
+                )
+                break
+
+        # TranscodeReasons is informational -- Emby uses it for logging
+        # and telemetry, not for the transcode-or-copy decision itself.
+        # We only set it when we actually want a transcode (h265 source,
+        # or the user picked an explicit bitrate cap). Auto + h264 leaves
+        # it empty so Emby can stream-copy.
+        transcode_reasons = []
+        if source_video_codec and source_video_codec != "h264":
+            transcode_reasons.append("VideoCodecNotSupported")
+        elif bitrate_kbps is not None:
+            transcode_reasons.append("ContainerBitrateExceedsLimit")
+
+        # NO api_key in the stream URL. Historically this embedded the
+        # admin EMBY_API_KEY so any party viewer could read the value
+        # from `<video>.src` in DevTools and gain full admin access to
+        # the Emby server. The /hls/... proxy authenticates upstream via
+        # the party's host_access_token (routers/hls.py:_resolve_host_creds),
+        # so the raw URL never needs to carry credentials to Emby. Keep
+        # this out of every future param dict.
+        params = [
+            f"MediaSourceId={media_source_id}",
+            f"PlaySessionId={play_session_id}",
+            f"DeviceId={self._emby.device_id}",
+            "SegmentContainer=ts",
+            "TranscodingMaxAudioChannels=2",
+            "AudioCodec=aac,mp3",
+            "AudioBitrate=384000",
+            "BreakOnNonKeyFrames=True",
+            "MaxAudioChannels=2",
+            "MinSegments=1",
+            "h264-profile=high,main,baseline,constrainedbaseline",
+            "h264-level=62",
+            "VideoCodec=h264",
+        ]
+
+        if max_width is not None:
+            params.append(f"MaxWidth={max_width}")
+        if max_height is not None:
+            params.append(f"MaxHeight={max_height}")
+        if transcode_reasons:
+            params.append(f"TranscodeReasons={','.join(transcode_reasons)}")
+
+        # Runtime-toggleable: when FORCE_TRANSCODE is on we tell Emby to
+        # skip stream-copy and re-encode every h264 source. That gives
+        # uniform 6s HLS segments at the cost of CPU/GPU on the Emby
+        # host. Default off -- only useful when stream-copied sources
+        # misbehave on large seeks (Skip Intro / timeline drag) or
+        # HLS.js can't seek into them cleanly.
+        if self._config and self._config.FORCE_TRANSCODE:
+            params.append("EnableAutoStreamCopy=false")
+
+        # Bitrate cap: only when an explicit kbps was selected. Clamp to
+        # the source bitrate if it is lower (no benefit to a higher
+        # target than what the source has).
+        target_bitrate: Optional[int] = None
+        if bitrate_kbps is not None:
+            target_bitrate = bitrate_kbps * 1000
+            if source_video_bitrate and source_video_bitrate < target_bitrate:
+                target_bitrate = source_video_bitrate
+            params.append(f"VideoBitrate={target_bitrate}")
+
+        # Human-readable summary of what we asked Emby to do.
+        if source_video_codec and source_video_codec != "h264":
+            if target_bitrate is not None:
+                self._logger.info(
+                    f"Source is {source_video_codec}, transcoding to h264 at "
+                    f"{max_width}x{max_height} / {target_bitrate // 1000} kbps"
+                )
+            elif max_width is not None:
+                self._logger.info(
+                    f"Source is {source_video_codec}, transcoding to h264 at "
+                    f"{max_width}x{max_height} (no bitrate cap)"
+                )
+            else:
+                self._logger.info(
+                    f"Source is {source_video_codec}, transcoding to h264 (Auto, no caps)"
+                )
+        elif target_bitrate is not None:
+            if max_width is not None and source_width and source_width > max_width:
+                self._logger.info(
+                    f"Downscaling from {source_width}px to {max_width}px at "
+                    f"{target_bitrate // 1000} kbps cap"
+                )
+            else:
+                source_mbps = (source_video_bitrate or target_bitrate) // 1_000_000
+                target_mbps = target_bitrate // 1_000_000
+                self._logger.info(
+                    f"Source is h264 at {source_mbps} Mbps, re-encoding at "
+                    f"{target_mbps} Mbps for reliable HLS seeking"
+                )
+        elif max_width is not None:
+            self._logger.info(
+                f"Source is h264, capping resolution at {max_width}x{max_height} "
+                f"(no bitrate cap)"
+            )
+        else:
+            self._logger.info(
+                "Source is h264, Auto quality -> Emby decides (stream-copy possible)"
+            )
+
+        if audio_index is not None:
+            params.append(f"AudioStreamIndex={audio_index}")
+            self._logger.debug(f"Using audio stream index: {audio_index}")
+        else:
+            self._logger.debug("No audio stream index specified, Emby will use default")
+
+        # Image subtitles (PGS, VobSub) must be burned in because HLS.js
+        # cannot render bitmap subtitle formats. Text subtitles are NOT
+        # delivered via the HLS manifest -- the frontend preloads them
+        # as side-channel <track> elements via
+        # /api/subtitles/<item>/<msid>/<idx>. Two parallel subtitle
+        # delivery systems (manifest + side-channel) fight over
+        # textTrack.mode state, so the manifest path is intentionally off.
+        if subtitle_index is not None and subtitle_index != -1:
+            is_image_sub = False
+            for stream in media_source.get("MediaStreams", []):
+                if (
+                    stream.get("Type") == "Subtitle"
+                    and stream.get("Index") == subtitle_index
+                ):
+                    codec = stream.get("Codec", "").lower()
+                    is_image_sub = codec in [
+                        "pgssub", "pgs", "dvd_subtitle", "dvdsub", "vobsub",
+                    ]
+                    break
+
+            if is_image_sub:
+                params.append(f"SubtitleStreamIndex={subtitle_index}")
+                params.append("SubtitleMethod=Encode")
+                self._logger.info(f"Burning in image subtitle track {subtitle_index}")
+            else:
+                self._logger.debug(
+                    f"Text subtitle {subtitle_index} delivered via side-channel proxy"
+                )
+        else:
+            self._logger.debug("No subtitle selected for backend transcode")
+
+        if start_time_ticks is not None and start_time_ticks > 0:
+            params.append(f"StartTimeTicks={start_time_ticks}")
+            self._logger.debug(f"Starting transcode at {start_time_ticks / 10_000_000:.1f}s")
+
+        return params
+
+    def build_stream_url(
+        self,
+        item_id: str,
+        app_prefix: str,
+        media_source: dict,
+        media_source_id: str,
+        play_session_id: str,
+        audio_index: Optional[int],
+        subtitle_index: Optional[int],
+        quality: str,
+        start_time_ticks: Optional[int] = None,
+    ) -> str:
+        """Build the full relative HLS stream URL"""
+        params = self.build_params(
+            media_source, media_source_id, play_session_id,
+            audio_index, subtitle_index, quality, start_time_ticks,
+        )
+        param_string = "&".join(params)
+        prefix = app_prefix or ""
+        return f"{prefix}/hls/{item_id}/master.m3u8?{param_string}"
