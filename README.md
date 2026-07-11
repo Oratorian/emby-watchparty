@@ -1,164 +1,230 @@
 # Emby Watch Party
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Flask](https://img.shields.io/badge/flask-3.1.3-green.svg)](https://flask.palletsprojects.com/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
+[![Vue 3](https://img.shields.io/badge/Vue-3-42b883.svg?logo=vue.js&logoColor=white)](https://vuejs.org/)
+[![Docker Image](https://img.shields.io/badge/ghcr.io-oratorian%2Femby--watchparty-2496ED.svg?logo=docker&logoColor=white)](https://github.com/Oratorian/emby-watchparty/pkgs/container/emby-watchparty)
 [![GitHub release](https://img.shields.io/github/release/Oratorian/emby-watchparty.svg)](https://github.com/Oratorian/emby-watchparty/releases)
 [![GitHub stars](https://img.shields.io/github/stars/Oratorian/emby-watchparty.svg)](https://github.com/Oratorian/emby-watchparty/stargazers)
+[![Discord](https://img.shields.io/discord/1311999162098782229?logo=discord&logoColor=white&label=discord&color=5865F2)](https://discord.gg/RWUpxq9xsA)
 
-A synchronized watch party application for Emby media servers. Watch videos together with friends in real-time, no matter where you are!
-
----
-
-### 🎉 Special Thanks
-
-Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
-
-Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues!
-
-Thanks to **@stealthydruid** and **@xyxxyxxy** for the bug reports and feature requests on the [Discord support server](https://discord.gg/RWUpxq9xsA) that shaped the late-stage 2.0 betas -- APP_PREFIX healthcheck, A-Z library jump bar, image thumbnail sizing, resume from last position, jump-to-timestamp input, and the seek-bar tooltip thinking that got us there.
+A synchronized watch-party frontend for Emby: watch together in sync while your Emby server stays on your internal network. Any member with Emby credentials can become the room's host; other viewers join as spectators without an account.
 
 ---
 
-### Discord for more personal support
+## Table of contents
+
+- [Support development](#support-development)
+- [Special thanks](#special-thanks)
+- [Discord](#discord)
+- [Documentation](#documentation)
+- [Features](#features)
+- [Browser compatibility](#browser-compatibility)
+- [Setup](#setup)
+  - [Prerequisites](#prerequisites)
+  - [Manual installation](#manual-installation)
+  - [Docker installation](#docker-installation)
+- [Usage](#usage)
+  - [Creating a watch party](#creating-a-watch-party)
+  - [Joining a watch party](#joining-a-watch-party)
+  - [In-party controls](#in-party-controls)
+- [Configuration](#configuration)
+  - [.env](#env)
+  - [Admin panel](#admin-panel)
+- [Architecture](#architecture)
+- [API endpoints](#api-endpoints)
+- [Troubleshooting](#troubleshooting)
+- [Security notes](#security-notes)
+- [License](#license)
+- [Contributing](#contributing)
+- [Acknowledgments](#acknowledgments)
+- [Educational use notice](#educational-use-notice)
+
+---
+
+### Support development
+
+If Emby Watch Party has saved you from the hell of trying to coordinate "3, 2, 1, play" over Discord, consider buying me a coffee:
+
+**[ko-fi.com/jedziah](https://ko-fi.com/jedziah)**
+
+Every tip helps fund the hardware and the late nights reverse-engineering Emby's HLS pipeline.
+
+---
+
+### Special thanks
+
+Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development.
+
+Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issues.
+
+Thanks to **@stealthydruid** and **@xyxxyxxy** for the bug reports and feature requests on the [Discord support server](https://discord.gg/RWUpxq9xsA) that shaped the late-stage 2.0 betas: APP_PREFIX healthcheck, A-Z library jump bar, image thumbnail sizing, resume from last position, jump-to-timestamp input, and the seek-bar tooltip thinking that got us there.
+
+---
+
+### Discord
+
 https://discord.gg/RWUpxq9xsA
 
 ---
 
+## Documentation
+
+- **[Project wiki](https://github.com/Oratorian/emby-watchparty/wiki)** - hardware, deployment, troubleshooting, and FAQ
+- **[Migration guide](docs/Migration-HowTo.md)** - upgrade path for 1.x users moving to 2.0
+- **[Socket.IO API](docs/SOCKET_API.md)** - developer reference for the Socket.IO event protocol
+- **OpenAPI reference** - `GET /docs` (Swagger UI) or `GET /redoc` on a running instance
+- **[CHANGELOG.md](CHANGELOG.md)** - per-release details including every fix and the reasoning behind it
+- **[SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md)** - condensed release-by-release summary of the 2.0 betas
+
 ## Features
 
-- **Secure Proxy Architecture**: Emby server stays on your local network - never exposed to the internet
-- **HLS Streaming**: High-quality HTTP Live Streaming with adaptive bitrate and buffering
-- **Real-time synchronization**: Watch videos together with automatic play/pause/seek synchronization
-- **Library browsing**: Browse your entire Emby library and select videos to watch
-- **Subtitle & Audio Support**: Automatic detection of default tracks with burned-in subtitle support
-- **Room system**: Create private watch party rooms with simple 5-character codes
-- **Live chat**: Chat with other viewers while watching
-- **Random usernames**: Auto-generated usernames if not provided (554,400+ combinations)
-- **Multiple users**: Support for unlimited concurrent viewers in a room
-- **Professional logging**: rsyslog-style logging with automatic rotation
-- **Responsive UI**: Modern, clean interface that works on desktop and mobile
+- **Secure proxy architecture**: your Emby server stays on the local network; only the WatchParty app is exposed
+- **FastAPI + Vue 3 + TypeScript stack**: async end-to-end, typed OpenAPI docs at `/docs` and `/redoc`, single uvicorn process serves backend + compiled SPA
+- **Real-time sync with drift correction**: selector-authoritative play/pause/seek against a party clock, keeping independent streams aligned
+- **Late-joiner voting flow**: existing users vote to admit mid-playback joiners; a passing vote restarts on a PTS-aligned segment 0 so everyone lands together
+- **Host-provider auth model**: UNLOCKED / PLAYING-ONLY / LOCKED lock states around the Emby-authenticated host, with a grace window for quick refreshes
+- **Per-user transcodes**: every viewer gets their own Emby `PlaySessionId`, so audio, subtitles, quality, and version are personal without disrupting the room
+- **Multi-version playback**: host-locked picker for items with multiple MediaSources (theatrical vs director's cut, mp4 vs mkv, 1080p vs 4K HDR)
+- **Bitrate-granular quality menu**: mirrors Emby's own per-resolution table, with admin-side toggles for exposed resolutions and bitrates
+- **Unified subtitles**: text subs via side-channel proxy, image (PGS) subs burned in per-user, both surfaced in one dropdown
+- **Resume, jump-to-timestamp, and binge auto-advance**: Continue Watching prompt from Emby `UserData`, absolute-timestamp seek input, and end-of-episode countdown with room-wide Cancel
+- **Rooms, chat, and identity**: 5-character party codes, live chat with a mobile slide-over, custom avatars (upload / Gravatar / monsterid fallback) recoverable via 3-word codes
+- **Refined Cyber UI**: cyan/magenta/violet palette, glass surfaces, chip/pill controls, animated LIVE badge, iOS-style A-Z library jump bar
+- **Reverse-proxy ready**: `APP_PREFIX` wired end-to-end so one Docker image sits behind any subpath (`https://example.com/watchparty/...`)
+- **Admin panel with hot-reload**: runtime settings editable from `/admin` as an in-party modal, `.env` reserved for boot-only keys
+- **Reload-as-rejoin + healthchecks**: refresh in an active party rejoins via persistent `client_id`; `/api/health` liveness for Docker/Kubernetes probes; rsyslog-style logging with rotation
 
-## Browser Compatibility
+## Browser compatibility
 
 Emby Watch Party works best with the following browsers:
 
 ### Desktop
-- ✅ **Chrome** - Full support (recommended)
-- ✅ **Edge** - Full support (recommended)
-- ✅ **Firefox** - Full support
-- ✅ **Safari** - Full support
-- ✅ **Brave** - Full support
+- **Chrome** - full support (recommended)
+- **Edge** - full support (recommended)
+- **Firefox** - full support
+- **Safari** - full support
+- **Brave** - full support
 
 ### Mobile
-- ✅ **Safari (iOS)** - Full support with subtitles (recommended for iOS)
-- ✅ **Chrome (Android)** - Full support (recommended for Android)
-- ⚠️ **Brave (iOS)** - Video playback works, but subtitles do not appear in fullscreen mode
-  - **Workaround**: Use Safari on iOS if you need subtitle support
+- **Safari (iOS)** - full support with subtitles (recommended for iOS)
+- **Chrome (Android)** - full support (recommended for Android)
+- **Brave (iOS)** - video playback works, but subtitles do not appear in fullscreen mode
+  - **Workaround**: use Safari on iOS if you need subtitle support
 
-### Known Issues
-- **Brave Browser on iOS**: Subtitles work in normal view but disappear when entering fullscreen mode. This is a limitation of how Brave handles native video controls on iOS. Safari is recommended for iOS users who need subtitle support.
+### Known issues
+- **Brave browser on iOS**: subtitles work in normal view but disappear when entering fullscreen mode. This is a limitation of how Brave handles native video controls on iOS. Safari is recommended for iOS users who need subtitle support.
 
 ## Setup
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- An Emby server (can be on local/internal network only)
-- Emby user account credentials (username and password)
-- Flask app must be accessible to remote users - use VPNs like Tailscale or Hamachi if port forwarding is not possible
-- **Note:** Emby server does NOT need to be exposed to the internet - the Flask app acts as a secure proxy
+- An Emby server (can be on local/internal network only; does **not** need to be exposed to the internet - the app acts as a secure proxy)
+- An Emby admin API key (per-user Emby credentials are supplied at runtime via the in-app "Login to Become Host" flow, never in `.env`)
+- The app must be reachable by your remote viewers - use a VPN such as Tailscale or Hamachi if you cannot port-forward
+- **For Docker installs (recommended):** Docker 20.10+ (and optionally Docker Compose v2)
+- **For manual installs:**
+  - Python **3.12** or higher (matches the runtime used in the official image)
+  - Node.js **20.19+** (or 22.12+) and npm - the Vue 3 frontend is a Vite build that must be produced before FastAPI can serve it
 
-### Option 1: Manual Installation
+### Manual installation
 
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+> Docker (below) is the easier and recommended path - it bundles the frontend build and Python runtime for you. Only use manual installation if you specifically need to run against a local Python environment.
 
-2. Configure your settings:
+1. **Build the frontend** (Vite emits into `backend/static/`, which FastAPI serves):
 
-Copy `.env.example` to `.env` and edit with your settings:
-```bash
-cp .env.example .env
-```
+   ```bash
+   cd frontend
+   npm ci
+   npm run build
+   cd ..
+   ```
 
-Edit `.env` with your Emby server credentials:
-```env
-# Emby Server Configuration
-# Only the admin server API key is needed. Per-user authentication
-# happens at runtime via the in-app "Login to Become Host" flow.
-EMBY_SERVER_URL=http://your-emby-server:8096
-EMBY_API_KEY=your-api-key-here
+2. **Install the Python backend dependencies:**
 
-# Application Configuration
-WATCH_PARTY_BIND=0.0.0.0
-WATCH_PARTY_PORT=5000
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-3. Run the application:
+3. **Configure your settings.** Copy `.env.example` to `.env` and fill in at least `EMBY_SERVER_URL`, `EMBY_API_KEY`, and `SESSION_SECRET` (generate with `openssl rand -hex 32`):
 
-```bash
-python run_production.py
-```
+   ```bash
+   cp .env.example .env
+   ```
 
-4. Open your browser and navigate to:
-```
-http://localhost:5000
-```
+   Only boot-essential settings live in `.env` - see [`.env.example`](.env.example) for the full annotated list (bind/port, `APP_PREFIX`, `SESSION_SECRET`, `SESSION_COOKIE_SECURE`, `CORS_ALLOWED_ORIGINS`, `EMBY_SERVER_URL`, `EMBY_API_KEY`). All other runtime options (logging, rate limits, late-join vote, `FORCE_TRANSCODE`, `REQUIRE_LOGIN`, etc.) are managed live from the Admin Panel at `/admin` and persisted to `config.json`.
 
-### Option 2: Docker Installation
+4. **Run the application** from the repository root:
 
-Pull the image from GitHub Container Registry:
+   ```bash
+   python -m backend.app
+   ```
+
+5. Open your browser and navigate to:
+
+   ```
+   http://localhost:5000
+   ```
+
+   (If you set `APP_PREFIX=/watchparty`, the app is served at `http://localhost:5000/watchparty/` instead.)
+
+### Docker installation
+
+The pre-built multi-arch image is published to GitHub Container Registry:
+
 ```bash
 docker pull ghcr.io/oratorian/emby-watchparty:latest
 ```
 
-Run with your `.env` file:
+**Recommended: use the compose example.** Copy [`docker-compose.yml.example`](docker-compose.yml.example) to `docker-compose.yml`, copy `.env.example` to `.env` and fill in your Emby URL + API key, then:
+
 ```bash
+# One-time: pre-create config.json so Docker does not create it as a
+# directory on first `up`. Skip this and the backend will crash trying
+# to write its settings.
+touch config.json
+
+docker compose up -d
+```
+
+The compose file mounts everything correctly out of the box. If you prefer `docker run`, the equivalent invocation is:
+
+```bash
+touch config.json
+
 docker run -d \
   --name emby-watchparty \
   -p 5000:5000 \
   --env-file .env \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/images/avatars:/app/images/avatars" \
+  -v "$(pwd)/config.json:/app/config.json" \
+  -v "$(pwd)/logs:/app/logs" \
   ghcr.io/oratorian/emby-watchparty:latest
 ```
 
-Or with inline environment variables:
-```bash
-docker run -d \
-  --name emby-watchparty \
-  -p 5000:5000 \
-  -e EMBY_SERVER_URL=http://your-emby-server:8096 \
-  -e EMBY_API_KEY=your-api-key \
-  -e SESSION_SECRET=$(openssl rand -hex 32) \
-  -e SESSION_COOKIE_SECURE=true \
-  -e CORS_ALLOWED_ORIGINS=https://watchparty.example.com \
-  -e LOG_TO_FILE=false \
-  -v /your/path/data:/app/data \
-  -v /your/path/images:/app/images \
-  ghcr.io/oratorian/emby-watchparty:latest
-```
+**Required mounts** (avatars and runtime config will be wiped on container recreation without them):
 
-`SESSION_SECRET` is new in 2.0.0-beta18: it's the signing key for the
-party-bound session cookie. Set it once (`openssl rand -hex 32`) and
-leave the value stable across restarts and across every uvicorn
-worker. When unset, an ephemeral key is generated at boot with a loud
-warning -- every restart kicks all users out of their party, and
-multi-worker deploys become non-deterministic per request. Pair with
-`SESSION_COOKIE_SECURE=true` on any HTTPS deployment and pin
-`CORS_ALLOWED_ORIGINS` to your real origin(s) (the historical `*`
-default remains for backwards compat). Full block in
-[`.env.example`](.env.example).
+| Host path | Container path | Purpose |
+|-----------|----------------|---------|
+| `./data` | `/app/data` | SQLite avatar DB (`avatars.db`) |
+| `./images/avatars` | `/app/images/avatars` | Uploaded avatar image files |
+| `./config.json` | `/app/config.json` | Runtime admin settings (edited via `/admin`) |
 
-The two volume mounts keep the avatar database (`/app/data/avatars.db`)
-and uploaded avatar files (`/app/images/avatars/`) outside the
-container so they survive image updates.
+**Optional mount:**
 
-**Note:** For Docker deployments, set `LOG_TO_FILE=false` to output logs to stdout only.
+| Host path | Container path | Purpose |
+|-----------|----------------|---------|
+| `./logs` | `/app/logs` | Application logs (only written when `LOG_TO_FILE` is enabled in `/admin`; console-only by default) |
+
+`SESSION_SECRET` is new in 2.0.0-beta18: it's the signing key for the party-bound session cookie. Set it once (`openssl rand -hex 32`) and leave the value stable across restarts and across every uvicorn worker. When unset, an ephemeral key is generated at boot with a loud warning - every restart kicks all users out of their party, and multi-worker deploys become non-deterministic per request. Pair with `SESSION_COOKIE_SECURE=true` on any HTTPS deployment and pin `CORS_ALLOWED_ORIGINS` to your real origin(s) (the historical `*` default remains for backwards compat). Full block in [`.env.example`](.env.example).
+
+**Config split (2.0):** `.env` is boot-only (~6 keys: bind/port, Emby URL/key, session hardening). All other settings - including `LOG_TO_FILE`, transcoding options, feature toggles - live in `config.json` and are edited from the admin panel at `/admin`. Do not try to set them as environment variables; they will be ignored.
 
 ## Usage
 
-### Creating a Watch Party
+### Creating a watch party
 
 The default (`REQUIRE_LOGIN=false`):
 1. Click **"Create Party"** on the home page (no login required)
@@ -175,54 +241,34 @@ With `REQUIRE_LOGIN=true` (set from the admin panel):
 
 In both modes, when the host disconnects mid-playback the in-flight video keeps streaming until it ends naturally (PLAYING-ONLY state). The library re-locks immediately; any member can click "Login to Become Host" to unlock it again.
 
-### Joining a Watch Party
+### Joining a watch party
 
 1. Click **"Join Watch Party"** on the home page (or open a shared URL)
 2. Enter the party code if needed
 3. Enter your username
 4. Start watching together!
 
-If you join **before** a video has been selected, you land directly in
-the party. If you join **while a video is already playing**, the
-existing users will see a vote modal asking whether to restart the
-video from the beginning so you can join in sync. See the
-[project wiki](https://github.com/Oratorian/emby-watchparty/wiki)
-for full details of the late-joiner vote flow.
+If you join **before** a video has been selected, you land directly in the party. If you join **while a video is already playing**, the existing users will see a vote modal asking whether to restart the video from the beginning so you can join in sync. See the [project wiki](https://github.com/Oratorian/emby-watchparty/wiki) for full details of the late-joiner vote flow.
 
-### Controls
+### In-party controls
 
-- **Browse Library**: Use the sidebar to browse your Emby libraries, movies, and TV shows
-- **Select Video**: Click on any video to start watching it with the group
-- **Video Controls**: Any user can play, pause, or seek - all users will sync
-- **Audio / Quality / Subtitles**: Each user can pick their own settings
-  independently. If the party is paused, the change is silent; if the
-  party is playing, everyone briefly pauses while the new stream loads
-  so you do not desync
-- **Chat**: Use the chat box at the bottom to communicate with other viewers
-- **Leave**: Click the "Leave" button to exit the watch party
-
-### Documentation
-
-- **[Project wiki](https://github.com/Oratorian/emby-watchparty/wiki)** -
-  End-user docs covering the full party flow, late-joiner vote,
-  per-user streams, and the admin panel
-- **[Socket.IO API](docs/SOCKET_API.md)** - Developer reference for
-  the Socket.IO event protocol
-- **REST API** - `GET /docs` or `GET /redoc` on a running instance for
-  the auto-generated OpenAPI documentation
+- **Browse library**: use the sidebar to browse your Emby libraries, movies, and TV shows
+- **Select video**: click on any video to start watching it with the group
+- **Video controls**: any user can play, pause, or seek - all users will sync
+- **Audio, subtitles, quality**: each user can pick their own settings independently. If the party is paused, the change is silent; if the party is playing, everyone briefly pauses while the new stream loads so you do not desync
+- **Chat**: use the chat box at the bottom to communicate with other viewers
+- **Leave**: click the "Leave" button to exit the watch party
 
 ## Configuration
 
 Configuration is split into two tiers:
 
-1. **Boot-essential settings** live in `.env` and require a server
-   restart to change. Copy `.env.example` to `.env` and set these
-   before starting the service.
-2. **Runtime settings** are editable from the **admin panel** at
-   `/admin` (Emby administrator credentials required) and are
-   hot-reloadable -- no restart needed.
+1. **Boot-essential settings** live in `.env` and require a server restart to change. Copy `.env.example` to `.env` and set these before starting the service.
+2. **Runtime settings** are editable from the **admin panel** at `/admin` (Emby administrator credentials required) and are hot-reloadable -- no restart needed.
 
-### `.env` (boot-essential, restart required)
+### .env
+
+Boot-essential, restart required.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -231,188 +277,178 @@ Configuration is split into two tiers:
 | `WATCH_PARTY_PORT` | Port to run on | `5000` |
 | `APP_PREFIX` | URL prefix for reverse proxy deployments (e.g. `/watchparty`) | (empty) |
 | `SESSION_EXPIRY` | Session expiry in seconds | `86400` |
-| **Session Cookie** _(new in 2.0.0-beta18)_ | | |
+| **Session cookie** _(new in 2.0.0-beta18)_ | | |
 | `SESSION_SECRET` | Signing key for the party-bound session cookie. Generate ONCE with `openssl rand -hex 32` and leave it. Empty = ephemeral random per boot with a loud warning (every restart kicks users out; multi-worker deploys are non-deterministic). | (generated) |
 | `SESSION_COOKIE_SECURE` | When `true`, the session cookie carries the `Secure` flag (HTTPS-only). Set `true` in every deployment behind TLS; leave `false` for `http://localhost` dev. | `false` |
 | **Socket.IO CORS** _(new in 2.0.0-beta18)_ | | |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for the Socket.IO server (`https://a.example.com,https://b.example.com`). `*` accepts any origin (historical default). Pin to your real origin(s) in production. | `*` |
-| **Emby Server** | | |
+| **Emby server** | | |
 | `EMBY_SERVER_URL` | Your Emby server URL | `http://localhost:8096` |
 | `EMBY_API_KEY` | Emby API key (server admin key) | (required) |
 
-`REQUIRE_LOGIN` was previously here. It now lives in the admin panel as
-a runtime, hot-reloadable setting; see the **Authentication & Library
-Locking** section above for the full semantics.
+`REQUIRE_LOGIN` was previously here. It now lives in the admin panel as a runtime, hot-reloadable setting; see the host-provider authentication model in [Architecture](#architecture) for the full semantics.
 
-### Admin panel (runtime, hot-reloadable)
+### Admin panel
 
-All of the following settings are editable at `/admin`. See the
-[project wiki](https://github.com/Oratorian/emby-watchparty/wiki) for a walkthrough.
+Runtime, hot-reloadable. All of the following settings are editable at `/admin`. See the [project wiki](https://github.com/Oratorian/emby-watchparty/wiki) for a walkthrough.
 
 **Logging**
 
 | Setting | Description | Default |
 |---|---|---|
-| Log Level | Application log verbosity (DEBUG, INFO, WARNING, ERROR) | `INFO` |
-| Console Log Level | Terminal output verbosity | `WARNING` |
-| Log to File | Write logs to disk | `true` |
-| Log File | Path to log file | `logs/emby-watchparty.log` |
-| Log Format | `rsyslog` or `standard` | `rsyslog` |
-| Max Log Size (MB) | Rotation threshold | `10` |
+| Log level | Application log verbosity (DEBUG, INFO, WARNING, ERROR) | `INFO` |
+| Console log level | Terminal output verbosity | `WARNING` |
+| Log to file | Write logs to disk | `true` |
+| Log file | Path to log file | `logs/emby-watchparty.log` |
+| Log format | `rsyslog` or `standard` | `rsyslog` |
+| Max log size (MB) | Rotation threshold | `10` |
 
 **Security**
 
 | Setting | Description | Default |
 |---|---|---|
-| Max Users per Party | 0 = unlimited | `0` |
-| HLS Token Validation | Prevent direct stream access bypass | `true` |
-| HLS Token Expiry (s) | Token lifetime | `86400` |
-| Rate Limiting | Enable API rate limiting | `true` |
-| Party Creation Limit | Max per IP | `5 per hour` |
-| API Rate Limit | Max per IP | `1000 per minute` |
+| Max users per party | 0 = unlimited | `0` |
+| HLS token validation | Prevent direct stream access bypass | `true` |
+| HLS token expiry (s) | Token lifetime | `86400` |
+| Rate limiting | Enable API rate limiting | `true` |
+| Party creation limit | Max per IP | `5 per hour` |
+| API rate limit | Max per IP | `1000 per minute` |
 
 **Session**
 
 | Setting | Description | Default |
 |---|---|---|
-| Static Session Mode | Auto-create a fixed party on startup | `false` |
-| Static Session ID | Party code when static mode is enabled | `PARTY` |
+| Static session mode | Auto-create a fixed party on startup | `false` |
+| Static session ID | Party code when static mode is enabled | `PARTY` |
 
-**Late Join Vote** _(new in 2.0)_
+**Late join vote** _(new in 2.0)_
 
 | Setting | Description | Default |
 |---|---|---|
-| Enable Late Join Vote | Require a majority vote to admit users who join mid-playback | `true` |
-| Vote Timeout (s) | Seconds before the selector tiebreak kicks in | `20` |
-| Post-Vote Cooldown (s) | Delay after a failed vote before another join attempt is allowed (0 disables) | `30` |
+| Enable late join vote | Require a majority vote to admit users who join mid-playback | `true` |
+| Vote timeout (s) | Seconds before the selector tiebreak kicks in | `20` |
+| Post-vote cooldown (s) | Delay after a failed vote before another join attempt is allowed (0 disables) | `30` |
 
 ## Architecture
 
-### Backend (Flask + SocketIO)
-- **Flask**: Web server and REST API endpoints
-- **SocketIO**: WebSocket-based real-time communication
-- **EmbyClient**: Custom API client for Emby server integration with user authentication
-- **HLS.js**: HTTP Live Streaming (HLS) playback support
+### Backend (FastAPI + python-socketio)
 
-### Frontend
-- **Vanilla JavaScript**: No frameworks, just clean JS
-- **Socket.IO Client**: Real-time bidirectional communication
-- **HLS.js**: Advanced HLS video streaming with buffering and error recovery
-- **HTML5 Video**: Native video player with custom controls
+- **FastAPI**: async REST API, dependency-injected components, Pydantic schemas for every request/response body (`backend/src/schemas.py`).
+- **python-socketio `AsyncServer`** (ASGI mode) mounted under `APP_PREFIX/socket.io`: WebSocket-based real-time sync, hardened with a 128 KiB frame cap and tightened ping timings.
+- **httpx**: async HLS proxy - the backend streams `.m3u8`/`.ts`/`.vtt` segments from Emby on the user's behalf so the Emby server never sees the public internet.
+- **uvicorn** ASGI worker, bound to `WATCH_PARTY_BIND:WATCH_PARTY_PORT`.
+- **HLS.js**-compatible playlists: token-gated (`HLSTokenManager`) short-lived URLs prevent segment scraping.
 
-### Key Components
+### Frontend (Vue 3 + TypeScript)
 
-#### Watch Party Rooms
-Each room maintains:
-- List of connected users
-- Current video being watched
-- Playback state (playing/paused, current time)
+- **Vue 3** SPA authored in **TypeScript**, bundled with **Vite** (base `./` for prefix-agnostic asset resolution).
+- **Pinia** stores for auth, party, playback, and socket state; **Vue Router** for `/party/:code`, `/admin`, and landing routes.
+- **socket.io-client** for the sync channel, **axios** for REST, **hls.js** for adaptive playback.
 
-#### Synchronization
-When any user performs an action (play/pause/seek), it's broadcast to all users in the room via WebSocket, ensuring everyone stays in sync. The application uses a coordinated pause-seek-buffer-resume flow to prevent desynchronization during seeking operations.
+### Per-user transcode model
 
-#### Authentication & Security
-The application authenticates with Emby using username/password credentials to obtain an AccessToken, which is then used for all HLS streaming requests. All media streaming goes through the Flask proxy, keeping your Emby server on your internal network and never exposed to the internet.
+Each viewer gets their own `PlaySessionId` and a fresh Emby transcode session built by `StreamBuilder`. Seeks, quality changes, and disconnects only affect the individual user's stream - the party's shared clock stays authoritative, and Emby's `stop_active_encodings` is called on every disconnect to reap the transcode.
 
-## API Endpoints
+### Host-provider authentication
 
-### REST API
+There is no application user database. Any party member can promote themselves to **host** by authenticating with Emby credentials from inside the party (`POST /api/auth/login`). The resulting `AccessToken` lives **in RAM only** on the `PartyManager` party record and is never persisted or sent to clients. When the host disconnects, a **5-second grace timer** starts; a refresh/reconnect during that window silently reclaims host. If the timer expires, the party transitions through a three-state lock:
 
-- `GET /` - Home page
-- `GET /party/<party_id>` - Watch party room page
-- `GET /api/libraries` - Get all media libraries
-- `GET /api/items?parentId=<id>&type=<type>&recursive=<bool>` - Get library items
-- `GET /api/item/<item_id>` - Get item details
-- `GET /api/stream/<item_id>` - Get video stream URL
-- `POST /api/party/create` - Create a new watch party
-- `GET /api/party/<party_id>/info` - Get party information
+- **UNLOCKED** - host present, all playback and library browsing allowed.
+- **PLAYING-ONLY** - host gone mid-playback; the in-flight token is retained so viewers can finish the current video, but no new playback or seeks may start.
+- **LOCKED** - host gone with no active video; token cleared, party waits for someone to log in as the new host.
 
-### WebSocket Events
+### Key components
 
-**Client → Server:**
-- `join_party` - Join a watch party room
-- `leave_party` - Leave a watch party room
-- `select_video` - Select a video to watch
-- `play` - Play the video
-- `pause` - Pause the video
-- `seek` - Seek to a specific time
-- `chat_message` - Send a chat message
+- **`PartyManager`** - party lifecycle, sid <-> client_id mapping, host state machine, ready-check and late-join vote bookkeeping.
+- **`EmbyClient`** - thin async wrapper around Emby's REST API (auth, items, playback reporting, encoding teardown).
+- **`HLSTokenManager`** - mints and validates short-lived per-user HLS URL tokens.
+- **`StreamBuilder`** - assembles per-user transcode URLs, honouring the `FORCE_TRANSCODE` admin toggle.
+- **`AvatarStore`** - SQLite-backed avatar metadata plus a sibling images directory (both Docker-mountable).
 
-**Server → Client:**
-- `connected` - Connection established
-- `user_joined` - A user joined the room
-- `user_left` - A user left the room
-- `sync_state` - Sync current playback state
-- `video_selected` - A new video was selected
-- `play` - Play command from another user
-- `pause` - Pause command from another user
-- `seek` - Seek command from another user
-- `chat_message` - Chat message from another user
-- `error` - Error occurred
+### Deployment
+
+Ships as a **single multi-stage Docker image**: a Node stage runs `npm run build` to produce the Vue bundle, then a Python stage installs backend dependencies and copies the built `static/` into the FastAPI app. One container, one port, one process - uvicorn serves the API, the SPA, and the WebSocket mount under the configurable `APP_PREFIX`.
+
+## API endpoints
+
+Emby Watch Party 2.0 ships a FastAPI backend (REST + OpenAPI) and a Socket.IO real-time surface. Rather than duplicate the full spec here, the canonical references are:
+
+- **REST / OpenAPI:** interactive docs at `/docs` (Swagger UI) and `/redoc` when the backend is running.
+- **Socket.IO:** [`docs/SOCKET_API.md`](docs/SOCKET_API.md) - every inbound / outbound event, payload shapes, and the multi-step flows.
+
+### REST API (representative endpoints)
+
+The FastAPI app is composed of nine routers under `backend/src/routers/`. A small sample:
+
+- **`auth`** - `POST /api/auth/login` (Emby login, host-claim), `POST /api/auth/logout`
+- **`party`** - `POST /api/party/create`, `POST /api/party/{id}/join`, `GET /api/party/{id}/info`
+- **`library`** - `GET /api/libraries`, `GET /api/items?parentId=...`, `GET /api/item/{item_id}`
+- **`media`** - `GET /api/media/{item_id}/streams`, `GET /api/media/{item_id}/versions`
+- **`hls`** - `GET /api/hls/{session}/master.m3u8`, segment + subtitle proxy passthrough
+- **`quality`** - `GET /api/quality/profiles`, `GET /api/quality/default`
+- **`avatar`** - `POST /api/avatar/upload`, `GET /api/avatar/{uuid}`
+- **`admin`** - `GET/PUT /api/admin/config`, `POST /api/admin/party/{id}/dissolve`
+- **`health`** - `GET /api/health`, `GET /api/version`
+
+See `/docs` for the full parameter, response, and auth-scope details.
+
+### WebSocket events (Socket.IO)
+
+Mounted under `${APP_PREFIX}/socket.io`. Events group into these categories:
+
+- **Connection lifecycle** - `connect` / `disconnect` / `connected`, transparent reconnect via stable `client_id`.
+- **Party join / leave / vote** - `join_party`, `leave_party`, `user_joined` / `user_left`, plus the late-joiner vote (`join_vote`, `join_vote_started`, `join_vote_update`, `join_vote_resolved`, `join_rejected`).
+- **Host state** - `host_changed`, `host_left`, `host_reclaimed`, three-state lock (UNLOCKED / PLAYING-ONLY / LOCKED).
+- **Playback** - `select_video`, `stop_video`, `change_streams` (per-user), `play`, `pause`, `seek`, `video_selected`, `streams_changed`, `video_stopped`, `video_ended`.
+- **Sync coordination** - `stream_ready`, `ready_check_update`, `all_ready`, `force_pause_before_seek`, `heartbeat` + `drift_correction`, `report_progress`.
+- **Chat / UI** - `chat_message`, `toggle_library`, `update_avatar` + `members_update`, `sync_state`.
+- **Binge-watch / auto-advance** - `set_binge_watch_active`, `binge_watch_state_changed`, `auto_advance_pending`, `auto_advance_cancel(led)`, `auto_advance_fired`, `binge_finished`.
+- **Admin / errors** - `party_dissolved`, `error`.
+
+Full payloads, auth requirements, and flow diagrams live in [`docs/SOCKET_API.md`](docs/SOCKET_API.md).
 
 ## Troubleshooting
 
-### Videos won't play
-- Ensure the Flask app is accessible from client browsers
-- Check that your username and password are correct in `.env`
-- Verify the Emby server is reachable from the Flask app server (internal network)
-- Verify the user account has permission to access the media
-- Check the logs in `logs/emby-watchparty.log` for authentication or proxy errors
+Common issues and fixes are catalogued on the wiki: **[Troubleshooting](https://github.com/Oratorian/emby-watchparty/wiki/Troubleshooting)**.
 
-### Synchronization issues
-- Check your network connection
-- Make sure WebSocket connections aren't blocked by firewalls
-- Try refreshing the page
-- If seeking causes desync, check that all clients have stable network connections
+Quick checks before opening an issue:
 
-### Can't browse library
-- Verify the Emby server URL is correct in `.env`
-- Check that your username and password are correct
-- Ensure the Emby server is running and reachable from the Flask app (internal network)
-- Verify the user account has library access permissions
+- **App unreachable.** Confirm the backend is bound on `WATCH_PARTY_BIND`/`WATCH_PARTY_PORT` and that clients can reach it. Behind a reverse proxy, verify `APP_PREFIX` matches the mount path and that WebSocket upgrades are forwarded.
+- **Can't browse or play media.** The admin `EMBY_API_KEY` in `.env` must be valid, and the Emby server (`EMBY_SERVER_URL`) must be reachable from the backend. To play, someone in the party has to click **Login to Become Host** and supply their own Emby credentials - nothing plays until a host provider is attached.
+- **Playback works, sync doesn't.** Confirm the Socket.IO transport isn't being downgraded or blocked by an intermediate proxy, and that `CORS_ALLOWED_ORIGINS` includes your real origin.
+- **Session cookie rejected / kicked out on every restart.** `SESSION_SECRET` must be set to a stable value (`openssl rand -hex 32`). An unset secret regenerates on boot and invalidates every existing cookie; with `--workers >1` each worker signs differently.
+- **Logs.** Logging goes to stdout by default. File logging is opt-in from **/admin -> Logging**; the log path shown there is where to look once enabled.
 
-## Security Notes
+## Security notes
 
-- **Proxy Architecture**: Your Emby server stays on your local network and is never exposed to the internet
-- The Flask app proxies all HLS streaming requests, acting as a security layer between users and your Emby server
-- This application authenticates with Emby using username/password credentials
-- Credentials are stored in `.env` - **do not commit this file to public repositories**
-- Party codes are generated using cryptographically secure random tokens
-- AccessTokens are obtained at runtime and not stored persistently
-- Built-in security features:
-  - HLS token validation (prevents direct stream access bypass)
-  - Rate limiting (prevents API abuse)
-  - Configurable party size limits
-- For production use, consider adding:
-  - HTTPS/TLS encryption (recommended if exposing to the internet)
-  - Reverse proxy (nginx, Caddy, etc.)
+- **Proxy architecture.** The Emby server stays on your internal network. All HLS segments and playlists are pulled by the backend and re-served to clients, so browsers never talk to Emby directly.
+- **Credential model.**
+  - `.env` holds only the admin `EMBY_API_KEY`, used for library browsing and administrative Emby calls. **Do not commit `.env`.**
+  - Per-user Emby credentials are never persisted. Any party member can click **Login to Become Host** in-app and authenticate against Emby; the resulting AccessToken lives in memory as that party's *host provider* and is used to open per-user transcode sessions. Tokens are discarded when the host provider changes or the party ends.
+- **Session secret.** `SESSION_SECRET` signs the party-bound session cookie and **must be stable across restarts and across every uvicorn worker** - generate once with `openssl rand -hex 32`. An unset secret produces an ephemeral key at boot (loud warning), which invalidates cookies on every restart and produces non-deterministic sessions under `--workers >1`.
+- **HLS URLs.** Since beta18, HLS playlist and segment URLs served to the browser no longer carry the admin `EMBY_API_KEY` as a query parameter. Access is gated by a per-stream HLS token bound to the session cookie; the API key stays server-side.
+- **Party codes** are generated with cryptographically secure random tokens.
+- **Built-in controls.** HLS token validation, per-IP rate limiting, and configurable party size limits are on by default; tune them in **/admin -> Security**.
+- **For internet-facing deployments**, terminate TLS at a reverse proxy (nginx, Caddy, Traefik), set `SESSION_COOKIE_SECURE=true`, and pin `CORS_ALLOWED_ORIGINS` to your real origin(s) instead of `*`.
 
 ## License
 
-MIT License - feel free to modify and use as you wish!
+MIT License - feel free to modify and use as you wish.
 
 ## Contributing
 
-Contributions are welcome! Feel free to submit issues or pull requests.
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for branch conventions, PR flow, and coding guidelines. Issues and feature requests go in GitHub Issues.
+
+Wiki edits are open - if you deploy on hardware or a platform not yet documented, please add your findings.
 
 ## Acknowledgments
 
-- Built with Flask and SocketIO
-- Integrates with Emby Media Server
-- Inspired by various watch party applications
-
-### Special Thanks
-
-Special thanks to **[QuackMasterDan](https://emby.media/community/index.php?/profile/1658172-quackmasterdan/)** for his dedication in testing and providing valuable feedback throughout development!
-
-Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https://github.com/JeslynMcKenzie)** for testing, detailed bug reports, and providing mediainfo that helped track down the HEVC transcoding issue!
-
-Thanks to **@stealthydruid** and **@xyxxyxxy** for the bug reports and feature requests on the [Discord support server](https://discord.gg/RWUpxq9xsA) that shaped the late-stage 2.0 betas.
+- Integrates with [Emby Media Server](https://emby.media/)
+- UI design: **Refined Cyber** by Christian Gillinger
+- The community testers on Discord who lived through every beta and kept filing the bug reports that made 2.0 what it is
 
 ---
 
-### Support the Project
+## Educational use notice
 
-If you enjoy Emby Watch Party and want to support its development, consider buying me a coffee!
-
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/jedziah)
+This project is intended for educational purposes and private use only. Please ensure you use this responsibly and in compliance with your Emby server's terms of service and applicable copyright laws.
