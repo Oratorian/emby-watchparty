@@ -1,6 +1,6 @@
 ### Release history
 
-Closed-beta builds tagged on GHCR. The version stays `2.0.0-dev` while in active development; each beta below carries only the bullets new to that build. The **Breaking Changes** above and the **Technical details** further down apply to the dev cycle as a whole, not to any individual beta.
+Closed-beta builds were tagged on GHCR under `2.0.0-dev` during development; each beta below carries only the bullets new to that build. The **Breaking Changes** above and the **Technical details** further down apply to the dev cycle as a whole, not to any individual beta.
 
 ### [2.0.0-beta18] - 2026-07-03 - Deeper security Audit after python-socketio CVE
 
@@ -352,7 +352,7 @@ Several JSON endpoints had no `response_model`, so the OpenAPI spec emitted empt
 
 **1.6.3 backport: EnableAutoStreamCopy=false**
 
-`build_stream_params` now sets `EnableAutoStreamCopy=false`, `MinSegments=1`, and provides `h264-profile`, `h264-level`, `TranscodeReasons`. PlaybackInfo gained `IsPlayback=true`, `AutoOpenLiveStream=true`, `MaxStreamingBitrate`, `AudioStreamIndex`, `SubtitleStreamIndex`, `MediaSourceId`, `StartTimeTicks`. Without these, Emby would sometimes pick stream-copy for sources that should have been transcoded, breaking quality presets. See [BACKPORT-NOTES.md](BACKPORT-NOTES.md) for the full porting status of 1.6.4 / 1.6.5 / 1.6.6.
+`build_stream_params` now sets `EnableAutoStreamCopy=false`, `MinSegments=1`, and provides `h264-profile`, `h264-level`, `TranscodeReasons`. PlaybackInfo gained `IsPlayback=true`, `AutoOpenLiveStream=true`, `MaxStreamingBitrate`, `AudioStreamIndex`, `SubtitleStreamIndex`, `MediaSourceId`, `StartTimeTicks`. Without these, Emby would sometimes pick stream-copy for sources that should have been transcoded, breaking quality presets. See [BACKPORT-NOTES.md](docs/BACKPORT-NOTES.md) for the full porting status of 1.6.4 / 1.6.5 / 1.6.6.
 
 **Reload as rejoin via persistent client id (NewBlade)**
 

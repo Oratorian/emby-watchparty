@@ -16,7 +16,7 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
-## [2.0.0] - TBA - Midnight Premiere
+## [2.0.0] - 2026-07-11 - Midnight Premiere
 
 2.0 is a top-to-bottom rewrite of Emby Watch Party. The 1.x line was a Flask app with Jinja templates, vanilla JS on the frontend, and a single shared Emby transcode that the whole party watched in lockstep: one stream URL, one audio track, one subtitle, one quality. It worked, but the architecture made every "can I have my own subtitles", "can I lower my quality on hotel wifi", "why am I stuck on Japanese audio because someone else picked it" request a structural impossibility.
 
@@ -66,7 +66,7 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
-- **v2.0.0**  (TBA): Official release after 6 months of beta.
+- **v2.0.0**  (2026-07-11): Official release after 6 months of beta.
 - **v1.6.7**  (2026-07-01): Security bump python-socketio to >=5.16.2 (CVE-2026-48804)
 - **v1.6.6** (2026-05-05): CC button switching fix, subtitle 401 fix, label clarity
 - **v1.6.5** (2026-05-03): PGS subtitles fixed, Skip Intro 403 fixed
