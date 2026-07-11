@@ -4,7 +4,7 @@ Closed-beta builds were tagged on GHCR under `2.0.0-dev` during development; eac
 
 ### [2.0.0-beta18] - 2026-07-03 - Deeper security Audit after python-socketio CVE
 
-Pre-cut hardening pass. A multi-agent functional + security audit of the 2.0-Rework branch produced 27 confirmed findings across auth, playback control, socket DoS surface, binge / library / resume flows, and admin/config bifurcation; every one landed as a fix in this beta. Nothing in here is a new feature -- this beta closes the gap between "everything works" and "we can put a version number on it and walk away". The bulk of the impact is in three places: closing paths that let a spectator drive party-wide playback, replacing the ephemeral per-process session secret with a real env-loaded one, and shrinking the socket DoS surface to something that survives contact with a curious user.
+Pre-cut hardening pass. A functional + security audit of the 2.0-Rework branch produced 27 confirmed findings across auth, playback control, socket DoS surface, binge / library / resume flows, and admin/config bifurcation; every one landed as a fix in this beta. Nothing in here is a new feature -- this beta closes the gap between "everything works" and "we can put a version number on it and walk away". The bulk of the impact is in three places: closing paths that let a spectator drive party-wide playback, replacing the ephemeral per-process session secret with a real env-loaded one, and shrinking the socket DoS surface to something that survives contact with a curious user.
 
 ##### Breaking Changes (beta18-specific)
 
