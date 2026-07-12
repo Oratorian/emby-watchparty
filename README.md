@@ -12,8 +12,6 @@
 A synchronized watch-party frontend for Emby: watch together in sync while your Emby server stays on your internal network. Any member with Emby credentials can become the room's host; other viewers join as spectators without an account.
 
 ---
-[Why the Rewrite?](docs/Emby%20quirks%20we%20learned%20the%20hard%20way.md)
----
 
 ## Table of contents
 
