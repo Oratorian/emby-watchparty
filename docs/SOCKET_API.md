@@ -21,7 +21,7 @@ proxy, admin config) see the auto-generated OpenAPI docs at
   `localStorage`. Survives page refreshes, brief disconnects, and
   browser-tab transitions. Used for selector identity, vote
   attribution, host-reclaim grace, and rejoin detection.
-- **`party_id`** = uppercase 6-character code, e.g. `K7N2QF`.
+- **`party_id`** = uppercase 5-character code, e.g. `K7N2F`.
   Always normalised to upper-case on inbound.
 - **Room** = Socket.IO room with the same name as the `party_id`.
   Every member of a party is in their party room; emits with
@@ -447,7 +447,7 @@ Host toggles per-session binge-watch on / off.
 
 ```js
 socket.emit('set_binge_watch_active', {
-  party_id: 'K7N2QF',
+  party_id: 'K7N2F',
   active: true,
 })
 ```
@@ -469,7 +469,7 @@ available: false, active: false }` to snap stale UIs back to reality.
 Anyone in the room hit Cancel on the auto-advance countdown card.
 
 ```js
-socket.emit('auto_advance_cancel', { party_id: 'K7N2QF' })
+socket.emit('auto_advance_cancel', { party_id: 'K7N2F' })
 ```
 
 Cancels the queued advance and broadcasts `auto_advance_cancelled
