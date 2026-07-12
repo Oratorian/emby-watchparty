@@ -352,8 +352,7 @@ Several JSON endpoints had no `response_model`, so the OpenAPI spec emitted empt
 
 **1.6.3 backport: EnableAutoStreamCopy=false**
 
-`build_stream_params` now sets `EnableAutoStreamCopy=false`, `MinSegments=1`, and provides `h264-profile`, `h264-level`, `TranscodeReasons`. PlaybackInfo gained `IsPlayback=true`, `AutoOpenLiveStream=true`, `MaxStreamingBitrate`, `AudioStreamIndex`, `SubtitleStreamIndex`, `MediaSourceId`, `StartTimeTicks`. Without these, Emby would sometimes pick stream-copy for sources that should have been transcoded, breaking quality presets. See [BACKPORT-NOTES.md](docs/BACKPORT-NOTES.md) for the full porting status of 1.6.4 / 1.6.5 / 1.6.6.
-
+`build_stream_params` now sets `EnableAutoStreamCopy=false`, `MinSegments=1`, and provides `h264-profile`, `h264-level`, `TranscodeReasons`. PlaybackInfo gained `IsPlayback=true`, `AutoOpenLiveStream=true`, `MaxStreamingBitrate`, `AudioStreamIndex`, `SubtitleStreamIndex`, `MediaSourceId`, `StartTimeTicks`. Without these, Emby would sometimes pick stream-copy for sources that should have been transcoded, breaking quality presets.
 **Reload as rejoin via persistent client id (NewBlade)**
 
 A localStorage UUID per browser is sent with `join_party`. The backend tracks `participants[client_id]` separately from the socket-id-keyed `users` dict, so a known client_id reattaching to the room with a fresh socket id is treated as a rejoin and skips the late-joiner vote. The new `_replace_sid` helper migrates all sid-keyed state -- users, join_times, drift_strikes, ready_check sets, `current_video.selected_by`, and `user_streams` ownership including the Emby session cleanup -- in one place. Falls back to legacy username-eviction for clients without a client_id.

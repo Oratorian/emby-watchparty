@@ -12,6 +12,8 @@
 A synchronized watch-party frontend for Emby: watch together in sync while your Emby server stays on your internal network. Any member with Emby credentials can become the room's host; other viewers join as spectators without an account.
 
 ---
+[Why the Rewrite?](docs/Emby%20quirks%20we%20learned%20the%20hard%20way.md)
+---
 
 ## Table of contents
 
@@ -77,6 +79,7 @@ https://discord.gg/RWUpxq9xsA
 - **OpenAPI reference** - `GET /docs` (Swagger UI) or `GET /redoc` on a running instance
 - **[CHANGELOG.md](CHANGELOG.md)** - per-release details including every fix and the reasoning behind it
 - **[SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md)** - condensed release-by-release summary of the 2.0 betas
+- **[Emby quirks we learned the hard way](docs/Emby%20quirks%20we%20learned%20the%20hard%20way.md)** - Why 2.0 came to be.
 
 ## Features
 
