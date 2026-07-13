@@ -46,7 +46,7 @@ export default defineConfig({
     // party flow from a phone or a second PC at http://192.168.178.20:5173.
     // Use `true`/0.0.0.0 to listen everywhere; pin to a single IP here
     // if you'd rather not expose it on every interface.
-    host: true,
+    host: false,
     proxy: {
       '/api': 'http://localhost:5000',
       '/hls': 'http://localhost:5000',
