@@ -1020,6 +1020,19 @@ function onVideoPause() {
     const currentVideoEl = videoPlayer.value?.videoEl
     if (!currentVideoEl || currentVideoEl.ended || !currentVideoEl.paused) return
 
+    // Do NOT broadcast a pause that came from BUFFERING / a stall rather
+    // than a real user action. When HLS.js runs out of buffered data the
+    // browser fires a native `pause`, and readyState drops below
+    // HAVE_FUTURE_DATA (3). Under the democratic control model any such
+    // stray pause now propagates to the WHOLE room, so a single client's
+    // buffering hiccup right after play would pause everyone -- the
+    // "something keeps pausing right after anyone hits play" loop. A
+    // genuine user pause leaves the element fully buffered (readyState
+    // >= 3) and not in the buffering overlay. Suppress the emit
+    // otherwise; the local stall recovers on its own and the heartbeat
+    // resync re-asserts play state if the party is still playing.
+    if (videoPlayer.value?.isBuffering || currentVideoEl.readyState < 3) return
+
     const now = Date.now()
     if (now - lastPauseBroadcast < PLAY_PAUSE_THROTTLE) return
     lastPauseBroadcast = now
