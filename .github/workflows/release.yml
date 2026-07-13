@@ -141,6 +141,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}},enable=${{ github.event_name != 'workflow_dispatch' }}
             type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name != 'workflow_dispatch' && steps.get_version.outputs.IS_PRERELEASE != 'true' }}
+            type=semver,pattern={{major}},enable=${{ github.event_name != 'workflow_dispatch' && steps.get_version.outputs.IS_PRERELEASE != 'true' }}
             type=raw,value=latest,enable=${{ github.event_name != 'workflow_dispatch' && steps.get_version.outputs.IS_PRERELEASE != 'true' }}
             type=raw,value=${{ steps.get_version.outputs.VERSION }},enable=${{ github.event_name == 'workflow_dispatch' }}
             type=raw,value=${{ steps.get_version.outputs.VERSION }},enable=${{ steps.get_version.outputs.IS_PRERELEASE == 'true' }}
