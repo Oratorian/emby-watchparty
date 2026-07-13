@@ -95,10 +95,15 @@ def register(ctx):
             "last_update": datetime.now().isoformat(),
         }
 
+        username = party["users"].get(sid, "Someone")
+        logger.debug(
+            f"PLAY accepted from {username} (sid={sid}, client={caller_client_id}) "
+            f"in {party_id} at {current_time:.1f}s -> broadcasting to room"
+        )
+
         # Report to Emby for the user who triggered play
         _report_emby_progress(party, sid, current_time, is_paused=False, event_name="Unpause")
 
-        username = party["users"].get(sid, "Someone")
         # Broadcast to everyone including the sender. The client-side
         # handler is idempotent on the sender's own video (already
         # playing means ve.play() is a no-op, and the position-delta
@@ -131,9 +136,14 @@ def register(ctx):
             "last_update": datetime.now().isoformat(),
         }
 
+        username = party["users"].get(sid, "Someone")
+        logger.debug(
+            f"PAUSE accepted from {username} (sid={sid}, client={caller_client_id}) "
+            f"in {party_id} at {current_time:.1f}s -> broadcasting to room"
+        )
+
         _report_emby_progress(party, sid, current_time, is_paused=True, event_name="Pause")
 
-        username = party["users"].get(sid, "Someone")
         # Broadcast to everyone including the sender. See the matching
         # comment on handle_play / handle_seek for the rationale.
         await sio.emit("pause", {"time": current_time, "username": username},
