@@ -25,6 +25,18 @@ from backend.src.update_checker import check_for_updates
 from backend.src.routers import auth, library, media, hls, party, admin, avatar, health, quality
 from backend.src.socket_handlers import register_all as register_socket_handlers
 
+# Load .env BEFORE any module-level os.getenv() runs. Several settings
+# below (SESSION_SECRET, SESSION_COOKIE_SECURE, CORS_ALLOWED_ORIGINS) are
+# read at import time via raw os.getenv(), which executes before the
+# first Config.from_env() call further down. Without this eager load,
+# those three would always fall back to their defaults (ephemeral session
+# key, insecure cookie, CORS '*') no matter what the .env file said --
+# while the values that flow through Config appeared to work, producing
+# the confusing "some .env keys apply, some don't" symptom. load_dotenv
+# is idempotent, so the later Config.from_env() re-read is harmless.
+from dotenv import load_dotenv as _load_dotenv
+_load_dotenv(Path(__file__).parent.parent / '.env')
+
 
 def _setup_logging(config: Config):
     """Set up application logger"""

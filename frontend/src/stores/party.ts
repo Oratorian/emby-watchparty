@@ -379,6 +379,15 @@ export const usePartyStore = defineStore('party', () => {
         playbackState.value.time = data.current_time
         streamOffset.value = data.current_time
       }
+      // Preserve the play/pause state across the reload. The stream URL
+      // change tears down the old <video> and attaches a new one; the
+      // VideoPlayer only auto-resumes on MANIFEST_PARSED when
+      // props.playing (bound to playbackState.playing) is true. Without
+      // applying was_playing here, an audio/subtitle/quality swap made
+      // while playing would reload into a paused player and never resume.
+      if (data.was_playing !== undefined) {
+        playbackState.value.playing = !!data.was_playing
+      }
     })
 
     let readyCheckTimeout: ReturnType<typeof setTimeout> | null = null

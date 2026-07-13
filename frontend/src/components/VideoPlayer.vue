@@ -228,7 +228,7 @@ onBeforeUnmount(() => {
   destroyHls()
 })
 
-defineExpose({ videoEl, isSyncing, getHls: () => hls })
+defineExpose({ videoEl, isSyncing, isBuffering, getHls: () => hls })
 </script>
 
 <template>
