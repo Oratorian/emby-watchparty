@@ -253,13 +253,24 @@ onMounted(async () => {
           if (!vp || !ve) return
           if (ve.paused) return  // user paused manually, don't touch
           if (ve.currentTime > checkTime + 0.1) return  // playing fine
-          // Stalled -- nudge it
+          // Stalled -- nudge it. CRITICAL: this fires at 1000ms, but the
+          // isSyncing set above was already released at 500ms, so the
+          // stopLoad()/startLoad() re-seek here dispatches a native
+          // `seeking` event that VideoPlayer would forward as a user
+          // seek -> onVideoSeeked broadcasts 'seek' -> the server's
+          // "seek during playback" path force-pauses the WHOLE room.
+          // That is the "pauses right after play" loop. Re-assert
+          // isSyncing around the nudge so VideoPlayer swallows the
+          // synthetic seeking/seeked events (its onSeeking/onSeeked only
+          // emit when isSyncing is false).
+          vp.isSyncing = true
           const hls = vp.getHls?.()
           if (hls) {
             hls.stopLoad()
             hls.startLoad(ve.currentTime)
           }
           ve.play().catch(() => {})
+          setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
         }, 1000)
       }
       setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
@@ -441,19 +452,25 @@ onMounted(async () => {
     // flight; skip this tick and let the broadcast settle the state.
     if (pendingPauseTimer) return
 
-    // Re-assert authoritative play/pause if our element drifted from it.
+    // Re-assert playback ONLY in the one safe direction: the party is
+    // playing but our element is paused (a dropped pause->play, a
+    // tab-suspend, a stall the browser paused on). Force-resume, wrapped
+    // in isSyncing so the resulting native play event is not re-emitted.
+    //
+    // We deliberately do NOT force-PAUSE in the other direction here.
+    // Right after a local play there is a sub-second window where our
+    // <video> is playing but playbackState.playing has not yet flipped
+    // to true (the play broadcast is still in flight); a force-pause on
+    // that stale state would fight the user's own play. Democratic
+    // control means a real pause propagates on its own, so a "party
+    // paused, we are playing" desync self-corrects via the pause
+    // broadcast without needing a local force here.
     const shouldPlay = party.playbackState.playing
     if (shouldPlay && ve.paused) {
       vp.isSyncing = true
       ve.play().catch(() => {}).finally(() => {
         setTimeout(() => { if (vp) vp.isSyncing = false }, 300)
       })
-      return
-    }
-    if (!shouldPlay && !ve.paused) {
-      vp.isSyncing = true
-      ve.pause()
-      setTimeout(() => { if (vp) vp.isSyncing = false }, 300)
       return
     }
 
