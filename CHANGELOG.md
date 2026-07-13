@@ -16,6 +16,27 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [2.0.1] - 2026-07-14 - Midnight Premiere
+
+A patch release focused on playback control and sync. In 2.0.0 only the host / video selector could play, pause, or seek; everyone else's controls silently did nothing. 2.0.1 makes control **democratic**: any member of the party can play, pause, seek, and skip the intro, and it syncs to the whole room. If one person pauses, everyone pauses -- the way a watch party is meant to work. The library panel also now closes for everyone when a video is picked, and the host's Hide/Show Library button once again follows on every client.
+
+The harder part was doing this without the room dissolving into a pause-storm. The old selector-only gate had quietly been absorbing every client's *synthetic* playback events (buffering pauses, HLS re-alignment seeks, stall-recovery nudges), so opening control to everyone surfaced a class of browser-noise bugs that had been masked for two years. Those guards are now re-established client-side, decoupled from the access model, so shared control and clean sync coexist.
+
+### Changed
+
+- **Playback control is now democratic, not selector-only.** `_authorized_controller` was relaxed from a selector/host gate to a plain party-membership check: any joined member may drive play / pause / seek, and it broadcasts to the whole room. A stray / non-member socket (no registered `client_id`) is still rejected. This deliberately loosens the selector-only gate added during the 2.0.0 security audit -- shared control is the intended watch-party experience for a private, code-gated party. Seek stutter-loops remain guarded by the existing ready-check handshake, independent of who initiates the seek.
+- **Library visibility syncs across the party.** Picking a video now closes the library for **every** client (via the symmetric `currentVideo` watcher), not just the picker's own screen. The `toggle_library` client listener dropped in the Vue rewrite is restored, so the host's Hide / Show Library button once again follows on every client -- the server was already broadcasting it to no listener.
+
+### Fixed
+
+- **"Something keeps pausing right after anyone hits play."** The play handler's stall-recovery nudge fires at 1000&nbsp;ms, but the `isSyncing` guard that suppresses synthetic seeks was released at 500&nbsp;ms. So the recovery's `hls.stopLoad()`/`startLoad()` re-seek dispatched a native `seeking` event that the player forwarded as a *user* seek, which the server's "seek during playback" path answered by force-pausing the whole room. A self-inflicted loop on the initiator's own client -- latent since the 2.0 rewrite, but unmasked once democratic control let every client's events reach the room. The stall-recovery re-seek is now wrapped in `isSyncing` so its synthetic events are swallowed. Diagnosed live from DEBUG server logs.
+- **Buffering no longer pauses the party.** Under democratic control, a client whose HLS stream stalls fires a native `pause` that would broadcast to everyone. A genuine user pause leaves the element fully buffered (`readyState >= 3`); a stall drops below it. The pause emit is now suppressed while buffering, so one person's connection hiccup can't pause the room.
+- **Spectator desync self-corrects.** A resume-only heartbeat safety net re-asserts the authoritative play state when a client's `<video>` drifts from a still-playing party (dropped emit, tab-suspend, OS media key), wrapped in `isSyncing` so it never re-emits or flaps.
+
+Every issue fixed in this release was reported by **[@xyxxyxxy](https://github.com/xyxxyxxy)** -- the play/pause reproduction, the library-not-closing observation, and the "everyone should be able to control the party" call that shaped it. A per-party host-only-vs-everyone toggle is planned for a follow-up.
+
+---
+
 ## [2.0.0] - 2026-07-11 - Midnight Premiere
 
 2.0 is a top-to-bottom rewrite of Emby Watch Party. The 1.x line was a Flask app with Jinja templates, vanilla JS on the frontend, and a single shared Emby transcode that the whole party watched in lockstep: one stream URL, one audio track, one subtitle, one quality. It worked, but the architecture made every "can I have my own subtitles", "can I lower my quality on hotel wifi", "why am I stuck on Japanese audio because someone else picked it" request a structural impossibility.
@@ -66,6 +87,7 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
+- **v2.0.1**  (2026-07-14): Democratic playback control (any member can play/pause/seek) + sync-guard fixes.
 - **v2.0.0**  (2026-07-11): Official release after 6 months of beta.
 - **v1.6.7**  (2026-07-01): Security bump python-socketio to >=5.16.2 (CVE-2026-48804)
 - **v1.6.6** (2026-05-05): CC button switching fix, subtitle 401 fix, label clarity
