@@ -33,7 +33,7 @@ The harder part was doing this without the room dissolving into a pause-storm. T
 - **Buffering no longer pauses the party.** Under democratic control, a client whose HLS stream stalls fires a native `pause` that would broadcast to everyone. A genuine user pause leaves the element fully buffered (`readyState >= 3`); a stall drops below it. The pause emit is now suppressed while buffering, so one person's connection hiccup can't pause the room.
 - **Spectator desync self-corrects.** A resume-only heartbeat safety net re-asserts the authoritative play state when a client's `<video>` drifts from a still-playing party (dropped emit, tab-suspend, OS media key), wrapped in `isSyncing` so it never re-emits or flaps.
 
-Every issue fixed in this release was reported by **[@xyxxyxxy](https://github.com/xyxxyxxy)** -- the play/pause reproduction, the library-not-closing observation, and the "everyone should be able to control the party" call that shaped it. A per-party host-only-vs-everyone toggle is planned for a follow-up.
+Every issue fixed in this release was reported by **@xyxxyxxy** -- the play/pause reproduction, the library-not-closing observation, and the "everyone should be able to control the party" call that shaped it. A per-party host-only-vs-everyone toggle is planned for a follow-up.
 
 ---
 
