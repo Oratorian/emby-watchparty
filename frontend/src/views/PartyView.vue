@@ -190,7 +190,7 @@ onMounted(async () => {
   const partyViewEvents = [
     'chat_message', 'play', 'pause', 'seek', 'force_pause_before_seek',
     'ready_check_update', 'drift_correction', 'all_ready',
-    'error', 'join_rejected',
+    'error', 'join_rejected', 'toggle_library',
   ]
   for (const e of partyViewEvents) socket.off(e)
 
@@ -407,16 +407,58 @@ onMounted(async () => {
 
     vp.isSyncing = true
     ve.currentTime = data.time
+    // If the party is playing but our element is paused (e.g. a pause
+    // emit was lost, or the browser paused us on tab-suspend), resume
+    // together with the time correction. Wrapped in isSyncing so the
+    // resulting native play event is swallowed and not re-broadcast.
+    if (party.playbackState.playing && ve.paused && !ve.ended) {
+      ve.play().catch(() => {})
+    }
     setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
   })
 
-  // Heartbeat
+  // Heartbeat + local resync safety net. The party clock is
+  // democratic: anyone can play/pause/seek and it broadcasts to all.
+  // But a broadcast can still be missed (dropped emit, tab suspended,
+  // OS media key that pauses the element without our handler firing),
+  // leaving this client's <video> out of step with playbackState. The
+  // props.playing watcher only fires on CHANGE, so a "party keeps
+  // playing while we sit locally paused" state is never corrected by
+  // it. This tick re-asserts the authoritative play/pause state each
+  // interval, wrapped in isSyncing so the corrective play()/pause()
+  // never re-emits and flaps.
   const heartbeatInterval = setInterval(() => {
     const vp = videoPlayer.value
     const ve = vp?.videoEl
-    if (!ve || !ve.src || ve.readyState < 2 || ve.paused || ve.ended) return
-    if (vp.isSyncing || isUserSeeking) return
-    if (party.partyId) {
+    if (!ve || !ve.src || ve.readyState < 2 || ve.ended) return
+    if (vp.isSyncing || isUserSeeking || party.readyCheckActive) return
+    // Do NOT correct while a local play/pause is still propagating: a
+    // legitimate user pause debounces for 250ms in onVideoPause before
+    // it emits, and playbackState.playing only flips once the server
+    // broadcast lands (~another round-trip). During that window
+    // playbackState.playing is STALE, so force-resuming here would undo
+    // the user's own pause. pendingPauseTimer!=null means a pause is in
+    // flight; skip this tick and let the broadcast settle the state.
+    if (pendingPauseTimer) return
+
+    // Re-assert authoritative play/pause if our element drifted from it.
+    const shouldPlay = party.playbackState.playing
+    if (shouldPlay && ve.paused) {
+      vp.isSyncing = true
+      ve.play().catch(() => {}).finally(() => {
+        setTimeout(() => { if (vp) vp.isSyncing = false }, 300)
+      })
+      return
+    }
+    if (!shouldPlay && !ve.paused) {
+      vp.isSyncing = true
+      ve.pause()
+      setTimeout(() => { if (vp) vp.isSyncing = false }, 300)
+      return
+    }
+
+    // In sync and playing -> report position for drift correction.
+    if (!ve.paused && party.partyId) {
       socket.emit('heartbeat', { party_id: party.partyId, time: ve.currentTime })
     }
   }, 5000)
@@ -518,6 +560,18 @@ onMounted(async () => {
     alert('This party has been closed by an administrator.')
     await party.leave()
     router.push('/')
+  })
+
+  // Host toggled the shared library panel. The server broadcasts
+  // toggle_library to the whole room (host-only on the emit side) so
+  // every client's panel follows the host's Hide/Show button. The Vue
+  // rewrite dropped this listener while keeping the server broadcast,
+  // so the host's button silently did nothing for other clients --
+  // this restores the v1.x behaviour. Idempotent for the host: their
+  // local toggleLibrary() already set showLibrary, and re-applying the
+  // same boolean here is a no-op.
+  socket.on('toggle_library', (data: any) => {
+    showLibrary.value = !!data.show
   })
 
   // Vote resolved as fail while we were the late joiner: the store
@@ -1100,6 +1154,16 @@ function stopVideo() {
 watch(() => party.currentVideo, (newVal, oldVal) => {
   if (oldVal && !newVal) {
     showLibrary.value = true
+  }
+  // Close the library for EVERY client when a video becomes active, not
+  // just the selector. emitSelectVideo() only hides it locally on the
+  // picker; this watcher fires symmetrically on all clients via the
+  // store's video_selected handler, so spectators who had the library
+  // open when someone picked a video get it closed too. Guard on the
+  // item_id transition so re-selecting the same video (or metadata-only
+  // updates) don't fight a user who just reopened the library.
+  if (newVal?.item_id && newVal?.item_id !== oldVal?.item_id) {
+    showLibrary.value = false
   }
   // Reset hasStarted whenever the video changes (any client, not just
   // the selector). Previously emitSelectVideo set hasStarted=false

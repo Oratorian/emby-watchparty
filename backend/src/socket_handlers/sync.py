@@ -45,23 +45,34 @@ def register(ctx):
         )
 
     def _authorized_controller(party, sid):
-        """Only the selector (or the host, when there IS no selector, e.g.
-        during a vote-pass restart) drives play/pause/seek. Spectators
-        emitting these events used to overwrite playback_state and
-        broadcast to the entire room, letting anyone in the party pause
-        or scrub for everyone else.
+        """Democratic playback control: ANY joined party member may drive
+        play/pause/seek, and it syncs to the whole room ("if one pauses,
+        everyone pauses"). This is the intended watch-party model.
+
+        The only gate is membership: the socket must map to a known
+        client_id registered on the party. That blocks a stray / non-
+        member socket from injecting control events without narrowing
+        control back to a single person. It does NOT re-open the old
+        griefing surface in a meaningful way for a private, code-gated
+        party -- every controller is already a trusted member who joined
+        with the party code.
+
+        NOTE: this deliberately relaxes the selector-only gate added in
+        6f8edb8 ("gate playback control"). That commit made control
+        selector-authoritative to stop spectators pausing/scrubbing for
+        the room; product decision since then is that shared control IS
+        the watch-party experience, so the gate is loosened to a plain
+        membership check. Seek stutter-loops are still prevented by the
+        ready-check handshake in handle_seek + the ready-check early-out
+        below, independent of who initiates the seek.
 
         Returns (caller_client_id, allowed_bool).
         """
         caller_client_id = _client_id_for_sid(party, sid)
-        current_video = party.get("current_video") or {}
-        selected_by = current_video.get("selected_by")
-        host_client_id = party.get("host_client_id")
-        if selected_by and caller_client_id == selected_by:
-            return caller_client_id, True
-        if not selected_by and host_client_id and caller_client_id == host_client_id:
-            return caller_client_id, True
-        return caller_client_id, False
+        # Membership check: a registered client_id means this socket
+        # joined the party properly. Unknown sid -> not a member -> deny.
+        allowed = caller_client_id is not None
+        return caller_client_id, allowed
 
     @sio.on("play")
     async def handle_play(sid, data):
