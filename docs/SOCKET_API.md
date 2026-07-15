@@ -141,7 +141,7 @@ The client binds itself to a party room after the HTTP join.
 
 ```js
 socket.emit('join_party', {
-  party_id: 'K7N2QF',
+  party_id: 'K7N2F',
   client_id: 'browser-uuid',
   display_name: 'andrew',
   avatar_uuid: 'avatar-uuid',  // optional
@@ -174,7 +174,7 @@ late-joiner vote.
 
 ```js
 socket.emit('join_vote', {
-  party_id: 'K7N2QF',
+  party_id: 'K7N2F',
   vote: 'yes',  // or 'no'
 })
 ```
@@ -206,7 +206,7 @@ The user explicitly clicks "Leave Party" (vs just closing the tab,
 which fires the implicit disconnect path).
 
 ```js
-socket.emit('leave_party', { party_id: 'K7N2QF' })
+socket.emit('leave_party', { party_id: 'K7N2F' })
 ```
 
 Removes the user from the party, stops their transcode, broadcasts
@@ -222,7 +222,7 @@ the rest of the room to re-render with their new image.
 
 ```js
 socket.emit('update_avatar', {
-  party_id: 'K7N2QF',
+  party_id: 'K7N2F',
   avatar_uuid: 'new-avatar-uuid',
 })
 ```
@@ -239,7 +239,7 @@ is set on success) picks a video to watch.
 
 ```js
 socket.emit('select_video', {
-  party_id: 'K7N2QF',
+  party_id: 'K7N2F',
   item_id: 'emby-item-id',
   item_name: 'Blade Runner 2049',
   item_overview: '...',
@@ -269,7 +269,7 @@ socket.emit('select_video', {
 ### `stop_video`
 
 ```js
-socket.emit('stop_video', { party_id: 'K7N2QF' })
+socket.emit('stop_video', { party_id: 'K7N2F' })
 ```
 
 **Auth:** Only the original `selected_by` `client_id` can stop.
@@ -288,7 +288,7 @@ without disturbing the rest of the room.
 
 ```js
 socket.emit('change_streams', {
-  party_id: 'K7N2QF',
+  party_id: 'K7N2F',
   audio_index: 0,        // optional
   subtitle_index: -1,    // optional
   quality: '720p-4000',  // optional
@@ -316,8 +316,8 @@ so every per-user stream stays on the same source for the playback.
 ### `play` / `pause`
 
 ```js
-socket.emit('play',  { party_id: 'K7N2QF', time: 1247.5 })
-socket.emit('pause', { party_id: 'K7N2QF', time: 1247.5 })
+socket.emit('play',  { party_id: 'K7N2F', time: 1247.5 })
+socket.emit('pause', { party_id: 'K7N2F', time: 1247.5 })
 ```
 
 **Selector authority:** the selector's `time` is trusted as the
@@ -334,7 +334,7 @@ with `skip_sid=sid` (the originator's UI already toggled).
 
 ```js
 socket.emit('seek', {
-  party_id: 'K7N2QF',
+  party_id: 'K7N2F',
   time: 1300,
   was_playing: true,
 })
@@ -362,7 +362,7 @@ those as real user seeks would cascade 00:00 spam across the party.
 
 ```js
 socket.emit('report_progress', {
-  party_id: 'K7N2QF',
+  party_id: 'K7N2F',
   time: 1300,
 })
 ```
@@ -376,7 +376,7 @@ Watching" reflects party progress. No broadcast.
 The user's `<video>` element fired its `ended` event.
 
 ```js
-socket.emit('video_ended', { party_id: 'K7N2QF' })
+socket.emit('video_ended', { party_id: 'K7N2F' })
 ```
 
 Fires `Stopped` to Emby (full credit so it stops showing in
@@ -388,7 +388,7 @@ wiped and the party transitions to LOCKED.
 ### `stream_ready`
 
 ```js
-socket.emit('stream_ready', { party_id: 'K7N2QF' })
+socket.emit('stream_ready', { party_id: 'K7N2F' })
 ```
 
 Sent by the frontend after the user's HLS stream finishes
@@ -402,7 +402,7 @@ ready/waiting lists.
 
 ```js
 socket.emit('heartbeat', {
-  party_id: 'K7N2QF',
+  party_id: 'K7N2F',
   time: 1247.3,
 })
 ```
@@ -417,7 +417,7 @@ client seeks to `expected_time` to snap back in line.
 
 ```js
 socket.emit('chat_message', {
-  party_id: 'K7N2QF',
+  party_id: 'K7N2F',
   message: 'this is fine 🔥',
 })
 ```
@@ -431,7 +431,7 @@ the local UI doesn't have to optimistic-render).
 
 ```js
 socket.emit('toggle_library', {
-  party_id: 'K7N2QF',
+  party_id: 'K7N2F',
   show: true,
 })
 ```
