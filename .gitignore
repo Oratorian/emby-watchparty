@@ -54,4 +54,4 @@ backend/static
 
 # Runtime data (avatar SQLite + uploaded files)
 data/
-images/
+images/avatars
