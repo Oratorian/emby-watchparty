@@ -34,7 +34,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   textarea.setAttribute('readonly', '')
   document.body.appendChild(textarea)
 
-  let ok = false
+  let ok: boolean
   try {
     textarea.select()
     textarea.setSelectionRange(0, text.length)

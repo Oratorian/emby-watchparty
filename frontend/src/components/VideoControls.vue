@@ -84,7 +84,6 @@ const audioTracks = ref<AudioStream[]>([])
 const subtitleTracks = ref<SubtitleStream[]>([])
 const selectedAudio = ref<number>(0)
 const selectedSubtitle = ref<number>(-1)
-const selectedTextSubtitle = ref<number>(-1)
 const selectedQuality = ref(props.quality)
 const intro = ref<IntroData | null>(null)
 const appliedInitialSubtitleKey = ref<string | null>(null)
@@ -320,11 +319,9 @@ function parseTimestampInput(input: string): number | null {
       if (!/^\d+$/.test(p)) return null
       nums.push(parseInt(p, 10))
     }
-    let seconds = 0
-    if (nums.length === 3) seconds = nums[0]! * 3600 + nums[1]! * 60 + nums[2]!
-    else if (nums.length === 2) seconds = nums[0]! * 60 + nums[1]!
-    else seconds = nums[0]!
-    return seconds
+    if (nums.length === 3) return nums[0]! * 3600 + nums[1]! * 60 + nums[2]!
+    if (nums.length === 2) return nums[0]! * 60 + nums[1]!
+    return nums[0]!
   }
 
   // Digit-only: pad to even length on the left, then split into
@@ -340,13 +337,13 @@ function parseTimestampInput(input: string): number | null {
   for (let i = 0; i < padded.length; i += 2) {
     pairs.push(parseInt(padded.slice(i, i + 2), 10))
   }
-  let seconds = 0
-  if (pairs.length === 1) seconds = pairs[0]!
-  else if (pairs.length === 2) seconds = pairs[0]! * 60 + pairs[1]!
-  else if (pairs.length === 3) seconds = pairs[0]! * 3600 + pairs[1]! * 60 + pairs[2]!
-  else if (pairs.length === 4) seconds = pairs[0]! * 86400 + pairs[1]! * 3600 + pairs[2]! * 60 + pairs[3]!
-  else return null
-  return seconds
+  if (pairs.length === 1) return pairs[0]!
+  if (pairs.length === 2) return pairs[0]! * 60 + pairs[1]!
+  if (pairs.length === 3) return pairs[0]! * 3600 + pairs[1]! * 60 + pairs[2]!
+  if (pairs.length === 4) {
+    return pairs[0]! * 86400 + pairs[1]! * 3600 + pairs[2]! * 60 + pairs[3]!
+  }
+  return null
 }
 
 const parsedSeekSeconds = computed<number | null>(() => parseTimestampInput(seekInput.value))

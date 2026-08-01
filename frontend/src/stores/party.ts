@@ -489,7 +489,7 @@ export const usePartyStore = defineStore('party', () => {
     })
 
     // Immediate rejection (e.g. another vote already in progress)
-    socket.on('join_rejected', (data: any) => {
+    socket.on('join_rejected', (_data: any) => {
       pendingVote.value = null
       // The caller (IndexView or PartyView) should observe this event
       // and show a toast. We just clear the local state here.

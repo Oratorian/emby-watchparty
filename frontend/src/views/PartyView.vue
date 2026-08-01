@@ -203,12 +203,7 @@ onMounted(async () => {
   })
 
   // Playback sync handlers -- matching v1.6.0 deduplication
-  let lastSyncedTime = 0
-  let lastSyncType = ''
-
   socket.on('play', (data: any) => {
-    lastSyncedTime = data.time
-    lastSyncType = 'play'
     // Use nextTick to ensure the videoPlayer ref is bound. When the
     // store's play listener fires first and updates reactive state,
     // Vue may still be mid-render and the template ref is not yet
@@ -291,8 +286,6 @@ onMounted(async () => {
   })
 
   socket.on('pause', (data: any) => {
-    lastSyncedTime = data.time
-    lastSyncType = 'pause'
     const vp = videoPlayer.value
     if (!vp) return
     vp.isSyncing = true
@@ -307,8 +300,6 @@ onMounted(async () => {
   })
 
   socket.on('seek', (data: any) => {
-    lastSyncedTime = data.time
-    lastSyncType = 'seek'
     const vp = videoPlayer.value
     if (!vp) return
     vp.isSyncing = true
@@ -1082,7 +1073,7 @@ function onVideoSeeking() {
   isUserSeeking = true
 }
 
-function onVideoSeeked(time: number) {
+function onVideoSeeked(_time: number) {
   // Always schedule clearing isUserSeeking, even on the early-return
   // paths below, so the flag can't get stuck across phantom or
   // synthetic seeks. The broadcast logic at the bottom only runs for
