@@ -21,6 +21,7 @@ from backend.src.party_manager import PartyManager
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.stream_builder import StreamBuilder
 from backend.src.avatar_store import AvatarStore
+from backend.src.admin_session_store import AdminSessionStore
 from backend.src.update_checker import check_for_updates
 from backend.src.routers import auth, library, media, hls, party, admin, avatar, health, quality
 from backend.src.socket_handlers import register_all as register_socket_handlers
@@ -89,6 +90,10 @@ async def lifespan(app: FastAPI):
         avatars_dir=project_root / "images" / "avatars",
         logger=logger,
     )
+    # Holds admin Emby credentials server-side. The session cookie is
+    # signed but not encrypted, so only an opaque handle goes to the
+    # browser. See admin_session_store.py.
+    admin_session_store = AdminSessionStore(logger=logger)
 
     logger.info(f"Emby Server: {config.EMBY_SERVER_URL}")
     if config.APP_PREFIX:
@@ -146,6 +151,7 @@ async def lifespan(app: FastAPI):
     app.state.token_manager = token_manager
     app.state.stream_builder = stream_builder
     app.state.avatar_store = avatar_store
+    app.state.admin_session_store = admin_session_store
     app.state.sio = sio
     app.state.session_secret = SESSION_SECRET
 

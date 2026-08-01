@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.src.dependencies import (
     get_config, get_party_manager, get_logger, get_emby_client, get_sio,
+    get_admin_session_store,
 )
 # Shared dev-host gate -- single source of truth lives in auth.py so the
 # env var name and value-parsing rules can never drift between modules.
@@ -94,6 +95,7 @@ def create_party(
     party_manager=Depends(get_party_manager),
     emby_client=Depends(get_emby_client),
     logger=Depends(get_logger),
+    admin_session_store=Depends(get_admin_session_store),
 ):
     """Create a new watch party.
 
@@ -128,10 +130,15 @@ def create_party(
     #    still trusted; now a 401 from Emby clears the session and
     #    the request falls through to the credential-based path.
     session = request.session
-    stashed_token = session.get("admin_emby_token")
-    stashed_user_id = session.get("admin_emby_user_id")
-    stashed_username = session.get("admin_username")
-    stashed_is_admin = session.get("admin_emby_is_admin", False)
+    # The cookie carries only an opaque handle; the Emby token itself is
+    # held server-side because SessionMiddleware signs but does not
+    # encrypt. See admin_session_store.py.
+    admin_handle = session.get("admin_session")
+    stashed = admin_session_store.get(admin_handle) or {}
+    stashed_token = stashed.get("access_token")
+    stashed_user_id = stashed.get("user_id")
+    stashed_username = stashed.get("username") or session.get("admin_username")
+    stashed_is_admin = stashed.get("is_admin", False)
     admin_authenticated = bool(session.get("admin_authenticated"))
 
     if (
@@ -146,8 +153,9 @@ def create_party(
                 f"{stashed_user_id}; clearing session and falling back to "
                 f"credential login"
             )
-            for k in ("admin_authenticated", "admin_emby_token",
-                      "admin_emby_user_id", "admin_username",
+            admin_session_store.revoke(admin_handle)
+            for k in ("admin_authenticated", "admin_session", "admin_username",
+                      "admin_emby_token", "admin_emby_user_id",
                       "admin_emby_is_admin"):
                 session.pop(k, None)
         else:

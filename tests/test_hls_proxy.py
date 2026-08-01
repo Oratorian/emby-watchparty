@@ -1,9 +1,13 @@
+import base64
+import json
 import unittest
 from unittest.mock import patch
 
 import httpx
+import itsdangerous
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.middleware.sessions import SessionMiddleware
 
 from backend.src.dependencies import (
     get_config,
@@ -21,6 +25,29 @@ from backend.src.routers import hls
 _TOKEN_SID = "sid-1"
 
 _DEVICE_ID = "emby-watchparty-test"
+
+# The routes are gated by require_host_token, which reads request.session,
+# so the test app needs SessionMiddleware exactly as backend/app.py wires
+# it. SessionMiddleware signs its cookies, so the fixture has to mint a
+# properly signed one rather than a raw JSON blob.
+_SESSION_SECRET = "test-session-secret"
+_SESSION_COOKIE = "ewp_session"
+
+
+def _session_cookie(party_id="PARTY", client_id="client-1", display_name="alice"):
+    """Mint a cookie SessionMiddleware will accept.
+
+    Keys match what POST /api/party/{id}/join writes and what
+    require_party_session reads back.
+    """
+    payload = {
+        "party_id": party_id,
+        "client_id": client_id,
+        "display_name": display_name,
+    }
+    data = base64.b64encode(json.dumps(payload).encode("utf-8"))
+    signer = itsdangerous.TimestampSigner(_SESSION_SECRET)
+    return signer.sign(data).decode("utf-8")
 
 
 class _Config:
@@ -75,20 +102,33 @@ class _TokenManager:
 
 
 class _PartyManager:
-    def __init__(self, users=None):
+    """Mirrors the PartyManager surface hls.py and require_host_token use.
+
+    `is_unlocked` is deliberately absent: require_host_token never calls
+    it. That is the PLAYING-ONLY distinction, a host who has left still
+    keeps the in-flight video alive.
+    """
+
+    def __init__(self, users=None, host_access_token="host-token", known=("PARTY",)):
         self._users = {_TOKEN_SID: "alice"} if users is None else users
+        self._host_access_token = host_access_token
+        self._known = set(known)
 
     def exists(self, party_id):
-        return party_id == "PARTY"
+        return party_id in self._known
 
     def get(self, party_id):
-        if party_id != "PARTY":
+        if party_id not in self._known:
             return None
         return {
-            "host_access_token": "host-token",
+            "host_access_token": self._host_access_token,
             "host_user_id": "host-user",
             "users": self._users,
         }
+
+    def has_host_token(self, party_id):
+        party = self.get(party_id)
+        return bool(party and party.get("host_access_token"))
 
 
 class _Logger:
@@ -99,10 +139,20 @@ class _Logger:
         pass
 
 
-def _client(party_manager=None):
+def _client(party_manager=None, session=True, session_party_id="PARTY"):
     app = FastAPI()
     app.include_router(hls.router)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=_SESSION_SECRET,
+        session_cookie=_SESSION_COOKIE,
+        same_site="lax",
+        https_only=False,
+    )
     party_manager = party_manager or _PartyManager()
+    # Override only the service getters. Overriding require_party_session
+    # would delete the very gate under test, since FastAPI applies
+    # overrides to sub-dependencies too.
     app.dependency_overrides.update(
         {
             get_config: lambda: _Config(),
@@ -112,7 +162,10 @@ def _client(party_manager=None):
             get_logger: lambda: _Logger(),
         }
     )
-    return TestClient(app)
+    client = TestClient(app)
+    if session:
+        client.cookies.set(_SESSION_COOKIE, _session_cookie(party_id=session_party_id))
+    return client
 
 
 def _assert_upstream_auth(mock_get):
@@ -235,11 +288,76 @@ class HLSProxyTests(unittest.TestCase):
         _assert_upstream_auth(mock_get)
         _assert_upstream_timeout(mock_get)
 
-    def test_token_for_user_no_longer_in_party_is_rejected(self):
-        """The membership check is the only authorization these routes have.
+    def test_request_without_party_session_cookie_is_rejected(self):
+        """The URL alone must not be a sufficient credential.
 
-        A token that is otherwise valid, known and unexpired, must stop
-        working once its sid is no longer a member of the party.
+        HLS URLs leak through browser history, Referer, and proxy logs,
+        so possession of one is not proof of party membership.
+        """
+        upstream_response = httpx.Response(
+            200,
+            text="#EXTM3U\r\n",
+            request=httpx.Request("GET", "http://emby.test/master.m3u8"),
+        )
+
+        with patch(
+            "backend.src.routers.hls.httpx.get", return_value=upstream_response
+        ) as mock_get:
+            response = _client(session=False).get(
+                "/hls/123/master.m3u8?PlaySessionId=session&token=party-token"
+            )
+
+        self.assertEqual(response.status_code, 401)
+        mock_get.assert_not_called()
+
+    def test_cleared_host_token_locks_the_stream(self):
+        """423 once the host's token is gone, not a blanket 401."""
+        upstream_response = httpx.Response(
+            200,
+            text="#EXTM3U\r\n",
+            request=httpx.Request("GET", "http://emby.test/master.m3u8"),
+        )
+        no_host = _PartyManager(host_access_token=None)
+
+        with patch(
+            "backend.src.routers.hls.httpx.get", return_value=upstream_response
+        ) as mock_get:
+            response = _client(party_manager=no_host).get(
+                "/hls/123/master.m3u8?PlaySessionId=session&token=party-token"
+            )
+
+        self.assertEqual(response.status_code, 423)
+        mock_get.assert_not_called()
+
+    def test_cookie_for_a_different_party_than_the_token_is_rejected(self):
+        """Both gates can be satisfied by DIFFERENT parties, so they must agree.
+
+        Otherwise a leaked token for a private party plus a cookie from
+        any open party streams the private party's content.
+        """
+        upstream_response = httpx.Response(
+            200,
+            text="#EXTM3U\r\n",
+            request=httpx.Request("GET", "http://emby.test/master.m3u8"),
+        )
+        two_parties = _PartyManager(known=("PARTY", "OTHER"))
+
+        with patch(
+            "backend.src.routers.hls.httpx.get", return_value=upstream_response
+        ) as mock_get:
+            response = _client(
+                party_manager=two_parties, session_party_id="OTHER"
+            ).get("/hls/123/master.m3u8?PlaySessionId=session&token=party-token")
+
+        self.assertEqual(response.status_code, 401)
+        mock_get.assert_not_called()
+
+    def test_token_for_user_no_longer_in_party_is_rejected(self):
+        """Per-user membership, checked beyond the cookie and the party match.
+
+        A token that is otherwise valid, known and unexpired, and whose
+        party matches the cookie, must still stop working once its sid is
+        no longer a member of that party.
         """
         upstream_response = httpx.Response(
             200,

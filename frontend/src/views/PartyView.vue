@@ -67,6 +67,14 @@ const becomeHostBusy = ref(false)
 const becomeHostError = ref<string | null>(null)
 const showAvatarModal = ref(false)
 
+// Re-join this tab's party, which repoints the shared session cookie
+// back here. A full reload rather than a re-join call: the HLS.js
+// instance is holding a stream URL whose token now belongs to the other
+// party, so tearing the page down is the cleanest way to rebuild it.
+function reloadForParty() {
+  window.location.reload()
+}
+
 /**
  * Resolve a member's avatar image source.
  *
@@ -1426,6 +1434,50 @@ async function submitBecomeHost(payload: { username: string; password: string })
       <span class="spinner spinner-inline" />
       Reconnecting to party…
     </div>
+    <!-- Superseded banner: another tab in this browser joined a
+         different party and took over the shared session cookie, so
+         this tab's video has stopped. Only one party can hold the
+         cookie at a time, so reloading makes this tab active again at
+         the cost of the other one. Without this the video just stalls
+         with no explanation anywhere in the UI. -->
+    <div
+      v-if="party.supersededBy"
+      class="session-banner"
+      role="alert"
+      aria-live="assertive"
+    >
+      <span>
+        Another tab joined party <strong>{{ party.supersededBy }}</strong>.
+        Only one party can play per browser, so playback stopped in this tab.
+        Switch to that tab to keep watching there, or resume this one instead.
+      </span>
+      <button class="session-retry" @click="reloadForParty">
+        Resume here (stops {{ party.supersededBy }})
+      </button>
+    </div>
+    <!-- Session banner: the party-bound cookie could not be minted, so
+         every protected HTTP route (including /hls) will 401. Chat and
+         the participant list still work over the socket, so without
+         this the party looks healthy and only the video is dead --
+         which is close to undiagnosable from a bug report. -->
+    <div
+      v-if="party.sessionError"
+      class="session-banner"
+      role="alert"
+      aria-live="assertive"
+    >
+      <span>
+        Could not authenticate with the server, so video will not load.
+        Chat and the participant list still work.
+      </span>
+      <button
+        class="session-retry"
+        :disabled="party.sessionRetrying"
+        @click="party.retrySession()"
+      >
+        {{ party.sessionRetrying ? 'Retrying…' : 'Retry' }}
+      </button>
+    </div>
     <header class="party-header">
       <div class="header-left">
         <button
@@ -1838,6 +1890,42 @@ async function submitBecomeHost(payload: { username: string; password: string })
   border-top-color: #ffcf6b;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+}
+
+/* ─── Session Banner ─── */
+.session-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(255, 70, 90, 0.15);
+  color: #ff9aa8;
+  border-bottom: 1px solid rgba(255, 70, 90, 0.35);
+  font-size: 0.9rem;
+  font-weight: 500;
+  z-index: 100;
+}
+
+.session-retry {
+  padding: 2px var(--space-sm);
+  background: rgba(255, 70, 90, 0.2);
+  color: #ff9aa8;
+  border: 1px solid rgba(255, 70, 90, 0.45);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.session-retry:hover:not(:disabled) {
+  background: rgba(255, 70, 90, 0.32);
+}
+
+.session-retry:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* ─── Party Layout ─── */
