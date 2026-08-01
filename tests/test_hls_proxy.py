@@ -56,6 +56,9 @@ class _Logger:
     def error(self, _message):
         pass
 
+    def warning(self, _message):
+        pass
+
 
 class _HTTPClient:
     def __init__(self, response):

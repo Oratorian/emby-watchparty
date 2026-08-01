@@ -9,7 +9,7 @@ stored token keeps the current video alive until it ends naturally.
 """
 
 import re
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response, StreamingResponse
 import httpx
@@ -58,13 +58,26 @@ def _sanitize_query(query_items):
 
 
 def _safe_hls_subpath(subpath: str) -> bool:
-    decoded = unquote(unquote(subpath))
-    if not decoded or decoded.startswith(('/', '\\')) or '://' in decoded:
+    decoded = subpath
+    for _ in range(8):
+        expanded = unquote(decoded)
+        if expanded == decoded:
+            break
+        decoded = expanded
+    else:
         return False
-    if any(ord(character) < 32 for character in decoded):
+    parsed = urlsplit(decoded)
+    if (
+        not decoded
+        or parsed.scheme
+        or parsed.netloc
+        or decoded.startswith(('/', '\\'))
+    ):
+        return False
+    if any(ord(character) < 32 or ord(character) == 127 for character in decoded):
         return False
     normalized = decoded.replace('\\', '/')
-    return '..' not in normalized.split('/')
+    return not any(part in {'.', '..'} for part in normalized.split('/'))
 
 
 def _resolve_host_creds(request: Request, token_manager, party_manager, logger):
@@ -129,6 +142,9 @@ def _rewrite_playlist(content: str, item_id: str, app_prefix: str, emby_url: str
                 continue
             uri = line.rstrip("\r\n")
             terminator = line[len(uri):]
+            parsed = urlsplit(uri)
+            if parsed.scheme or parsed.netloc or uri.startswith(("/", "\\")):
+                raise ValueError("playlist contains an unsafe absolute URI")
             if (".m3u8" in uri or ".ts" in uri) and "token=" not in uri:
                 sep = "&" if "?" in uri else "?"
                 lines[i] = uri + f"{sep}token={token}" + terminator
@@ -190,6 +206,10 @@ async def proxy_hls_master(item_id: str, request: Request,
                 "X-Content-Type-Options": "nosniff",
             },
         )
+    except ValueError as e:
+        logger.warning(f"Rejected unsafe master playlist: {e}")
+        return Response(content='{"error": "Unsafe upstream playlist"}',
+                        status_code=502, media_type="application/json")
     except httpx.HTTPError as e:
         logger.error(f"Failed to fetch master playlist: {e}")
         return Response(content='{"error": "Failed to fetch video from media server"}',
@@ -295,6 +315,10 @@ async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
             },
         )
 
+    except ValueError as e:
+        logger.warning(f"Rejected unsafe HLS playlist {subpath}: {e}")
+        return Response(content='{"error": "Unsafe upstream playlist"}',
+                        status_code=502, media_type="application/json")
     except httpx.HTTPError as e:
         logger.error(f"Failed to fetch HLS segment {subpath}: {e}")
         return Response(content='{"error": "Failed to fetch segment"}',
