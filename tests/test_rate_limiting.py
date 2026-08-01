@@ -3,11 +3,13 @@ import unittest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.src.dependencies import get_avatar_store, get_logger
 from backend.src.rate_limit import (
     RateLimitMiddleware,
     SlidingWindowRateLimiter,
     parse_rate,
 )
+from backend.src.routers import avatar
 
 
 class _Config:
@@ -19,6 +21,29 @@ class _Config:
 
 
 class RateLimitingTests(unittest.TestCase):
+    def test_avatar_recovery_uses_shared_limiter_and_retry_after(self):
+        app = FastAPI()
+        app.state.config = _Config()
+        app.state.rate_limiter = SlidingWindowRateLimiter()
+        app.include_router(avatar.router)
+        app.dependency_overrides[get_avatar_store] = lambda: type(
+            "Store", (), {"recover_by_code": lambda self, _code: None}
+        )()
+        app.dependency_overrides[get_logger] = lambda: type(
+            "Logger", (), {"warning": lambda self, *_args: None}
+        )()
+
+        client = TestClient(app)
+        for _ in range(10):
+            self.assertEqual(
+                client.post("/api/avatar/recover", json={"code": "bad"}).status_code,
+                200,
+            )
+        limited = client.post("/api/avatar/recover", json={"code": "bad"})
+        self.assertEqual(limited.status_code, 429)
+        self.assertGreater(int(limited.headers["retry-after"]), 0)
+        self.assertEqual(app.state.rate_limiter.active_bucket_count, 1)
+
     def test_inactive_buckets_expire_and_registry_stays_bounded(self):
         now = [0.0]
         limiter = SlidingWindowRateLimiter(max_keys=2, clock=lambda: now[0])
