@@ -16,6 +16,34 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [2.1.0] - 2026-08-03 - Midnight Premiere
+
+A security release. Two authorization gaps are closed, and because the stricter gating can now refuse requests that used to succeed, the UI gained the banners needed to explain itself instead of leaving you staring at a dead player.
+
+Nothing you have to configure, no `.env` changes, no migration. Upgrade, restart, done.
+
+### Security
+
+- **`/hls/...` now requires the party-bound session cookie.** These were the only browser-facing routes with no session gate: possession of the URL was the entire credential, and an HLS URL leaks easily through browser history, the `Referer` header, reverse-proxy access logs, and copy-as-cURL. They are now gated by `require_host_token`, the same gate `/api/image` and `/api/subtitles` have used since 2.0.0. This is what [CHANGELOG 2.0.0's breaking-change note](#200---2026-07-11---midnight-premiere) and `hls.py`'s own module docstring have described all along; `git log -S require_host_token -- backend/src/routers/hls.py` returns nothing, so the gate was documented but never actually applied.
+- **The cookie's party and the stream token's party must now agree.** Adding the gate alone would have been close to cosmetic. `require_host_token` resolves a party from the *cookie*; the HLS proxy resolved one from the *URL token* and used that party's host credentials to sign the upstream Emby call. Nothing compared them, so both gates were independently satisfiable by different parties: a leaked token for a private party plus a session cookie from any open party streamed the private party's content under its host's Emby token. Verified during development that with the gate in place but the match assert removed, the cross-party request returns 200 and serves the playlist.
+- **The Emby admin token is no longer stored in the session cookie.** Starlette's `SessionMiddleware` *signs* the cookie but does not *encrypt* it, so the payload is `base64(json)` and anyone holding the cookie could decode it and recover a full Emby **administrator** access token, with no secret and no server access. That token grants control of the whole Emby server, far beyond Watch Party. Credentials now live in a server-side `AdminSessionStore` with only an opaque handle in the cookie, mirroring how `host_access_token` has always been kept server-side. Not XSS-reachable (the cookie is `httponly`); the realistic exposure was proxy and CDN logs that capture headers, infostealers scraping browser cookie jars, and plaintext on the wire wherever `SESSION_COOKIE_SECURE=false`. Admin logout now destroys the stored credentials rather than only forgetting where they live, and logging in scrubs the old plaintext keys from an upgrading admin's existing cookie.
+
+### Fixed
+
+- **The variant-playlist fetch is time-bounded again.** The `.m3u8` branch of the segment proxy called `httpx.get` without `timeout=_EMBY_HTTP_TIMEOUT`, unlike the master-playlist and segment fetches either side of it. Every HLS request pulls a variant playlist, so this was the most-hit of the three upstream calls and the only unbounded one; a slow or misbehaving Emby could pin a uvicorn worker slot until the OS TCP timeout, which is the exact failure the constant exists to prevent.
+- **A failed session bind is no longer swallowed.** Joining a party caught a failed cookie call and carried on, on the reasoning that the socket join carried the same identity. That held while `/hls` authenticated on the URL token alone. It does not hold now: such a viewer would receive a stream URL and then 401 on every segment while chat, the participant list, and the member count kept working, so the party looked healthy and only the video was dead, with nothing logged and nothing shown. The bind now retries once to absorb a genuinely transient blip, then surfaces a banner with a working Retry that re-announces to the server and recovers playback without a page reload.
+
+### Added
+
+- **A tab tells you when another tab takes over the party.** The session cookie holds exactly one party id and cookies are shared across every tab in a browser profile, so a second tab joining a *different* party silently repoints it and the first tab's playback stops. Each tab now announces its party over a `BroadcastChannel` and a superseded tab says so, naming the other party, rather than stalling silently. Two tabs on the *same* party stay quiet, since both point the cookie at the same place. The banner leads with the no-action path (switch to the other tab) and puts the consequence in the button itself, because resuming here stops the other tab in turn: only one party can hold the cookie at a time.
+- **Test coverage for both gaps** (`tests/test_admin_session.py`, plus expansion of `tests/test_hls_proxy.py` to 8 tests). The admin tests decode the `Set-Cookie` header exactly the way an attacker would and assert the token never appears in it. The HLS tests cover a missing cookie, a cleared host token, and a cookie/token party mismatch, the first automated coverage of the 423 the docstring has claimed since it was written. Both guards were checked for vacuousness by reintroducing the original bugs and confirming the suite fails.
+
+### Known limitation
+
+Two **different** parties open in two tabs of the same browser profile now break the older tab's playback immediately, where previously the video kept playing. This is inherent to the session cookie holding a single party id; `/api/image` and `/api/subtitles` have degraded this way since 2.0.0, and this makes it total and visible rather than partial and silent. Separate browsers, separate profiles, incognito windows, and separate devices are all unaffected. Scoping session state per party would fix it properly and is deliberately left for a future release.
+
+---
+
 ## [2.0.2] - 2026-08-01 - Midnight Premiere
 
 A single-fix patch release for a playback failure that only showed up on some Emby servers: the video would sit at 0:00 buffering forever and never start, while the party itself, chat, participants, sync, looked perfectly healthy. If your setup worked fine, nothing here changes for you; this is a safe drop-in either way.
@@ -105,6 +133,7 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
+- **v2.1.0**  (2026-08-03): Security -- `/hls` now session-gated with a cookie/token party match, and the Emby admin token moved out of the session cookie.
 - **v2.0.2**  (2026-08-01): HLS token rewriting fixed for CRLF playlists (playback stuck buffering at 0:00) + first HLS proxy tests.
 - **v2.0.1**  (2026-07-14): Democratic playback control (any member can play/pause/seek) + sync-guard fixes.
 - **v2.0.0**  (2026-07-11): Official release after 6 months of beta.

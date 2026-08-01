@@ -1,8 +1,8 @@
 """
 Emby Watch Party - Source Modules
-Version: 2.0.2
+Version: 2.1.0
 Codename: Midnight Premiere
 """
 
-__version__ = "2.0.2"
+__version__ = "2.1.0"
 __codename__ = "Midnight Premiere"
