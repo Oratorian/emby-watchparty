@@ -55,6 +55,7 @@ def register(ctx):
     emby_client = ctx['emby_client']
     logger = ctx['logger']
     party_manager = ctx['party_manager']
+    token_manager = ctx.get('token_manager')
     session_secret = ctx.get('session_secret')
     rate_limiter = ctx.get('rate_limiter')
     config = ctx.get('config')
@@ -295,6 +296,8 @@ def register(ctx):
                         access_token=access_token,
                     )
                 party.get("user_streams", {}).pop(sid, None)
+                if token_manager:
+                    token_manager.revoke_user(party_id, sid)
 
                 del party["users"][sid]
                 party.setdefault("sid_client_ids", {}).pop(sid, None)

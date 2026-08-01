@@ -832,6 +832,7 @@ def register(ctx):
                     access_token=host_token,
                 )
             party.get("user_streams", {}).pop(sid, None)
+            token_manager.revoke_user(party_id, sid)
 
             await sio.leave_room(sid, party_id)
             client_id = party.setdefault("sid_client_ids", {}).pop(sid, None)
