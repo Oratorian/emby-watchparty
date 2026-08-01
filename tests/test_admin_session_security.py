@@ -1,100 +1,109 @@
 import base64
-import unittest
+from pathlib import Path
+
+import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from starlette.middleware.sessions import SessionMiddleware
 
-from backend.src.dependencies import (
-    get_admin_session_store,
-    get_config,
-    get_emby_client,
-    get_logger,
-    get_party_manager,
-)
-from backend.src.routers import admin
-from backend.src.admin_session_store import AdminSessionStore
-from backend.src.rate_limit import SlidingWindowRateLimiter
+from backend.app import create_app
+from backend.src.config import Config, EnvConfig, RuntimeConfig
 
 
-class _Config:
-    TRUSTED_PROXY_CIDRS = ()
-
-    def get_runtime_dict(self):
-        return {"LOG_LEVEL": "INFO"}
-
-
-class _EmbyClient:
-    server_url = "http://emby.test"
-    device_id = "test-device"
-
-    async def authenticate(self, username, _password):
-        return {
-            "access_token": "secret-upstream-token",
-            "user_id": "admin-user",
-            "username": username,
-            "is_admin": True,
-        }
-
-
-class _PartyManager:
-    def get(self, _party_id):
-        return None
-
-
-class _Logger:
-    def info(self, _message):
-        pass
-
-    def warning(self, _message):
-        pass
-
-    def error(self, _message):
-        pass
-
-
-def _client() -> TestClient:
-    app = FastAPI()
-    app.add_middleware(SessionMiddleware, secret_key="test-session-secret")
-    app.include_router(admin.router)
-    app.state.config = _Config()
-    app.state.emby_client = _EmbyClient()
-    app.state.party_manager = _PartyManager()
-    app.state.logger = _Logger()
-    app.state.admin_session_store = AdminSessionStore()
-    app.state.rate_limiter = SlidingWindowRateLimiter()
-    app.dependency_overrides.update(
-        {
-            get_config: lambda: app.state.config,
-            get_emby_client: lambda: app.state.emby_client,
-            get_party_manager: lambda: app.state.party_manager,
-            get_logger: lambda: app.state.logger,
-            get_admin_session_store: lambda: app.state.admin_session_store,
-        }
+def _config(*, session_expiry: int = 3600) -> Config:
+    return Config(
+        EnvConfig(
+            WATCH_PARTY_BIND="127.0.0.1",
+            WATCH_PARTY_PORT=5000,
+            APP_PREFIX="",
+            SESSION_EXPIRY=session_expiry,
+            EMBY_SERVER_URL="http://emby.test",
+            EMBY_API_KEY="test-key",
+            APP_ENV="development",
+            SESSION_SECRET="test-session-secret-with-at-least-32-characters",
+            SESSION_COOKIE_SECURE=False,
+            CORS_ALLOWED_ORIGINS=("*",),
+            TRUSTED_PROXY_CIDRS=(),
+        ),
+        RuntimeConfig(LOG_TO_FILE=False),
     )
-    return TestClient(app)
 
 
-class AdminSessionSecurityTests(unittest.TestCase):
-    def test_admin_login_keeps_emby_token_out_of_browser_cookie(self):
-        client = _client()
-        response = client.post(
-            "/api/admin/login",
-            json={"username": "Alice", "password": "password"},
-        )
+def _fake_emby() -> FastAPI:
+    app = FastAPI()
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"success": True, "message": None})
+    @app.post("/emby/Users/AuthenticateByName")
+    async def authenticate():
+        return {
+            "AccessToken": "secret-upstream-token",
+            "User": {
+                "Id": "admin-user",
+                "Name": "Alice",
+                "Policy": {"IsAdministrator": True},
+            },
+        }
 
-        cookie = client.cookies.get("session")
-        self.assertIsNotNone(cookie)
+    @app.post("/emby/Sessions/Capabilities/Full")
+    async def capabilities():
+        return {}
+
+    return app
+
+
+def _application(tmp_path: Path, *, session_expiry: int = 3600):
+    return create_app(
+        config=_config(session_expiry=session_expiry),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=_fake_emby()),
+    )
+
+
+def _login(client: TestClient):
+    return client.post(
+        "/api/admin/login",
+        json={"username": "Alice", "password": "password"},
+    )
+
+
+def test_admin_login_keeps_emby_token_out_of_browser_cookie(tmp_path: Path) -> None:
+    with TestClient(_application(tmp_path)) as client:
+        response = _login(client)
+        assert response.status_code == 200
+        assert response.json() == {"success": True, "message": None}
+
+        cookie = client.cookies.get("ewp_session")
+        assert cookie is not None
         unsigned_payload = cookie.split(".", 1)[0]
         decoded = base64.b64decode(unsigned_payload).decode("utf-8")
-        self.assertNotIn("secret-upstream-token", decoded)
-
-        config_response = client.get("/api/admin/config")
-        self.assertEqual(config_response.status_code, 200)
-        self.assertEqual(config_response.json()["LOG_LEVEL"], "INFO")
+        assert "secret-upstream-token" not in decoded
+        assert client.get("/api/admin/config").json()["LOG_LEVEL"] == "INFO"
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_admin_logout_revokes_server_side_session(tmp_path: Path) -> None:
+    with TestClient(_application(tmp_path)) as client:
+        assert _login(client).json()["success"] is True
+        assert client.post("/api/admin/logout").json()["success"] is True
+        assert client.get("/api/admin/config").json() == {
+            "error": "Not authenticated"
+        }
+
+
+def test_expired_admin_session_no_longer_grants_access(tmp_path: Path) -> None:
+    with TestClient(_application(tmp_path, session_expiry=0)) as client:
+        assert _login(client).json()["success"] is True
+        assert client.get("/api/admin/config").json() == {
+            "error": "Not authenticated"
+        }
+
+
+def test_process_restart_invalidates_admin_session(tmp_path: Path) -> None:
+    with TestClient(_application(tmp_path / "first")) as first:
+        assert _login(first).json()["success"] is True
+        cookie = first.cookies.get("ewp_session")
+        assert cookie is not None
+
+    with TestClient(_application(tmp_path / "second")) as restarted:
+        restarted.cookies.set("ewp_session", cookie)
+        assert restarted.get("/api/admin/config").json() == {
+            "error": "Not authenticated"
+        }
