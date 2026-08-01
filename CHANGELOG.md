@@ -16,6 +16,24 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [2.0.2] - 2026-08-01 - Midnight Premiere
+
+A single-fix patch release for a playback failure that only showed up on some Emby servers: the video would sit at 0:00 buffering forever and never start, while the party itself, chat, participants, sync, looked perfectly healthy. If your setup worked fine, nothing here changes for you; this is a safe drop-in either way.
+
+The cause was a stray carriage return. Emby emits its HLS playlists with Windows-style CRLF line endings, and WatchParty's proxy was splitting them on `\n` only, so every media URI kept a trailing `\r`. The party token was then appended *after* that control character, which made HLS.js read the token as its own separate, invalid line. The browser never requested a variant playlist or a single media segment, and Emby eventually gave up and marked the session idle.
+
+### Fixed
+
+- **Playback no longer hangs at 0:00 on Emby servers that emit CRLF playlists.** `_rewrite_playlist` now splits with `splitlines(keepends=True)`, strips the terminator off each URI before appending `?token=` / `&token=`, then reattaches it, so the tokenized variant and segment URLs stay on one valid playlist line. Upstream CRLF/LF formatting and the final line termination are preserved byte-for-byte rather than being normalised to LF, so the proxied playlist stays faithful to what Emby served. Public routes, configuration, and the token scheme are unchanged.
+
+### Added
+
+- **Integration test coverage for the HLS proxy** (`tests/test_hls_proxy.py`, 4 tests). Exercises master-playlist rewriting, variant-playlist rewriting, and transport-stream proxying through the real public HLS routes, plus a direct regression test asserting CRLF and final-line-ending preservation. This is the first automated coverage the HLS proxy has had.
+
+Reported, diagnosed, and fixed by **[dnordel](https://github.com/dnordel)** in [#44](https://github.com/Oratorian/emby-watchparty/pull/44), including a reproduction against a real CRLF Emby master playlist. Thank you!
+
+---
+
 ## [2.0.1] - 2026-07-14 - Midnight Premiere
 
 A patch release focused on playback control and sync. In 2.0.0 only the host / video selector could play, pause, or seek; everyone else's controls silently did nothing. 2.0.1 makes control **democratic**: any member of the party can play, pause, seek, and skip the intro, and it syncs to the whole room. If one person pauses, everyone pauses -- the way a watch party is meant to work. The library panel also now closes for everyone when a video is picked, and the host's Hide/Show Library button once again follows on every client.
@@ -87,6 +105,7 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
+- **v2.0.2**  (2026-08-01): HLS token rewriting fixed for CRLF playlists (playback stuck buffering at 0:00) + first HLS proxy tests.
 - **v2.0.1**  (2026-07-14): Democratic playback control (any member can play/pause/seek) + sync-guard fixes.
 - **v2.0.0**  (2026-07-11): Official release after 6 months of beta.
 - **v1.6.7**  (2026-07-01): Security bump python-socketio to >=5.16.2 (CVE-2026-48804)
