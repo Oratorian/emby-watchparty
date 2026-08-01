@@ -127,6 +127,27 @@ class HLSProxyTests(unittest.TestCase):
             ],
         )
 
+    def test_playlist_rewrite_preserves_crlf_and_final_line_ending(self):
+        upstream_playlist = "#EXTM3U\r\nmain.m3u8?PlaySessionId=session\r\n"
+        upstream_response = httpx.Response(
+            200,
+            content=upstream_playlist.encode("utf-8"),
+            request=httpx.Request("GET", "http://emby.test/master.m3u8"),
+        )
+
+        with patch("backend.src.routers.hls.httpx.get", return_value=upstream_response):
+            response = _client().get(
+                "/hls/123/master.m3u8?PlaySessionId=session&token=party-token"
+            )
+
+        self.assertEqual(
+            response.content,
+            (
+                "#EXTM3U\r\n"
+                "main.m3u8?PlaySessionId=session&token=party-token\r\n"
+            ).encode("utf-8"),
+        )
+
     def test_segment_proxy_returns_playable_transport_stream_bytes(self):
         upstream_response = httpx.Response(
             200,
