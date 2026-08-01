@@ -107,7 +107,10 @@ def _rewrite_playlist(content: str, item_id: str, app_prefix: str, emby_url: str
     )
 
     if token:
-        lines = content.split("\n")
+        # Emby emits CRLF playlists. split("\n") leaves a trailing "\r"
+        # on each URI, so appending the token puts it after a control
+        # character and HLS.js sees it as a separate, invalid line.
+        lines = content.splitlines()
         for i, line in enumerate(lines):
             if line.strip().startswith("#") or not line.strip():
                 continue
