@@ -1410,7 +1410,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
          Only shows AFTER we've been connected at least once, so it
          does not flash during the initial handshake. -->
     <div
-      v-if="!socket.connected && socket.hasEverConnected"
+      v-if="socket.reconnecting"
       class="reconnect-banner"
       role="status"
       aria-live="polite"

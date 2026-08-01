@@ -24,5 +24,28 @@ test('host creates party and a second browser joins', async ({ browser, page }) 
 
   await expect(page.getByText('2 watching')).toBeVisible()
   await expect(guest.getByText('2 watching')).toBeVisible()
+
+  await page.context().setOffline(true)
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')))
+  await expect(page.getByText('Reconnecting to party…')).toBeVisible()
+  await page.context().setOffline(false)
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await expect(page.getByText('Reconnecting to party…')).toBeHidden({ timeout: 15_000 })
+  await expect(page.getByText('2 watching')).toBeVisible()
   await guestContext.close()
+})
+
+test('mobile lifecycle remains keyboard accessible with reduced motion', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/')
+
+  const code = page.getByPlaceholder('Party code')
+  await code.focus()
+  await code.fill('')
+  await code.press('Enter')
+  await expect(page.getByText('Please enter a valid party code')).toBeVisible()
+  const create = page.getByRole('button', { name: 'Create Party', exact: true })
+  await expect(create).toBeVisible()
+  await expect(create).toHaveCSS('transition-duration', '0s')
 })

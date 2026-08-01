@@ -13,6 +13,8 @@ export const useSocketStore = defineStore('socket', () => {
   // from a reconnect ("we dropped and came back"), so re-join logic
   // only fires on the reconnect edge.
   const hasEverConnected = ref(false)
+  const reconnecting = ref(false)
+  let networkListenersInstalled = false
 
   function connect() {
     // Skip if a socket already exists for this Pinia singleton, even
@@ -26,6 +28,16 @@ export const useSocketStore = defineStore('socket', () => {
     // need to create a single socket per app lifetime.
     if (socket.value) return
 
+    if (!networkListenersInstalled) {
+      window.addEventListener('offline', () => {
+        reconnecting.value = true
+      })
+      window.addEventListener('online', () => {
+        reconnecting.value = hasEverConnected.value && !connected.value
+      })
+      networkListenersInstalled = true
+    }
+
     // Socket.IO's `path` is the URL path the client connects to. The
     // backend mounts the socket app under `${APP_PREFIX}/socket.io`, so
     // the client has to use the same. Empty APP_PREFIX collapses to
@@ -38,6 +50,7 @@ export const useSocketStore = defineStore('socket', () => {
     s.on('connect', () => {
       connected.value = true
       hasEverConnected.value = true
+      reconnecting.value = false
     })
 
     s.on('connected', (data: { sid: string }) => {
@@ -47,6 +60,7 @@ export const useSocketStore = defineStore('socket', () => {
     s.on('disconnect', () => {
       connected.value = false
       sid.value = null
+      if (hasEverConnected.value) reconnecting.value = true
     })
 
     // Surface handshake failures so the UI does not silently hang when
@@ -62,6 +76,7 @@ export const useSocketStore = defineStore('socket', () => {
     socket.value?.disconnect()
     socket.value = null
     connected.value = false
+    reconnecting.value = false
     sid.value = null
   }
 
@@ -93,6 +108,7 @@ export const useSocketStore = defineStore('socket', () => {
     connected,
     sid,
     hasEverConnected,
+    reconnecting,
     connect,
     disconnect,
     emit,
