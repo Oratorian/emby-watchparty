@@ -44,6 +44,17 @@ def register(ctx):
             user_id=party.get("host_user_id"),
         )
 
+    def _progress_snapshot(party, sid):
+        """Copy only Emby report fields before any network/socket await."""
+        stream = party.get("user_streams", {}).get(sid)
+        return {
+            "current_video": dict(party["current_video"])
+            if party.get("current_video") else None,
+            "user_streams": {sid: dict(stream)} if stream else {},
+            "host_access_token": party.get("host_access_token"),
+            "host_user_id": party.get("host_user_id"),
+        }
+
     def _authorized_controller(party, sid):
         """Democratic playback control: ANY joined party member may drive
         play/pause/seek, and it syncs to the whole room ("if one pauses,
@@ -96,14 +107,10 @@ def register(ctx):
         }
 
         username = party["users"].get(sid, "Someone")
+        progress = _progress_snapshot(party, sid)
         logger.debug(
             f"PLAY accepted from {username} (sid={sid}, client={caller_client_id}) "
             f"in {party_id} at {current_time:.1f}s -> broadcasting to room"
-        )
-
-        # Report to Emby for the user who triggered play
-        await _report_emby_progress(
-            party, sid, current_time, is_paused=False, event_name="Unpause"
         )
 
         # Broadcast to everyone including the sender. The client-side
@@ -116,6 +123,9 @@ def register(ctx):
         # See the matching comment in handle_seek.
         await sio.emit("play", {"time": current_time, "username": username},
                         room=party_id)
+        await _report_emby_progress(
+            progress, sid, current_time, is_paused=False, event_name="Unpause"
+        )
 
     @sio.on("pause")
     async def handle_pause(sid, data):
@@ -139,19 +149,19 @@ def register(ctx):
         }
 
         username = party["users"].get(sid, "Someone")
+        progress = _progress_snapshot(party, sid)
         logger.debug(
             f"PAUSE accepted from {username} (sid={sid}, client={caller_client_id}) "
             f"in {party_id} at {current_time:.1f}s -> broadcasting to room"
-        )
-
-        await _report_emby_progress(
-            party, sid, current_time, is_paused=True, event_name="Pause"
         )
 
         # Broadcast to everyone including the sender. See the matching
         # comment on handle_play / handle_seek for the rationale.
         await sio.emit("pause", {"time": current_time, "username": username},
                         room=party_id)
+        await _report_emby_progress(
+            progress, sid, current_time, is_paused=True, event_name="Pause"
+        )
 
     @sio.on("seek")
     async def handle_seek(sid, data):
@@ -192,13 +202,8 @@ def register(ctx):
         party["playback_state"]["time"] = seek_time
         party["playback_state"]["last_update"] = datetime.now().isoformat()
 
-        await _report_emby_progress(
-            party, sid, seek_time,
-            is_paused=not was_playing,
-            event_name="TimeUpdate",
-        )
-
         username = party["users"].get(sid, "Someone")
+        progress = _progress_snapshot(party, sid)
 
         if was_playing:
             logger.info("Seek during playback - pausing all clients first for buffering")
@@ -238,3 +243,9 @@ def register(ctx):
             await sio.emit("seek", {
                 "time": seek_time, "playing": False, "username": username,
             }, room=party_id)
+
+        await _report_emby_progress(
+            progress, sid, seek_time,
+            is_paused=not was_playing,
+            event_name="TimeUpdate",
+        )
