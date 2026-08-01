@@ -1448,10 +1448,11 @@ async function submitBecomeHost(payload: { username: string; password: string })
     >
       <span>
         Another tab joined party <strong>{{ party.supersededBy }}</strong>.
-        Only one party can be active per browser, so video has stopped here.
+        Only one party can play per browser, so playback stopped in this tab.
+        Switch to that tab to keep watching there, or resume this one instead.
       </span>
       <button class="session-retry" @click="reloadForParty">
-        Reload this tab
+        Resume here (stops {{ party.supersededBy }})
       </button>
     </div>
     <!-- Session banner: the party-bound cookie could not be minted, so
