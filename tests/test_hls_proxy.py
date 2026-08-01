@@ -344,3 +344,29 @@ class HLSProxyTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
         self.assertEqual(client.app.state.fake_emby_gateway.kwargs, {})
+
+    def test_segment_proxy_preserves_ios_byte_range_semantics(self):
+        upstream_response = httpx.Response(
+            206,
+            content=b"partial-segment",
+            headers={
+                "Content-Range": "bytes 0-14/100",
+                "Accept-Ranges": "bytes",
+                "Content-Length": "15",
+            },
+            request=httpx.Request("GET", "http://emby.test/hls1/main0.ts"),
+        )
+        client = _client(upstream_response)
+
+        response = client.get(
+            "/hls/123/hls1/main0.ts?token=party-token",
+            headers={"Range": "bytes=0-14"},
+        )
+
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(response.headers["content-range"], "bytes 0-14/100")
+        self.assertEqual(response.headers["accept-ranges"], "bytes")
+        self.assertEqual(
+            client.app.state.fake_emby_gateway.kwargs["headers"]["Range"],
+            "bytes=0-14",
+        )
