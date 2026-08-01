@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from backend.src.dependencies import (
     get_config,
     get_emby_client,
-    get_http_client,
+    get_emby_gateway,
     get_logger,
     get_party_manager,
     get_token_manager,
@@ -73,6 +73,9 @@ class _HTTPClient:
     async def send(self, _request, stream=False):
         return self.response
 
+    async def open_stream(self, *_args, **_kwargs):
+        return self.response
+
 def _client(upstream_response):
     app = FastAPI()
     app.include_router(hls.router)
@@ -83,7 +86,7 @@ def _client(upstream_response):
             get_token_manager: lambda: _TokenManager(),
             get_party_manager: lambda: _PartyManager(),
             get_logger: lambda: _Logger(),
-            get_http_client: lambda: _HTTPClient(upstream_response),
+            get_emby_gateway: lambda: _HTTPClient(upstream_response),
         }
     )
     return TestClient(app)

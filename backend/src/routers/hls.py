@@ -15,7 +15,7 @@ from fastapi.responses import Response, StreamingResponse
 import httpx
 
 from backend.src.dependencies import (
-    get_config, get_emby_client, get_http_client, get_token_manager,
+    get_config, get_emby_client, get_emby_gateway, get_token_manager,
     get_party_manager, get_logger,
 )
 
@@ -167,7 +167,7 @@ def _rewrite_playlist(content: str, item_id: str, app_prefix: str, emby_url: str
 )
 async def proxy_hls_master(item_id: str, request: Request,
                      config=Depends(get_config), emby_client=Depends(get_emby_client),
-                     http_client=Depends(get_http_client),
+                     emby_gateway=Depends(get_emby_gateway),
                      token_manager=Depends(get_token_manager),
                      party_manager=Depends(get_party_manager),
                      logger=Depends(get_logger)):
@@ -185,7 +185,7 @@ async def proxy_hls_master(item_id: str, request: Request,
         emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/master.m3u8"
 
         logger.debug(f"Proxying HLS master: {emby_url}")
-        emby_resp = await http_client.get(
+        emby_resp = await emby_gateway.get(
             emby_url,
             headers=emby_client._headers(access_token, user_id),
             params=query_params,
@@ -238,7 +238,7 @@ async def proxy_hls_master(item_id: str, request: Request,
 )
 async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
                       config=Depends(get_config), emby_client=Depends(get_emby_client),
-                      http_client=Depends(get_http_client),
+                      emby_gateway=Depends(get_emby_gateway),
                       token_manager=Depends(get_token_manager),
                       party_manager=Depends(get_party_manager),
                       logger=Depends(get_logger)):
@@ -264,7 +264,7 @@ async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
         logger.debug(f"Proxying HLS segment: {subpath} -> {emby_url}")
 
         if subpath.endswith(".m3u8"):
-            emby_resp = await http_client.get(
+            emby_resp = await emby_gateway.get(
                 emby_url,
                 headers=emby_client._headers(access_token, user_id),
                 params=query_params,
@@ -284,13 +284,11 @@ async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
                 },
             )
 
-        upstream_request = http_client.build_request(
-            "GET",
+        emby_resp = await emby_gateway.open_stream(
             emby_url,
             headers=emby_client._headers(access_token, user_id),
             params=query_params,
         )
-        emby_resp = await http_client.send(upstream_request, stream=True)
         try:
             emby_resp.raise_for_status()
         except Exception:
