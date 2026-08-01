@@ -1,6 +1,5 @@
 """Sync handlers: play, pause, seek"""
 
-import asyncio
 from datetime import datetime
 
 
@@ -33,8 +32,7 @@ def register(ctx):
         user_stream = party.get("user_streams", {}).get(sid)
         if not current_video or not user_stream or not user_stream.get("play_session_id"):
             return
-        await asyncio.to_thread(
-            emby_client.report_playback_progress,
+        await emby_client.report_playback_progress(
             item_id=current_video["item_id"],
             media_source_id=user_stream["media_source_id"],
             play_session_id=user_stream["play_session_id"],

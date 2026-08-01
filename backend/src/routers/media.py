@@ -9,7 +9,6 @@ during the PLAYING-ONLY state after the host leaves.
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
-import requests as http_requests
 
 from backend.src.dependencies import (
     PARTY_HOST_TOKEN_RESPONSES,
@@ -17,6 +16,7 @@ from backend.src.dependencies import (
     PartySession,
     get_config,
     get_emby_client,
+    get_emby_gateway,
     get_logger,
     require_host_token,
     require_party_unlocked,
@@ -31,10 +31,11 @@ router = APIRouter(prefix="/api", tags=["media"])
     response_model=IntroResponse,
     responses=PARTY_UNLOCKED_RESPONSES,
 )
-def get_intro_info(
+async def get_intro_info(
     item_id: str,
     config=Depends(get_config),
     emby_client=Depends(get_emby_client),
+    emby_gateway=Depends(get_emby_gateway),
     logger=Depends(get_logger),
     party_session: PartySession = Depends(require_party_unlocked),
 ):
@@ -44,8 +45,8 @@ def get_intro_info(
     # user-scoped token (even from an Emby admin) gets a 403 here.
     # Carried over from the 1.x fix for issue #29.
     try:
-        resp = http_requests.get(
-            f"{config.EMBY_SERVER_URL}/emby/Items/Intros",
+        resp = await emby_gateway.get(
+            "/emby/Items/Intros",
             params={"api_key": config.EMBY_API_KEY},
             headers={"Content-Type": "application/json"},
             timeout=5,
@@ -74,7 +75,7 @@ def get_intro_info(
         **PARTY_HOST_TOKEN_RESPONSES,
     },
 )
-def api_image(
+async def api_image(
     item_id: str,
     type: str = Query("Primary"),
     # Optional sizing forwarded to Emby. Library card thumbnails only
@@ -88,6 +89,7 @@ def api_image(
     maxHeight: int | None = Query(None, ge=1, le=4000),
     quality: int | None = Query(None, ge=1, le=100),
     emby_client=Depends(get_emby_client),
+    emby_gateway=Depends(get_emby_gateway),
     logger=Depends(get_logger),
     party_session: PartySession = Depends(require_host_token),
 ):
@@ -99,7 +101,7 @@ def api_image(
         max_width=maxWidth, max_height=maxHeight, quality=quality,
     )
     try:
-        emby_resp = http_requests.get(
+        emby_resp = await emby_gateway.get(
             image_url, headers=emby_client._headers(access_token, user_id)
         )
         if emby_resp.status_code == 200:
@@ -128,12 +130,13 @@ def api_image(
         **PARTY_HOST_TOKEN_RESPONSES,
     },
 )
-def api_subtitles(
+async def api_subtitles(
     item_id: str,
     media_source_id: str,
     subtitle_index: int,
     config=Depends(get_config),
     emby_client=Depends(get_emby_client),
+    emby_gateway=Depends(get_emby_gateway),
     logger=Depends(get_logger),
     party_session: PartySession = Depends(require_host_token),
 ):
@@ -144,7 +147,7 @@ def api_subtitles(
             f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/{media_source_id}"
             f"/Subtitles/{subtitle_index}/Stream.vtt?api_key={access_token}"
         )
-        emby_resp = http_requests.get(
+        emby_resp = await emby_gateway.get(
             subtitle_url, headers=emby_client._headers(access_token, user_id)
         )
         if emby_resp.status_code == 200:

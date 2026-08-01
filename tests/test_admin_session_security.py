@@ -1,9 +1,5 @@
 import base64
-import json
 import unittest
-from unittest.mock import patch
-
-import requests
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.middleware.sessions import SessionMiddleware
@@ -30,6 +26,14 @@ class _Config:
 class _EmbyClient:
     server_url = "http://emby.test"
     device_id = "test-device"
+
+    async def authenticate(self, username, _password):
+        return {
+            "access_token": "secret-upstream-token",
+            "user_id": "admin-user",
+            "username": username,
+            "is_admin": True,
+        }
 
 
 class _PartyManager:
@@ -72,25 +76,11 @@ def _client() -> TestClient:
 
 class AdminSessionSecurityTests(unittest.TestCase):
     def test_admin_login_keeps_emby_token_out_of_browser_cookie(self):
-        upstream = requests.Response()
-        upstream.status_code = 200
-        upstream._content = json.dumps(
-            {
-                "AccessToken": "secret-upstream-token",
-                "User": {
-                    "Id": "admin-user",
-                    "Name": "Alice",
-                    "Policy": {"IsAdministrator": True},
-                },
-            }
-        ).encode("utf-8")
-
         client = _client()
-        with patch("backend.src.routers.admin.http_requests.post", return_value=upstream):
-            response = client.post(
-                "/api/admin/login",
-                json={"username": "Alice", "password": "password"},
-            )
+        response = client.post(
+            "/api/admin/login",
+            json={"username": "Alice", "password": "password"},
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"success": True, "message": None})

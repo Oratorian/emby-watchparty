@@ -76,8 +76,7 @@ def register(ctx):
                 current_time = party["playback_state"].get("time", 0)
                 host_token = party.get("host_access_token")
                 host_user = party.get("host_user_id")
-                await asyncio.to_thread(
-                    emby_client.report_playback_stopped,
+                await emby_client.report_playback_stopped(
                     item_id=party["current_video"]["item_id"],
                     media_source_id=old_stream["media_source_id"],
                     play_session_id=old_stream["play_session_id"],
@@ -86,8 +85,7 @@ def register(ctx):
                     access_token=host_token,
                     user_id=host_user,
                 )
-                await asyncio.to_thread(
-                    emby_client.stop_active_encodings,
+                await emby_client.stop_active_encodings(
                     play_session_id=old_stream["play_session_id"],
                     access_token=host_token,
                 )
@@ -820,8 +818,7 @@ def register(ctx):
                 current_time = party["playback_state"].get("time", 0)
                 host_token = party.get("host_access_token")
                 host_user = party.get("host_user_id")
-                await asyncio.to_thread(
-                    emby_client.report_playback_stopped,
+                await emby_client.report_playback_stopped(
                     item_id=party["current_video"]["item_id"],
                     media_source_id=user_stream["media_source_id"],
                     play_session_id=user_stream["play_session_id"],
@@ -830,8 +827,7 @@ def register(ctx):
                     access_token=host_token,
                     user_id=host_user,
                 )
-                await asyncio.to_thread(
-                    emby_client.stop_active_encodings,
+                await emby_client.stop_active_encodings(
                     play_session_id=user_stream["play_session_id"],
                     access_token=host_token,
                 )

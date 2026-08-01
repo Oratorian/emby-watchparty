@@ -5,15 +5,13 @@ Auth Router -- become-host / drop-host / status / version.
 and promotes them to host of their current party.
 """
 
-import asyncio
 import os
 
 from fastapi import APIRouter, Depends, Request
-import requests as http_requests
 
 from backend.src import __version__, __codename__
 from backend.src.dependencies import (
-    get_config, get_emby_client, get_logger, get_party_manager, get_sio,
+    get_config, get_emby_client, get_http_client, get_logger, get_party_manager, get_sio,
 )
 from backend.src.schemas import (
     LoginRequest, LoginResponse, AuthStatusResponse, VersionResponse,
@@ -118,13 +116,9 @@ async def api_login(
             f"Party {party_id}: host login auto-promoted via dev gate "
             f"(EMBY_WATCHPARTY_X_DEV_HOST set, body credentials ignored)"
         )
-        auth = await asyncio.to_thread(
-            emby_client.authenticate, dev_user, dev_pw
-        )
+        auth = await emby_client.authenticate(dev_user, dev_pw)
     else:
-        auth = await asyncio.to_thread(
-            emby_client.authenticate, body.username, body.password
-        )
+        auth = await emby_client.authenticate(body.username, body.password)
     if not auth:
         return LoginResponse(success=False, message="Invalid Emby credentials")
 
@@ -250,11 +244,14 @@ def api_auth_status(
 
 
 @router.get("/version", response_model=VersionResponse)
-def api_version(logger=Depends(get_logger)):
+async def api_version(
+    logger=Depends(get_logger),
+    http_client=Depends(get_http_client),
+):
     result = VersionResponse(current_version=__version__, codename=__codename__)
     try:
         url = "https://api.github.com/repos/Oratorian/emby-watchparty/releases/latest"
-        resp = http_requests.get(url, timeout=5)
+        resp = await http_client.get(url, timeout=5)
         if resp.status_code == 200:
             release = resp.json()
             latest = release.get("tag_name", "").lstrip("v")

@@ -1,5 +1,4 @@
 import asyncio
-import time
 import unittest
 
 from backend.src.socket_handlers import sync
@@ -20,8 +19,8 @@ class _Sio:
 
 
 class _EmbyClient:
-    def report_playback_progress(self, **_kwargs):
-        time.sleep(0.15)
+    async def report_playback_progress(self, **_kwargs):
+        await asyncio.sleep(0.15)
 
 
 class _PartyManager:

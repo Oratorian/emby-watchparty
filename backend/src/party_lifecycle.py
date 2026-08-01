@@ -65,8 +65,7 @@ class PartyLifecycle:
                 continue
             if video.get("item_id"):
                 with suppress(Exception):
-                    await asyncio.to_thread(
-                        self._emby.report_playback_stopped,
+                    await self._emby.report_playback_stopped(
                         item_id=video["item_id"],
                         media_source_id=stream.get("media_source_id"),
                         play_session_id=play_session_id,
@@ -76,8 +75,7 @@ class PartyLifecycle:
                         user_id=user_id,
                     )
             with suppress(Exception):
-                await asyncio.to_thread(
-                    self._emby.stop_active_encodings,
+                await self._emby.stop_active_encodings(
                     play_session_id=play_session_id,
                     access_token=access_token,
                 )

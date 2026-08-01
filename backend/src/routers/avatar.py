@@ -17,7 +17,6 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -26,6 +25,8 @@ from backend.src.dependencies import (
     get_avatar_store,
     get_config,
     get_emby_client,
+    get_emby_gateway,
+    get_http_client,
     get_logger,
     get_party_manager,
 )
@@ -207,6 +208,7 @@ async def host_avatar(
     request: Request,
     config=Depends(get_config),
     emby_client=Depends(get_emby_client),
+    emby_gateway=Depends(get_emby_gateway),
     party_manager=Depends(get_party_manager),
     logger=Depends(get_logger),
 ):
@@ -227,8 +229,7 @@ async def host_avatar(
     url = f"{config.EMBY_SERVER_URL}/emby/Users/{host_user_id}/Images/Primary"
     headers = emby_client._headers(host_token, host_user_id)
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(url, headers=headers)
+        resp = await emby_gateway.get(url, headers=headers, timeout=10)
         if resp.status_code != 200:
             return Response(status_code=404)
         ct = resp.headers.get("Content-Type", "image/jpeg")
@@ -264,6 +265,7 @@ async def serve_avatar(
     avatar_uuid: str,
     store=Depends(get_avatar_store),
     logger=Depends(get_logger),
+    http_client=Depends(get_http_client),
 ):
     """Return the avatar image referenced by `avatar_uuid`.
 
@@ -302,8 +304,7 @@ async def serve_avatar(
         gh = row["gravatar_hash"]
         url = f"https://www.gravatar.com/avatar/{gh}?d=identicon&s=128"
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(url)
+            resp = await http_client.get(url, timeout=10)
             if resp.status_code != 200:
                 return Response(status_code=404)
             return Response(

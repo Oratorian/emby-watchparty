@@ -9,7 +9,7 @@ whose Emby access_token signs the upstream call.
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from typing import Optional
 
-import requests
+import httpx
 
 from backend.src.dependencies import (
     PARTY_UNLOCKED_RESPONSES,
@@ -38,12 +38,12 @@ def _host_creds(party_session: PartySession) -> tuple[str, str]:
     response_model=LibraryItemsResponse,
     responses=PARTY_UNLOCKED_RESPONSES,
 )
-def api_libraries(
+async def api_libraries(
     party_session: PartySession = Depends(require_party_unlocked),
     emby_client=Depends(get_emby_client),
 ):
     access_token, user_id = _host_creds(party_session)
-    return emby_client.get_libraries(access_token=access_token, user_id=user_id)
+    return await emby_client.get_libraries(access_token=access_token, user_id=user_id)
 
 
 @router.get(
@@ -54,7 +54,7 @@ def api_libraries(
         502: {"description": "Emby upstream unavailable"},
     },
 )
-def api_items(
+async def api_items(
     response: Response,
     parentId: Optional[str] = None,
     type: Optional[str] = None,
@@ -67,7 +67,7 @@ def api_items(
     access_token, user_id = _host_creds(party_session)
     response.headers["Cache-Control"] = "no-store"
     try:
-        return emby_client.get_items(
+        return await emby_client.get_items(
             parent_id=parentId,
             item_type=type,
             recursive=recursive,
@@ -76,7 +76,7 @@ def api_items(
             access_token=access_token,
             user_id=user_id,
         )
-    except requests.exceptions.RequestException:
+    except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="Emby upstream unavailable")
 
 
@@ -85,7 +85,7 @@ def api_items(
     response_model=LibraryItemsResponse,
     responses=PARTY_UNLOCKED_RESPONSES,
 )
-def api_search(
+async def api_search(
     q: str = Query(""),
     party_session: PartySession = Depends(require_party_unlocked),
     emby_client=Depends(get_emby_client),
@@ -93,7 +93,9 @@ def api_search(
     if not q.strip():
         return {"Items": []}
     access_token, user_id = _host_creds(party_session)
-    return emby_client.search_items(q.strip(), access_token=access_token, user_id=user_id)
+    return await emby_client.search_items(
+        q.strip(), access_token=access_token, user_id=user_id
+    )
 
 
 @router.get(
@@ -104,13 +106,15 @@ def api_search(
         404: {"description": "Item not found in Emby"},
     },
 )
-def api_item_details(
+async def api_item_details(
     item_id: str,
     party_session: PartySession = Depends(require_party_unlocked),
     emby_client=Depends(get_emby_client),
 ):
     access_token, user_id = _host_creds(party_session)
-    details = emby_client.get_item_details(item_id, access_token=access_token, user_id=user_id)
+    details = await emby_client.get_item_details(
+        item_id, access_token=access_token, user_id=user_id
+    )
     if details:
         return details
     # ItemDetailsResponse requires Id and Name, so the previous
@@ -127,7 +131,7 @@ def api_item_details(
         502: {"description": "Could not fetch stream info from Emby"},
     },
 )
-def api_item_streams(
+async def api_item_streams(
     item_id: str,
     media_source_id: Optional[str] = None,
     party_session: PartySession = Depends(require_party_unlocked),
@@ -157,14 +161,14 @@ def api_item_streams(
     # the response to that source. When they don't, ask for everything
     # so the versions list is complete (Emby returns every MediaSource
     # for an item when MediaSourceId is omitted).
-    scoped_info = emby_client.get_playback_info(
+    scoped_info = await emby_client.get_playback_info(
         item_id,
         media_source_id=media_source_id,
         access_token=access_token,
         user_id=user_id,
     )
     if not scoped_info:
-        scoped_info = emby_client.get_item_details(
+        scoped_info = await emby_client.get_item_details(
             item_id, access_token=access_token, user_id=user_id
         )
 
@@ -180,7 +184,7 @@ def api_item_streams(
     # enumerate alternates -- otherwise the dropdown would collapse to
     # one entry the moment the user picks anything.
     if media_source_id:
-        full_info = emby_client.get_playback_info(
+        full_info = await emby_client.get_playback_info(
             item_id, access_token=access_token, user_id=user_id
         ) or scoped_info
     else:

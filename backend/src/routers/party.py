@@ -7,8 +7,6 @@ anonymous create when off, Emby-authenticated create-as-host when on.
 party-bound session cookie used by every protected route.
 """
 
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.src.dependencies import (
@@ -90,7 +88,7 @@ def list_parties(
 
 
 @router.post("/create", response_model=CreatePartyResponse)
-def create_party(
+async def create_party(
     request: Request,
     body: CreatePartyRequest | None = None,
     config=Depends(get_config),
@@ -143,7 +141,7 @@ def create_party(
         and stashed_user_id
         and body.client_id
     ):
-        if not emby_client.verify_access_token(stashed_token, stashed_user_id):
+        if not await emby_client.verify_access_token(stashed_token, stashed_user_id):
             logger.warning(
                 f"Stashed admin token failed revalidation for user "
                 f"{stashed_user_id}; clearing session and falling back to "
@@ -190,7 +188,7 @@ def create_party(
                 message="client_id is required",
             )
 
-        auth = emby_client.authenticate(body.username, body.password)
+        auth = await emby_client.authenticate(body.username, body.password)
         if not auth:
             return CreatePartyResponse(
                 party_id="",
@@ -279,9 +277,7 @@ async def join_party(
     dev_user, dev_pw = _env_dev_host_creds()
     is_host = party.get("host_client_id") == body.client_id
     if dev_user and dev_pw and not party_manager.is_unlocked(party_id):
-        auth = await asyncio.to_thread(
-            emby_client.authenticate, dev_user, dev_pw
-        )
+        auth = await emby_client.authenticate(dev_user, dev_pw)
         if auth:
             party_manager.set_host(
                 party_id,

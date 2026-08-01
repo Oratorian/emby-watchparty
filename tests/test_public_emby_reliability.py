@@ -52,3 +52,31 @@ def test_readiness_retries_transient_emby_read_failures(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "ready"
     assert attempts == 3
+
+
+def test_admin_authentication_write_is_not_retried(tmp_path: Path) -> None:
+    fake_emby = FastAPI()
+    attempts = 0
+
+    @fake_emby.post("/emby/Users/AuthenticateByName")
+    async def authenticate():
+        nonlocal attempts
+        attempts += 1
+        return Response(status_code=503)
+
+    application = create_app(
+        config=_config(),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=fake_emby),
+    )
+
+    with TestClient(application) as client:
+        response = client.post(
+            "/api/admin/login",
+            json={"username": "Alice", "password": "wrong"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is False
+    assert attempts == 1

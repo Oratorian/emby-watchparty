@@ -84,8 +84,7 @@ def register(ctx):
             party["episode_list_season_id"] = None
             return result
 
-        details = await asyncio.to_thread(
-            emby_client.get_item_details,
+        details = await emby_client.get_item_details(
             item_id,
             access_token=access_token,
             user_id=user_id,
@@ -117,8 +116,7 @@ def register(ctx):
 
         # Cache hit: same season as last selection, reuse the list.
         if party.get("episode_list_season_id") != season_id or not party.get("episode_list"):
-            episodes = await asyncio.to_thread(
-                emby_client.get_season_episodes,
+            episodes = await emby_client.get_season_episodes(
                 season_id,
                 access_token=access_token,
                 user_id=user_id,
@@ -208,8 +206,7 @@ def register(ctx):
         )
         _, _, bitrate_kbps = resolve_quality(normalised)
         max_streaming_bitrate = bitrate_kbps * 1000 if bitrate_kbps else None
-        playback_info = await asyncio.to_thread(
-            emby_client.get_playback_info,
+        playback_info = await emby_client.get_playback_info(
             item_id,
             audio_index=audio_index,
             subtitle_index=subtitle_index,
@@ -256,8 +253,7 @@ def register(ctx):
         party.setdefault("user_streams", {})[sid] = stream_info
 
         run_time_seconds = party.get("current_video", {}).get("run_time_seconds")
-        await asyncio.to_thread(
-            emby_client.report_playback_start,
+        await emby_client.report_playback_start(
             item_id=item_id, media_source_id=media_source_id,
             play_session_id=play_session_id, position_seconds=start_seconds,
             audio_index=audio_index,
@@ -281,8 +277,7 @@ def register(ctx):
         access_token, user_id = _host_creds(party)
         current_video = party.get("current_video")
         if current_video:
-            await asyncio.to_thread(
-                emby_client.report_playback_stopped,
+            await emby_client.report_playback_stopped(
                 item_id=current_video["item_id"],
                 media_source_id=stream["media_source_id"],
                 play_session_id=stream["play_session_id"],
@@ -291,8 +286,7 @@ def register(ctx):
                 access_token=access_token,
                 user_id=user_id,
             )
-        await asyncio.to_thread(
-            emby_client.stop_active_encodings,
+        await emby_client.stop_active_encodings(
             play_session_id=stream["play_session_id"],
             access_token=access_token,
         )
@@ -397,8 +391,7 @@ def register(ctx):
         Returns True on success, False on failure (caller should emit error).
         """
         access_token, user_id = _host_creds(party)
-        playback_info = await asyncio.to_thread(
-            emby_client.get_playback_info,
+        playback_info = await emby_client.get_playback_info(
             item_id,
             media_source_id=media_source_id,
             access_token=access_token, user_id=user_id,
@@ -714,8 +707,7 @@ def register(ctx):
 
         _, _, bitrate_kbps = resolve_quality(quality)
         max_streaming_bitrate = bitrate_kbps * 1000 if bitrate_kbps else None
-        playback_info = await asyncio.to_thread(
-            emby_client.get_playback_info,
+        playback_info = await emby_client.get_playback_info(
             item_id,
             audio_index=audio_index,
             subtitle_index=subtitle_index,
@@ -1130,8 +1122,7 @@ def register(ctx):
 
         is_playing = party["playback_state"].get("playing", False)
         access_token, user_id = _host_creds(party)
-        await asyncio.to_thread(
-            emby_client.report_playback_progress,
+        await emby_client.report_playback_progress(
             item_id=current_video["item_id"],
             media_source_id=user_stream["media_source_id"],
             play_session_id=user_stream["play_session_id"],

@@ -58,10 +58,8 @@ async def lifespan(application: FastAPI):
     logger = _setup_logging(config)
     root: Path = application.state.project_root
 
-    emby_client = EmbyClient(config.EMBY_SERVER_URL, config.EMBY_API_KEY, logger)
     party_manager = PartyManager(config, logger)
     token_manager = HLSTokenManager(config, logger)
-    stream_builder = StreamBuilder(emby_client, logger, config)
     avatar_store = AvatarStore(
         db_path=root / "data" / "avatars.db",
         avatars_dir=root / "images" / "avatars",
@@ -75,6 +73,10 @@ async def lifespan(application: FastAPI):
         transport=application.state.http_transport,
     )
     emby_gateway = EmbyGateway(http_client, config.EMBY_SERVER_URL, logger)
+    emby_client = EmbyClient(
+        config.EMBY_SERVER_URL, config.EMBY_API_KEY, logger, emby_gateway
+    )
+    stream_builder = StreamBuilder(emby_client, logger, config)
 
     application.state.config = config
     application.state.logger = logger
@@ -107,7 +109,7 @@ async def lifespan(application: FastAPI):
             "SESSION_SECRET is empty; using an ephemeral key. Sessions expire on restart."
         )
     if application.state.enable_update_check:
-        check_for_updates(logger)
+        await check_for_updates(http_client, logger)
 
     try:
         yield

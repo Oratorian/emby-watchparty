@@ -1,44 +1,25 @@
-"""
-Emby Client Module
-Handles all interactions with the Emby Server API.
+"""Async, user-scoped Emby API operations."""
 
-This module is stateless with respect to user identity. The admin api_key
-is used only for non-user-scoped requests (raw image bytes, server
-diagnostics). Every user-scoped call accepts an `access_token` and
-`user_id` so the host of each party can drive its own Emby session.
-"""
+from __future__ import annotations
 
-import requests
 import secrets
+from typing import Any
+
+import httpx
+
+from backend.src.emby_gateway import EmbyGateway
 
 
 class EmbyClient:
-    """Client for interacting with Emby Server API"""
-
-    def __init__(self, server_url, api_key, logger):
-        """
-        Initialize Emby client.
-
-        Args:
-            server_url: Base URL of the Emby server
-            api_key: Admin API key (used for non-user-scoped endpoints only)
-            logger: Logger instance
-        """
+    def __init__(self, server_url: str, api_key: str, logger, gateway: EmbyGateway):
         self.server_url = server_url.rstrip("/")
         self.api_key = api_key
         self.logger = logger
+        self.gateway = gateway
         self.device_id = "emby-watchparty-" + secrets.token_hex(8)
-        # Per-user CollectionType cache so library navigation can pick the
-        # right IncludeItemTypes / Recursive flags. Each host has its own
-        # ACL so we cache per user_id.
-        self._library_collection_types: dict = {}
+        self._library_collection_types: dict[str, dict[str, str | None]] = {}
 
-    # =========================================================================
-    # Request helpers
-    # =========================================================================
-
-    def _headers(self, access_token=None, user_id=None) -> dict:
-        """Build request headers, scoped to a host token when supplied."""
+    def _headers(self, access_token=None, user_id=None) -> dict[str, str]:
         if access_token:
             auth_value = (
                 f'Emby UserId="{user_id or ""}", Client="WatchParty", '
@@ -50,80 +31,47 @@ class EmbyClient:
                 "Content-Type": "application/json",
                 "X-Emby-Authorization": auth_value,
             }
-        # Admin api_key fallback. Use this only for non-user-scoped calls.
         return {"X-Emby-Token": self.api_key, "Content-Type": "application/json"}
 
     def _auth_param(self, access_token=None) -> str:
-        """Return the right api_key value for query strings."""
         return access_token or self.api_key
 
-    # =========================================================================
-    # Authentication
-    # =========================================================================
-
-    def authenticate(self, username: str, password: str) -> dict | None:
-        """Authenticate a user against Emby. Returns auth data or None.
-
-        Does NOT mutate the client. Callers (the auth router) store the
-        returned access_token in party state via PartyManager.set_host().
-
-        Returns:
-            {
-                "access_token": str,
-                "user_id": str,
-                "username": str,
-                "is_admin": bool,
-            }
-            or None on failure.
-        """
+    async def authenticate(self, username: str, password: str) -> dict | None:
+        headers = {
+            "Content-Type": "application/json",
+            "X-Emby-Authorization": (
+                f'Emby Client="WatchParty", Device="Web", '
+                f'DeviceId="{self.device_id}", Version="1.0"'
+            ),
+        }
         try:
-            url = f"{self.server_url}/emby/Users/AuthenticateByName"
-            headers = {
-                "Content-Type": "application/json",
-                "X-Emby-Authorization": (
-                    f'Emby Client="WatchParty", Device="Web", '
-                    f'DeviceId="{self.device_id}", Version="1.0"'
-                ),
-            }
-            payload = {"Username": username, "Pw": password}
-
-            response = requests.post(url, headers=headers, json=payload)
+            response = await self.gateway.post(
+                "/emby/Users/AuthenticateByName",
+                headers=headers,
+                json={"Username": username, "Pw": password},
+            )
             response.raise_for_status()
             data = response.json()
-
             access_token = data.get("AccessToken")
             user = data.get("User") or {}
             user_id = user.get("Id")
-            policy = user.get("Policy") or {}
-            is_admin = bool(policy.get("IsAdministrator"))
-
             if not access_token or not user_id:
-                self.logger.error(
-                    "Emby auth response missing AccessToken or User.Id"
-                )
+                self.logger.error("Emby auth response missing AccessToken or User.Id")
                 return None
-
-            self._register_device_capabilities(access_token, user_id)
-
-            self.logger.info(
-                f"Authenticated Emby user {user.get('Name', '?')} "
-                f"(id={user_id}, admin={is_admin})"
-            )
+            await self._register_device_capabilities(access_token, user_id)
             return {
                 "access_token": access_token,
                 "user_id": user_id,
                 "username": user.get("Name", username),
-                "is_admin": is_admin,
+                "is_admin": bool((user.get("Policy") or {}).get("IsAdministrator")),
             }
-        except Exception as e:
-            self.logger.error(f"Emby authentication failed: {e}")
+        except httpx.HTTPError as exc:
+            self.logger.error("Emby authentication failed: %s", exc)
             return None
 
-    # Backward compatibility alias. New callers should use authenticate().
     _authenticate_user = authenticate
 
-    def _register_device_capabilities(self, access_token=None, user_id=None):
-        """Register device capabilities so Emby produces correct transcodes."""
+    async def _register_device_capabilities(self, access_token=None, user_id=None):
         capabilities = {
             "PlayableMediaTypes": ["Video", "Audio"],
             "SupportedCommands": [],
@@ -131,318 +79,196 @@ class EmbyClient:
             "SupportsPersistentIdentifier": False,
             "DeviceProfile": {
                 "MaxStreamingBitrate": 10_000_000,
-                "TranscodingProfiles": [
-                    {
-                        "Container": "ts",
-                        "Type": "Video",
-                        "VideoCodec": "h264",
-                        "AudioCodec": "aac,mp3",
-                        "Protocol": "hls"
-                    }
-                ],
-                "DirectPlayProfiles": [
-                    {
-                        "Container": "mp4,mkv",
-                        "Type": "Video",
-                        "VideoCodec": "h264",
-                        "AudioCodec": "aac,mp3"
-                    }
-                ],
+                "TranscodingProfiles": [{
+                    "Container": "ts", "Type": "Video", "VideoCodec": "h264",
+                    "AudioCodec": "aac,mp3", "Protocol": "hls",
+                }],
+                "DirectPlayProfiles": [{
+                    "Container": "mp4,mkv", "Type": "Video", "VideoCodec": "h264",
+                    "AudioCodec": "aac,mp3",
+                }],
                 "SubtitleProfiles": [
                     {"Format": "vtt", "Method": "External"},
                     {"Format": "srt", "Method": "External"},
                     {"Format": "pgs", "Method": "Encode"},
                     {"Format": "pgssub", "Method": "Encode"},
-                    {"Format": "dvdsub", "Method": "Encode"}
-                ]
-            }
+                    {"Format": "dvdsub", "Method": "Encode"},
+                ],
+            },
         }
         try:
-            url = f"{self.server_url}/emby/Sessions/Capabilities/Full"
-            response = requests.post(
-                url, headers=self._headers(access_token, user_id), json=capabilities
+            response = await self.gateway.post(
+                "/emby/Sessions/Capabilities/Full",
+                headers=self._headers(access_token, user_id),
+                json=capabilities,
             )
             response.raise_for_status()
-            self.logger.info("Registered device capabilities with Emby")
-        except Exception as e:
-            self.logger.warning(f"Failed to register device capabilities: {e}")
+        except httpx.HTTPError as exc:
+            self.logger.warning("Failed to register device capabilities: %s", exc)
 
-    def verify_access_token(self, access_token: str, user_id: str) -> bool:
-        """Return True iff Emby still accepts this (access_token, user_id).
-
-        Used by the stashed-admin create_party path to reject expired /
-        revoked tokens carried in a session cookie -- previously the
-        stashed token was reused without checking, so a browser could
-        mint a party as the admin even after the admin logged out or
-        the token expired server-side. Two-second timeout because this
-        blocks the party-creation request; a slow Emby shouldn't block
-        the party-create UX more than briefly.
-        """
+    async def verify_access_token(self, access_token: str, user_id: str) -> bool:
         if not access_token or not user_id:
             return False
         try:
-            url = f"{self.server_url}/emby/Users/{user_id}"
-            response = requests.get(
-                url,
+            response = await self.gateway.get(
+                f"/emby/Users/{user_id}",
                 headers=self._headers(access_token, user_id),
-                timeout=2,
+                timeout=2.0,
             )
             return response.status_code == 200
-        except Exception as e:
-            self.logger.warning(f"verify_access_token error: {e}")
+        except httpx.HTTPError as exc:
+            self.logger.warning("verify_access_token error: %s", exc)
             return False
 
-    # =========================================================================
-    # Library navigation
-    # =========================================================================
-
-    def get_libraries(self, access_token=None, user_id=None):
-        """Get media libraries accessible to the given user.
-
-        Without user_id, falls back to /emby/Library/MediaFolders using
-        the admin api_key.
-        """
+    async def get_libraries(self, access_token=None, user_id=None):
+        path = f"/emby/Users/{user_id}/Views" if user_id else "/emby/Library/MediaFolders"
         try:
-            if user_id:
-                url = f"{self.server_url}/emby/Users/{user_id}/Views"
-            else:
-                url = f"{self.server_url}/emby/Library/MediaFolders"
-            response = requests.get(url, headers=self._headers(access_token, user_id))
+            response = await self.gateway.get(
+                path, headers=self._headers(access_token, user_id)
+            )
             response.raise_for_status()
             return response.json()
-        except Exception as e:
-            self.logger.error(f"Error fetching libraries: {e}")
+        except httpx.HTTPError as exc:
+            self.logger.error("Error fetching libraries: %s", exc)
             return {"Items": []}
 
-    def _ensure_library_cache(self, access_token=None, user_id=None):
-        """Populate library_id -> CollectionType cache per user.
-
-        Used by get_items() so folder-organised libraries return their
-        Movies / Series directly rather than raw Folder entries.
-        """
+    async def _ensure_library_cache(self, access_token=None, user_id=None) -> None:
         cache_key = user_id or "_anon_"
         if cache_key in self._library_collection_types:
             return
-        try:
-            libs = self.get_libraries(access_token, user_id).get("Items", [])
-            cache = {}
-            for lib in libs:
-                lib_id = lib.get("Id")
-                if lib_id:
-                    cache[lib_id] = lib.get("CollectionType")
-            self._library_collection_types[cache_key] = cache
-        except Exception as e:
-            self.logger.warning(f"Could not populate library cache: {e}")
+        libraries = await self.get_libraries(access_token, user_id)
+        self._library_collection_types[cache_key] = {
+            item["Id"]: item.get("CollectionType")
+            for item in libraries.get("Items", [])
+            if item.get("Id")
+        }
 
-    def get_items(self, parent_id=None, item_type=None, recursive=False,
-                  start_index=None, limit=None,
-                  access_token=None, user_id=None):
-        """Get items from library.
-
-        When parent_id refers to a top-level library (CollectionFolder),
-        derive the right IncludeItemTypes and Recursive flags from the
-        library's CollectionType so Emby resolves folder-organised
-        content into the actual Movie / Series items.
-        """
-        try:
-            effective_type = item_type
-            effective_recursive = recursive
-            if parent_id and not item_type and not recursive:
-                self._ensure_library_cache(access_token, user_id)
-                cache_key = user_id or "_anon_"
-                user_cache = self._library_collection_types.get(cache_key, {})
-                collection_type = user_cache.get(parent_id)
-                # Recursive=True on every library type. A library can
-                # span multiple physical paths (e.g. /media/Anime plus
-                # /media/Anime (Subbed)), in which case Recursive=False
-                # makes Emby return one Folder wrapper per path instead
-                # of the actual Series / BoxSet / MusicArtist items.
-                # Combined with a strict IncludeItemTypes, Recursive=True
-                # walks past the path-folder layer and returns only the
-                # top-level content type, never descending into Seasons /
-                # Episodes / Albums.
-                if collection_type == "movies":
-                    effective_type = "Movie"
-                    effective_recursive = True
-                elif collection_type == "tvshows":
-                    effective_type = "Series"
-                    effective_recursive = True
-                elif collection_type == "boxsets":
-                    effective_type = "BoxSet"
-                    effective_recursive = True
-                elif collection_type == "music":
-                    effective_type = "MusicArtist"
-                    effective_recursive = True
-                elif collection_type == "homevideos" or collection_type == "photos":
-                    effective_type = "Movie,Video,Photo"
-                    effective_recursive = True
-
-            if user_id:
-                url = f"{self.server_url}/emby/Users/{user_id}/Items"
-            else:
-                url = f"{self.server_url}/emby/Items"
-            params = {
-                "Recursive": str(effective_recursive).lower(),
-                # UserData is explicit because list-style /Items
-                # responses don't always include it by default,
-                # especially when the user has alternate sources
-                # (multi-version items). Without it the library cards
-                # can't render the resume progress bar / "Played: ..."
-                # line, and clicking a partially-watched item skips
-                # the resume prompt because PlaybackPositionTicks
-                # reads as 0. MediaSourceCount lets the UI detect
-                # multi-version items at list time without a separate
-                # /streams probe per card.
-                "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,ParentIndexNumber,SeriesId,SeasonId,UserData,MediaSourceCount",
-                # Three-tier sort that works for every listing type
-                # without needing parent-type detection:
-                #   - ParentIndexNumber (season number) and IndexNumber
-                #     (episode-within-season / season-within-series)
-                #     order content for season + episode listings, so
-                #     "Episode 2" comes after "Episode 1" instead of
-                #     being SortName-shuffled alphabetically by title.
-                #   - SortName breaks ties for everything else (Series,
-                #     Movies, Music, Folders) where the index fields
-                #     are null. Articles are stripped by Emby for
-                #     SortName ("The Matrix" sorts as M), so the A-Z
-                #     jump bar still lands on the letter the user
-                #     reaches for. Pagination boundaries stay aligned
-                #     with the displayed order because the sort
-                #     happens at the Emby query layer.
-                "SortBy": "ParentIndexNumber,IndexNumber,SortName",
-                "SortOrder": "Ascending",
+    async def get_items(
+        self,
+        parent_id=None,
+        item_type=None,
+        recursive=False,
+        start_index=None,
+        limit=None,
+        access_token=None,
+        user_id=None,
+    ):
+        effective_type = item_type
+        effective_recursive = recursive
+        if parent_id and not item_type and not recursive:
+            await self._ensure_library_cache(access_token, user_id)
+            collection_type = self._library_collection_types.get(
+                user_id or "_anon_", {}
+            ).get(parent_id)
+            mapping = {
+                "movies": "Movie",
+                "tvshows": "Series",
+                "boxsets": "BoxSet",
+                "music": "MusicArtist",
+                "homevideos": "Movie,Video,Photo",
+                "photos": "Movie,Video,Photo",
             }
+            if collection_type in mapping:
+                effective_type = mapping[collection_type]
+                effective_recursive = True
+        path = f"/emby/Users/{user_id}/Items" if user_id else "/emby/Items"
+        params: dict[str, Any] = {
+            "Recursive": str(effective_recursive).lower(),
+            "Fields": (
+                "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,"
+                "ParentIndexNumber,SeriesId,SeasonId,UserData,MediaSourceCount"
+            ),
+            "SortBy": "ParentIndexNumber,IndexNumber,SortName",
+            "SortOrder": "Ascending",
+        }
+        if parent_id:
+            params["ParentId"] = parent_id
+        if effective_type:
+            params["IncludeItemTypes"] = effective_type
+        if start_index is not None:
+            params["StartIndex"] = start_index
+        if limit is not None:
+            params["Limit"] = limit
+        headers = self._headers(access_token, user_id)
+        headers["Cache-Control"] = "no-cache"
+        response = await self.gateway.get(path, headers=headers, params=params)
+        response.raise_for_status()
+        return response.json()
 
-            if parent_id:
-                params["ParentId"] = parent_id
-            if effective_type:
-                params["IncludeItemTypes"] = effective_type
-            if start_index is not None:
-                params["StartIndex"] = start_index
-            if limit is not None:
-                params["Limit"] = limit
-
-            headers = self._headers(access_token, user_id)
-            headers["Cache-Control"] = "no-cache"
-            response = requests.get(url, headers=headers, params=params, timeout=15)
-            response.raise_for_status()
-            data = response.json()
-            total = data.get("TotalRecordCount")
-            self.logger.info(
-                f"get_items parent={parent_id} type={effective_type} "
-                f"recursive={effective_recursive} total={total}"
-            )
-            return data
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Error fetching items parent={parent_id}: {e}")
-            raise
-
-    def get_season_episodes(self, season_id, access_token=None, user_id=None):
-        """Return all episodes in a season, in air-date order.
-
-        Used by the binge-watching path to figure out what "next" is
-        after the current episode ends. Sorted by ParentIndexNumber
-        (season number) then IndexNumber so multi-season specials and
-        episode-zero entries land in the right spot rather than getting
-        scrambled by the default SortName ordering (which would put
-        "Episode 10" before "Episode 2").
-        """
+    async def get_season_episodes(self, season_id, access_token=None, user_id=None):
+        path = f"/emby/Users/{user_id}/Items" if user_id else "/emby/Items"
+        params = {
+            "ParentId": season_id,
+            "IncludeItemTypes": "Episode",
+            "Recursive": "false",
+            "Fields": (
+                "Overview,PrimaryImageAspectRatio,IndexNumber,ParentIndexNumber,"
+                "SeriesId,SeasonId,RunTimeTicks,UserData"
+            ),
+            "SortBy": "ParentIndexNumber,IndexNumber",
+            "SortOrder": "Ascending",
+        }
         try:
-            if user_id:
-                url = f"{self.server_url}/emby/Users/{user_id}/Items"
-            else:
-                url = f"{self.server_url}/emby/Items"
-            params = {
-                "ParentId": season_id,
-                "IncludeItemTypes": "Episode",
-                "Recursive": "false",
-                "Fields": "Overview,PrimaryImageAspectRatio,IndexNumber,ParentIndexNumber,SeriesId,SeasonId,RunTimeTicks,UserData",
-                "SortBy": "ParentIndexNumber,IndexNumber",
-                "SortOrder": "Ascending",
-            }
-            response = requests.get(
-                url, headers=self._headers(access_token, user_id), params=params
+            response = await self.gateway.get(
+                path,
+                headers=self._headers(access_token, user_id),
+                params=params,
             )
             response.raise_for_status()
             return response.json()
-        except Exception as e:
-            self.logger.error(f"Error fetching season episodes: {e}")
+        except httpx.HTTPError as exc:
+            self.logger.error("Error fetching season episodes: %s", exc)
             return {"Items": [], "TotalRecordCount": 0}
 
-    def get_item_details(self, item_id, access_token=None, user_id=None):
-        """Get detailed information about a specific item."""
+    async def get_item_details(self, item_id, access_token=None, user_id=None):
         if not user_id:
-            self.logger.warning("No user_id for item details; cannot scope request")
             return None
+        headers = self._headers(access_token, user_id)
+        params = {"api_key": self._auth_param(access_token)}
+        response = await self.gateway.get(
+            f"/emby/Users/{user_id}/Items/{item_id}", headers=headers, params=params
+        )
+        if response.status_code == 404:
+            response = await self.gateway.get(
+                f"/emby/Items/{item_id}", headers=headers, params=params
+            )
         try:
-            url = f"{self.server_url}/emby/Users/{user_id}/Items/{item_id}"
-            params = {"api_key": self._auth_param(access_token)}
-            response = requests.get(
-                url, headers=self._headers(access_token, user_id), params=params
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as exc:
+            self.logger.error("Error fetching item details: %s", exc)
+            return None
+
+    async def search_items(self, query, access_token=None, user_id=None):
+        if not user_id:
+            return {"Items": []}
+        params = {
+            "SearchTerm": query,
+            "Recursive": "true",
+            "Fields": (
+                "Overview,PrimaryImageAspectRatio,ProductionYear,UserData,"
+                "RunTimeTicks,MediaSourceCount,IndexNumber,ParentIndexNumber,"
+                "SeriesId,SeasonId"
+            ),
+            "IncludeItemTypes": "Movie,Series",
+            "api_key": self._auth_param(access_token),
+        }
+        try:
+            response = await self.gateway.get(
+                f"/emby/Users/{user_id}/Items",
+                headers=self._headers(access_token, user_id),
+                params=params,
             )
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 404:
-                try:
-                    url = f"{self.server_url}/emby/Items/{item_id}"
-                    params = {"api_key": self._auth_param(access_token)}
-                    response = requests.get(
-                        url, headers=self._headers(access_token, user_id), params=params
-                    )
-                    response.raise_for_status()
-                    return response.json()
-                except Exception as e2:
-                    self.logger.error(f"Item details fallback failed: {e2}")
-            self.logger.error(f"Error fetching item details: {e}")
-            return None
-        except Exception as e:
-            self.logger.error(f"Error fetching item details: {e}")
-            return None
-
-    def search_items(self, query, access_token=None, user_id=None):
-        """Search for items by name."""
-        if not user_id:
-            self.logger.warning("No user_id for search; cannot scope request")
-            return {"Items": []}
-        try:
-            url = f"{self.server_url}/emby/Users/{user_id}/Items"
-            params = {
-                "SearchTerm": query,
-                "Recursive": "true",
-                # UserData + RunTimeTicks parity with get_items so a
-                # search-launched item shows the resume prompt + progress
-                # bar + "Played:" meta line the same way a browse-launched
-                # one does. Without these Fields, PlaybackPositionTicks
-                # reads as 0 on the frontend and the resume prompt is
-                # silently skipped.
-                "Fields": (
-                    "Overview,PrimaryImageAspectRatio,ProductionYear,"
-                    "UserData,RunTimeTicks,MediaSourceCount,"
-                    "IndexNumber,ParentIndexNumber,SeriesId,SeasonId"
-                ),
-                "IncludeItemTypes": "Movie,Series",
-                "api_key": self._auth_param(access_token),
-            }
-            response = requests.get(
-                url, headers=self._headers(access_token, user_id), params=params
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            self.logger.error(f"Error searching items: {e}")
+        except httpx.HTTPError as exc:
+            self.logger.error("Error searching items: %s", exc)
             return {"Items": []}
 
-    def get_image_url(self, item_id, image_type="Primary", access_token=None,
-                      max_width=None, max_height=None, quality=None):
-        """Build an image URL with an api_key. Images are usually unscoped.
-
-        Optional `max_width` / `max_height` / `quality` are forwarded to
-        Emby so it can downscale + re-encode server-side. Library cards
-        only need ~240x360 thumbnails; without these the backend was
-        proxying full ~1000px posters and clients on slow connections
-        spent seconds per card.
-        """
+    def get_image_url(
+        self, item_id, image_type="Primary", access_token=None,
+        max_width=None, max_height=None, quality=None,
+    ):
         params = [f"api_key={self._auth_param(access_token)}"]
         if max_width:
             params.append(f"maxWidth={int(max_width)}")
@@ -450,96 +276,66 @@ class EmbyClient:
             params.append(f"maxHeight={int(max_height)}")
         if quality:
             params.append(f"quality={int(quality)}")
-        return (
-            f"{self.server_url}/emby/Items/{item_id}/Images/{image_type}"
-            f"?{'&'.join(params)}"
-        )
+        return f"{self.server_url}/emby/Items/{item_id}/Images/{image_type}?{'&'.join(params)}"
 
-    # =========================================================================
-    # Playback
-    # =========================================================================
-
-    def get_playback_info(self, item_id, audio_index=None, subtitle_index=None,
-                          media_source_id=None, max_streaming_bitrate=None,
-                          start_time_ticks=None,
-                          access_token=None, user_id=None):
-        """Get playback information including MediaSourceId and PlaySessionId."""
+    async def get_playback_info(
+        self, item_id, audio_index=None, subtitle_index=None,
+        media_source_id=None, max_streaming_bitrate=None,
+        start_time_ticks=None, access_token=None, user_id=None,
+    ):
         if not user_id:
-            self.logger.warning("No user_id for playback info; cannot scope request")
             return None
-
+        params: dict[str, Any] = {
+            "UserId": user_id,
+            "api_key": self._auth_param(access_token),
+            "IsPlayback": "true",
+            "AutoOpenLiveStream": "true",
+            "StartTimeTicks": start_time_ticks or 0,
+        }
+        optional = {
+            "MaxStreamingBitrate": max_streaming_bitrate,
+            "AudioStreamIndex": audio_index,
+            "SubtitleStreamIndex": subtitle_index,
+            "MediaSourceId": media_source_id,
+        }
+        params.update({key: value for key, value in optional.items() if value is not None})
         try:
-            url = f"{self.server_url}/emby/Items/{item_id}/PlaybackInfo"
-            params = {
-                "UserId": user_id,
-                "api_key": self._auth_param(access_token),
-                "IsPlayback": "true",
-                "AutoOpenLiveStream": "true",
-                "StartTimeTicks": start_time_ticks or 0,
-            }
-            if max_streaming_bitrate:
-                params["MaxStreamingBitrate"] = max_streaming_bitrate
-            if audio_index is not None:
-                params["AudioStreamIndex"] = audio_index
-            if subtitle_index is not None:
-                params["SubtitleStreamIndex"] = subtitle_index
-            if media_source_id:
-                params["MediaSourceId"] = media_source_id
-
-            response = requests.post(
-                url, headers=self._headers(access_token, user_id),
-                params=params, json={},
+            response = await self.gateway.post(
+                f"/emby/Items/{item_id}/PlaybackInfo",
+                headers=self._headers(access_token, user_id),
+                params=params,
+                json={},
             )
             response.raise_for_status()
-            data = response.json()
+            return response.json()
+        except httpx.HTTPError as exc:
+            self.logger.error("Error fetching playback info: %s", exc)
+            return await self.get_item_details(item_id, access_token, user_id)
 
-            if data and "MediaSources" in data and data["MediaSources"]:
-                media_source = data["MediaSources"][0]
-                self.logger.debug(
-                    f"PlaybackInfo - MediaSourceId: {media_source.get('Id')}, "
-                    f"PlaySessionId: {data.get('PlaySessionId')}"
-                )
-
-            return data
-        except Exception as e:
-            self.logger.error(f"Error fetching playback info: {e}")
-            return self.get_item_details(item_id, access_token=access_token, user_id=user_id)
-
-    def stop_active_encodings(self, play_session_id=None, access_token=None):
-        """Stop active HLS transcoding sessions for this device."""
+    async def stop_active_encodings(self, play_session_id=None, access_token=None):
+        params = {"DeviceId": self.device_id, "api_key": self._auth_param(access_token)}
+        if play_session_id:
+            params["PlaySessionId"] = play_session_id
         try:
-            url = f"{self.server_url}/emby/Videos/ActiveEncodings"
-            params = {
-                "DeviceId": self.device_id,
-                "api_key": self._auth_param(access_token),
-            }
-            if play_session_id:
-                params["PlaySessionId"] = play_session_id
-            response = requests.delete(
-                url, headers=self._headers(access_token), params=params
+            response = await self.gateway.delete(
+                "/emby/Videos/ActiveEncodings",
+                headers=self._headers(access_token),
+                params=params,
             )
             response.raise_for_status()
-            if play_session_id:
-                self.logger.info(f"Stopped encoding for session {play_session_id}")
-            else:
-                self.logger.info(
-                    f"Stopped all active encodings for device {self.device_id}"
-                )
             return True
-        except Exception as e:
-            self.logger.warning(f"Failed to stop active encodings: {e}")
+        except httpx.HTTPError as exc:
+            self.logger.warning("Failed to stop active encodings: %s", exc)
             return False
 
-    # =========================================================================
-    # Playback Progress Reporting
-    # =========================================================================
-
-    def _seconds_to_ticks(self, seconds):
+    @staticmethod
+    def _seconds_to_ticks(seconds):
         return int(seconds * 10_000_000)
 
-    def _build_playback_payload(self, item_id, media_source_id, play_session_id,
-                                position_seconds, is_paused, audio_index=None,
-                                subtitle_index=None, run_time_seconds=None):
+    def _build_playback_payload(
+        self, item_id, media_source_id, play_session_id, position_seconds,
+        is_paused, audio_index=None, subtitle_index=None, run_time_seconds=None,
+    ):
         payload = {
             "ItemId": item_id,
             "MediaSourceId": media_source_id,
@@ -558,78 +354,56 @@ class EmbyClient:
             payload["RunTimeTicks"] = self._seconds_to_ticks(run_time_seconds)
         return payload
 
-    def report_playback_start(self, item_id, media_source_id, play_session_id,
-                              position_seconds=0, audio_index=None,
-                              subtitle_index=None, run_time_seconds=None,
-                              access_token=None, user_id=None):
+    async def _report(self, path, payload, access_token, user_id) -> bool:
         try:
-            url = f"{self.server_url}/emby/Sessions/Playing"
-            payload = self._build_playback_payload(
-                item_id, media_source_id, play_session_id,
-                position_seconds, is_paused=False,
-                audio_index=audio_index, subtitle_index=subtitle_index,
-                run_time_seconds=run_time_seconds
-            )
-            response = requests.post(
-                url, headers=self._headers(access_token, user_id), json=payload
+            response = await self.gateway.post(
+                path,
+                headers=self._headers(access_token, user_id),
+                json=payload,
             )
             response.raise_for_status()
-            self.logger.info(
-                f"Reported playback start for item {item_id} at {position_seconds:.1f}s"
-            )
             return True
-        except Exception as e:
-            self.logger.warning(f"Failed to report playback start: {e}")
+        except httpx.HTTPError as exc:
+            self.logger.warning("Playback report failed: %s", exc)
             return False
 
-    def report_playback_progress(self, item_id, media_source_id, play_session_id,
-                                 position_seconds, is_paused, event_name="TimeUpdate",
-                                 audio_index=None, subtitle_index=None,
-                                 run_time_seconds=None,
-                                 access_token=None, user_id=None):
-        try:
-            url = f"{self.server_url}/emby/Sessions/Playing/Progress"
-            payload = self._build_playback_payload(
-                item_id, media_source_id, play_session_id,
-                position_seconds, is_paused,
-                audio_index=audio_index, subtitle_index=subtitle_index,
-                run_time_seconds=run_time_seconds
-            )
-            payload["EventName"] = event_name
-            response = requests.post(
-                url, headers=self._headers(access_token, user_id), json=payload
-            )
-            response.raise_for_status()
-            self.logger.debug(
-                f"Reported playback progress: {event_name} at "
-                f"{position_seconds:.1f}s (paused={is_paused})"
-            )
-            return True
-        except Exception as e:
-            self.logger.warning(f"Failed to report playback progress: {e}")
-            return False
+    async def report_playback_start(
+        self, item_id, media_source_id, play_session_id, position_seconds=0,
+        audio_index=None, subtitle_index=None, run_time_seconds=None,
+        access_token=None, user_id=None,
+    ):
+        payload = self._build_playback_payload(
+            item_id, media_source_id, play_session_id, position_seconds, False,
+            audio_index, subtitle_index, run_time_seconds,
+        )
+        return await self._report("/emby/Sessions/Playing", payload, access_token, user_id)
 
-    def report_playback_stopped(self, item_id, media_source_id, play_session_id,
-                                position_seconds, run_time_seconds=None,
-                                access_token=None, user_id=None):
-        try:
-            url = f"{self.server_url}/emby/Sessions/Playing/Stopped"
-            payload = {
-                "ItemId": item_id,
-                "MediaSourceId": media_source_id,
-                "PlaySessionId": play_session_id,
-                "PositionTicks": self._seconds_to_ticks(position_seconds),
-            }
-            if run_time_seconds is not None:
-                payload["RunTimeTicks"] = self._seconds_to_ticks(run_time_seconds)
-            response = requests.post(
-                url, headers=self._headers(access_token, user_id), json=payload
-            )
-            response.raise_for_status()
-            self.logger.info(
-                f"Reported playback stopped for item {item_id} at {position_seconds:.1f}s"
-            )
-            return True
-        except Exception as e:
-            self.logger.warning(f"Failed to report playback stopped: {e}")
-            return False
+    async def report_playback_progress(
+        self, item_id, media_source_id, play_session_id, position_seconds,
+        is_paused, event_name="TimeUpdate", audio_index=None,
+        subtitle_index=None, run_time_seconds=None, access_token=None, user_id=None,
+    ):
+        payload = self._build_playback_payload(
+            item_id, media_source_id, play_session_id, position_seconds, is_paused,
+            audio_index, subtitle_index, run_time_seconds,
+        )
+        payload["EventName"] = event_name
+        return await self._report(
+            "/emby/Sessions/Playing/Progress", payload, access_token, user_id
+        )
+
+    async def report_playback_stopped(
+        self, item_id, media_source_id, play_session_id, position_seconds,
+        run_time_seconds=None, access_token=None, user_id=None,
+    ):
+        payload = {
+            "ItemId": item_id,
+            "MediaSourceId": media_source_id,
+            "PlaySessionId": play_session_id,
+            "PositionTicks": self._seconds_to_ticks(position_seconds),
+        }
+        if run_time_seconds is not None:
+            payload["RunTimeTicks"] = self._seconds_to_ticks(run_time_seconds)
+        return await self._report(
+            "/emby/Sessions/Playing/Stopped", payload, access_token, user_id
+        )

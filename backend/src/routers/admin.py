@@ -13,7 +13,7 @@ Two paths in:
 """
 
 from fastapi import APIRouter, Depends, Request
-import requests as http_requests
+from fastapi.responses import JSONResponse
 
 from backend.src.log_levels import apply_log_levels
 from backend.src.client_ip import request_client_ip
@@ -46,7 +46,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 @router.post("/login", response_model=AdminLoginResponse)
-def admin_login(body: AdminLoginRequest, request: Request,
+async def admin_login(body: AdminLoginRequest, request: Request,
                 emby_client=Depends(get_emby_client),
                 admin_session_store=Depends(get_admin_session_store),
                 logger=Depends(get_logger)):
@@ -70,61 +70,40 @@ def admin_login(body: AdminLoginRequest, request: Request,
             f"Admin login rate-limited for IP {ip} "
             f"(retry in {decision.retry_after}s)"
         )
-        return {
-            "success": False,
-            "message": (
-                "Too many login attempts. Try again in "
-                f"{decision.retry_after} seconds."
-            ),
-        }
-    try:
-        url = f"{emby_client.server_url}/emby/Users/AuthenticateByName"
-        headers = {
-            "Content-Type": "application/json",
-            "X-Emby-Authorization": (
-                f'Emby Client="WatchParty", Device="Web", '
-                f'DeviceId="{emby_client.device_id}", Version="1.0"'
-            ),
-        }
-        resp = http_requests.post(
-            url, headers=headers,
-            json={"Username": body.username, "Pw": body.password},
-            timeout=15,
+        return JSONResponse(
+            {
+                "success": False,
+                "message": (
+                    "Too many login attempts. Try again in "
+                    f"{decision.retry_after} seconds."
+                ),
+            },
+            status_code=429,
+            headers={"Retry-After": str(decision.retry_after)},
         )
-
-        if resp.status_code != 200:
-            return {"success": False, "message": "Invalid credentials"}
-
-        data = resp.json()
-        user = data.get("User") or {}
-        is_admin = user.get("Policy", {}).get("IsAdministrator", False)
-
-        if not is_admin:
+    auth = await emby_client.authenticate(body.username, body.password)
+    if not auth:
+        return {"success": False, "message": "Invalid credentials"}
+    try:
+        if not auth["is_admin"]:
             logger.warning(f"Admin login denied for '{body.username}' -- not administrator")
             return {"success": False, "message": "This account does not have administrator privileges"}
 
-        access_token = data.get("AccessToken")
-        user_id = user.get("Id")
-        if not access_token or not user_id:
-            return {"success": False, "message": "Authentication response missing token or user id"}
-
-        username = user.get("Name", body.username)
+        username = auth["username"]
         old_handle = request.session.pop("admin_session_id", None)
         admin_session_store.revoke(old_handle)
         request.session["admin_session_id"] = admin_session_store.create(
             username=username,
-            access_token=access_token,
-            user_id=user_id,
+            access_token=auth["access_token"],
+            user_id=auth["user_id"],
             is_admin=True,
         )
         logger.info(f"Admin login: '{username}'")
         return {"success": True}
 
-    except http_requests.exceptions.Timeout:
-        return {"success": False, "message": "Emby server connection timed out"}
-    except http_requests.exceptions.RequestException as e:
+    except Exception as e:
         logger.error(f"Admin login error: {e}")
-        return {"success": False, "message": "Unable to connect to Emby server"}
+        return {"success": False, "message": "Authentication failed"}
 
 
 @router.post("/logout", response_model=SuccessResponse)
