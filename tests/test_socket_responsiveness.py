@@ -7,6 +7,7 @@ from backend.src.socket_handlers import sync
 class _Sio:
     def __init__(self):
         self.handlers = {}
+        self.emitted = []
 
     def on(self, event):
         def decorate(handler):
@@ -14,8 +15,8 @@ class _Sio:
             return handler
         return decorate
 
-    async def emit(self, *_args, **_kwargs):
-        pass
+    async def emit(self, *args, **kwargs):
+        self.emitted.append((args, kwargs))
 
 
 class _EmbyClient:
@@ -72,6 +73,7 @@ class SocketResponsivenessTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertLess(elapsed, 0.08)
         self.assertFalse(task.done())
+        self.assertEqual(sio.emitted[0][0][0], "play")
         await task
 
 
