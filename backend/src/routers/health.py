@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from backend.src import __version__, __codename__
-from backend.src.dependencies import get_config, get_emby_gateway
+from backend.src.dependencies import get_avatar_store, get_config, get_emby_gateway
 from backend.src.schemas import HealthResponse
 
 router = APIRouter(prefix="/api", tags=["health"])
@@ -33,6 +33,7 @@ def health():
 async def ready(
     config=Depends(get_config),
     emby_gateway=Depends(get_emby_gateway),
+    avatar_store=Depends(get_avatar_store),
 ):
     configured = bool(config.EMBY_SERVER_URL and config.EMBY_API_KEY)
     reachable = False
@@ -47,8 +48,9 @@ async def ready(
             reachable = False
 
     checks = {
-        "emby_configured": configured,
-        "emby_reachable": reachable,
+        "config": configured,
+        "storage": avatar_store.readiness_check(),
+        "emby": reachable,
     }
     is_ready = all(checks.values())
     return JSONResponse(

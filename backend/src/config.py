@@ -13,6 +13,7 @@ import threading
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import get_origin
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
@@ -412,11 +413,16 @@ class Config:
             return
         if not self.SESSION_SECRET:
             raise ValueError('SESSION_SECRET is required in production')
+        if len(self.SESSION_SECRET) < 32:
+            raise ValueError('SESSION_SECRET must be at least 32 characters in production')
         if not self.SESSION_COOKIE_SECURE:
             raise ValueError('SESSION_COOKIE_SECURE must be true in production')
         if not self.CORS_ALLOWED_ORIGINS or '*' in self.CORS_ALLOWED_ORIGINS:
             raise ValueError('CORS_ALLOWED_ORIGINS must be explicit in production')
         if not self.EMBY_API_KEY:
             raise ValueError('EMBY_API_KEY is required in production')
+        emby_url = urlsplit(self.EMBY_SERVER_URL)
+        if emby_url.scheme not in {'http', 'https'} or not emby_url.hostname:
+            raise ValueError('EMBY_SERVER_URL must be a valid HTTP(S) URL in production')
         if not self.ENABLE_HLS_TOKEN_VALIDATION:
             raise ValueError('HLS token validation must be enabled in production')

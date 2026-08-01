@@ -171,7 +171,8 @@ def _install_static_routes(application: FastAPI, prefix: str, static_root: Path)
             return RedirectResponse(url=f"{prefix}/")
 
     @application.get(f"{prefix}/{{full_path:path}}", include_in_schema=False)
-    async def serve_spa(_full_path: str):
+    async def serve_spa(full_path: str):
+        del full_path
         return HTMLResponse(rendered_index())
 
 

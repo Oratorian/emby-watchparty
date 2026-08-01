@@ -183,6 +183,18 @@ class AvatarStore:
     def avatars_dir(self) -> Path:
         return self._avatars_dir
 
+    def readiness_check(self) -> bool:
+        """Verify the database and required avatar storage are usable."""
+        try:
+            with self._connect() as conn:
+                conn.execute("SELECT 1").fetchone()
+            return (
+                self._db_path.parent.is_dir()
+                and self._avatars_dir.is_dir()
+            )
+        except (OSError, sqlite3.Error):
+            return False
+
     def _connect(self):
         conn = sqlite3.connect(self._db_path, isolation_level=None)
         conn.row_factory = sqlite3.Row
