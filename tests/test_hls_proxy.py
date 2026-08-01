@@ -65,6 +65,7 @@ class _HTTPClient:
         self.response = response
 
     async def get(self, *_args, **_kwargs):
+        self.params = kwargs.get("params")
         return self.response
 
     def build_request(self, method, url, **kwargs):
@@ -74,6 +75,7 @@ class _HTTPClient:
         return self.response
 
     async def open_stream(self, *_args, **_kwargs):
+        self.params = kwargs.get("params")
         return self.response
 
 def _client(upstream_response):
@@ -93,6 +95,31 @@ def _client(upstream_response):
 
 
 class HLSProxyTests(unittest.TestCase):
+    def test_approved_duplicate_query_parameters_are_preserved(self):
+        upstream_response = httpx.Response(
+            200,
+            text="#EXTM3U\n",
+            request=httpx.Request("GET", "http://emby.test/master.m3u8"),
+        )
+        app = FastAPI()
+        gateway = _HTTPClient(upstream_response)
+        app.include_router(hls.router)
+        app.dependency_overrides.update({
+            get_config: lambda: _Config(),
+            get_emby_client: lambda: _EmbyClient(),
+            get_token_manager: lambda: _TokenManager(),
+            get_party_manager: lambda: _PartyManager(),
+            get_logger: lambda: _Logger(),
+            get_emby_gateway: lambda: gateway,
+        })
+
+        response = TestClient(app).get(
+            "/hls/123/master.m3u8?AudioCodec=aac&AudioCodec=mp3&token=party-token"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(gateway.params, [("AudioCodec", "aac"), ("AudioCodec", "mp3")])
+
     def test_playlist_rejects_foreign_absolute_uri_before_token_injection(self):
         upstream_response = httpx.Response(
             200,
