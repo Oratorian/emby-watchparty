@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 const props = defineProps<{
   title?: string
@@ -16,21 +16,66 @@ const emit = defineEmits<{
 
 const username = ref('')
 const password = ref('')
+const modal = ref<HTMLElement | null>(null)
+const usernameInput = ref<HTMLInputElement | null>(null)
+const submitButton = ref<HTMLButtonElement | null>(null)
+let previousFocus: HTMLElement | null = null
 
 function submit() {
   if (!username.value || !password.value) return
   emit('submit', { username: username.value, password: password.value })
 }
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    emit('cancel')
+    return
+  }
+  if (event.key !== 'Tab' || !modal.value) return
+  const focusable = Array.from(
+    modal.value.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), input:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+    ),
+  )
+  if (!focusable.length) return
+  const first = usernameInput.value || focusable[0]!
+  const last = submitButton.value || focusable[focusable.length - 1]!
+  const active = event.target instanceof HTMLElement ? event.target : document.activeElement
+  if (event.shiftKey && active === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
+onMounted(() => {
+  previousFocus = document.activeElement as HTMLElement | null
+  usernameInput.value?.focus()
+})
+
+onBeforeUnmount(() => {
+  previousFocus?.focus()
+})
 </script>
 
 <template>
-  <div class="modal-overlay" @click.self="emit('cancel')">
-    <div class="modal-card">
-      <h2>{{ props.title || 'Emby Login' }}</h2>
+  <div class="modal-overlay" @click.self="emit('cancel')" @keydown.capture="onKeydown">
+    <div
+      ref="modal"
+      class="modal-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="emby-login-title"
+    >
+      <h2 id="emby-login-title">{{ props.title || 'Emby Login' }}</h2>
       <p v-if="props.description">{{ props.description }}</p>
 
       <form @submit.prevent="submit">
         <input
+          ref="usernameInput"
           v-model="username"
           type="text"
           placeholder="Emby username"
@@ -57,7 +102,12 @@ function submit() {
           >
             Cancel
           </button>
-          <button type="submit" class="btn btn-primary" :disabled="props.busy">
+          <button
+            ref="submitButton"
+            type="submit"
+            class="btn btn-primary"
+            :disabled="props.busy"
+          >
             {{ props.busy ? 'Working...' : (props.submitLabel || 'Sign in') }}
           </button>
         </div>

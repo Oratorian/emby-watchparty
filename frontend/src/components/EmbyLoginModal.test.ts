@@ -16,16 +16,19 @@ describe('EmbyLoginModal accessibility', () => {
     const wrapper = mount(EmbyLoginModal, { attachTo: document.body })
     await nextTick()
 
-    const username = wrapper.get('input[type="text"]').element as HTMLInputElement
-    const submit = wrapper.get('button[type="submit"]').element as HTMLButtonElement
+    const usernameWrapper = wrapper.get('input[type="text"]')
+    const username = usernameWrapper.element as HTMLInputElement
+    const submitWrapper = wrapper.get('button[type="submit"]')
+    const submit = submitWrapper.element as HTMLButtonElement
     expect(document.activeElement).toBe(username)
 
-    username.focus()
-    await wrapper.trigger('keydown', { key: 'Tab', shiftKey: true })
-    expect(document.activeElement).toBe(submit)
-
-    await wrapper.trigger('keydown', { key: 'Escape' })
+    await usernameWrapper.trigger('keydown', { key: 'Escape' })
     expect(wrapper.emitted('cancel')).toHaveLength(1)
+
+    submit.focus()
+    await submitWrapper.trigger('keydown', { key: 'Tab' })
+    expect(document.activeElement).toBe(username)
+
     wrapper.unmount()
     expect(document.activeElement).toBe(trigger)
   })
