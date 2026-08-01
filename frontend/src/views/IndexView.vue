@@ -219,7 +219,11 @@ function joinParty() {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  padding: var(--space-xl);
+  min-height: 100dvh;
+  padding: max(var(--space-xl), env(safe-area-inset-top))
+    max(var(--space-xl), env(safe-area-inset-right))
+    max(var(--space-xl), env(safe-area-inset-bottom))
+    max(var(--space-xl), env(safe-area-inset-left));
 }
 
 .hero {
