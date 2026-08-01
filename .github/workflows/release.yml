@@ -21,7 +21,11 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
+
   build-and-release:
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: write
