@@ -17,6 +17,7 @@ from backend.src.party_manager import PartyManager
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.stream_builder import StreamBuilder
 from backend.src.avatar_store import AvatarStore
+from backend.src.admin_session_store import AdminSessionStore
 
 
 def get_config(request: Request) -> Config:
@@ -50,6 +51,10 @@ def get_sio(request: Request):
 
 def get_avatar_store(request: Request) -> AvatarStore:
     return request.app.state.avatar_store
+
+
+def get_admin_session_store(request: Request) -> AdminSessionStore:
+    return request.app.state.admin_session_store
 
 
 # =============================================================================

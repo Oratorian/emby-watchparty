@@ -22,6 +22,7 @@ import requests as http_requests
 from backend.src.log_levels import apply_log_levels
 from backend.src.dependencies import (
     admin_display_name,
+    get_admin_session_store,
     get_config,
     get_emby_client,
     get_logger,
@@ -84,7 +85,8 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 @router.post("/login", response_model=AdminLoginResponse)
 def admin_login(body: AdminLoginRequest, request: Request,
-                emby_client=Depends(get_emby_client), logger=Depends(get_logger)):
+                emby_client=Depends(get_emby_client), logger=Depends(get_logger),
+                admin_session_store=Depends(get_admin_session_store)):
     """Standalone admin login. Useful when not currently in a party.
 
     Hosts who are already inside a party with admin policy do NOT need
@@ -142,13 +144,31 @@ def admin_login(body: AdminLoginRequest, request: Request,
         request.session["admin_authenticated"] = True
         request.session["admin_username"] = user.get("Name", body.username)
         # Stash the Emby auth so /api/party/create can auto-promote this
-        # admin to host without making them log in a second time. The
-        # cookie is signed by Starlette's SessionMiddleware; storing the
-        # access_token here is the same exposure surface as the cookie
-        # itself, which is already used to bind party-host membership.
-        request.session["admin_emby_token"] = access_token
-        request.session["admin_emby_user_id"] = user_id
-        request.session["admin_emby_is_admin"] = True
+        # admin to host without making them log in a second time.
+        #
+        # The credentials go into a SERVER-SIDE store and only the opaque
+        # handle is put in the cookie. SessionMiddleware signs the cookie
+        # but does not encrypt it -- the payload is base64(json), so
+        # anything written here is readable by anyone holding the cookie.
+        # An Emby admin token grants control of the whole Emby server,
+        # far beyond this app, so it must never be in a client-readable
+        # container. See admin_session_store.py.
+        old_handle = request.session.get("admin_session")
+        if old_handle:
+            admin_session_store.revoke(old_handle)
+        # Scrub the pre-fix keys. An admin upgrading with an existing
+        # cookie still carries a readable token in it; the session dict
+        # is rewritten wholesale on response, so popping here is what
+        # actually removes it from the browser.
+        for _legacy in ("admin_emby_token", "admin_emby_user_id",
+                        "admin_emby_is_admin"):
+            request.session.pop(_legacy, None)
+        request.session["admin_session"] = admin_session_store.create(
+            access_token=access_token,
+            user_id=user_id,
+            username=request.session["admin_username"],
+            is_admin=True,
+        )
         logger.info(f"Admin login: '{request.session['admin_username']}'")
         return {"success": True}
 
@@ -160,14 +180,22 @@ def admin_login(body: AdminLoginRequest, request: Request,
 
 
 @router.post("/logout", response_model=SuccessResponse)
-def admin_logout(request: Request):
+def admin_logout(request: Request,
+                 admin_session_store=Depends(get_admin_session_store)):
     """Clear the standalone admin session.
 
     Does NOT touch host status -- a host who is also admin via Emby
     policy stays admin as long as they remain host.
     """
+    # Drop the server-side credentials too, not just the cookie's handle,
+    # so logout actually destroys the stashed Emby token rather than
+    # merely forgetting where it lives.
+    admin_session_store.revoke(request.session.get("admin_session"))
     request.session.pop("admin_authenticated", None)
     request.session.pop("admin_username", None)
+    request.session.pop("admin_session", None)
+    # Legacy keys from before the token moved server-side. Popped so an
+    # upgrade does not leave a readable token sitting in an old cookie.
     request.session.pop("admin_emby_token", None)
     request.session.pop("admin_emby_user_id", None)
     request.session.pop("admin_emby_is_admin", None)
