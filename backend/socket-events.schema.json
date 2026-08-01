@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "events": {
+  "client_to_server": {
     "auto_advance_cancel": {
       "properties": {
         "party_id": {
@@ -401,6 +401,1510 @@
         "party_id"
       ],
       "title": "PartyPayload",
+      "type": "object"
+    }
+  },
+  "server_to_client": {
+    "all_ready": {
+      "additionalProperties": true,
+      "properties": {
+        "playing": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Playing"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        }
+      },
+      "required": [
+        "time"
+      ],
+      "title": "TimedOutbound",
+      "type": "object"
+    },
+    "auto_advance_cancelled": {
+      "additionalProperties": true,
+      "properties": {
+        "countdown_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Countdown Seconds"
+        },
+        "deadline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline"
+        },
+        "next_index_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Index Number"
+        },
+        "next_item_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Item Id"
+        },
+        "next_title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Title"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "total_episodes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Episodes"
+        }
+      },
+      "title": "AutoAdvanceOutbound",
+      "type": "object"
+    },
+    "auto_advance_fired": {
+      "additionalProperties": true,
+      "properties": {
+        "countdown_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Countdown Seconds"
+        },
+        "deadline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline"
+        },
+        "next_index_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Index Number"
+        },
+        "next_item_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Item Id"
+        },
+        "next_title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Title"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "total_episodes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Episodes"
+        }
+      },
+      "title": "AutoAdvanceOutbound",
+      "type": "object"
+    },
+    "auto_advance_pending": {
+      "additionalProperties": true,
+      "properties": {
+        "countdown_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Countdown Seconds"
+        },
+        "deadline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline"
+        },
+        "next_index_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Index Number"
+        },
+        "next_item_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Item Id"
+        },
+        "next_title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Title"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "total_episodes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Episodes"
+        }
+      },
+      "title": "AutoAdvanceOutbound",
+      "type": "object"
+    },
+    "binge_finished": {
+      "additionalProperties": true,
+      "properties": {
+        "countdown_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Countdown Seconds"
+        },
+        "deadline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline"
+        },
+        "next_index_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Index Number"
+        },
+        "next_item_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Item Id"
+        },
+        "next_title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Title"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "total_episodes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Episodes"
+        }
+      },
+      "title": "AutoAdvanceOutbound",
+      "type": "object"
+    },
+    "binge_watch_state_changed": {
+      "additionalProperties": true,
+      "properties": {
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "available",
+        "active"
+      ],
+      "title": "BingeStateOutbound",
+      "type": "object"
+    },
+    "chat_message": {
+      "additionalProperties": true,
+      "properties": {
+        "avatar_uuid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avatar Uuid"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "username": {
+          "title": "Username",
+          "type": "string"
+        }
+      },
+      "required": [
+        "username",
+        "message"
+      ],
+      "title": "ChatOutbound",
+      "type": "object"
+    },
+    "connected": {
+      "additionalProperties": true,
+      "properties": {
+        "sid": {
+          "title": "Sid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sid"
+      ],
+      "title": "ConnectedOutbound",
+      "type": "object"
+    },
+    "drift_correction": {
+      "additionalProperties": true,
+      "properties": {
+        "playing": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Playing"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        }
+      },
+      "required": [
+        "time"
+      ],
+      "title": "TimedOutbound",
+      "type": "object"
+    },
+    "error": {
+      "additionalProperties": true,
+      "properties": {
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "title": "MessageOutbound",
+      "type": "object"
+    },
+    "force_pause_before_seek": {
+      "additionalProperties": true,
+      "properties": {
+        "playing": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Playing"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        }
+      },
+      "required": [
+        "time"
+      ],
+      "title": "TimedOutbound",
+      "type": "object"
+    },
+    "host_changed": {
+      "additionalProperties": true,
+      "properties": {
+        "host_client_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Client Id"
+        },
+        "host_username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Username"
+        },
+        "is_admin": {
+          "default": false,
+          "title": "Is Admin",
+          "type": "boolean"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "unlocked": {
+          "default": false,
+          "title": "Unlocked",
+          "type": "boolean"
+        }
+      },
+      "title": "HostOutbound",
+      "type": "object"
+    },
+    "host_left": {
+      "additionalProperties": true,
+      "properties": {
+        "host_client_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Client Id"
+        },
+        "host_username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Username"
+        },
+        "is_admin": {
+          "default": false,
+          "title": "Is Admin",
+          "type": "boolean"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "unlocked": {
+          "default": false,
+          "title": "Unlocked",
+          "type": "boolean"
+        }
+      },
+      "title": "HostOutbound",
+      "type": "object"
+    },
+    "host_reclaimed": {
+      "additionalProperties": true,
+      "properties": {
+        "host_client_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Client Id"
+        },
+        "host_username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Username"
+        },
+        "is_admin": {
+          "default": false,
+          "title": "Is Admin",
+          "type": "boolean"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "unlocked": {
+          "default": false,
+          "title": "Unlocked",
+          "type": "boolean"
+        }
+      },
+      "title": "HostOutbound",
+      "type": "object"
+    },
+    "join_rejected": {
+      "additionalProperties": true,
+      "properties": {
+        "no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "No"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "required": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        },
+        "yes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Yes"
+        }
+      },
+      "title": "VoteOutbound",
+      "type": "object"
+    },
+    "join_vote_pending": {
+      "additionalProperties": true,
+      "properties": {
+        "no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "No"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "required": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        },
+        "yes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Yes"
+        }
+      },
+      "title": "VoteOutbound",
+      "type": "object"
+    },
+    "join_vote_resolved": {
+      "additionalProperties": true,
+      "properties": {
+        "no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "No"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "required": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        },
+        "yes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Yes"
+        }
+      },
+      "title": "VoteOutbound",
+      "type": "object"
+    },
+    "join_vote_started": {
+      "additionalProperties": true,
+      "properties": {
+        "no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "No"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "required": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        },
+        "yes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Yes"
+        }
+      },
+      "title": "VoteOutbound",
+      "type": "object"
+    },
+    "join_vote_update": {
+      "additionalProperties": true,
+      "properties": {
+        "no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "No"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "required": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        },
+        "yes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Yes"
+        }
+      },
+      "title": "VoteOutbound",
+      "type": "object"
+    },
+    "members_update": {
+      "additionalProperties": true,
+      "properties": {
+        "members": {
+          "default": [],
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Members",
+          "type": "array"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        },
+        "users": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Users",
+          "type": "array"
+        }
+      },
+      "title": "MembersOutbound",
+      "type": "object"
+    },
+    "party_dissolved": {
+      "additionalProperties": true,
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id",
+        "reason"
+      ],
+      "title": "PartyDissolvedOutbound",
+      "type": "object"
+    },
+    "pause": {
+      "additionalProperties": true,
+      "properties": {
+        "playing": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Playing"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        }
+      },
+      "required": [
+        "time"
+      ],
+      "title": "TimedOutbound",
+      "type": "object"
+    },
+    "play": {
+      "additionalProperties": true,
+      "properties": {
+        "playing": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Playing"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        }
+      },
+      "required": [
+        "time"
+      ],
+      "title": "TimedOutbound",
+      "type": "object"
+    },
+    "ready_check_update": {
+      "additionalProperties": true,
+      "properties": {
+        "ready": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Ready",
+          "type": "array"
+        },
+        "waiting": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Waiting",
+          "type": "array"
+        }
+      },
+      "title": "ReadyOutbound",
+      "type": "object"
+    },
+    "seek": {
+      "additionalProperties": true,
+      "properties": {
+        "playing": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Playing"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        }
+      },
+      "required": [
+        "time"
+      ],
+      "title": "TimedOutbound",
+      "type": "object"
+    },
+    "streams_changed": {
+      "additionalProperties": true,
+      "properties": {
+        "current_time": {
+          "title": "Current Time",
+          "type": "number"
+        },
+        "video": {
+          "additionalProperties": true,
+          "title": "Video",
+          "type": "object"
+        },
+        "was_playing": {
+          "title": "Was Playing",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "video",
+        "current_time",
+        "was_playing"
+      ],
+      "title": "StreamChangedOutbound",
+      "type": "object"
+    },
+    "sync_state": {
+      "additionalProperties": true,
+      "properties": {
+        "binge_watch": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binge Watch"
+        },
+        "current_video": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Video"
+        },
+        "pending_auto_advance": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pending Auto Advance"
+        },
+        "playback_state": {
+          "additionalProperties": true,
+          "title": "Playback State",
+          "type": "object"
+        },
+        "users": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Users",
+          "type": "array"
+        }
+      },
+      "required": [
+        "playback_state"
+      ],
+      "title": "SyncStateOutbound",
+      "type": "object"
+    },
+    "toggle_library": {
+      "additionalProperties": true,
+      "properties": {
+        "show": {
+          "title": "Show",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "show"
+      ],
+      "title": "ToggleLibraryOutbound",
+      "type": "object"
+    },
+    "user_joined": {
+      "additionalProperties": true,
+      "properties": {
+        "members": {
+          "default": [],
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Members",
+          "type": "array"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        },
+        "users": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Users",
+          "type": "array"
+        }
+      },
+      "title": "MembersOutbound",
+      "type": "object"
+    },
+    "user_left": {
+      "additionalProperties": true,
+      "properties": {
+        "members": {
+          "default": [],
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Members",
+          "type": "array"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        },
+        "users": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Users",
+          "type": "array"
+        }
+      },
+      "title": "MembersOutbound",
+      "type": "object"
+    },
+    "video_ended": {
+      "additionalProperties": true,
+      "properties": {},
+      "title": "EmptyOutbound",
+      "type": "object"
+    },
+    "video_selected": {
+      "additionalProperties": true,
+      "properties": {
+        "video": {
+          "additionalProperties": true,
+          "title": "Video",
+          "type": "object"
+        }
+      },
+      "required": [
+        "video"
+      ],
+      "title": "VideoOutbound",
+      "type": "object"
+    },
+    "video_stopped": {
+      "additionalProperties": true,
+      "properties": {},
+      "title": "EmptyOutbound",
       "type": "object"
     }
   }

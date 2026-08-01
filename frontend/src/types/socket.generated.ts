@@ -78,3 +78,191 @@ export interface ClientToServerPayloads {
     "party_id": string
   }
 }
+
+export interface ServerToClientPayloads {
+  "all_ready": {
+    "time": number
+    "username"?: string | null
+    "playing"?: boolean | null
+  }
+  "auto_advance_cancelled": {
+    "next_item_id"?: string | null
+    "next_title"?: string | null
+    "next_index_number"?: number | null
+    "total_episodes"?: number | null
+    "deadline"?: string | null
+    "countdown_seconds"?: number | null
+    "reason"?: string | null
+  }
+  "auto_advance_fired": {
+    "next_item_id"?: string | null
+    "next_title"?: string | null
+    "next_index_number"?: number | null
+    "total_episodes"?: number | null
+    "deadline"?: string | null
+    "countdown_seconds"?: number | null
+    "reason"?: string | null
+  }
+  "auto_advance_pending": {
+    "next_item_id"?: string | null
+    "next_title"?: string | null
+    "next_index_number"?: number | null
+    "total_episodes"?: number | null
+    "deadline"?: string | null
+    "countdown_seconds"?: number | null
+    "reason"?: string | null
+  }
+  "binge_finished": {
+    "next_item_id"?: string | null
+    "next_title"?: string | null
+    "next_index_number"?: number | null
+    "total_episodes"?: number | null
+    "deadline"?: string | null
+    "countdown_seconds"?: number | null
+    "reason"?: string | null
+  }
+  "binge_watch_state_changed": {
+    "available": boolean
+    "active": boolean
+  }
+  "chat_message": {
+    "username": string
+    "message": string
+    "avatar_uuid"?: string | null
+  }
+  "connected": {
+    "sid": string
+  }
+  "drift_correction": {
+    "time": number
+    "username"?: string | null
+    "playing"?: boolean | null
+  }
+  "error": {
+    "message": string
+  }
+  "force_pause_before_seek": {
+    "time": number
+    "username"?: string | null
+    "playing"?: boolean | null
+  }
+  "host_changed": {
+    "host_username"?: string | null
+    "host_client_id"?: string | null
+    "is_admin"?: boolean
+    "unlocked"?: boolean
+    "reason"?: string | null
+  }
+  "host_left": {
+    "host_username"?: string | null
+    "host_client_id"?: string | null
+    "is_admin"?: boolean
+    "unlocked"?: boolean
+    "reason"?: string | null
+  }
+  "host_reclaimed": {
+    "host_username"?: string | null
+    "host_client_id"?: string | null
+    "is_admin"?: boolean
+    "unlocked"?: boolean
+    "reason"?: string | null
+  }
+  "join_rejected": {
+    "result"?: string | null
+    "username"?: string | null
+    "yes"?: number | null
+    "no"?: number | null
+    "required"?: number | null
+    "reason"?: string | null
+  }
+  "join_vote_pending": {
+    "result"?: string | null
+    "username"?: string | null
+    "yes"?: number | null
+    "no"?: number | null
+    "required"?: number | null
+    "reason"?: string | null
+  }
+  "join_vote_resolved": {
+    "result"?: string | null
+    "username"?: string | null
+    "yes"?: number | null
+    "no"?: number | null
+    "required"?: number | null
+    "reason"?: string | null
+  }
+  "join_vote_started": {
+    "result"?: string | null
+    "username"?: string | null
+    "yes"?: number | null
+    "no"?: number | null
+    "required"?: number | null
+    "reason"?: string | null
+  }
+  "join_vote_update": {
+    "result"?: string | null
+    "username"?: string | null
+    "yes"?: number | null
+    "no"?: number | null
+    "required"?: number | null
+    "reason"?: string | null
+  }
+  "members_update": {
+    "users"?: string[]
+    "members"?: Record<string, unknown>[]
+    "username"?: string | null
+  }
+  "party_dissolved": {
+    "party_id": string
+    "reason": string
+  }
+  "pause": {
+    "time": number
+    "username"?: string | null
+    "playing"?: boolean | null
+  }
+  "play": {
+    "time": number
+    "username"?: string | null
+    "playing"?: boolean | null
+  }
+  "ready_check_update": {
+    "ready"?: string[]
+    "waiting"?: string[]
+  }
+  "seek": {
+    "time": number
+    "username"?: string | null
+    "playing"?: boolean | null
+  }
+  "streams_changed": {
+    "video": Record<string, unknown>
+    "current_time": number
+    "was_playing": boolean
+  }
+  "sync_state": {
+    "current_video"?: Record<string, unknown> | null
+    "playback_state": Record<string, unknown>
+    "users"?: string[]
+    "binge_watch"?: Record<string, unknown> | null
+    "pending_auto_advance"?: Record<string, unknown> | null
+  }
+  "toggle_library": {
+    "show": boolean
+  }
+  "user_joined": {
+    "users"?: string[]
+    "members"?: Record<string, unknown>[]
+    "username"?: string | null
+  }
+  "user_left": {
+    "users"?: string[]
+    "members"?: Record<string, unknown>[]
+    "username"?: string | null
+  }
+  "video_ended": Record<string, never>
+  "video_selected": {
+    "video": Record<string, unknown>
+  }
+  "video_stopped": Record<string, never>
+}
