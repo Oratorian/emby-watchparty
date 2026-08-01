@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Dict, Optional
 
 from backend.src.config import Config
+from backend.src.domain import Party
 from backend.src.utils import generate_party_code
 
 
@@ -92,7 +93,7 @@ class PartyManager:
     """
 
     def __init__(self, config: Config, logger: logging.Logger):
-        self.watch_parties: Dict[str, dict] = {}
+        self.watch_parties: Dict[str, Party] = {}
         self._party_locks: dict[str, asyncio.Lock] = {}
         self._config = config
         self._logger = logger
@@ -114,62 +115,11 @@ class PartyManager:
             return self._config.STATIC_SESSION_ID.upper()
         return None
 
-    def _new_party_dict(self, party_id: str) -> dict:
+    def _new_party_dict(self, party_id: str) -> Party:
         """Create a raw party dict in the old format"""
-        return {
-            "id": party_id,
-            "created_at": datetime.now().isoformat(),
-            "users": {},
-            "participants": {},
-            "sid_client_ids": {},
-            "current_video": None,
-            "user_streams": {},
-            "playback_state": {
-                "playing": False,
-                "time": 0,
-                "last_update": datetime.now().isoformat(),
-            },
-            "ready_check": None,
-            "pending_join": None,
-            # Unix timestamp after which a new late-joiner vote can be
-            # triggered. Set after every failed/cancelled vote to prevent
-            # spam attacks. None or 0 means no cooldown active.
-            "join_cooldown_until": 0,
-            # Host = the Emby-authenticated member whose access_token signs
-            # every Emby call for this party. host_left_at is set when the
-            # host's socket drops; the grace window in connection.py
-            # decides whether to clear or restore.
-            "host_client_id": None,
-            "host_user_id": None,
-            "host_access_token": None,
-            "host_is_admin": False,
-            "host_username": None,
-            "host_left_at": None,
-            # Binge-watching: per-party host opt-in (admin gates whether
-            # the host even sees the button). The active flag is only
-            # meaningful when config.BINGE_WATCH_ENABLED is True; if the
-            # admin flips that off mid-session the server emits
-            # binge_watch_state_changed with available=False and any
-            # pending auto-advance is cancelled.
-            "binge_watch_active": False,
-            # Cached episode list for the season the currently-playing
-            # item belongs to. Populated by select_video when the item
-            # is an Episode and we've fetched its siblings; cleared when
-            # a non-Episode item is selected or when a different season
-            # is picked. Each entry is the trimmed Emby item dict (id,
-            # name, IndexNumber, ParentIndexNumber, etc.) sufficient to
-            # decide what "next" is.
-            "episode_list": None,
-            "episode_list_season_id": None,
-            # Auto-advance state. When video_ended fires on an Episode
-            # and binge_watch_active is True with a next episode in the
-            # list, this is populated with the pending advance + a
-            # deadline; the watchdog task either fires it or clears it
-            # on cancel. None when no advance is queued.
-            "pending_auto_advance": None,
-        }
+        return Party.create(party_id)
 
-    def _create_party_dict(self, party_id: str) -> dict:
+    def _create_party_dict(self, party_id: str) -> Party:
         """Create and store a party dict"""
         party = self._new_party_dict(party_id)
         self.watch_parties[party_id] = party
@@ -204,14 +154,14 @@ class PartyManager:
         self._create_party_dict(party_id)
         return party_id
 
-    def get(self, party_id: str) -> Optional[dict]:
+    def get(self, party_id: str) -> Optional[Party]:
         """Get a party dict by ID, or None"""
         return self.watch_parties.get(party_id)
 
     def exists(self, party_id: str) -> bool:
         return party_id in self.watch_parties
 
-    def get_all(self) -> Dict[str, dict]:
+    def get_all(self) -> Dict[str, Party]:
         """Get the raw watch_parties dict (for backward compat)"""
         return self.watch_parties
 
