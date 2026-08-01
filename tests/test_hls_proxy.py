@@ -65,7 +65,7 @@ class _HTTPClient:
         self.response = response
 
     async def get(self, *_args, **_kwargs):
-        self.params = kwargs.get("params")
+        self.params = _kwargs.get("params")
         return self.response
 
     def build_request(self, method, url, **kwargs):
@@ -75,7 +75,7 @@ class _HTTPClient:
         return self.response
 
     async def open_stream(self, *_args, **_kwargs):
-        self.params = kwargs.get("params")
+        self.params = _kwargs.get("params")
         return self.response
 
 def _client(upstream_response):

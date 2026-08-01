@@ -51,10 +51,10 @@ _ALLOWED_EMBY_PARAMS = {
 
 def _sanitize_query(query_items):
     """Drop `token` (our own) and anything not on the Emby allowlist."""
-    return {
-        k: v for k, v in query_items
+    return [
+        (k, v) for k, v in query_items
         if k != "token" and k in _ALLOWED_EMBY_PARAMS
-    }
+    ]
 
 
 def _safe_hls_subpath(subpath: str) -> bool:
@@ -181,7 +181,7 @@ async def proxy_hls_master(item_id: str, request: Request,
                 media_type="application/json",
             )
 
-        query_params = _sanitize_query(request.query_params.items())
+        query_params = _sanitize_query(request.query_params.multi_items())
         emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/master.m3u8"
 
         logger.debug(f"Proxying HLS master: {emby_url}")
@@ -258,7 +258,7 @@ async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
                 media_type="application/json",
             )
 
-        query_params = _sanitize_query(request.query_params.items())
+        query_params = _sanitize_query(request.query_params.multi_items())
         emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/{subpath}"
 
         logger.debug(f"Proxying HLS segment: {subpath} -> {emby_url}")
