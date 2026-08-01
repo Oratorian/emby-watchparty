@@ -8,7 +8,7 @@
 # Stage 2 installs the Python backend, drops the built frontend into
 # backend/static, and serves both via uvicorn on port 5000.
 
-FROM node:20-alpine AS frontend-build
+FROM node:24-alpine AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
