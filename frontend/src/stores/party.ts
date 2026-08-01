@@ -44,6 +44,16 @@ export const usePartyStore = defineStore('party', () => {
   const readyUsers = ref<string[]>([])
   const waitingUsers = ref<string[]>([])
 
+  // Non-null when the party-bound session cookie could not be minted.
+  // Every protected HTTP route depends on that cookie, /hls included, so
+  // without it playback 401s on every segment while chat and the
+  // participant list keep working over the socket -- i.e. the party
+  // looks healthy and only the video is dead. That used to be swallowed
+  // silently; surfacing it is the difference between a self-service
+  // retry and an unreproducible "video won't load for one person".
+  const sessionError = ref<string | null>(null)
+  const sessionRetrying = ref(false)
+
   // Binge-watch state. `available` is the admin master toggle; when
   // false, the control-strip button is hidden entirely. `active` is
   // the host's per-party opt-in (only meaningful when available=true).
@@ -91,7 +101,6 @@ export const usePartyStore = defineStore('party', () => {
   async function join(id: string, name: string) {
     const socket = useSocketStore()
     const avatar = useAvatarStore()
-    const auth = useAuthStore()
     partyId.value = id.toUpperCase()
     username.value = name
     const clientId = getClientId()
@@ -101,28 +110,75 @@ export const usePartyStore = defineStore('party', () => {
       try { await avatar.load() } catch { /* ignore */ }
     }
     const avatarUuid = avatar.uuid
-    // Set the party-bound session cookie before the socket connects.
-    // The cookie is what every protected HTTP route and the socket
-    // handshake will use to authenticate this caller.
-    try {
-      await api.joinParty(partyId.value, clientId, name || 'Guest', avatarUuid)
-      // The cookie is now bound. Re-read auth state so partyUnlocked
-      // and hostUsername reflect this party, not the empty pre-join
-      // status. Otherwise late joiners briefly render "Party is
-      // locked" until the next host_changed event (which never fires
-      // for a party that was already unlocked when they joined).
-      try { await auth.refresh() } catch { /* ignore */ }
-    } catch {
-      // Best-effort: even if the cookie call fails, the socket join
-      // event below carries the same identity so we fall back to
-      // socket-only auth during the transition.
-    }
+    await bindSession(clientId, name, avatarUuid)
     socket.emit('join_party', {
       party_id: partyId.value,
       username: name,
       client_id: clientId,
       avatar_uuid: avatarUuid,
     })
+  }
+
+  // Remembered so retrySession() can re-run the join without the caller
+  // having to thread the original arguments back through the UI.
+  let lastJoinArgs: { clientId: string; name: string; avatarUuid: string | null } | null = null
+
+  /**
+   * Mint the party-bound session cookie.
+   *
+   * The cookie authenticates every protected HTTP route and the socket
+   * handshake. One transient retry covers the common case (a blip while
+   * the tab is waking, a server still coming up); anything past that is
+   * surfaced rather than swallowed, because socket-only auth is no
+   * longer enough to play video.
+   */
+  async function bindSession(clientId: string, name: string, avatarUuid: string | null) {
+    lastJoinArgs = { clientId, name, avatarUuid }
+    const auth = useAuthStore()
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await api.joinParty(partyId.value!, clientId, name || 'Guest', avatarUuid)
+        // The cookie is now bound. Re-read auth state so partyUnlocked
+        // and hostUsername reflect this party, not the empty pre-join
+        // status. Otherwise late joiners briefly render "Party is
+        // locked" until the next host_changed event (which never fires
+        // for a party that was already unlocked when they joined).
+        try { await auth.refresh() } catch { /* ignore */ }
+        sessionError.value = null
+        return true
+      } catch (e: any) {
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 600))
+          continue
+        }
+        sessionError.value =
+          e?.message || 'Could not authenticate with the server.'
+      }
+    }
+    return false
+  }
+
+  /** Re-attempt the session cookie after a visible failure. */
+  async function retrySession() {
+    if (!lastJoinArgs || !partyId.value || sessionRetrying.value) return false
+    sessionRetrying.value = true
+    try {
+      const { clientId, name, avatarUuid } = lastJoinArgs
+      const ok = await bindSession(clientId, name, avatarUuid)
+      if (ok) {
+        // Re-announce over the socket so the server re-binds this sid
+        // and re-issues a stream URL against the now-valid session.
+        useSocketStore().emit('join_party', {
+          party_id: partyId.value,
+          username: name,
+          client_id: clientId,
+          avatar_uuid: avatarUuid,
+        })
+      }
+      return ok
+    } finally {
+      sessionRetrying.value = false
+    }
   }
 
   async function leave() {
@@ -137,6 +193,8 @@ export const usePartyStore = defineStore('party', () => {
     try { await api.leaveParty() } catch { /* best effort */ }
     try { await auth.refresh() } catch { /* ignore */ }
     partyId.value = null
+    sessionError.value = null
+    lastJoinArgs = null
     users.value = []
     currentVideo.value = null
     myStreamUrl.value = null
@@ -516,7 +574,8 @@ export const usePartyStore = defineStore('party', () => {
     myStreamUrl, streamOffset, readyCheckActive, readyUsers, waitingUsers,
     pendingVote,
     bingeWatch, pendingAutoAdvance,
-    join, leave, setupListeners, submitVote,
+    sessionError, sessionRetrying,
+    join, leave, setupListeners, submitVote, retrySession,
     setBingeWatchActive, cancelAutoAdvance,
   }
 })

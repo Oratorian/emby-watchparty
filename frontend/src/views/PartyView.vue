@@ -1426,6 +1426,29 @@ async function submitBecomeHost(payload: { username: string; password: string })
       <span class="spinner spinner-inline" />
       Reconnecting to party…
     </div>
+    <!-- Session banner: the party-bound cookie could not be minted, so
+         every protected HTTP route (including /hls) will 401. Chat and
+         the participant list still work over the socket, so without
+         this the party looks healthy and only the video is dead --
+         which is close to undiagnosable from a bug report. -->
+    <div
+      v-if="party.sessionError"
+      class="session-banner"
+      role="alert"
+      aria-live="assertive"
+    >
+      <span>
+        Could not authenticate with the server, so video will not load.
+        Chat and the participant list still work.
+      </span>
+      <button
+        class="session-retry"
+        :disabled="party.sessionRetrying"
+        @click="party.retrySession()"
+      >
+        {{ party.sessionRetrying ? 'Retrying…' : 'Retry' }}
+      </button>
+    </div>
     <header class="party-header">
       <div class="header-left">
         <button
@@ -1838,6 +1861,42 @@ async function submitBecomeHost(payload: { username: string; password: string })
   border-top-color: #ffcf6b;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+}
+
+/* ─── Session Banner ─── */
+.session-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(255, 70, 90, 0.15);
+  color: #ff9aa8;
+  border-bottom: 1px solid rgba(255, 70, 90, 0.35);
+  font-size: 0.9rem;
+  font-weight: 500;
+  z-index: 100;
+}
+
+.session-retry {
+  padding: 2px var(--space-sm);
+  background: rgba(255, 70, 90, 0.2);
+  color: #ff9aa8;
+  border: 1px solid rgba(255, 70, 90, 0.45);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.session-retry:hover:not(:disabled) {
+  background: rgba(255, 70, 90, 0.32);
+}
+
+.session-retry:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* ─── Party Layout ─── */
