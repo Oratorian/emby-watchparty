@@ -103,6 +103,7 @@ html {
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   font-family: var(--font-sans);
   /* Inter character variants and stylistic sets give the panel chrome
      a slightly more geometric, less browser-y feel. cv02/cv11 swap the

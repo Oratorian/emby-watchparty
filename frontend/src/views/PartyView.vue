@@ -1837,6 +1837,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   background: var(--bg-primary);
 }
 
@@ -1844,7 +1845,9 @@ async function submitBecomeHost(payload: { username: string; password: string })
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 var(--space-md);
+  padding: env(safe-area-inset-top)
+    max(var(--space-md), env(safe-area-inset-right)) 0
+    max(var(--space-md), env(safe-area-inset-left));
   height: 80px;
   background: rgba(11, 14, 28, 0.5);
   backdrop-filter: blur(20px) saturate(180%);
@@ -2623,6 +2626,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
     transform: translateX(100%);
     transition: transform var(--transition-fast);
     box-shadow: var(--shadow-lg);
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .chat-panel.chat-mobile-open {
