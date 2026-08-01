@@ -1,0 +1,407 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "events": {
+    "auto_advance_cancel": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id"
+      ],
+      "title": "PartyPayload",
+      "type": "object"
+    },
+    "change_streams": {
+      "properties": {
+        "audio_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audio Index"
+        },
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quality"
+        },
+        "subtitle_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle Index"
+        }
+      },
+      "required": [
+        "party_id"
+      ],
+      "title": "ChangeStreamsPayload",
+      "type": "object"
+    },
+    "chat_message": {
+      "properties": {
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id",
+        "message"
+      ],
+      "title": "ChatPayload",
+      "type": "object"
+    },
+    "heartbeat": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        }
+      },
+      "required": [
+        "party_id",
+        "time"
+      ],
+      "title": "TimedPartyPayload",
+      "type": "object"
+    },
+    "join_party": {
+      "properties": {
+        "avatar_uuid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avatar Uuid"
+        },
+        "client_id": {
+          "default": "",
+          "title": "Client Id",
+          "type": "string"
+        },
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "username": {
+          "default": "",
+          "title": "Username",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id"
+      ],
+      "title": "JoinPartyPayload",
+      "type": "object"
+    },
+    "join_vote": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "vote": {
+          "enum": [
+            "yes",
+            "no"
+          ],
+          "title": "Vote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id",
+        "vote"
+      ],
+      "title": "JoinVotePayload",
+      "type": "object"
+    },
+    "leave_party": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id"
+      ],
+      "title": "PartyPayload",
+      "type": "object"
+    },
+    "pause": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        }
+      },
+      "required": [
+        "party_id",
+        "time"
+      ],
+      "title": "TimedPartyPayload",
+      "type": "object"
+    },
+    "play": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        }
+      },
+      "required": [
+        "party_id",
+        "time"
+      ],
+      "title": "TimedPartyPayload",
+      "type": "object"
+    },
+    "report_progress": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        }
+      },
+      "required": [
+        "party_id",
+        "time"
+      ],
+      "title": "TimedPartyPayload",
+      "type": "object"
+    },
+    "seek": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        },
+        "was_playing": {
+          "default": false,
+          "title": "Was Playing",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "party_id",
+        "time"
+      ],
+      "title": "SeekPayload",
+      "type": "object"
+    },
+    "select_video": {
+      "properties": {
+        "item_id": {
+          "title": "Item Id",
+          "type": "string"
+        },
+        "item_name": {
+          "default": "Unknown",
+          "title": "Item Name",
+          "type": "string"
+        },
+        "item_overview": {
+          "default": "",
+          "title": "Item Overview",
+          "type": "string"
+        },
+        "media_source_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Source Id"
+        },
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quality"
+        },
+        "start_seconds": {
+          "default": 0.0,
+          "title": "Start Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "party_id",
+        "item_id"
+      ],
+      "title": "SelectVideoPayload",
+      "type": "object"
+    },
+    "set_binge_watch_active": {
+      "properties": {
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id",
+        "active"
+      ],
+      "title": "BingeWatchPayload",
+      "type": "object"
+    },
+    "stop_video": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id"
+      ],
+      "title": "PartyPayload",
+      "type": "object"
+    },
+    "stream_ready": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id"
+      ],
+      "title": "PartyPayload",
+      "type": "object"
+    },
+    "toggle_library": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "show": {
+          "title": "Show",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "party_id",
+        "show"
+      ],
+      "title": "ToggleLibraryPayload",
+      "type": "object"
+    },
+    "update_avatar": {
+      "properties": {
+        "avatar_uuid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avatar Uuid"
+        },
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id"
+      ],
+      "title": "UpdateAvatarPayload",
+      "type": "object"
+    },
+    "video_ended": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id"
+      ],
+      "title": "PartyPayload",
+      "type": "object"
+    }
+  }
+}

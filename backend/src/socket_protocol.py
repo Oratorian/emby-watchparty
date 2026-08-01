@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import wraps
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -31,7 +31,7 @@ class JoinPartyPayload(PartyPayload):
 
 
 class JoinVotePayload(PartyPayload):
-    vote: bool
+    vote: Literal["yes", "no"]
 
 
 class UpdateAvatarPayload(PartyPayload):
@@ -52,6 +52,7 @@ class SelectVideoPayload(PartyPayload):
     item_overview: str = ""
     media_source_id: str | None = None
     start_seconds: float = 0.0
+    quality: str | None = None
 
 
 class ChangeStreamsPayload(PartyPayload):

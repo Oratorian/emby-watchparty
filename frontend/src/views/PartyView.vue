@@ -606,7 +606,7 @@ onMounted(async () => {
   watch(() => avatar.uuid, (newUuid) => {
     if (!party.partyId) return
     socket.emit('update_avatar', {
-      party_id: party.partyId,
+      party_id: party.partyId!,
       avatar_uuid: newUuid,
     })
   })
@@ -787,7 +787,7 @@ function submitJoin() {
 function sendChat() {
   if (!chatInput.value.trim() || !party.partyId) return
   socket.emit('chat_message', {
-    party_id: party.partyId,
+    party_id: party.partyId!,
     message: chatInput.value.trim(),
   })
   chatInput.value = ''
@@ -1113,7 +1113,7 @@ function onVideoSeeked(_time: number) {
 
     const mediaTime = toMediaTime(ve.currentTime)
     socket.emit('seek', {
-      party_id: party.partyId,
+      party_id: party.partyId!,
       time: mediaTime,
       was_playing: wasPlayingBeforeSeek,
     })
@@ -1346,9 +1346,9 @@ function onSkipIntro(endTime: number) {
 function toggleLibrary() {
   showLibrary.value = !showLibrary.value
   if (showLibrary.value) {
-    socket.emit('toggle_library', { party_id: party.partyId, show: true })
+    socket.emit('toggle_library', { party_id: party.partyId!, show: true })
   } else {
-    socket.emit('toggle_library', { party_id: party.partyId, show: false })
+    socket.emit('toggle_library', { party_id: party.partyId!, show: false })
   }
 }
 

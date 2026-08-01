@@ -39,25 +39,7 @@ export interface ServerToClientEvents {
   error: (data: SocketPayload) => void
 }
 
-type Emit = (data: SocketPayload) => void
-
-export interface ClientToServerEvents {
-  join_party: Emit
-  leave_party: Emit
-  join_vote: Emit
-  update_avatar: Emit
-  chat_message: Emit
-  select_video: Emit
-  stop_video: Emit
-  change_streams: Emit
-  play: Emit
-  pause: Emit
-  seek: Emit
-  video_ended: Emit
-  stream_ready: Emit
-  heartbeat: Emit
-  report_progress: Emit
-  toggle_library: Emit
-  set_binge_watch_active: Emit
-  auto_advance_cancel: Emit
+export type ClientToServerEvents = {
+  [Event in keyof ClientToServerPayloads]: (data: ClientToServerPayloads[Event]) => void
 }
+import type { ClientToServerPayloads } from './socket.generated'
