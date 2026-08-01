@@ -155,9 +155,10 @@ rogue `api_key=` into the upstream Emby request.
 
 #### Session Security
 
-- Cookie signing key comes from `SESSION_SECRET` in `.env` (new in
-  2.0.0-beta18). Persistent across restarts and workers. Empty =
-  ephemeral fallback with loud warning at boot.
+- Cookie signing key comes from `SESSION_SECRET` in `.env`. Keep it
+  persistent across restarts. Empty means an ephemeral fallback with
+  a loud warning at boot. Multi-worker deployment is unsupported because
+  security and party registries are process-local; run exactly one worker.
 - Cookie name is `ewp_session` (was `session` prior to beta18; the
   rename means upgrading from earlier 2.0 betas invalidates every
   existing session and re-prompts users to join).

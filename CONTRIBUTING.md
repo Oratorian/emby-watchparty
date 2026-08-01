@@ -51,7 +51,7 @@ By participating in this project, you agree to maintain a respectful and inclusi
 3. **Install dependencies**
 
    ```bash
-   pip install -r requirements.txt
+   pip install -r requirements-dev.txt
    ```
 
 4. **Configure the application**
