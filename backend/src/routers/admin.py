@@ -26,7 +26,6 @@ from backend.src.dependencies import (
     get_logger,
     get_party_manager,
     get_sio,
-    get_token_manager,
     is_admin_authenticated,
 )
 from backend.src.schemas import (
@@ -136,39 +135,12 @@ def get_config_values(
     return config.get_runtime_dict()
 
 
-async def _dissolve_party(party_id: str, sio, token_manager, logger):
-    """Tear down a party that was just deleted from PartyManager.
-
-    1. Tell every connected member to go back to the index ('party_dissolved').
-    2. Close the Socket.IO room so future emits do not reach them.
-    3. Revoke every cached HLS token issued for this party so leftover
-       stream URLs stop working immediately.
-    """
-    try:
-        await sio.emit(
-            "party_dissolved",
-            {"party_id": party_id, "reason": "static_session_disabled"},
-            room=party_id,
-        )
-    except Exception as e:
-        logger.warning(f"Failed to emit party_dissolved for {party_id}: {e}")
-    try:
-        await sio.close_room(party_id)
-    except Exception as e:
-        logger.warning(f"Failed to close room {party_id}: {e}")
-    try:
-        token_manager.revoke_party(party_id)
-    except Exception as e:
-        logger.warning(f"Failed to revoke tokens for {party_id}: {e}")
-
-
 @router.put("/config", response_model=ConfigUpdateResponse)
 async def update_config(
     request: Request,
     body: ConfigUpdateRequest,
     config=Depends(get_config),
     party_manager=Depends(get_party_manager),
-    token_manager=Depends(get_token_manager),
     sio=Depends(get_sio),
     logger=Depends(get_logger),
     admin_session_store=Depends(get_admin_session_store),
@@ -219,7 +191,10 @@ async def update_config(
         if {'STATIC_SESSION_ENABLED', 'STATIC_SESSION_ID'} & set(changed):
             _, dissolved = party_manager.sync_static_party()
             if dissolved:
-                await _dissolve_party(dissolved, sio, token_manager, logger)
+                lifecycle = request.app.state.socket_context["party_lifecycle"]
+                await lifecycle.dissolve(
+                    dissolved, reason="static_session_disabled"
+                )
 
         # Binge-watch master toggle changed: propagate to every live
         # party so the control-strip button appears / disappears

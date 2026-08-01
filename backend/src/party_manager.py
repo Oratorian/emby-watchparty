@@ -199,9 +199,8 @@ class PartyManager:
         if self._last_static_id and self._last_static_id != cfg_id:
             old = self._last_static_id
             if old in self.watch_parties:
-                del self.watch_parties[old]
                 dissolved = old
-                self._logger.info(f"Removed previous static party: {old}")
+                self._logger.info(f"Reserved previous static party for dissolution: {old}")
 
         if cfg_id and cfg_id not in self.watch_parties:
             self._create_party_dict(cfg_id)
