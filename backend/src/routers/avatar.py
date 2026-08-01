@@ -13,7 +13,6 @@ Serving:
 """
 
 import asyncio
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -69,26 +68,8 @@ class RecoverResponse(BaseModel):
 # Rate limiting for /recover
 # =============================================================================
 
-_RECOVER_BUCKETS: dict[str, list[float]] = {}
 _RECOVER_MAX = 10  # attempts per window
-_RECOVER_WINDOW = 3600.0  # 1 hour
-
-
-def _check_recover_rate(ip: str) -> bool:
-    """Allow at most _RECOVER_MAX recover attempts per IP per window.
-
-    Trivial fixed-window sliding implementation suitable for the MVP;
-    swap out for slowapi if the dedicated rate limiter wires in later.
-    """
-    now = time.monotonic()
-    bucket = _RECOVER_BUCKETS.get(ip, [])
-    bucket = [t for t in bucket if now - t < _RECOVER_WINDOW]
-    if len(bucket) >= _RECOVER_MAX:
-        _RECOVER_BUCKETS[ip] = bucket
-        return False
-    bucket.append(now)
-    _RECOVER_BUCKETS[ip] = bucket
-    return True
+_RECOVER_WINDOW = 3600  # 1 hour
 
 
 # =============================================================================
@@ -176,11 +157,15 @@ def recover(
     """Trade a recovery code for the avatar uuid it unlocks."""
     config = request.app.state.config
     ip = request_client_ip(request, config.TRUSTED_PROXY_CIDRS)
-    if not _check_recover_rate(ip):
+    decision = request.app.state.rate_limiter.check(
+        f"avatar-recover:{ip}", _RECOVER_MAX, _RECOVER_WINDOW
+    )
+    if not decision.allowed:
         logger.warning(f"Avatar recover rate-limited for ip={ip}")
         raise HTTPException(
             status_code=429,
             detail="Too many recovery attempts. Try again later.",
+            headers={"Retry-After": str(decision.retry_after)},
         )
 
     code = (body.code or "").strip().lower()
