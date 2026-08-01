@@ -225,7 +225,7 @@ def proxy_hls_segment(item_id: str, subpath: str, request: Request,
         logger.debug(f"Proxying HLS segment: {subpath} -> {emby_url}")
 
         if subpath.endswith(".m3u8"):
-            emby_resp = httpx.get(emby_url, headers=emby_client._headers(access_token, user_id))
+            emby_resp = httpx.get(emby_url, headers=emby_client._headers(access_token, user_id), timeout=_EMBY_HTTP_TIMEOUT)
             emby_resp.raise_for_status()
             token = request.query_params.get("token") if config.ENABLE_HLS_TOKEN_VALIDATION else None
             playlist = _rewrite_playlist(
