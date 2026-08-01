@@ -1,35 +1,28 @@
 import { expect, test } from '@playwright/test'
 
-test.beforeEach(async ({ page }) => {
-  await page.route('**/*', async route => {
-    const path = new URL(route.request().url()).pathname
-    if (!path.startsWith('/api/')) {
-      await route.continue()
-      return
-    }
-    let body: object = {}
-    if (path.endsWith('/auth/status')) {
-      body = {
-        authenticated: false,
-        is_admin: false,
-        require_login: false,
-        is_host: false,
-        party_id: null,
-        host_username: null,
-        party_unlocked: false,
-      }
-    } else if (path.endsWith('/party/static-session')) {
-      body = { party_id: null }
-    } else if (path.endsWith('/party/list')) {
-      body = { require_login: false, parties: [] }
-    }
-    await route.fulfill({ json: body })
-  })
-})
-
 test('landing page validates an empty party code', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Emby Watch Party' })).toBeVisible()
   await page.getByRole('button', { name: 'Join', exact: true }).click()
   await expect(page.getByText('Please enter a valid party code')).toBeVisible()
+})
+
+test('host creates party and a second browser joins', async ({ browser, page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await expect(page).toHaveURL(/\/party\/[A-Z0-9]+$/)
+  const partyUrl = page.url()
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+  await expect(page.getByText('1 watching')).toBeVisible()
+
+  const guestContext = await browser.newContext()
+  const guest = await guestContext.newPage()
+  await guest.goto(partyUrl)
+  await guest.getByPlaceholder('Your name (optional)').fill('Bob')
+  await guest.getByRole('button', { name: 'Join', exact: true }).click()
+
+  await expect(page.getByText('2 watching')).toBeVisible()
+  await expect(guest.getByText('2 watching')).toBeVisible()
+  await guestContext.close()
 })

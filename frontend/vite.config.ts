@@ -4,6 +4,8 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
+const backendTarget = process.env.VITE_BACKEND_TARGET || 'http://127.0.0.1:5000'
+
 export default defineConfig({
   // Relative base so all asset URLs in the built index.html are
   // resolved against the document's URL at runtime. That lets the
@@ -48,10 +50,10 @@ export default defineConfig({
     // if you'd rather not expose it on every interface.
     host: false,
     proxy: {
-      '/api': 'http://localhost:5000',
-      '/hls': 'http://localhost:5000',
+      '/api': backendTarget,
+      '/hls': backendTarget,
       '/socket.io': {
-        target: 'http://localhost:5000',
+        target: backendTarget,
         ws: true,
       },
     },

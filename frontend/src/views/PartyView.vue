@@ -115,6 +115,7 @@ const adminModalShellRef = ref<HTMLElement | null>(null)
 const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const currentTime = ref(0)
 let pendingPauseTimer: ReturnType<typeof setTimeout> | null = null
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null
 
 // True while my own HLS stream is reloading (after change_streams). Used
 // to distinguish "I am the user whose stream changed" from "I am an
@@ -429,7 +430,7 @@ onMounted(async () => {
   // it. This tick re-asserts the authoritative play/pause state each
   // interval, wrapped in isSyncing so the corrective play()/pause()
   // never re-emits and flaps.
-  const heartbeatInterval = setInterval(() => {
+  heartbeatInterval = setInterval(() => {
     const vp = videoPlayer.value
     const ve = vp?.videoEl
     if (!ve || !ve.src || ve.readyState < 2 || ve.ended) return
@@ -470,10 +471,6 @@ onMounted(async () => {
       socket.emit('heartbeat', { party_id: party.partyId, time: ve.currentTime })
     }
   }, 5000)
-
-  onUnmounted(() => {
-    clearInterval(heartbeatInterval)
-  })
 
   // All users buffered after a seek -- resume playback together
   const resumeAfterReadyCheck = (data?: any) => {
@@ -619,6 +616,10 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval)
+    heartbeatInterval = null
+  }
   if (pendingPauseTimer) {
     clearTimeout(pendingPauseTimer)
     pendingPauseTimer = null
