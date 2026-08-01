@@ -15,10 +15,15 @@ from backend.src.config import Config
 class HLSTokenManager:
     """Manages HLS stream access tokens"""
 
-    def __init__(self, config: Config, logger: logging.Logger):
+    def __init__(self, config: Config, logger: logging.Logger, max_tokens: int = 10_000):
         self._tokens: Dict[str, dict] = {}
         self._config = config
         self._logger = logger
+        self._max_tokens = max_tokens
+
+    @property
+    def active_token_count(self) -> int:
+        return len(self._tokens)
 
     @property
     def enabled(self) -> bool:
@@ -30,6 +35,7 @@ class HLSTokenManager:
             self._logger.debug("HLS token generation skipped - validation disabled")
             return None
 
+        self._cleanup_expired()
         token = secrets.token_urlsafe(32)
         expires = time.time() + self._config.HLS_TOKEN_EXPIRY
         expires_dt = datetime.fromtimestamp(expires).isoformat()
@@ -39,13 +45,15 @@ class HLSTokenManager:
             'sid': sid,
             'expires': expires,
         }
+        while len(self._tokens) > self._max_tokens:
+            oldest = min(self._tokens, key=lambda value: self._tokens[value]['expires'])
+            del self._tokens[oldest]
 
         self._logger.debug(
             f"Generated HLS token: {token[:16]}... for party={party_id}, sid={sid}, expires={expires_dt}"
         )
         self._logger.debug(f"Total active tokens: {len(self._tokens)}")
 
-        self._cleanup_expired()
         return token
 
     def validate(self, token: str, party_exists_fn, user_in_party_fn) -> bool:
@@ -128,6 +136,16 @@ class HLSTokenManager:
             del self._tokens[token]
         if victims:
             self._logger.info(f"Revoked {len(victims)} HLS tokens for party {party_id}")
+        return len(victims)
+
+    def revoke_user(self, party_id: str, sid: str) -> int:
+        """Revoke every token owned by one party participant."""
+        victims = [
+            token for token, data in self._tokens.items()
+            if data.get('party_id') == party_id and data.get('sid') == sid
+        ]
+        for token in victims:
+            del self._tokens[token]
         return len(victims)
 
     def _cleanup_expired(self):

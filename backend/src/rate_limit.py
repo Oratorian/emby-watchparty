@@ -49,16 +49,24 @@ class SlidingWindowRateLimiter:
         self._clock = clock
         self._buckets: dict[str, deque[float]] = {}
         self._last_seen: dict[str, float] = {}
+        self._expires_at: dict[str, float] = {}
         self._lock = threading.Lock()
+
+    @property
+    def active_bucket_count(self) -> int:
+        with self._lock:
+            return len(self._buckets)
 
     def check(self, key: str, limit: int, window_seconds: int) -> RateLimitDecision:
         now = self._clock()
         cutoff = now - window_seconds
         with self._lock:
+            self._expire_inactive_locked(now)
             bucket = self._buckets.setdefault(key, deque())
             while bucket and bucket[0] <= cutoff:
                 bucket.popleft()
             self._last_seen[key] = now
+            self._expires_at[key] = now + window_seconds
             if len(bucket) >= limit:
                 retry_after = max(1, int(window_seconds - (now - bucket[0])) + 1)
                 return RateLimitDecision(False, retry_after)
@@ -66,11 +74,25 @@ class SlidingWindowRateLimiter:
             self._evict_if_needed_locked()
             return RateLimitDecision(True)
 
+    def clear(self, key: str) -> None:
+        with self._lock:
+            self._buckets.pop(key, None)
+            self._last_seen.pop(key, None)
+            self._expires_at.pop(key, None)
+
+    def _expire_inactive_locked(self, now: float) -> None:
+        expired = [key for key, expiry in self._expires_at.items() if expiry <= now]
+        for key in expired:
+            self._buckets.pop(key, None)
+            self._last_seen.pop(key, None)
+            self._expires_at.pop(key, None)
+
     def _evict_if_needed_locked(self) -> None:
         while len(self._buckets) > self._max_keys:
             oldest = min(self._last_seen, key=self._last_seen.get)
             self._buckets.pop(oldest, None)
             self._last_seen.pop(oldest, None)
+            self._expires_at.pop(oldest, None)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
