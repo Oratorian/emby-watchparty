@@ -6,8 +6,19 @@ export default defineConfig({
   testDir: './e2e',
   use: {
     baseURL: 'http://127.0.0.1:4173',
-    ...devices['Desktop Chrome'],
   },
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+      testIgnore: /ios\.spec\.ts/,
+    },
+    {
+      name: 'ios-webkit',
+      use: { ...devices['iPhone 13'] },
+      testMatch: /ios\.spec\.ts/,
+    },
+  ],
   webServer: [
     {
       command: `${python} scripts/run_e2e_app.py`,

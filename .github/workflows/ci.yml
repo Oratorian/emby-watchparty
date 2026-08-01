@@ -52,10 +52,10 @@ jobs:
       - name: Production build
         run: npm run build-only
         working-directory: frontend
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
         working-directory: frontend
-      - name: Playwright Chromium
+      - name: Playwright Chromium and iOS WebKit
         run: npm run test:e2e
         working-directory: frontend
 
