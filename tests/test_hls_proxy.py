@@ -87,6 +87,20 @@ def _client(upstream_response):
 
 
 class HLSProxyTests(unittest.TestCase):
+    def test_playlist_rejects_foreign_absolute_uri_before_token_injection(self):
+        upstream_response = httpx.Response(
+            200,
+            text="#EXTM3U\nhttps://evil.example/segment.ts\n",
+            request=httpx.Request("GET", "http://emby.test/master.m3u8"),
+        )
+
+        response = _client(upstream_response).get(
+            "/hls/123/master.m3u8?token=party-token"
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertNotIn("party-token", response.text)
+
     def test_segment_proxy_rejects_encoded_path_traversal(self):
         upstream_response = httpx.Response(
             200,
