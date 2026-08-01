@@ -54,9 +54,9 @@ export const useAuthStore = defineStore('auth', () => {
     if (data.success) {
       isHost.value = true
       isAdmin.value = !!data.is_admin
-      hostUsername.value = data.host_username
+      hostUsername.value = data.host_username ?? null
       partyUnlocked.value = true
-      username.value = data.host_username
+      username.value = data.host_username ?? null
       authenticated.value = true
     }
     return data
