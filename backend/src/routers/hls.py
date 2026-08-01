@@ -1,11 +1,25 @@
 """
 HLS Router - Proxy HLS playlists and segments from Emby.
 
-Auth model: the URL-embedded HLS token (HLSTokenManager) proves the
-caller is a member of the party. The party's host_access_token is then
-used to sign every upstream Emby request. When the host fully leaves
-(token cleared) the route returns 423 -- but during PLAYING-ONLY the
-stored token keeps the current video alive until it ends naturally.
+Auth model: TWO gates that must agree.
+
+1. A party-bound `ewp_session` cookie (`require_host_token`), the same
+   gate `/api/image` and `/api/subtitles` use. Without it the URL is the
+   entire credential, and an HLS URL leaks easily -- browser history,
+   Referer, proxy access logs, copy-as-cURL.
+2. The URL-embedded HLS token (HLSTokenManager), which proves the caller
+   was a member of the party when the token was minted.
+
+The two resolve a party independently -- the cookie via the session, the
+token via HLSTokenManager -- so they are also required to name the SAME
+party. Without that check the gates are individually satisfiable by
+different parties: a leaked token for private party B plus a cookie from
+any open party A would stream B's content under B's host token.
+
+The party's host_access_token then signs every upstream Emby request.
+When the host fully leaves (token cleared) the route returns 423 -- but
+during PLAYING-ONLY the stored token keeps the current video alive until
+it ends naturally.
 """
 
 import re
@@ -15,6 +29,7 @@ import httpx
 
 from backend.src.dependencies import (
     get_config, get_emby_client, get_token_manager, get_party_manager, get_logger,
+    require_host_token, PartySession, PARTY_HOST_TOKEN_RESPONSES,
 )
 
 router = APIRouter(prefix="/hls", tags=["hls"])
@@ -55,8 +70,14 @@ def _sanitize_query(query_items):
     }
 
 
-def _resolve_host_creds(request: Request, token_manager, party_manager, logger):
+def _resolve_host_creds(request: Request, token_manager, party_manager, logger,
+                        session_party_id=None):
     """Validate the HLS token and return (host_access_token, host_user_id, party_id).
+
+    `session_party_id` is the party the caller's session cookie is bound
+    to. The token resolves a party of its own, and the two must match --
+    see the module docstring for why satisfying each gate separately is
+    not enough.
 
     Returns (None, None, None) when validation or host lookup fails so
     the caller can render the right HTTP error.
@@ -69,6 +90,13 @@ def _resolve_host_creds(request: Request, token_manager, party_manager, logger):
     party_id = token_manager.get_party_id(token)
     if not party_id:
         logger.debug("HLS denied: token unknown or expired")
+        return None, None, None
+
+    if session_party_id and party_id.upper() != session_party_id.upper():
+        logger.debug(
+            f"HLS denied: session party {session_party_id} does not match "
+            f"token party {party_id}"
+        )
         return None, None, None
 
     valid = token_manager.validate(
@@ -132,7 +160,11 @@ def _rewrite_playlist(content: str, item_id: str, app_prefix: str, emby_url: str
             "content": {"application/vnd.apple.mpegurl": {}},
             "description": "HLS master playlist (rewritten to proxy URLs)",
         },
-        401: {"description": "HLS token missing, invalid, or party has no host"},
+        **PARTY_HOST_TOKEN_RESPONSES,
+        401: {
+            "description": "No party-bound session cookie, or HLS token "
+                           "missing, invalid, or bound to a different party"
+        },
         500: {"description": "Internal proxy error"},
         502: {"description": "Upstream Emby request failed"},
     },
@@ -141,10 +173,12 @@ def proxy_hls_master(item_id: str, request: Request,
                      config=Depends(get_config), emby_client=Depends(get_emby_client),
                      token_manager=Depends(get_token_manager),
                      party_manager=Depends(get_party_manager),
-                     logger=Depends(get_logger)):
+                     logger=Depends(get_logger),
+                     party_session: PartySession = Depends(require_host_token)):
     try:
         access_token, user_id, _ = _resolve_host_creds(
-            request, token_manager, party_manager, logger
+            request, token_manager, party_manager, logger,
+            session_party_id=party_session.party_id,
         )
         if not access_token:
             return Response(
@@ -196,7 +230,11 @@ def proxy_hls_master(item_id: str, request: Request,
             },
             "description": "HLS variant playlist or .ts segment",
         },
-        401: {"description": "HLS token missing, invalid, or party has no host"},
+        **PARTY_HOST_TOKEN_RESPONSES,
+        401: {
+            "description": "No party-bound session cookie, or HLS token "
+                           "missing, invalid, or bound to a different party"
+        },
         500: {"description": "Internal proxy error"},
         502: {"description": "Upstream Emby request failed"},
     },
@@ -205,10 +243,12 @@ def proxy_hls_segment(item_id: str, subpath: str, request: Request,
                       config=Depends(get_config), emby_client=Depends(get_emby_client),
                       token_manager=Depends(get_token_manager),
                       party_manager=Depends(get_party_manager),
-                      logger=Depends(get_logger)):
+                      logger=Depends(get_logger),
+                      party_session: PartySession = Depends(require_host_token)):
     try:
         access_token, user_id, _ = _resolve_host_creds(
-            request, token_manager, party_manager, logger
+            request, token_manager, party_manager, logger,
+            session_party_id=party_session.party_id,
         )
         if not access_token:
             return Response(
