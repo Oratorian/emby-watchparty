@@ -92,7 +92,7 @@ class SlidingWindowRateLimiter:
 
     def _evict_if_needed_locked(self) -> None:
         while len(self._buckets) > self._max_keys:
-            oldest = min(self._last_seen, key=self._last_seen.get)
+            oldest = min(self._last_seen, key=lambda key: self._last_seen[key])
             self._buckets.pop(oldest, None)
             self._last_seen.pop(oldest, None)
             self._expires_at.pop(oldest, None)

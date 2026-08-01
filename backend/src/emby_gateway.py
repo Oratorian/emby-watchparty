@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import httpx
@@ -13,7 +14,7 @@ class EmbyGateway:
     RETRY_DELAYS = (0.1, 0.25)
     SAFE_METHODS = {"GET", "HEAD"}
 
-    def __init__(self, client: httpx.AsyncClient, server_url: str, logger):
+    def __init__(self, client: httpx.AsyncClient, server_url: str, logger: logging.Logger):
         self.client = client
         self.server_url = server_url.rstrip("/")
         self.logger = logger

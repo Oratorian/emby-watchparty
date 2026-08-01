@@ -1,4 +1,5 @@
 -r requirements.txt
 pytest>=8.0,<9.0
 ruff>=0.9,<1.0
+mypy>=1.15,<2.0
 aiohttp>=3.11,<4.0
