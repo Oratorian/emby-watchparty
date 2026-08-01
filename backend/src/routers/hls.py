@@ -284,9 +284,12 @@ async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
                 },
             )
 
+        upstream_headers = emby_client._headers(access_token, user_id)
+        if range_header := request.headers.get("range"):
+            upstream_headers["Range"] = range_header
         emby_resp = await emby_gateway.open_stream(
             emby_url,
-            headers=emby_client._headers(access_token, user_id),
+            headers=upstream_headers,
             params=query_params,
         )
         try:
@@ -304,13 +307,20 @@ async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
             finally:
                 await emby_resp.aclose()
 
+        response_headers = {
+            "Access-Control-Allow-Origin": "*",
+            "X-Content-Type-Options": "nosniff",
+        }
+        if emby_resp.status_code == 206:
+            for header in ("Content-Range", "Accept-Ranges", "Content-Length"):
+                if value := emby_resp.headers.get(header):
+                    response_headers[header] = value
+
         return StreamingResponse(
             stream_body(),
+            status_code=emby_resp.status_code,
             media_type=content_type,
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "X-Content-Type-Options": "nosniff",
-            },
+            headers=response_headers,
         )
 
     except ValueError as e:
