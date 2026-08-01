@@ -67,6 +67,14 @@ const becomeHostBusy = ref(false)
 const becomeHostError = ref<string | null>(null)
 const showAvatarModal = ref(false)
 
+// Re-join this tab's party, which repoints the shared session cookie
+// back here. A full reload rather than a re-join call: the HLS.js
+// instance is holding a stream URL whose token now belongs to the other
+// party, so tearing the page down is the cleanest way to rebuild it.
+function reloadForParty() {
+  window.location.reload()
+}
+
 /**
  * Resolve a member's avatar image source.
  *
@@ -1425,6 +1433,26 @@ async function submitBecomeHost(payload: { username: string; password: string })
     >
       <span class="spinner spinner-inline" />
       Reconnecting to party…
+    </div>
+    <!-- Superseded banner: another tab in this browser joined a
+         different party and took over the shared session cookie, so
+         this tab's video has stopped. Only one party can hold the
+         cookie at a time, so reloading makes this tab active again at
+         the cost of the other one. Without this the video just stalls
+         with no explanation anywhere in the UI. -->
+    <div
+      v-if="party.supersededBy"
+      class="session-banner"
+      role="alert"
+      aria-live="assertive"
+    >
+      <span>
+        Another tab joined party <strong>{{ party.supersededBy }}</strong>.
+        Only one party can be active per browser, so video has stopped here.
+      </span>
+      <button class="session-retry" @click="reloadForParty">
+        Reload this tab
+      </button>
     </div>
     <!-- Session banner: the party-bound cookie could not be minted, so
          every protected HTTP route (including /hls) will 401. Chat and

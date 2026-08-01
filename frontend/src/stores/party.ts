@@ -13,6 +13,17 @@ export interface MemberInfo {
 
 const CLIENT_ID_STORAGE_KEY = 'emby-watchparty-client-id'
 
+// Cross-tab channel for "which party is this browser bound to".
+//
+// The party-bound session cookie holds exactly one party_id, and cookies
+// are shared across every tab in a profile. So a second tab joining a
+// DIFFERENT party silently repoints the cookie, and this tab's /hls
+// requests start failing -- 401 once the cookie's party stops matching
+// the stream token's, or 423 while the newly joined party has no host
+// token yet. The video simply stops with nothing on screen to explain
+// it. Announcing the binding lets the superseded tab say so instead.
+const PARTY_BINDING_CHANNEL = 'emby-watchparty-party-binding'
+
 function getClientId(): string {
   let clientId = localStorage.getItem(CLIENT_ID_STORAGE_KEY)
   if (clientId) return clientId
@@ -53,6 +64,37 @@ export const usePartyStore = defineStore('party', () => {
   // retry and an unreproducible "video won't load for one person".
   const sessionError = ref<string | null>(null)
   const sessionRetrying = ref(false)
+
+  // Set to the other party's code when a different tab in this browser
+  // takes over the session cookie. See PARTY_BINDING_CHANNEL above.
+  const supersededBy = ref<string | null>(null)
+  let bindingChannel: BroadcastChannel | null = null
+
+  /**
+   * Announce which party this tab is bound to, and listen for others.
+   *
+   * A tab never receives its own postMessage, so hearing a party_id that
+   * differs from ours means another tab has just repointed the shared
+   * cookie and this tab's playback is about to start failing.
+   *
+   * Degrades silently where BroadcastChannel is unavailable: the tab
+   * behaves exactly as it did before this existed.
+   */
+  function announceBinding(id: string) {
+    if (typeof BroadcastChannel === 'undefined') return
+    if (!bindingChannel) {
+      bindingChannel = new BroadcastChannel(PARTY_BINDING_CHANNEL)
+      bindingChannel.onmessage = (event) => {
+        const other = event.data?.partyId
+        // Same party in two tabs is fine, both point the cookie at the
+        // same place. Only a different party is a takeover.
+        if (other && partyId.value && other !== partyId.value) {
+          supersededBy.value = other
+        }
+      }
+    }
+    bindingChannel.postMessage({ partyId: id })
+  }
 
   // Binge-watch state. `available` is the admin master toggle; when
   // false, the control-strip button is hidden entirely. `active` is
@@ -101,7 +143,8 @@ export const usePartyStore = defineStore('party', () => {
   async function join(id: string, name: string) {
     const socket = useSocketStore()
     const avatar = useAvatarStore()
-    partyId.value = id.toUpperCase()
+    const normalisedId = id.toUpperCase()
+    partyId.value = normalisedId
     username.value = name
     const clientId = getClientId()
     // Load the persisted avatar id (IndexedDB or localStorage) so it
@@ -110,7 +153,13 @@ export const usePartyStore = defineStore('party', () => {
       try { await avatar.load() } catch { /* ignore */ }
     }
     const avatarUuid = avatar.uuid
-    await bindSession(clientId, name, avatarUuid)
+    supersededBy.value = null
+    // Announce only once the cookie is actually bound. A tab that failed
+    // to bind never repointed anything, so it must not make a healthy
+    // tab believe it has been superseded.
+    if (await bindSession(clientId, name, avatarUuid)) {
+      announceBinding(normalisedId)
+    }
     socket.emit('join_party', {
       party_id: partyId.value,
       username: name,
@@ -166,6 +215,8 @@ export const usePartyStore = defineStore('party', () => {
       const { clientId, name, avatarUuid } = lastJoinArgs
       const ok = await bindSession(clientId, name, avatarUuid)
       if (ok) {
+        // The cookie now points here, so other tabs need to know.
+        announceBinding(partyId.value)
         // Re-announce over the socket so the server re-binds this sid
         // and re-issues a stream URL against the now-valid session.
         useSocketStore().emit('join_party', {
@@ -194,6 +245,7 @@ export const usePartyStore = defineStore('party', () => {
     try { await auth.refresh() } catch { /* ignore */ }
     partyId.value = null
     sessionError.value = null
+    supersededBy.value = null
     lastJoinArgs = null
     users.value = []
     currentVideo.value = null
@@ -574,7 +626,7 @@ export const usePartyStore = defineStore('party', () => {
     myStreamUrl, streamOffset, readyCheckActive, readyUsers, waitingUsers,
     pendingVote,
     bingeWatch, pendingAutoAdvance,
-    sessionError, sessionRetrying,
+    sessionError, sessionRetrying, supersededBy,
     join, leave, setupListeners, submitVote, retrySession,
     setBingeWatchActive, cancelAutoAdvance,
   }
