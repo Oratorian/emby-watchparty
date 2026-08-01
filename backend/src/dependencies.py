@@ -18,6 +18,7 @@ from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.stream_builder import StreamBuilder
 from backend.src.avatar_store import AvatarStore
 from backend.src.admin_session_store import AdminSessionStore
+from backend.src.emby_gateway import EmbyGateway
 import httpx
 
 
@@ -60,6 +61,10 @@ def get_admin_session_store(request: Request) -> AdminSessionStore:
 
 def get_http_client(request: Request) -> httpx.AsyncClient:
     return request.app.state.http_client
+
+
+def get_emby_gateway(request: Request) -> EmbyGateway:
+    return request.app.state.emby_gateway
 
 
 # =============================================================================

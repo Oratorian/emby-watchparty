@@ -19,6 +19,7 @@ from backend.src.admin_session_store import AdminSessionStore
 from backend.src.avatar_store import AvatarStore
 from backend.src.config import Config
 from backend.src.emby_client import EmbyClient
+from backend.src.emby_gateway import EmbyGateway
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.log_levels import apply_log_levels
 from backend.src.party_manager import PartyManager
@@ -73,6 +74,7 @@ async def lifespan(application: FastAPI):
         follow_redirects=False,
         transport=application.state.http_transport,
     )
+    emby_gateway = EmbyGateway(http_client, config.EMBY_SERVER_URL, logger)
 
     application.state.config = config
     application.state.logger = logger
@@ -84,6 +86,7 @@ async def lifespan(application: FastAPI):
     application.state.admin_session_store = admin_session_store
     application.state.rate_limiter = rate_limiter
     application.state.http_client = http_client
+    application.state.emby_gateway = emby_gateway
 
     socket_context = register_socket_handlers(
         application.state.sio,

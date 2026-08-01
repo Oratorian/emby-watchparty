@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from backend.src import __version__, __codename__
-from backend.src.dependencies import get_config, get_http_client
+from backend.src.dependencies import get_config, get_emby_gateway
 from backend.src.schemas import HealthResponse
 
 router = APIRouter(prefix="/api", tags=["health"])
@@ -32,14 +32,14 @@ def health():
 @router.get("/ready")
 async def ready(
     config=Depends(get_config),
-    http_client=Depends(get_http_client),
+    emby_gateway=Depends(get_emby_gateway),
 ):
     configured = bool(config.EMBY_SERVER_URL and config.EMBY_API_KEY)
     reachable = False
     if configured:
         try:
-            response = await http_client.get(
-                f"{config.EMBY_SERVER_URL}/emby/System/Info/Public",
+            response = await emby_gateway.get(
+                "/emby/System/Info/Public",
                 timeout=2.0,
             )
             reachable = response.status_code == 200

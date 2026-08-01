@@ -3,7 +3,7 @@ import unittest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.src.dependencies import get_config, get_http_client
+from backend.src.dependencies import get_config, get_emby_gateway
 from backend.src.routers import health
 
 
@@ -16,7 +16,7 @@ class _Response:
     status_code = 200
 
 
-class _HTTPClient:
+class _EmbyGateway:
     async def get(self, *_args, **_kwargs):
         return _Response()
 
@@ -25,7 +25,7 @@ def _client(config=None):
     app = FastAPI()
     app.include_router(health.router)
     app.dependency_overrides[get_config] = lambda: config or _Config()
-    app.dependency_overrides[get_http_client] = lambda: _HTTPClient()
+    app.dependency_overrides[get_emby_gateway] = lambda: _EmbyGateway()
     return TestClient(app)
 
 
