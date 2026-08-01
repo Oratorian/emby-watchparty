@@ -22,6 +22,7 @@ from backend.src.emby_client import EmbyClient
 from backend.src.emby_gateway import EmbyGateway
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.log_levels import apply_log_levels
+from backend.src.observability import RequestLogMiddleware
 from backend.src.party_manager import PartyManager
 from backend.src.rate_limit import RateLimitMiddleware, SlidingWindowRateLimiter
 from backend.src.routers import admin, auth, avatar, health, hls, library, media, party, quality
@@ -217,6 +218,7 @@ def create_app(
     application.state.sio = sio
 
     application.add_middleware(RateLimitMiddleware)
+    application.add_middleware(RequestLogMiddleware)
     application.add_middleware(
         SessionMiddleware,
         secret_key=session_secret,
