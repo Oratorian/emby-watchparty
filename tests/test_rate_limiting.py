@@ -19,6 +19,19 @@ class _Config:
 
 
 class RateLimitingTests(unittest.TestCase):
+    def test_inactive_buckets_expire_and_registry_stays_bounded(self):
+        now = [0.0]
+        limiter = SlidingWindowRateLimiter(max_keys=2, clock=lambda: now[0])
+
+        self.assertTrue(limiter.check("one", 1, 10).allowed)
+        self.assertTrue(limiter.check("two", 1, 10).allowed)
+        self.assertTrue(limiter.check("three", 1, 10).allowed)
+        self.assertLessEqual(limiter.active_bucket_count, 2)
+
+        now[0] = 11.0
+        self.assertTrue(limiter.check("four", 1, 10).allowed)
+        self.assertEqual(limiter.active_bucket_count, 1)
+
     def test_zero_limit_is_rejected_instead_of_crashing_request_handling(self):
         with self.assertRaisesRegex(ValueError, "positive"):
             parse_rate("0 per minute")
