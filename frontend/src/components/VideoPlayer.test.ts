@@ -37,4 +37,22 @@ describe('VideoPlayer native HLS support', () => {
     expect(wrapper.emitted('autoplay-blocked')).toHaveLength(1)
     wrapper.unmount()
   })
+
+  it('releases the native HLS request when the player unmounts', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
+    const wrapper = mount(VideoPlayer, {
+      props: {
+        streamUrl: '/hls/native/master.m3u8',
+        title: 'Movie',
+        playing: false,
+      },
+    })
+    const video = wrapper.get('video').element as HTMLVideoElement
+    expect(video.getAttribute('src')).toBe('/hls/native/master.m3u8')
+
+    wrapper.unmount()
+
+    expect(video.getAttribute('src')).toBeNull()
+    expect(video.load).toHaveBeenCalledOnce()
+  })
 })
