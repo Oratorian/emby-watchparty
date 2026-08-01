@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import wraps
+from time import perf_counter
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -87,7 +88,7 @@ INBOUND_MODELS: dict[str, type[SocketPayload]] = {
 }
 
 
-def install_inbound_validation(sio: Any) -> None:
+def install_inbound_validation(sio: Any, logger: Any = None) -> None:
     """Wrap registered handlers without changing valid wire payloads."""
     namespace_handlers = sio.handlers.get("/", {})
     for event, model in INBOUND_MODELS.items():
@@ -98,16 +99,36 @@ def install_inbound_validation(sio: Any) -> None:
         @wraps(handler)
         async def validated(sid: str, data: Any, _handler=handler,
                             _model=model, _event=event):
+            started = perf_counter()
+            party_id = data.get("party_id", "-") if isinstance(data, dict) else "-"
             try:
                 _model.model_validate(data)
             except ValidationError:
+                if logger:
+                    logger.info(
+                        "event event=%s party=%s latency_ms=%.1f outcome=invalid retry=0",
+                        _event, party_id, (perf_counter() - started) * 1000,
+                    )
                 await sio.emit(
                     "error",
                     {"message": f"Invalid {_event} payload"},
                     to=sid,
                 )
                 return None
-            return await _handler(sid, data)
+            try:
+                result = await _handler(sid, data)
+            except Exception:
+                outcome = "error"
+                raise
+            else:
+                outcome = "ok"
+                return result
+            finally:
+                if logger:
+                    logger.info(
+                        "event event=%s party=%s latency_ms=%.1f outcome=%s retry=0",
+                        _event, party_id, (perf_counter() - started) * 1000, outcome,
+                    )
 
         validated._payload_validated = True
         namespace_handlers[event] = validated

@@ -35,5 +35,5 @@ def register_all(sio, emby_client, party_manager, token_manager, stream_builder,
     register_sync(ctx)
     register_chat(ctx)
     register_drift(ctx)
-    install_inbound_validation(sio)
+    install_inbound_validation(sio, logger)
     return ctx
