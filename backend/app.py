@@ -3,14 +3,14 @@ Emby Watch Party 2.0 - FastAPI + python-socketio backend
 """
 
 import secrets
-import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import socketio
+import httpx
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from backend.src import __version__, __codename__
@@ -21,6 +21,8 @@ from backend.src.party_manager import PartyManager
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.stream_builder import StreamBuilder
 from backend.src.avatar_store import AvatarStore
+from backend.src.admin_session_store import AdminSessionStore
+from backend.src.rate_limit import RateLimitMiddleware, SlidingWindowRateLimiter
 from backend.src.update_checker import check_for_updates
 from backend.src.routers import auth, library, media, hls, party, admin, avatar, health, quality
 from backend.src.socket_handlers import register_all as register_socket_handlers
@@ -63,6 +65,7 @@ def _setup_logging(config: Config):
 async def lifespan(app: FastAPI):
     """Application startup and shutdown"""
     config = Config.from_env()
+    config.validate_for_startup()
     logger = _setup_logging(config)
 
     logger.info("=" * 80)
@@ -88,6 +91,12 @@ async def lifespan(app: FastAPI):
         db_path=project_root / "data" / "avatars.db",
         avatars_dir=project_root / "images" / "avatars",
         logger=logger,
+    )
+    admin_session_store = AdminSessionStore(ttl_seconds=config.SESSION_EXPIRY)
+    rate_limiter = SlidingWindowRateLimiter()
+    http_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(30.0, connect=5.0, pool=5.0),
+        follow_redirects=False,
     )
 
     logger.info(f"Emby Server: {config.EMBY_SERVER_URL}")
@@ -146,6 +155,9 @@ async def lifespan(app: FastAPI):
     app.state.token_manager = token_manager
     app.state.stream_builder = stream_builder
     app.state.avatar_store = avatar_store
+    app.state.admin_session_store = admin_session_store
+    app.state.rate_limiter = rate_limiter
+    app.state.http_client = http_client
     app.state.sio = sio
     app.state.session_secret = SESSION_SECRET
 
@@ -162,6 +174,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down...")
+    await http_client.aclose()
 
 
 # Create SocketIO server.
@@ -202,6 +215,7 @@ app = FastAPI(
     description="Synchronized video watching for Emby media servers",
     lifespan=lifespan,
 )
+app.add_middleware(RateLimitMiddleware)
 
 # Session middleware. Secret is loaded from the SESSION_SECRET env var
 # and MUST persist across process restarts and across every uvicorn

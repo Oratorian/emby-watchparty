@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from backend.src.dependencies import (
     get_config,
     get_emby_client,
+    get_http_client,
     get_logger,
     get_party_manager,
     get_token_manager,
@@ -56,7 +57,20 @@ class _Logger:
         pass
 
 
-def _client():
+class _HTTPClient:
+    def __init__(self, response):
+        self.response = response
+
+    async def get(self, *_args, **_kwargs):
+        return self.response
+
+    def build_request(self, method, url, **kwargs):
+        return httpx.Request(method, url, headers=kwargs.get("headers"), params=kwargs.get("params"))
+
+    async def send(self, _request, stream=False):
+        return self.response
+
+def _client(upstream_response):
     app = FastAPI()
     app.include_router(hls.router)
     app.dependency_overrides.update(
@@ -66,12 +80,26 @@ def _client():
             get_token_manager: lambda: _TokenManager(),
             get_party_manager: lambda: _PartyManager(),
             get_logger: lambda: _Logger(),
+            get_http_client: lambda: _HTTPClient(upstream_response),
         }
     )
     return TestClient(app)
 
 
 class HLSProxyTests(unittest.TestCase):
+    def test_segment_proxy_rejects_encoded_path_traversal(self):
+        upstream_response = httpx.Response(
+            200,
+            content=b"must-not-be-returned",
+            request=httpx.Request("GET", "http://emby.test/admin"),
+        )
+
+        response = _client(upstream_response).get(
+            "/hls/123/%2E%2E%2Fadmin?token=party-token"
+        )
+
+        self.assertEqual(response.status_code, 400)
+
     def test_master_playlist_returns_usable_tokenized_variant_url(self):
         upstream_playlist = (
             "#EXTM3U\r\n"
@@ -85,7 +113,7 @@ class HLSProxyTests(unittest.TestCase):
         )
 
         with patch("backend.src.routers.hls.httpx.get", return_value=upstream_response):
-            response = _client().get(
+            response = _client(upstream_response).get(
                 "/hls/123/master.m3u8"
                 "?MediaSourceId=source&PlaySessionId=session&token=party-token"
             )
@@ -113,7 +141,7 @@ class HLSProxyTests(unittest.TestCase):
         )
 
         with patch("backend.src.routers.hls.httpx.get", return_value=upstream_response):
-            response = _client().get(
+            response = _client(upstream_response).get(
                 "/hls/123/main.m3u8?PlaySessionId=session&token=party-token"
             )
 
@@ -136,7 +164,7 @@ class HLSProxyTests(unittest.TestCase):
         )
 
         with patch("backend.src.routers.hls.httpx.get", return_value=upstream_response):
-            response = _client().get(
+            response = _client(upstream_response).get(
                 "/hls/123/master.m3u8?PlaySessionId=session&token=party-token"
             )
 
@@ -156,10 +184,26 @@ class HLSProxyTests(unittest.TestCase):
         )
 
         with patch("backend.src.routers.hls.httpx.get", return_value=upstream_response):
-            response = _client().get(
+            response = _client(upstream_response).get(
                 "/hls/123/hls1/main0.ts?PlaySessionId=session&token=party-token"
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"].lower(), "video/mp2t")
         self.assertEqual(response.content, b"transport-stream-bytes")
+
+    def test_segment_proxy_streams_without_buffered_content_length(self):
+        upstream_response = httpx.Response(
+            200,
+            content=b"streamed-transport-bytes",
+            request=httpx.Request("GET", "http://emby.test/hls1/main0.ts"),
+        )
+
+        with patch("backend.src.routers.hls.httpx.get", return_value=upstream_response):
+            response = _client(upstream_response).get(
+                "/hls/123/hls1/main0.ts?PlaySessionId=session&token=party-token"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"streamed-transport-bytes")
+        self.assertNotIn("content-length", response.headers)

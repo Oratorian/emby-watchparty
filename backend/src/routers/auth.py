@@ -5,6 +5,7 @@ Auth Router -- become-host / drop-host / status / version.
 and promotes them to host of their current party.
 """
 
+import asyncio
 import os
 
 from fastapi import APIRouter, Depends, Request
@@ -117,9 +118,13 @@ async def api_login(
             f"Party {party_id}: host login auto-promoted via dev gate "
             f"(EMBY_WATCHPARTY_X_DEV_HOST set, body credentials ignored)"
         )
-        auth = emby_client.authenticate(dev_user, dev_pw)
+        auth = await asyncio.to_thread(
+            emby_client.authenticate, dev_user, dev_pw
+        )
     else:
-        auth = emby_client.authenticate(body.username, body.password)
+        auth = await asyncio.to_thread(
+            emby_client.authenticate, body.username, body.password
+        )
     if not auth:
         return LoginResponse(success=False, message="Invalid Emby credentials")
 

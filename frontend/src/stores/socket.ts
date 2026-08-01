@@ -2,9 +2,10 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { io, Socket } from 'socket.io-client'
 import { APP_PREFIX } from '@/utils/appPrefix'
+import type { ClientToServerEvents, ServerToClientEvents } from '@/types/socket'
 
 export const useSocketStore = defineStore('socket', () => {
-  const socket = ref<Socket | null>(null)
+  const socket = ref<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null)
   const connected = ref(false)
   const sid = ref<string | null>(null)
   // True once we've completed the initial handshake at least once.
@@ -29,7 +30,7 @@ export const useSocketStore = defineStore('socket', () => {
     // backend mounts the socket app under `${APP_PREFIX}/socket.io`, so
     // the client has to use the same. Empty APP_PREFIX collapses to
     // `/socket.io`, matching the no-proxy default.
-    const s = io('', {
+    const s: Socket<ServerToClientEvents, ClientToServerEvents> = io('', {
       path: `${APP_PREFIX}/socket.io`,
       transports: ['websocket', 'polling'],
     })
@@ -64,16 +65,27 @@ export const useSocketStore = defineStore('socket', () => {
     sid.value = null
   }
 
-  function emit(event: string, data: any) {
-    socket.value?.emit(event, data)
+  function emit<K extends keyof ClientToServerEvents>(
+    event: K,
+    ...args: Parameters<ClientToServerEvents[K]>
+  ) {
+    socket.value?.emit(event, ...args)
   }
 
-  function on(event: string, handler: (...args: any[]) => void) {
-    socket.value?.on(event, handler)
+  function on<K extends keyof ServerToClientEvents>(
+    event: K,
+    handler: ServerToClientEvents[K],
+  ) {
+    const current = socket.value as Socket | null
+    current?.on(event as string, handler as (...args: any[]) => void)
   }
 
-  function off(event: string, handler?: (...args: any[]) => void) {
-    socket.value?.off(event, handler)
+  function off<K extends keyof ServerToClientEvents>(
+    event: K,
+    handler?: ServerToClientEvents[K],
+  ) {
+    const current = socket.value as Socket | null
+    current?.off(event as string, handler as ((...args: any[]) => void) | undefined)
   }
 
   return {

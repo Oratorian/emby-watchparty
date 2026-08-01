@@ -191,7 +191,7 @@ onMounted(async () => {
     'chat_message', 'play', 'pause', 'seek', 'force_pause_before_seek',
     'ready_check_update', 'drift_correction', 'all_ready',
     'error', 'join_rejected', 'toggle_library',
-  ]
+  ] as const
   for (const e of partyViewEvents) socket.off(e)
 
   socket.on('chat_message', (data: any) => {

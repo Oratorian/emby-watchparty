@@ -13,9 +13,8 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ .
-# Use build-only (no vue-tsc) so type errors do not block image
-# builds. Type-checking still runs in `npm run build` for dev/CI.
-RUN npm run build-only
+# Production images must pass the same type-check used in CI.
+RUN npm run build
 
 
 FROM python:3.12-slim

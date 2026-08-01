@@ -9,12 +9,14 @@ stored token keeps the current video alive until it ends naturally.
 """
 
 import re
+from urllib.parse import unquote
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 import httpx
 
 from backend.src.dependencies import (
-    get_config, get_emby_client, get_token_manager, get_party_manager, get_logger,
+    get_config, get_emby_client, get_http_client, get_token_manager,
+    get_party_manager, get_logger,
 )
 
 router = APIRouter(prefix="/hls", tags=["hls"])
@@ -53,6 +55,16 @@ def _sanitize_query(query_items):
         k: v for k, v in query_items
         if k != "token" and k in _ALLOWED_EMBY_PARAMS
     }
+
+
+def _safe_hls_subpath(subpath: str) -> bool:
+    decoded = unquote(unquote(subpath))
+    if not decoded or decoded.startswith(('/', '\\')) or '://' in decoded:
+        return False
+    if any(ord(character) < 32 for character in decoded):
+        return False
+    normalized = decoded.replace('\\', '/')
+    return '..' not in normalized.split('/')
 
 
 def _resolve_host_creds(request: Request, token_manager, party_manager, logger):
@@ -137,8 +149,9 @@ def _rewrite_playlist(content: str, item_id: str, app_prefix: str, emby_url: str
         502: {"description": "Upstream Emby request failed"},
     },
 )
-def proxy_hls_master(item_id: str, request: Request,
+async def proxy_hls_master(item_id: str, request: Request,
                      config=Depends(get_config), emby_client=Depends(get_emby_client),
+                     http_client=Depends(get_http_client),
                      token_manager=Depends(get_token_manager),
                      party_manager=Depends(get_party_manager),
                      logger=Depends(get_logger)):
@@ -153,13 +166,15 @@ def proxy_hls_master(item_id: str, request: Request,
             )
 
         query_params = _sanitize_query(request.query_params.items())
-        query_string = "&".join(f"{k}={v}" for k, v in query_params.items())
         emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/master.m3u8"
-        if query_string:
-            emby_url += f"?{query_string}"
 
         logger.debug(f"Proxying HLS master: {emby_url}")
-        emby_resp = httpx.get(emby_url, headers=emby_client._headers(access_token, user_id), timeout=_EMBY_HTTP_TIMEOUT)
+        emby_resp = await http_client.get(
+            emby_url,
+            headers=emby_client._headers(access_token, user_id),
+            params=query_params,
+            timeout=_EMBY_HTTP_TIMEOUT,
+        )
         emby_resp.raise_for_status()
 
         token = request.query_params.get("token") if config.ENABLE_HLS_TOKEN_VALIDATION else None
@@ -201,12 +216,19 @@ def proxy_hls_master(item_id: str, request: Request,
         502: {"description": "Upstream Emby request failed"},
     },
 )
-def proxy_hls_segment(item_id: str, subpath: str, request: Request,
+async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
                       config=Depends(get_config), emby_client=Depends(get_emby_client),
+                      http_client=Depends(get_http_client),
                       token_manager=Depends(get_token_manager),
                       party_manager=Depends(get_party_manager),
                       logger=Depends(get_logger)):
     try:
+        if not _safe_hls_subpath(subpath):
+            return Response(
+                content='{"error": "Invalid HLS path"}',
+                status_code=400,
+                media_type="application/json",
+            )
         access_token, user_id, _ = _resolve_host_creds(
             request, token_manager, party_manager, logger
         )
@@ -217,15 +239,17 @@ def proxy_hls_segment(item_id: str, subpath: str, request: Request,
             )
 
         query_params = _sanitize_query(request.query_params.items())
-        query_string = "&".join(f"{k}={v}" for k, v in query_params.items())
         emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/{subpath}"
-        if query_string:
-            emby_url += f"?{query_string}"
 
         logger.debug(f"Proxying HLS segment: {subpath} -> {emby_url}")
 
         if subpath.endswith(".m3u8"):
-            emby_resp = httpx.get(emby_url, headers=emby_client._headers(access_token, user_id))
+            emby_resp = await http_client.get(
+                emby_url,
+                headers=emby_client._headers(access_token, user_id),
+                params=query_params,
+                timeout=_EMBY_HTTP_TIMEOUT,
+            )
             emby_resp.raise_for_status()
             token = request.query_params.get("token") if config.ENABLE_HLS_TOKEN_VALIDATION else None
             playlist = _rewrite_playlist(
@@ -240,18 +264,34 @@ def proxy_hls_segment(item_id: str, subpath: str, request: Request,
                 },
             )
 
-        emby_resp = httpx.get(emby_url, headers=emby_client._headers(access_token, user_id), timeout=_EMBY_HTTP_TIMEOUT)
-        emby_resp.raise_for_status()
+        upstream_request = http_client.build_request(
+            "GET",
+            emby_url,
+            headers=emby_client._headers(access_token, user_id),
+            params=query_params,
+        )
+        emby_resp = await http_client.send(upstream_request, stream=True)
+        try:
+            emby_resp.raise_for_status()
+        except Exception:
+            await emby_resp.aclose()
+            raise
 
         content_type = "video/MP2T" if subpath.endswith(".ts") else "application/octet-stream"
 
-        return Response(
-            content=emby_resp.content,
+        async def stream_body():
+            try:
+                async for chunk in emby_resp.aiter_bytes():
+                    yield chunk
+            finally:
+                await emby_resp.aclose()
+
+        return StreamingResponse(
+            stream_body(),
             media_type=content_type,
             headers={
                 "Access-Control-Allow-Origin": "*",
                 "X-Content-Type-Options": "nosniff",
-                "Content-Length": str(len(emby_resp.content)),
             },
         )
 

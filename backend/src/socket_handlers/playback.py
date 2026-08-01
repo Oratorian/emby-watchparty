@@ -57,7 +57,7 @@ def register(ctx):
                 next_ep = ep
         return next_ep
 
-    def _resolve_episode_context(party, item_id, access_token, user_id):
+    async def _resolve_episode_context(party, item_id, access_token, user_id):
         """Look up Type / SeriesId / SeasonId / IndexNumber for the
         currently-selected item and (for Episodes) cache the season's
         full episode list on the party so video_ended can find "next"
@@ -84,8 +84,11 @@ def register(ctx):
             party["episode_list_season_id"] = None
             return result
 
-        details = emby_client.get_item_details(
-            item_id, access_token=access_token, user_id=user_id,
+        details = await asyncio.to_thread(
+            emby_client.get_item_details,
+            item_id,
+            access_token=access_token,
+            user_id=user_id,
         )
         if not details:
             party["episode_list"] = None
@@ -114,8 +117,11 @@ def register(ctx):
 
         # Cache hit: same season as last selection, reuse the list.
         if party.get("episode_list_season_id") != season_id or not party.get("episode_list"):
-            episodes = emby_client.get_season_episodes(
-                season_id, access_token=access_token, user_id=user_id,
+            episodes = await asyncio.to_thread(
+                emby_client.get_season_episodes,
+                season_id,
+                access_token=access_token,
+                user_id=user_id,
             )
             items = episodes.get("Items", []) if episodes else []
             # Trim to the fields binge-watching needs; we don't want to
@@ -178,7 +184,7 @@ def register(ctx):
                 return stream.get("Index")
         return None
 
-    def _create_user_stream(party, party_id, sid, item_id, media_source,
+    async def _create_user_stream(party, party_id, sid, item_id, media_source,
                             audio_index, subtitle_index, quality, start_seconds=0,
                             media_source_id=None):
         """Create a per-user Emby stream (own PlaySessionId and transcode).
@@ -202,7 +208,8 @@ def register(ctx):
         )
         _, _, bitrate_kbps = resolve_quality(normalised)
         max_streaming_bitrate = bitrate_kbps * 1000 if bitrate_kbps else None
-        playback_info = emby_client.get_playback_info(
+        playback_info = await asyncio.to_thread(
+            emby_client.get_playback_info,
             item_id,
             audio_index=audio_index,
             subtitle_index=subtitle_index,
@@ -249,7 +256,8 @@ def register(ctx):
         party.setdefault("user_streams", {})[sid] = stream_info
 
         run_time_seconds = party.get("current_video", {}).get("run_time_seconds")
-        emby_client.report_playback_start(
+        await asyncio.to_thread(
+            emby_client.report_playback_start,
             item_id=item_id, media_source_id=media_source_id,
             play_session_id=play_session_id, position_seconds=start_seconds,
             audio_index=audio_index,
@@ -263,7 +271,7 @@ def register(ctx):
                      f"session={play_session_id}, start={start_seconds:.1f}s")
         return stream_info
 
-    def _stop_user_stream(party, sid, position_seconds=0):
+    async def _stop_user_stream(party, sid, position_seconds=0):
         """Stop a single user's Emby transcode and clean up."""
         user_streams = party.get("user_streams", {})
         stream = user_streams.pop(sid, None)
@@ -273,7 +281,8 @@ def register(ctx):
         access_token, user_id = _host_creds(party)
         current_video = party.get("current_video")
         if current_video:
-            emby_client.report_playback_stopped(
+            await asyncio.to_thread(
+                emby_client.report_playback_stopped,
                 item_id=current_video["item_id"],
                 media_source_id=stream["media_source_id"],
                 play_session_id=stream["play_session_id"],
@@ -282,15 +291,16 @@ def register(ctx):
                 access_token=access_token,
                 user_id=user_id,
             )
-        emby_client.stop_active_encodings(
+        await asyncio.to_thread(
+            emby_client.stop_active_encodings,
             play_session_id=stream["play_session_id"],
             access_token=access_token,
         )
 
-    def _stop_all_user_streams(party, position_seconds=0):
+    async def _stop_all_user_streams(party, position_seconds=0):
         """Stop all per-user transcodes."""
         for sid in list(party.get("user_streams", {}).keys()):
-            _stop_user_stream(party, sid, position_seconds)
+            await _stop_user_stream(party, sid, position_seconds)
 
     def _wipe_host_if_orphan(party_id, party):
         """If host has already left and there's nothing left to play, wipe
@@ -387,7 +397,8 @@ def register(ctx):
         Returns True on success, False on failure (caller should emit error).
         """
         access_token, user_id = _host_creds(party)
-        playback_info = emby_client.get_playback_info(
+        playback_info = await asyncio.to_thread(
+            emby_client.get_playback_info,
             item_id,
             media_source_id=media_source_id,
             access_token=access_token, user_id=user_id,
@@ -407,14 +418,16 @@ def register(ctx):
 
         # Stop all previous user streams
         prev_time = party["playback_state"].get("time", 0)
-        _stop_all_user_streams(party, prev_time)
+        await _stop_all_user_streams(party, prev_time)
 
         # Resolve episode metadata (Type / SeriesId / SeasonId / IndexNumber)
         # for binge-watching. For Episode-typed items this also primes
         # the season's episode list cache so video_ended can decide
         # what "next" is without an extra Emby round-trip when the
         # episode finishes. Non-Episode items clear the cache.
-        episode_ctx = _resolve_episode_context(party, item_id, access_token, user_id)
+        episode_ctx = await _resolve_episode_context(
+            party, item_id, access_token, user_id
+        )
 
         # Store shared video info (no per-user fields). selected_by is the
         # persistent client_id, not the current sid.
@@ -461,7 +474,7 @@ def register(ctx):
         # is still in a broken state (ready_check dict never cleared,
         # auto_play_after_ready never consumed) unless we cleanup here.
         for user_sid in list(party["users"].keys()):
-            stream = _create_user_stream(
+            stream = await _create_user_stream(
                 party, party_id, user_sid, item_id, media_source,
                 audio_index=default_audio, subtitle_index=None,
                 quality=DEFAULT_QUALITY_ID, start_seconds=resume_offset,
@@ -610,7 +623,7 @@ def register(ctx):
         username = party["users"].get(sid, "Unknown")
         current_time = party["playback_state"].get("time", 0)
 
-        _stop_all_user_streams(party, current_time)
+        await _stop_all_user_streams(party, current_time)
 
         # Pending auto-advance can't apply to a stopped video; tear it
         # down. Loud cancel so any modal currently up snaps closed.
@@ -697,11 +710,12 @@ def register(ctx):
                 pass
 
         # Stop this user's old transcode. Party clock keeps running.
-        _stop_user_stream(party, sid, snapshot_time)
+        await _stop_user_stream(party, sid, snapshot_time)
 
         _, _, bitrate_kbps = resolve_quality(quality)
         max_streaming_bitrate = bitrate_kbps * 1000 if bitrate_kbps else None
-        playback_info = emby_client.get_playback_info(
+        playback_info = await asyncio.to_thread(
+            emby_client.get_playback_info,
             item_id,
             audio_index=audio_index,
             subtitle_index=subtitle_index,
@@ -727,7 +741,7 @@ def register(ctx):
             except Exception:
                 pass
 
-        stream = _create_user_stream(
+        stream = await _create_user_stream(
             party, party_id, sid, item_id, media_source,
             audio_index=audio_index, subtitle_index=subtitle_index,
             quality=quality, start_seconds=current_time,
@@ -801,7 +815,7 @@ def register(ctx):
         logger.info(f"Video ended in party {party_id}")
         final_pos = current_video.get("run_time_seconds", 0)
         prev_video = current_video
-        _stop_all_user_streams(party, final_pos)
+        await _stop_all_user_streams(party, final_pos)
 
         party["playback_state"] = {
             "playing": False, "time": 0, "last_update": datetime.now().isoformat(),
@@ -1116,7 +1130,8 @@ def register(ctx):
 
         is_playing = party["playback_state"].get("playing", False)
         access_token, user_id = _host_creds(party)
-        emby_client.report_playback_progress(
+        await asyncio.to_thread(
+            emby_client.report_playback_progress,
             item_id=current_video["item_id"],
             media_source_id=user_stream["media_source_id"],
             play_session_id=user_stream["play_session_id"],

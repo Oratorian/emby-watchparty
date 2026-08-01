@@ -26,7 +26,8 @@ By participating in this project, you agree to maintain a respectful and inclusi
 
 ### Prerequisites
 
-- Python 3.8 or higher
+- Python 3.12 or higher
+- Node.js 20.19+ (or 22.12+) and npm
 - pip (Python package manager)
 - Git
 - Access to an Emby server for testing
@@ -63,7 +64,7 @@ By participating in this project, you agree to maintain a respectful and inclusi
 5. **Run the development server**
 
    ```bash
-   python app.py
+   python -m backend.app
    ```
 
    The application will be available at `http://localhost:5000`

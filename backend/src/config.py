@@ -12,7 +12,7 @@ import os
 import threading
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Optional, get_origin
+from typing import get_origin
 
 from dotenv import load_dotenv
 
@@ -37,12 +37,19 @@ class EnvConfig:
     SESSION_EXPIRY: int
     EMBY_SERVER_URL: str
     EMBY_API_KEY: str
+    APP_ENV: str
+    SESSION_SECRET: str
+    SESSION_COOKIE_SECURE: bool
+    CORS_ALLOWED_ORIGINS: tuple[str, ...]
+    TRUSTED_PROXY_CIDRS: tuple[str, ...]
 
     @classmethod
     def from_env(cls) -> 'EnvConfig':
         env_path = Path(__file__).parent.parent.parent / '.env'
         load_dotenv(env_path)
 
+        origins_raw = os.getenv('CORS_ALLOWED_ORIGINS', '*').strip()
+        proxy_cidrs_raw = os.getenv('TRUSTED_PROXY_CIDRS', '').strip()
         return cls(
             WATCH_PARTY_BIND=os.getenv('WATCH_PARTY_BIND', '0.0.0.0'),
             WATCH_PARTY_PORT=int(os.getenv('WATCH_PARTY_PORT', '5000')),
@@ -50,6 +57,15 @@ class EnvConfig:
             SESSION_EXPIRY=int(os.getenv('SESSION_EXPIRY', '86400')),
             EMBY_SERVER_URL=os.getenv('EMBY_SERVER_URL', 'http://localhost:8096'),
             EMBY_API_KEY=os.getenv('EMBY_API_KEY', ''),
+            APP_ENV=os.getenv('APP_ENV', 'development').strip().lower(),
+            SESSION_SECRET=os.getenv('SESSION_SECRET', '').strip(),
+            SESSION_COOKIE_SECURE=_bool(os.getenv('SESSION_COOKIE_SECURE', 'false')),
+            CORS_ALLOWED_ORIGINS=tuple(
+                value.strip() for value in origins_raw.split(',') if value.strip()
+            ),
+            TRUSTED_PROXY_CIDRS=tuple(
+                value.strip() for value in proxy_cidrs_raw.split(',') if value.strip()
+            ),
         )
 
 
@@ -387,3 +403,20 @@ class Config:
         """Get all runtime settings as a dict (for admin API)"""
         runtime = object.__getattribute__(self, '_runtime')
         return runtime.to_dict()
+
+    def validate_for_startup(self) -> None:
+        """Reject unsafe boot configuration when production mode is explicit."""
+        if self.APP_ENV not in {'development', 'production'}:
+            raise ValueError("APP_ENV must be 'development' or 'production'")
+        if self.APP_ENV != 'production':
+            return
+        if not self.SESSION_SECRET:
+            raise ValueError('SESSION_SECRET is required in production')
+        if not self.SESSION_COOKIE_SECURE:
+            raise ValueError('SESSION_COOKIE_SECURE must be true in production')
+        if not self.CORS_ALLOWED_ORIGINS or '*' in self.CORS_ALLOWED_ORIGINS:
+            raise ValueError('CORS_ALLOWED_ORIGINS must be explicit in production')
+        if not self.EMBY_API_KEY:
+            raise ValueError('EMBY_API_KEY is required in production')
+        if not self.ENABLE_HLS_TOKEN_VALIDATION:
+            raise ValueError('HLS token validation must be enabled in production')

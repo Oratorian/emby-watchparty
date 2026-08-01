@@ -8,20 +8,18 @@ Two paths in:
    cookie used everywhere else also unlocks /admin.
 2. **Standalone login.** Kept so an admin can edit config without
    joining a party. Posts Emby admin credentials to
-   `POST /api/admin/login`; the session gains an `admin_authenticated`
-   flag that survives until logout.
+   `POST /api/admin/login`; the cookie receives an opaque handle while
+   the Emby token remains in the bounded server-side session store.
 """
-
-import time as _time
-from collections import deque
-from threading import Lock
 
 from fastapi import APIRouter, Depends, Request
 import requests as http_requests
 
 from backend.src.log_levels import apply_log_levels
+from backend.src.client_ip import request_client_ip
 from backend.src.dependencies import (
     admin_display_name,
+    get_admin_session_store,
     get_config,
     get_emby_client,
     get_logger,
@@ -30,46 +28,6 @@ from backend.src.dependencies import (
     get_token_manager,
     is_admin_authenticated,
 )
-
-
-# --- /api/admin/login rate limiter -------------------------------------
-# In-memory sliding window per client IP. Hardcoded because the
-# admin-panel ENABLE_RATE_LIMITING / RATE_LIMIT_* fields are documented
-# as advisory and don't drive any real limiter today (audit finding);
-# rewiring that plumbing is out of scope for this hardening pass, and a
-# working limit on the credential-oracle endpoint is much more
-# important than making it configurable. Values match typical brute-
-# force protection: 10 attempts / 15 minutes per IP.
-_LOGIN_MAX_ATTEMPTS = 10
-_LOGIN_WINDOW_SECS = 15 * 60
-_LOGIN_ATTEMPTS: dict[str, deque[float]] = {}
-_LOGIN_ATTEMPTS_LOCK = Lock()
-
-
-def _login_rate_limited(client_ip: str) -> tuple[bool, int]:
-    """Return (is_limited, retry_after_seconds)."""
-    now = _time.monotonic()
-    cutoff = now - _LOGIN_WINDOW_SECS
-    with _LOGIN_ATTEMPTS_LOCK:
-        bucket = _LOGIN_ATTEMPTS.setdefault(client_ip, deque())
-        while bucket and bucket[0] < cutoff:
-            bucket.popleft()
-        if len(bucket) >= _LOGIN_MAX_ATTEMPTS:
-            retry_after = int(_LOGIN_WINDOW_SECS - (now - bucket[0])) + 1
-            return True, max(1, retry_after)
-        bucket.append(now)
-        return False, 0
-
-
-def _client_ip(request: Request) -> str:
-    """Best-effort caller IP. Trusts X-Forwarded-For's LAST hop (nearest
-    reverse-proxy) since the app is expected to sit behind one; a
-    misbehaving direct client can only spoof their own bucket, not
-    another IP's."""
-    xff = request.headers.get("x-forwarded-for", "").strip()
-    if xff:
-        return xff.split(",")[-1].strip()
-    return request.client.host if request.client else "0.0.0.0"
 from backend.src.schemas import (
     AdminLoginRequest,
     AdminLoginResponse,
@@ -79,33 +37,44 @@ from backend.src.schemas import (
     SuccessResponse,
 )
 
+
+def _client_ip(request: Request) -> str:
+    config = request.app.state.config
+    return request_client_ip(request, config.TRUSTED_PROXY_CIDRS)
+
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 @router.post("/login", response_model=AdminLoginResponse)
 def admin_login(body: AdminLoginRequest, request: Request,
-                emby_client=Depends(get_emby_client), logger=Depends(get_logger)):
+                emby_client=Depends(get_emby_client),
+                admin_session_store=Depends(get_admin_session_store),
+                logger=Depends(get_logger)):
     """Standalone admin login. Useful when not currently in a party.
 
     Hosts who are already inside a party with admin policy do NOT need
     to call this -- their party-bound cookie already grants /admin
     access via is_admin_authenticated().
 
-    Rate limited per IP (see _login_rate_limited). Prevents this
+    Rate limited per IP. Prevents this
     endpoint from being used as a credential-stuffing oracle against
     every Emby admin account -- previously there was no throttle at
     all and the endpoint returned a clean success/failure signal.
     """
     ip = _client_ip(request)
-    limited, retry_after = _login_rate_limited(ip)
-    if limited:
+    decision = request.app.state.rate_limiter.check(
+        f"admin-login:{ip}", limit=10, window_seconds=15 * 60
+    )
+    if not decision.allowed:
         logger.warning(
-            f"Admin login rate-limited for IP {ip} (retry in {retry_after}s)"
+            f"Admin login rate-limited for IP {ip} "
+            f"(retry in {decision.retry_after}s)"
         )
         return {
             "success": False,
             "message": (
-                f"Too many login attempts. Try again in {retry_after} seconds."
+                "Too many login attempts. Try again in "
+                f"{decision.retry_after} seconds."
             ),
         }
     try:
@@ -139,17 +108,16 @@ def admin_login(body: AdminLoginRequest, request: Request,
         if not access_token or not user_id:
             return {"success": False, "message": "Authentication response missing token or user id"}
 
-        request.session["admin_authenticated"] = True
-        request.session["admin_username"] = user.get("Name", body.username)
-        # Stash the Emby auth so /api/party/create can auto-promote this
-        # admin to host without making them log in a second time. The
-        # cookie is signed by Starlette's SessionMiddleware; storing the
-        # access_token here is the same exposure surface as the cookie
-        # itself, which is already used to bind party-host membership.
-        request.session["admin_emby_token"] = access_token
-        request.session["admin_emby_user_id"] = user_id
-        request.session["admin_emby_is_admin"] = True
-        logger.info(f"Admin login: '{request.session['admin_username']}'")
+        username = user.get("Name", body.username)
+        old_handle = request.session.pop("admin_session_id", None)
+        admin_session_store.revoke(old_handle)
+        request.session["admin_session_id"] = admin_session_store.create(
+            username=username,
+            access_token=access_token,
+            user_id=user_id,
+            is_admin=True,
+        )
+        logger.info(f"Admin login: '{username}'")
         return {"success": True}
 
     except http_requests.exceptions.Timeout:
@@ -160,17 +128,16 @@ def admin_login(body: AdminLoginRequest, request: Request,
 
 
 @router.post("/logout", response_model=SuccessResponse)
-def admin_logout(request: Request):
+def admin_logout(
+    request: Request,
+    admin_session_store=Depends(get_admin_session_store),
+):
     """Clear the standalone admin session.
 
     Does NOT touch host status -- a host who is also admin via Emby
     policy stays admin as long as they remain host.
     """
-    request.session.pop("admin_authenticated", None)
-    request.session.pop("admin_username", None)
-    request.session.pop("admin_emby_token", None)
-    request.session.pop("admin_emby_user_id", None)
-    request.session.pop("admin_emby_is_admin", None)
+    admin_session_store.revoke(request.session.pop("admin_session_id", None))
     return {"success": True}
 
 
@@ -179,8 +146,9 @@ def get_config_values(
     request: Request,
     config=Depends(get_config),
     party_manager=Depends(get_party_manager),
+    admin_session_store=Depends(get_admin_session_store),
 ):
-    if not is_admin_authenticated(request, party_manager):
+    if not is_admin_authenticated(request, party_manager, admin_session_store):
         return {"error": "Not authenticated"}
     return config.get_runtime_dict()
 
@@ -220,8 +188,9 @@ async def update_config(
     token_manager=Depends(get_token_manager),
     sio=Depends(get_sio),
     logger=Depends(get_logger),
+    admin_session_store=Depends(get_admin_session_store),
 ):
-    if not is_admin_authenticated(request, party_manager):
+    if not is_admin_authenticated(request, party_manager, admin_session_store):
         return ConfigUpdateResponse(success=False)
 
     # ConfigUpdateRequest allows extra fields (the runtime key set is
@@ -255,9 +224,7 @@ async def update_config(
         # silently pretending the change took effect.
         _RESTART_REQUIRED = {'LOG_TO_FILE', 'LOG_FILE', 'LOG_FORMAT',
                              'LOG_MAX_SIZE',
-                             'ENABLE_RATE_LIMITING',
-                             'RATE_LIMIT_PARTY_CREATION',
-                             'RATE_LIMIT_API_CALLS'}
+                             }
         restart_required = sorted(set(changed) & _RESTART_REQUIRED)
 
         # Static session toggles or id renames need an explicit sync
@@ -315,7 +282,9 @@ async def update_config(
                             f"Failed to emit binge_watch_state_changed to {active_id}: {e}"
                         )
 
-        actor = admin_display_name(request, party_manager) or "(unknown admin)"
+        actor = admin_display_name(
+            request, party_manager, admin_session_store
+        ) or "(unknown admin)"
         logger.info(
             f"Admin config updated by '{actor}': changed={changed} "
             f"rejected={rejected} restart_required={restart_required}"

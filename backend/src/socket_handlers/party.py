@@ -60,7 +60,7 @@ def register(ctx):
                 pass
         return current_time
 
-    def _replace_sid(party, old_sid, new_sid, username, client_id=None,
+    async def _replace_sid(party, old_sid, new_sid, username, client_id=None,
                      avatar_uuid=None):
         """Move all sid-keyed party state from an old socket to a new one."""
         if old_sid and old_sid != new_sid:
@@ -76,7 +76,8 @@ def register(ctx):
                 current_time = party["playback_state"].get("time", 0)
                 host_token = party.get("host_access_token")
                 host_user = party.get("host_user_id")
-                emby_client.report_playback_stopped(
+                await asyncio.to_thread(
+                    emby_client.report_playback_stopped,
                     item_id=party["current_video"]["item_id"],
                     media_source_id=old_stream["media_source_id"],
                     play_session_id=old_stream["play_session_id"],
@@ -85,7 +86,8 @@ def register(ctx):
                     access_token=host_token,
                     user_id=host_user,
                 )
-                emby_client.stop_active_encodings(
+                await asyncio.to_thread(
+                    emby_client.stop_active_encodings,
                     play_session_id=old_stream["play_session_id"],
                     access_token=host_token,
                 )
@@ -126,7 +128,7 @@ def register(ctx):
             return None
 
         current_time = _current_party_time(party)
-        stream = create_user_stream(
+        stream = await create_user_stream(
             party, party_id, sid, current_video["item_id"], None,
             audio_index=None, subtitle_index=None,
             quality=current_video.get("quality", DEFAULT_QUALITY_ID),
@@ -206,7 +208,7 @@ def register(ctx):
         # Promote the late joiner to a full user so they participate in the
         # restart. Until now they were only in the Socket.IO room but NOT in
         # party["users"].
-        _replace_sid(party, None, late_sid, late_username, client_id)
+        await _replace_sid(party, None, late_sid, late_username, client_id)
 
         # Clear pending_join BEFORE emitting resolution so a simultaneous join
         # attempt from another user sees no active vote.
@@ -524,7 +526,7 @@ def register(ctx):
             if old_sid and old_sid != sid:
                 await sio.leave_room(old_sid, party_id)
                 logger.info(f"Reattached participant {username} in {party_id}: {old_sid} -> {sid}")
-            _replace_sid(party, old_sid, sid, username, client_id, avatar_uuid)
+            await _replace_sid(party, old_sid, sid, username, client_id, avatar_uuid)
         else:
             # Historically this evicted any existing member with a
             # matching display name (with a different client_id) so
@@ -568,7 +570,9 @@ def register(ctx):
                     if stale_client_id:
                         participants.pop(stale_client_id, None)
                     await sio.leave_room(stale_sid, party_id)
-                    _replace_sid(party, stale_sid, sid, username, client_id, avatar_uuid)
+                    await _replace_sid(
+                        party, stale_sid, sid, username, client_id, avatar_uuid
+                    )
                     rejoin = True
                     logger.info(f"Evicted stale session {stale_sid} for {username}")
                     break
@@ -629,7 +633,14 @@ def register(ctx):
         # with a stale current_video from the static-session edge case)
         # -----------------------------------------------------------------
         await sio.enter_room(sid, party_id)
-        _replace_sid(party, old_sid if known_participant else sid, sid, username, client_id, avatar_uuid)
+        await _replace_sid(
+            party,
+            old_sid if known_participant else sid,
+            sid,
+            username,
+            client_id,
+            avatar_uuid,
+        )
 
         # Fast host-rejoin path. If a grace task is pending because this
         # client_id was hosting and just dropped, cancel it and tell the
@@ -809,7 +820,8 @@ def register(ctx):
                 current_time = party["playback_state"].get("time", 0)
                 host_token = party.get("host_access_token")
                 host_user = party.get("host_user_id")
-                emby_client.report_playback_stopped(
+                await asyncio.to_thread(
+                    emby_client.report_playback_stopped,
                     item_id=party["current_video"]["item_id"],
                     media_source_id=user_stream["media_source_id"],
                     play_session_id=user_stream["play_session_id"],
@@ -818,7 +830,8 @@ def register(ctx):
                     access_token=host_token,
                     user_id=host_user,
                 )
-                emby_client.stop_active_encodings(
+                await asyncio.to_thread(
+                    emby_client.stop_active_encodings,
                     play_session_id=user_stream["play_session_id"],
                     access_token=host_token,
                 )

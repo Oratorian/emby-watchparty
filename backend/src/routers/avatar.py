@@ -29,6 +29,7 @@ from backend.src.dependencies import (
     get_logger,
     get_party_manager,
 )
+from backend.src.client_ip import request_client_ip
 
 router = APIRouter(prefix="/api/avatar", tags=["avatar"])
 
@@ -172,7 +173,8 @@ def recover(
     logger=Depends(get_logger),
 ):
     """Trade a recovery code for the avatar uuid it unlocks."""
-    ip = (request.client.host if request.client else "unknown")
+    config = request.app.state.config
+    ip = request_client_ip(request, config.TRUSTED_PROXY_CIDRS)
     if not _check_recover_rate(ip):
         logger.warning(f"Avatar recover rate-limited for ip={ip}")
         raise HTTPException(

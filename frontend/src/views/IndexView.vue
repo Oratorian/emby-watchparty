@@ -68,9 +68,6 @@ function getClientId(): string {
 
 onMounted(async () => {
   try {
-    await auth.refresh()
-  } catch { /* ignore */ }
-  try {
     const res = await fetch(withPrefix('/api/party/static-session'))
     const data = await res.json()
     if (data.party_id) {

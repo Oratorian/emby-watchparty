@@ -12,7 +12,7 @@ const router = createRouter({
     {
       path: '/',
       name: 'home',
-      component: () => import('@/views/IndexView.vue'),
+      component: () => import('@/views/HomeView.vue'),
     },
     {
       path: '/party/:id',
@@ -27,7 +27,7 @@ const router = createRouter({
     {
       path: '/version',
       name: 'version',
-      component: () => import('@/views/VersionView.vue'),
+      component: () => import('@/views/AboutView.vue'),
     },
     {
       path: '/:pathMatch(.*)*',

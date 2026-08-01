@@ -172,7 +172,7 @@ export const usePartyStore = defineStore('party', () => {
       'join_vote_resolved', 'join_rejected',
       'binge_watch_state_changed', 'auto_advance_pending',
       'auto_advance_cancelled', 'auto_advance_fired', 'binge_finished',
-    ]
+    ] as const
     for (const e of events) socket.off(e)
     // Also drop the reconnect listener before re-registering, same
     // reasoning as the event list above.

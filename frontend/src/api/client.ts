@@ -10,13 +10,45 @@
  */
 import { withPrefix } from '@/utils/appPrefix'
 
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly body: unknown,
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 export async function apiFetch<T = any>(path: string, options: RequestInit = {}): Promise<T> {
   const resp = await fetch(withPrefix(path), {
     headers: { 'Content-Type': 'application/json', ...options.headers },
     credentials: 'same-origin',
     ...options,
   })
-  return resp.json()
+  const text = await resp.text()
+  let body: unknown = undefined
+  if (text) {
+    try {
+      body = JSON.parse(text)
+    } catch {
+      body = text
+    }
+  }
+
+  if (!resp.ok) {
+    const record = body && typeof body === 'object'
+      ? body as Record<string, unknown>
+      : undefined
+    const message = [record?.detail, record?.error, record?.message]
+      .find((value): value is string => typeof value === 'string')
+      || resp.statusText
+      || `Request failed (${resp.status})`
+    throw new ApiError(resp.status, message, body)
+  }
+
+  return body as T
 }
 
 export const api = {

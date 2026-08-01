@@ -1,5 +1,6 @@
 """Sync handlers: play, pause, seek"""
 
+import asyncio
 from datetime import datetime
 
 
@@ -26,13 +27,14 @@ def register(ctx):
     def _client_id_for_sid(party, sid):
         return party.get("sid_client_ids", {}).get(sid)
 
-    def _report_emby_progress(party, sid, position, is_paused, event_name):
+    async def _report_emby_progress(party, sid, position, is_paused, event_name):
         """Report playback progress to Emby for a specific user's stream."""
         current_video = party.get("current_video")
         user_stream = party.get("user_streams", {}).get(sid)
         if not current_video or not user_stream or not user_stream.get("play_session_id"):
             return
-        emby_client.report_playback_progress(
+        await asyncio.to_thread(
+            emby_client.report_playback_progress,
             item_id=current_video["item_id"],
             media_source_id=user_stream["media_source_id"],
             play_session_id=user_stream["play_session_id"],
@@ -102,7 +104,9 @@ def register(ctx):
         )
 
         # Report to Emby for the user who triggered play
-        _report_emby_progress(party, sid, current_time, is_paused=False, event_name="Unpause")
+        await _report_emby_progress(
+            party, sid, current_time, is_paused=False, event_name="Unpause"
+        )
 
         # Broadcast to everyone including the sender. The client-side
         # handler is idempotent on the sender's own video (already
@@ -142,7 +146,9 @@ def register(ctx):
             f"in {party_id} at {current_time:.1f}s -> broadcasting to room"
         )
 
-        _report_emby_progress(party, sid, current_time, is_paused=True, event_name="Pause")
+        await _report_emby_progress(
+            party, sid, current_time, is_paused=True, event_name="Pause"
+        )
 
         # Broadcast to everyone including the sender. See the matching
         # comment on handle_play / handle_seek for the rationale.
@@ -188,7 +194,11 @@ def register(ctx):
         party["playback_state"]["time"] = seek_time
         party["playback_state"]["last_update"] = datetime.now().isoformat()
 
-        _report_emby_progress(party, sid, seek_time, is_paused=not was_playing, event_name="TimeUpdate")
+        await _report_emby_progress(
+            party, sid, seek_time,
+            is_paused=not was_playing,
+            event_name="TimeUpdate",
+        )
 
         username = party["users"].get(sid, "Someone")
 

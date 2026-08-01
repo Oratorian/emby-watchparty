@@ -95,7 +95,7 @@ https://discord.gg/RWUpxq9xsA
 - **Refined Cyber UI**: cyan/magenta/violet palette, glass surfaces, chip/pill controls, animated LIVE badge, iOS-style A-Z library jump bar
 - **Reverse-proxy ready**: `APP_PREFIX` wired end-to-end so one Docker image sits behind any subpath (`https://example.com/watchparty/...`)
 - **Admin panel with hot-reload**: runtime settings editable from `/admin` as an in-party modal, `.env` reserved for boot-only keys
-- **Reload-as-rejoin + healthchecks**: refresh in an active party rejoins via persistent `client_id`; `/api/health` liveness for Docker/Kubernetes probes; rsyslog-style logging with rotation
+- **Reload-as-rejoin + healthchecks**: refresh in an active party rejoins via persistent `client_id`; `/api/health` reports liveness and `/api/ready` verifies Emby readiness; rsyslog-style logging with rotation
 
 ## Browser compatibility
 
@@ -276,6 +276,7 @@ Boot-essential, restart required.
 | **Application** | | |
 | `WATCH_PARTY_BIND` | IP address to bind to | `0.0.0.0` |
 | `WATCH_PARTY_PORT` | Port to run on | `5000` |
+| `APP_ENV` | `development` or strict startup-validated `production` mode | `development` |
 | `APP_PREFIX` | URL prefix for reverse proxy deployments (e.g. `/watchparty`) | (empty) |
 | `SESSION_EXPIRY` | Session expiry in seconds | `86400` |
 | **Session cookie** _(new in 2.0.0-beta18)_ | | |
@@ -283,6 +284,7 @@ Boot-essential, restart required.
 | `SESSION_COOKIE_SECURE` | When `true`, the session cookie carries the `Secure` flag (HTTPS-only). Set `true` in every deployment behind TLS; leave `false` for `http://localhost` dev. | `false` |
 | **Socket.IO CORS** _(new in 2.0.0-beta18)_ | | |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for the Socket.IO server (`https://a.example.com,https://b.example.com`). `*` accepts any origin (historical default). Pin to your real origin(s) in production. | `*` |
+| `TRUSTED_PROXY_CIDRS` | Comma-separated proxy CIDRs allowed to supply client-IP forwarding headers. Empty ignores forwarded headers. | (empty) |
 | **Emby server** | | |
 | `EMBY_SERVER_URL` | Your Emby server URL | `http://localhost:8096` |
 | `EMBY_API_KEY` | Emby API key (server admin key) | (required) |
@@ -370,6 +372,8 @@ There is no application user database. Any party member can promote themselves t
 
 Ships as a **single multi-stage Docker image**: a Node stage runs `npm run build` to produce the Vue bundle, then a Python stage installs backend dependencies and copies the built `static/` into the FastAPI app. One container, one port, one process - uvicorn serves the API, the SPA, and the WebSocket mount under the configurable `APP_PREFIX`.
 
+Party state, standalone admin sessions, and rate-limit buckets are process-local. Run one uvicorn worker unless those stores are moved to shared infrastructure.
+
 ## API endpoints
 
 Emby Watch Party 2.0 ships a FastAPI backend (REST + OpenAPI) and a Socket.IO real-time surface. Rather than duplicate the full spec here, the canonical references are:
@@ -389,7 +393,7 @@ The FastAPI app is composed of nine routers under `backend/src/routers/`. A smal
 - **`quality`** - `GET /api/quality/profiles`, `GET /api/quality/default`
 - **`avatar`** - `POST /api/avatar/upload`, `GET /api/avatar/{uuid}`
 - **`admin`** - `GET/PUT /api/admin/config`, `POST /api/admin/party/{id}/dissolve`
-- **`health`** - `GET /api/health`, `GET /api/version`
+- **`health`** - `GET /api/health` (liveness), `GET /api/ready` (Emby readiness), `GET /api/version`
 
 See `/docs` for the full parameter, response, and auth-scope details.
 
@@ -426,10 +430,12 @@ Quick checks before opening an issue:
 - **Credential model.**
   - `.env` holds only the admin `EMBY_API_KEY`, used for library browsing and administrative Emby calls. **Do not commit `.env`.**
   - Per-user Emby credentials are never persisted. Any party member can click **Login to Become Host** in-app and authenticate against Emby; the resulting AccessToken lives in memory as that party's *host provider* and is used to open per-user transcode sessions. Tokens are discarded when the host provider changes or the party ends.
+  - Standalone admin login also keeps its Emby token server-side in a bounded, expiring in-memory session. The browser cookie contains only an opaque handle.
+- **Production mode.** Set `APP_ENV=production`; startup then rejects missing stable session keys, insecure cookies, wildcard CORS, disabled HLS token validation, or missing Emby credentials.
 - **Session secret.** `SESSION_SECRET` signs the party-bound session cookie and **must be stable across restarts and across every uvicorn worker** - generate once with `openssl rand -hex 32`. An unset secret produces an ephemeral key at boot (loud warning), which invalidates cookies on every restart and produces non-deterministic sessions under `--workers >1`.
 - **HLS URLs.** Since beta18, HLS playlist and segment URLs served to the browser no longer carry the admin `EMBY_API_KEY` as a query parameter. Access is gated by a per-stream HLS token bound to the session cookie; the API key stays server-side.
 - **Party codes** are generated with cryptographically secure random tokens.
-- **Built-in controls.** HLS token validation, per-IP rate limiting, and configurable party size limits are on by default; tune them in **/admin -> Security**.
+- **Built-in controls.** HLS token validation, bounded per-IP API/party-creation rate limiting, and configurable party size limits are on by default; tune them in **/admin -> Security**. Configure `TRUSTED_PROXY_CIDRS` when a reverse proxy supplies client addresses.
 - **For internet-facing deployments**, terminate TLS at a reverse proxy (nginx, Caddy, Traefik), set `SESSION_COOKIE_SECURE=true`, and pin `CORS_ALLOWED_ORIGINS` to your real origin(s) instead of `*`.
 
 ## License

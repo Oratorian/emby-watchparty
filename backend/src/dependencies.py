@@ -17,6 +17,8 @@ from backend.src.party_manager import PartyManager
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.stream_builder import StreamBuilder
 from backend.src.avatar_store import AvatarStore
+from backend.src.admin_session_store import AdminSessionStore
+import httpx
 
 
 def get_config(request: Request) -> Config:
@@ -50,6 +52,14 @@ def get_sio(request: Request):
 
 def get_avatar_store(request: Request) -> AvatarStore:
     return request.app.state.avatar_store
+
+
+def get_admin_session_store(request: Request) -> AdminSessionStore:
+    return request.app.state.admin_session_store
+
+
+def get_http_client(request: Request) -> httpx.AsyncClient:
+    return request.app.state.http_client
 
 
 # =============================================================================
@@ -149,7 +159,11 @@ def require_admin(
     return party_session
 
 
-def is_admin_authenticated(request: Request, party_manager: PartyManager) -> bool:
+def is_admin_authenticated(
+    request: Request,
+    party_manager: PartyManager,
+    admin_session_store: Optional[AdminSessionStore] = None,
+) -> bool:
     """True if the caller is allowed into /admin via either path.
 
     Two ways in:
@@ -160,7 +174,7 @@ def is_admin_authenticated(request: Request, party_manager: PartyManager) -> boo
        edit config without being in a party.
     """
     session = request.session
-    if session.get("admin_authenticated"):
+    if admin_session_store and admin_session_store.get(session.get("admin_session_id")):
         return True
 
     party_id = session.get("party_id")
@@ -176,7 +190,11 @@ def is_admin_authenticated(request: Request, party_manager: PartyManager) -> boo
     )
 
 
-def admin_display_name(request: Request, party_manager: PartyManager) -> Optional[str]:
+def admin_display_name(
+    request: Request,
+    party_manager: PartyManager,
+    admin_session_store: Optional[AdminSessionStore] = None,
+) -> Optional[str]:
     """Return the name to log against an admin action, or None.
 
     Prefers the party-host identity when both paths are active; falls
@@ -193,7 +211,11 @@ def admin_display_name(request: Request, party_manager: PartyManager) -> Optiona
             and party.get("host_is_admin")
         ):
             return party.get("host_username")
-    return session.get("admin_username")
+    if admin_session_store:
+        admin_session = admin_session_store.get(session.get("admin_session_id"))
+        if admin_session:
+            return admin_session.username
+    return None
 
 
 # =============================================================================

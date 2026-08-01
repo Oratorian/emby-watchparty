@@ -51,6 +51,8 @@ merge-to-main.ps1
 #Configurations
 config.json
 backend/static
+frontend/playwright-report/
+frontend/test-results/
 
 # Runtime data (avatar SQLite + uploaded files)
 data/

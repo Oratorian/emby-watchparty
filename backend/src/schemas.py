@@ -3,7 +3,7 @@ Pydantic models for API request/response schemas
 Auto-generates OpenAPI documentation at /docs
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 
 
@@ -148,8 +148,7 @@ class LibraryItem(BaseModel):
     CollectionType: Optional[str] = None
     UserData: Optional[dict] = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class LibraryItemsResponse(BaseModel):
@@ -157,8 +156,7 @@ class LibraryItemsResponse(BaseModel):
     Items: list[LibraryItem] = []
     TotalRecordCount: Optional[int] = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class ItemDetailsResponse(BaseModel):
@@ -183,8 +181,7 @@ class ItemDetailsResponse(BaseModel):
     # Start over" instead of jumping straight to time 0.
     UserData: Optional[dict] = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 # ============== Media ==============
@@ -301,8 +298,7 @@ class ConfigUpdateRequest(BaseModel):
     Example: `{"LOG_LEVEL": "DEBUG", "REQUIRE_LOGIN": true}`.
     """
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class ConfigUpdateResponse(BaseModel):
@@ -327,8 +323,7 @@ class RuntimeConfigResponse(BaseModel):
     by the config module rather than a fixed schema."""
     error: Optional[str] = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 # ============== Party (extras) ==============

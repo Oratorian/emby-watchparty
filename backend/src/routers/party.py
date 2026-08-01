@@ -7,10 +7,13 @@ anonymous create when off, Emby-authenticated create-as-host when on.
 party-bound session cookie used by every protected route.
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.src.dependencies import (
-    get_config, get_party_manager, get_logger, get_emby_client, get_sio,
+    get_admin_session_store, get_config, get_party_manager, get_logger,
+    get_emby_client, get_sio,
 )
 # Shared dev-host gate -- single source of truth lives in auth.py so the
 # env var name and value-parsing rules can never drift between modules.
@@ -93,6 +96,7 @@ def create_party(
     config=Depends(get_config),
     party_manager=Depends(get_party_manager),
     emby_client=Depends(get_emby_client),
+    admin_session_store=Depends(get_admin_session_store),
     logger=Depends(get_logger),
 ):
     """Create a new watch party.
@@ -128,15 +132,14 @@ def create_party(
     #    still trusted; now a 401 from Emby clears the session and
     #    the request falls through to the credential-based path.
     session = request.session
-    stashed_token = session.get("admin_emby_token")
-    stashed_user_id = session.get("admin_emby_user_id")
-    stashed_username = session.get("admin_username")
-    stashed_is_admin = session.get("admin_emby_is_admin", False)
-    admin_authenticated = bool(session.get("admin_authenticated"))
+    admin_session = admin_session_store.get(session.get("admin_session_id"))
+    stashed_token = admin_session.access_token if admin_session else None
+    stashed_user_id = admin_session.user_id if admin_session else None
+    stashed_username = admin_session.username if admin_session else None
+    stashed_is_admin = admin_session.is_admin if admin_session else False
 
     if (
-        admin_authenticated
-        and stashed_token
+        stashed_token
         and stashed_user_id
         and body.client_id
     ):
@@ -146,10 +149,7 @@ def create_party(
                 f"{stashed_user_id}; clearing session and falling back to "
                 f"credential login"
             )
-            for k in ("admin_authenticated", "admin_emby_token",
-                      "admin_emby_user_id", "admin_username",
-                      "admin_emby_is_admin"):
-                session.pop(k, None)
+            admin_session_store.revoke(session.pop("admin_session_id", None))
         else:
             party_id = party_manager.create_party()
             display_name = body.display_name or stashed_username or "Host"
@@ -279,7 +279,9 @@ async def join_party(
     dev_user, dev_pw = _env_dev_host_creds()
     is_host = party.get("host_client_id") == body.client_id
     if dev_user and dev_pw and not party_manager.is_unlocked(party_id):
-        auth = emby_client.authenticate(dev_user, dev_pw)
+        auth = await asyncio.to_thread(
+            emby_client.authenticate, dev_user, dev_pw
+        )
         if auth:
             party_manager.set_host(
                 party_id,

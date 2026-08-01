@@ -6,15 +6,15 @@ Does not depend on Emby, the avatar DB, or any other subsystem so a
 transient outage upstream cannot cause a restart loop in Docker /
 Kubernetes / a reverse-proxy healthcheck.
 
-For readiness checks that confirm Emby is reachable, add a separate
-`/api/ready` endpoint later -- liveness and readiness are different
-guarantees and conflating them is a common cause of cascading
-failures.
+Readiness is exposed separately at `/api/ready`; Docker continues to
+use liveness so an Emby outage cannot trigger a container restart loop.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 
 from backend.src import __version__, __codename__
+from backend.src.dependencies import get_config, get_http_client
 from backend.src.schemas import HealthResponse
 
 router = APIRouter(prefix="/api", tags=["health"])
@@ -26,4 +26,32 @@ def health():
         status="ok",
         version=__version__,
         codename=__codename__,
+    )
+
+
+@router.get("/ready")
+async def ready(
+    config=Depends(get_config),
+    http_client=Depends(get_http_client),
+):
+    configured = bool(config.EMBY_SERVER_URL and config.EMBY_API_KEY)
+    reachable = False
+    if configured:
+        try:
+            response = await http_client.get(
+                f"{config.EMBY_SERVER_URL}/emby/System/Info/Public",
+                timeout=2.0,
+            )
+            reachable = response.status_code == 200
+        except Exception:
+            reachable = False
+
+    checks = {
+        "emby_configured": configured,
+        "emby_reachable": reachable,
+    }
+    is_ready = all(checks.values())
+    return JSONResponse(
+        {"status": "ready" if is_ready else "not_ready", "checks": checks},
+        status_code=200 if is_ready else 503,
     )
