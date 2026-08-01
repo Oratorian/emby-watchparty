@@ -16,6 +16,7 @@ describe('VideoPlayer native HLS support', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('probably')
+    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
   })
 
   it('reports iOS autoplay blocking through the public component event', async () => {
@@ -39,7 +40,6 @@ describe('VideoPlayer native HLS support', () => {
   })
 
   it('releases the native HLS request when the player unmounts', () => {
-    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
     const wrapper = mount(VideoPlayer, {
       props: {
         streamUrl: '/hls/native/master.m3u8',

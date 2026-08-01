@@ -227,7 +227,13 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  isSyncing.value = true
   destroyHls()
+  const video = videoEl.value
+  if (video?.hasAttribute('src')) {
+    video.removeAttribute('src')
+    video.load()
+  }
 })
 
 defineExpose({ videoEl, isSyncing, isBuffering, getHls: () => hls })
