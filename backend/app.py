@@ -99,6 +99,7 @@ async def lifespan(application: FastAPI):
         config,
         logger,
         session_secret=application.state.session_secret,
+        rate_limiter=rate_limiter,
     )
     application.state.socket_context = socket_context
 

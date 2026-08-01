@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 
 from backend.src.log_levels import apply_log_levels
 from backend.src.client_ip import request_client_ip
+from backend.src.rate_limit import parse_rate
 from backend.src.dependencies import (
     admin_display_name,
     get_admin_session_store,
@@ -62,8 +63,11 @@ async def admin_login(body: AdminLoginRequest, request: Request,
     all and the endpoint returned a clean success/failure signal.
     """
     ip = _client_ip(request)
+    limit, window = parse_rate(getattr(
+        request.app.state.config, "RATE_LIMIT_LOGIN", "10 per 15 minutes"
+    ))
     decision = request.app.state.rate_limiter.check(
-        f"admin-login:{ip}", limit=10, window_seconds=15 * 60
+        f"admin-login:{ip}", limit=limit, window_seconds=window
     )
     if not decision.allowed:
         logger.warning(

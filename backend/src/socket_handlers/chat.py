@@ -1,8 +1,8 @@
 """Chat handlers: chat_message, toggle_library"""
 
-import time as _time
-from collections import deque
 from datetime import datetime
+
+from backend.src.rate_limit import parse_rate
 
 
 # Chat spam guardrails. Previously any joined member could emit
@@ -12,28 +12,14 @@ from datetime import datetime
 # match typical chat-service limits: 2 KiB per message and 5 msgs / 3s
 # per sid (bursts of 5 allowed, sustained rate capped).
 _CHAT_MAX_LEN = 2048
-_CHAT_BURST = 5
-_CHAT_WINDOW_SECS = 3.0
-_CHAT_HISTORY: dict[str, deque[float]] = {}
-
-
-def _chat_throttled(sid: str) -> bool:
-    """Sliding-window rate check. True iff sid should be dropped."""
-    now = _time.monotonic()
-    cutoff = now - _CHAT_WINDOW_SECS
-    bucket = _CHAT_HISTORY.setdefault(sid, deque(maxlen=_CHAT_BURST + 1))
-    while bucket and bucket[0] < cutoff:
-        bucket.popleft()
-    if len(bucket) >= _CHAT_BURST:
-        return True
-    bucket.append(now)
-    return False
 
 
 def register(ctx):
     sio = ctx['sio']
     logger = ctx['logger']
     party_manager = ctx['party_manager']
+    rate_limiter = ctx.get('rate_limiter')
+    config = ctx.get('config')
 
     @sio.on("chat_message")
     async def handle_chat_message(sid, data):
@@ -49,7 +35,9 @@ def register(ctx):
         party = party_manager.get(party_id)
 
         if party and sid in party["users"]:
-            if _chat_throttled(sid):
+            limit, window = parse_rate(getattr(config, "RATE_LIMIT_CHAT", "5 per 3 seconds"))
+            decision = rate_limiter.check(f"chat:{sid}", limit, window)
+            if not decision.allowed:
                 logger.debug(f"Chat message dropped: sid={sid} rate-limited in {party_id}")
                 return
             username = party["users"][sid]

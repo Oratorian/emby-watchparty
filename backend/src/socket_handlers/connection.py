@@ -12,6 +12,10 @@ from datetime import datetime
 from http.cookies import SimpleCookie
 
 from itsdangerous import TimestampSigner, BadSignature
+from socketio.exceptions import ConnectionRefusedError as SocketConnectionRefusedError
+
+from backend.src.client_ip import resolve_client_ip
+from backend.src.rate_limit import parse_rate
 
 
 # Must stay in sync with the `session_cookie` kwarg passed to
@@ -52,6 +56,8 @@ def register(ctx):
     logger = ctx['logger']
     party_manager = ctx['party_manager']
     session_secret = ctx.get('session_secret')
+    rate_limiter = ctx.get('rate_limiter')
+    config = ctx.get('config')
 
     # Keyed by party_id: the asyncio task that will fire host-cleanup
     # once the grace window expires. Surfaced via ctx so party.py can
@@ -190,6 +196,17 @@ def register(ctx):
 
     @sio.event
     async def connect(sid, environ, auth=None):
+        if rate_limiter and config and config.ENABLE_RATE_LIMITING:
+            peer_ip = environ.get("REMOTE_ADDR", "0.0.0.0")
+            client_ip = resolve_client_ip(
+                peer_ip,
+                environ.get("HTTP_X_FORWARDED_FOR", ""),
+                config.TRUSTED_PROXY_CIDRS,
+            )
+            limit, window = parse_rate(config.RATE_LIMIT_SOCKET_CONNECTIONS)
+            decision = rate_limiter.check(f"socket-connect:{client_ip}", limit, window)
+            if not decision.allowed:
+                raise SocketConnectionRefusedError("rate_limited")
         # The connect step is best-effort. We log what the cookie looks
         # like for diagnostics but never refuse the socket: party-bound
         # routing happens via the `join_party` event which carries an

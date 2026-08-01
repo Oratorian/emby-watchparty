@@ -12,7 +12,7 @@ from backend.src.party_lifecycle import PartyLifecycle
 
 
 def register_all(sio, emby_client, party_manager, token_manager, stream_builder,
-                 config, logger, session_secret=None):
+                 config, logger, session_secret=None, rate_limiter=None):
     """Register all socket event handlers"""
     ctx = {
         'sio': sio,
@@ -23,6 +23,7 @@ def register_all(sio, emby_client, party_manager, token_manager, stream_builder,
         'config': config,
         'logger': logger,
         'session_secret': session_secret,
+        'rate_limiter': rate_limiter,
     }
     register_connection(ctx)
     ctx['party_lifecycle'] = PartyLifecycle(ctx)

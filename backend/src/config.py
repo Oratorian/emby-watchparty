@@ -136,6 +136,10 @@ class RuntimeConfig:
     ENABLE_RATE_LIMITING: bool = True
     RATE_LIMIT_PARTY_CREATION: str = '5 per hour'
     RATE_LIMIT_API_CALLS: str = '1000 per minute'
+    RATE_LIMIT_LOGIN: str = '10 per 15 minutes'
+    RATE_LIMIT_AVATAR_RECOVERY: str = '10 per hour'
+    RATE_LIMIT_CHAT: str = '5 per 3 seconds'
+    RATE_LIMIT_SOCKET_CONNECTIONS: str = '30 per minute'
 
     # Session
     STATIC_SESSION_ENABLED: bool = False

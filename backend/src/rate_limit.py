@@ -24,7 +24,7 @@ _PERIOD_SECONDS = {
 
 def parse_rate(spec: str) -> tuple[int, int]:
     match = re.fullmatch(
-        r"\s*(\d+)\s+per\s+(second|minute|hour|day)s?\s*",
+        r"\s*(\d+)\s+per(?:\s+(\d+))?\s+(second|minute|hour|day)s?\s*",
         spec,
         re.IGNORECASE,
     )
@@ -33,7 +33,10 @@ def parse_rate(spec: str) -> tuple[int, int]:
     limit = int(match.group(1))
     if limit <= 0:
         raise ValueError("Rate limit must be positive")
-    return limit, _PERIOD_SECONDS[match.group(2).lower()]
+    multiplier = int(match.group(2) or "1")
+    if multiplier <= 0:
+        raise ValueError("Rate limit window must be positive")
+    return limit, multiplier * _PERIOD_SECONDS[match.group(3).lower()]
 
 
 @dataclass(frozen=True)

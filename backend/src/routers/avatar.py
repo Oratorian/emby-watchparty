@@ -30,6 +30,7 @@ from backend.src.dependencies import (
     get_party_manager,
 )
 from backend.src.client_ip import request_client_ip
+from backend.src.rate_limit import parse_rate
 
 router = APIRouter(prefix="/api/avatar", tags=["avatar"])
 
@@ -157,8 +158,11 @@ def recover(
     """Trade a recovery code for the avatar uuid it unlocks."""
     config = request.app.state.config
     ip = request_client_ip(request, config.TRUSTED_PROXY_CIDRS)
+    limit, window = parse_rate(getattr(
+        config, "RATE_LIMIT_AVATAR_RECOVERY", "10 per hour"
+    ))
     decision = request.app.state.rate_limiter.check(
-        f"avatar-recover:{ip}", _RECOVER_MAX, _RECOVER_WINDOW
+        f"avatar-recover:{ip}", limit, window
     )
     if not decision.allowed:
         logger.warning(f"Avatar recover rate-limited for ip={ip}")
