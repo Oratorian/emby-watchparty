@@ -240,10 +240,18 @@ const PAGE_SIZE = 50
 // can't paint over the new view (xyxxyxxy: "shows libraries AND
 // movies in the list" after fast back-nav on a large library).
 let navToken = 0
+let navigationController: AbortController | null = null
 function bumpNavToken(reason: string): number {
+  navigationController?.abort()
+  navigationController = new AbortController()
   navToken += 1
   console.debug('[LibraryBrowser] navToken bump', { token: navToken, reason })
   return navToken
+}
+
+function navigationSignal(): AbortSignal {
+  navigationController ??= new AbortController()
+  return navigationController.signal
 }
 
 const browsableTypes = new Set(['CollectionFolder', 'Folder', 'Series', 'Season'])
@@ -411,7 +419,7 @@ async function fetchLibraries() {
   const myToken = navToken
   loading.value = true
   try {
-    const data = await api.libraries()
+    const data = await api.libraries(navigationSignal())
     if (myToken !== navToken) {
       console.debug('[LibraryBrowser] fetchLibraries STALE — dropping result', { startedAt: myToken, current: navToken })
       return
@@ -458,7 +466,10 @@ async function fetchItems(parentId: string, append = false): Promise<'ok' | 'sta
   }
   try {
     const startIndex = append ? items.value.length : 0
-    const data = await api.items({ parentId, startIndex, limit: PAGE_SIZE })
+    const data = await api.items(
+      { parentId, startIndex, limit: PAGE_SIZE },
+      navigationSignal(),
+    )
     if (myToken !== navToken) {
       console.debug('[LibraryBrowser] fetchItems STALE — dropping result', { startedAt: myToken, current: navToken, parentId, append })
       return 'stale'
@@ -543,7 +554,7 @@ async function doSearch() {
   breadcrumbs.value = []
   filteredLetter.value = null
   try {
-    const data = await api.search(q)
+    const data = await api.search(q, navigationSignal())
     if (myToken !== navToken) {
       console.debug('[LibraryBrowser] doSearch STALE — dropping result', { startedAt: myToken, current: navToken, q })
       return
@@ -630,6 +641,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  navigationController?.abort()
   if (observer) observer.disconnect()
 })
 </script>
