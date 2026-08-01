@@ -343,3 +343,6 @@ def register(ctx):
                     room=party_id,
                     skip_sid=sid,
                 )
+                lifecycle = ctx.get("party_lifecycle")
+                if lifecycle:
+                    await lifecycle.dissolve_if_empty(party_id)

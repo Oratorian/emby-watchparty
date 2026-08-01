@@ -85,7 +85,7 @@ async def lifespan(application: FastAPI):
     application.state.rate_limiter = rate_limiter
     application.state.http_client = http_client
 
-    register_socket_handlers(
+    socket_context = register_socket_handlers(
         application.state.sio,
         emby_client,
         party_manager,
@@ -95,6 +95,7 @@ async def lifespan(application: FastAPI):
         logger,
         session_secret=application.state.session_secret,
     )
+    application.state.socket_context = socket_context
 
     logger.info('Emby Watch Party v%s - "%s"', __version__, __codename__)
     logger.info("Emby Server: %s", config.EMBY_SERVER_URL)
@@ -109,6 +110,7 @@ async def lifespan(application: FastAPI):
         yield
     finally:
         logger.info("Shutting down")
+        await socket_context["party_lifecycle"].dissolve_all(reason="shutdown")
         await http_client.aclose()
 
 

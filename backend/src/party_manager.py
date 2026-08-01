@@ -7,6 +7,7 @@ for backward compatibility with old handlers. The typed dataclasses and clean
 API will be used once all handlers are converted to classes in Phase 3.
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -92,6 +93,7 @@ class PartyManager:
 
     def __init__(self, config: Config, logger: logging.Logger):
         self.watch_parties: Dict[str, dict] = {}
+        self._party_locks: dict[str, asyncio.Lock] = {}
         self._config = config
         self._logger = logger
         # Tracks the static party's id as last known to this manager, so
@@ -171,7 +173,30 @@ class PartyManager:
         """Create and store a party dict"""
         party = self._new_party_dict(party_id)
         self.watch_parties[party_id] = party
+        self._party_locks.setdefault(party_id, asyncio.Lock())
         return party
+
+    def lock_for(self, party_id: str) -> asyncio.Lock:
+        return self._party_locks.setdefault(party_id, asyncio.Lock())
+
+    async def pop_if_empty(self, party_id: str) -> Optional[dict]:
+        if party_id == self.static_party_id:
+            return None
+        lock = self.lock_for(party_id)
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if not party or party.get("users"):
+                return None
+            removed = self.watch_parties.pop(party_id)
+        self._party_locks.pop(party_id, None)
+        return removed
+
+    async def pop_party(self, party_id: str) -> Optional[dict]:
+        lock = self.lock_for(party_id)
+        async with lock:
+            removed = self.watch_parties.pop(party_id, None)
+        self._party_locks.pop(party_id, None)
+        return removed
 
     def create_party(self) -> str:
         """Create a new party with a generated ID. Returns party_id."""

@@ -873,6 +873,10 @@ def register(ctx):
                 "members": party_manager.members_list(party_id),
             }, room=party_id)
 
+            lifecycle = ctx.get("party_lifecycle")
+            if lifecycle:
+                await lifecycle.dissolve_if_empty(party_id)
+
     @sio.on("update_avatar")
     async def handle_update_avatar(sid, data):
         """Re-bind the caller's avatar_uuid and broadcast the new
