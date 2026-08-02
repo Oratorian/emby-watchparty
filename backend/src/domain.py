@@ -56,7 +56,7 @@ class JoinVote:
     eligible_voters: set[str] = field(default_factory=set)
     votes: dict[str, str] = field(default_factory=dict)
     selector_sid: str | None = None
-    timeout_task: Any = None
+    timeout_task: asyncio.Task[None] | None = None
 
 
 @dataclass
@@ -73,7 +73,7 @@ class AutoAdvance:
     next_index_number: int | None
     selector_client_id: str | None
     deadline: str
-    task: Any = None
+    task: asyncio.Task[None] | None = None
 
 
 @dataclass(frozen=True)
