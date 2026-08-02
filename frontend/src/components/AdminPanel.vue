@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from 'vue'
 import { api } from '@/api/client'
+import type { AdminConfig } from '@/api/client'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -10,7 +11,7 @@ const emit = defineEmits<{
 
 const auth = useAuthStore()
 
-const config = ref<Record<string, any>>({})
+const config = ref<AdminConfig>({} as AdminConfig)
 const saveStatus = ref('')
 const saveClass = ref('')
 
@@ -57,7 +58,7 @@ function syncRateLimitsToConfig() {
   config.value.RATE_LIMIT_API_CALLS = `${apiLimitValue.value} ${apiLimitUnit.value}`
 }
 
-function ensureQualityDict(cfg: Record<string, any>) {
+function ensureQualityDict(cfg: AdminConfig) {
   const cur = cfg.ENABLED_QUALITY_OPTIONS
   if (!cur || typeof cur !== 'object' || Array.isArray(cur)) {
     const defaults: Record<string, number[]> = {}

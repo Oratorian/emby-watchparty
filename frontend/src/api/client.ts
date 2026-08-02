@@ -68,6 +68,30 @@ export interface AvatarResponse extends SuccessResponse {
   code?: string
 }
 export type JsonRecord = Record<string, unknown>
+export interface AdminConfig extends JsonRecord {
+  BINGE_WATCH_COUNTDOWN_SECONDS: number
+  BINGE_WATCH_ENABLED: boolean
+  CONSOLE_LOG_LEVEL: string
+  ENABLED_QUALITY_OPTIONS: Record<string, number[]>
+  ENABLE_HLS_TOKEN_VALIDATION: boolean
+  ENABLE_RATE_LIMITING: boolean
+  FORCE_TRANSCODE: boolean
+  HLS_TOKEN_EXPIRY: number
+  LATE_JOIN_VOTE_COOLDOWN_SECONDS: number
+  LATE_JOIN_VOTE_ENABLED: boolean
+  LATE_JOIN_VOTE_TIMEOUT_SECONDS: number
+  LOG_FILE: string
+  LOG_FORMAT: string
+  LOG_LEVEL: string
+  LOG_MAX_SIZE: number
+  LOG_TO_FILE: boolean
+  MAX_USERS_PER_PARTY: number
+  RATE_LIMIT_API_CALLS: string
+  RATE_LIMIT_PARTY_CREATION: string
+  REQUIRE_LOGIN: boolean
+  STATIC_SESSION_ENABLED: boolean
+  STATIC_SESSION_ID: string
+}
 export interface PartyListResponse {
   require_login: boolean
   parties: Array<{
@@ -133,7 +157,7 @@ export interface ConfigUpdateResponse extends JsonRecord {
   changed: string[]
   rejected: Array<{ key: string; reason: string }>
   restart_required: string[]
-  config?: JsonRecord
+  config?: AdminConfig
   error?: string
 }
 
@@ -281,8 +305,8 @@ export const api = {
   adminLogout: (signal?: AbortSignal) => apiFetch<SuccessResponse>(
     '/api/admin/logout', { method: 'POST', signal },
   ),
-  adminGetConfig: (signal?: AbortSignal) => apiFetch<JsonRecord>('/api/admin/config', { signal }),
-  adminUpdateConfig: (data: JsonRecord, signal?: AbortSignal) =>
+  adminGetConfig: (signal?: AbortSignal) => apiFetch<AdminConfig>('/api/admin/config', { signal }),
+  adminUpdateConfig: (data: AdminConfig, signal?: AbortSignal) =>
     apiFetch<ConfigUpdateResponse>('/api/admin/config', {
       method: 'PUT', body: JSON.stringify(data), signal,
     }),
