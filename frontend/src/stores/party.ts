@@ -177,44 +177,6 @@ export const usePartyStore = defineStore('party', () => {
       'auto_advance_cancelled', 'auto_advance_fired', 'binge_finished',
     ] as const
     for (const e of events) socket.off(e)
-    // Also drop the reconnect listener before re-registering, same
-    // reasoning as the event list above.
-    socket.off('connect')
-
-    // Auto re-join on socket reconnect. The server evicts us from
-    // party["users"] and the Socket.IO room on disconnect (see
-    // backend/src/socket_handlers/connection.py:disconnect). Without
-    // this, socket.io-client silently reconnects with a new sid that
-    // belongs to no party -- pause/play events skip us in both
-    // directions, exactly as reported. Because our client_id is stable
-    // (localStorage) and lives in party["participants"], re-emitting
-    // join_party takes the "known participant" fast path in party.py:
-    // _replace_sid migrates state to the new sid, no late-joiner vote
-    // fires, and the server sends a fresh sync_state.
-    //
-    // We use a store-local flag (initialConnectSeen) instead of just
-    // "is partyId set?" because join() runs asynchronously after
-    // setupListeners() -- if join() sets partyId + emits before the
-    // very first `connect` fires, socket.io buffers the emit and then
-    // this listener would fire ALSO and produce a duplicate join_party.
-    // Skipping exactly one connect avoids that race.
-    let initialConnectSeen = false
-    socket.on('connect', () => {
-      if (!initialConnectSeen) {
-        initialConnectSeen = true
-        return
-      }
-      if (!partyId.value || !username.value) return
-      const avatar = useAvatarStore()
-      const avatarUuid = avatar.uuid
-      socket.emit('join_party', {
-        party_id: partyId.value,
-        username: username.value,
-        client_id: getClientId(),
-        avatar_uuid: avatarUuid,
-      })
-    })
-
     socket.on('user_joined', (data: ServerToClientPayloads['user_joined']) => {
       users.value = data.users ?? []
       if (Array.isArray(data.members)) {

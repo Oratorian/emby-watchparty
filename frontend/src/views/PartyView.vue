@@ -52,6 +52,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useAvatarStore } from '@/stores/avatar'
 import { usePartyChat } from '@/composables/usePartyChat'
 import { usePartyAdmin } from '@/composables/usePartyAdmin'
+import { usePartyReconnect } from '@/composables/usePartyReconnect'
 // Brand mark asset. Vite resolves this to a hashed URL at build time
 // (and inlines small assets), so the WebP ships with cache-busting and
 // no runtime path drift. Sits on top of the cyan->magenta gradient
@@ -77,6 +78,7 @@ const {
   addSystemMessage,
 } = usePartyChat(socket, party)
 const { showAdminModal, adminTriggerBtn, adminModalShellRef } = usePartyAdmin(party)
+const { attach: attachReconnect } = usePartyReconnect(socket, party, avatar, getClientId)
 
 const showBecomeHostModal = ref(false)
 const becomeHostBusy = ref(false)
@@ -138,6 +140,7 @@ const versionInfo = ref({ version: '', codename: '' })
 onMounted(async () => {
   socket.connect()
   party.setupListeners()
+  attachReconnect()
   auth.attachSocketListeners()
 
   try {
