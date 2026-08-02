@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping, Sequence
 import logging
-from typing import Any
 
 import httpx
+
+QueryScalar = str | int | float | bool | None
+QueryParams = (
+    Mapping[str, QueryScalar | Sequence[QueryScalar]]
+    | list[tuple[str, QueryScalar]]
+    | tuple[tuple[str, QueryScalar], ...]
+    | str
+    | bytes
+)
 
 
 class EmbyGateway:
@@ -30,7 +39,9 @@ class EmbyGateway:
         path: str,
         *,
         timeout: float | httpx.Timeout | None = None,
-        **kwargs: Any,
+        headers: dict[str, str] | None = None,
+        params: QueryParams | None = None,
+        json: object | None = None,
     ) -> httpx.Response:
         method = method.upper()
         attempts = 1 + (len(self.RETRY_DELAYS) if method in self.SAFE_METHODS else 0)
@@ -40,7 +51,9 @@ class EmbyGateway:
                     method,
                     self.url(path),
                     timeout=timeout,
-                    **kwargs,
+                    headers=headers,
+                    params=params,
+                    json=json,
                 )
             except (httpx.ConnectError, httpx.ReadTimeout):
                 if attempt + 1 >= attempts:
@@ -65,21 +78,49 @@ class EmbyGateway:
             await asyncio.sleep(self.RETRY_DELAYS[attempt])
         raise RuntimeError("unreachable retry state")
 
-    async def get(self, path: str, **kwargs: Any) -> httpx.Response:
-        return await self.request("GET", path, **kwargs)
+    async def get(
+        self,
+        path: str,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        headers: dict[str, str] | None = None,
+        params: QueryParams | None = None,
+    ) -> httpx.Response:
+        return await self.request(
+            "GET", path, timeout=timeout, headers=headers, params=params
+        )
 
-    async def post(self, path: str, **kwargs: Any) -> httpx.Response:
-        return await self.request("POST", path, **kwargs)
+    async def post(
+        self,
+        path: str,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        headers: dict[str, str] | None = None,
+        params: QueryParams | None = None,
+        json: object | None = None,
+    ) -> httpx.Response:
+        return await self.request(
+            "POST", path, timeout=timeout, headers=headers, params=params, json=json
+        )
 
-    async def delete(self, path: str, **kwargs: Any) -> httpx.Response:
-        return await self.request("DELETE", path, **kwargs)
+    async def delete(
+        self,
+        path: str,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        headers: dict[str, str] | None = None,
+        params: QueryParams | None = None,
+    ) -> httpx.Response:
+        return await self.request(
+            "DELETE", path, timeout=timeout, headers=headers, params=params
+        )
 
     async def open_stream(
         self,
         path: str,
         *,
         headers: dict[str, str] | None = None,
-        params: Any = None,
+        params: QueryParams | None = None,
     ) -> httpx.Response:
         request = self.client.build_request(
             "GET",

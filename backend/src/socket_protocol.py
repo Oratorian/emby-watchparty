@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from functools import wraps
+import logging
 from time import perf_counter
-from typing import Any, Literal
+from typing import Literal
 
+import socketio
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 
@@ -300,14 +302,22 @@ OUTBOUND_MODELS: dict[str, type[OutboundPayload]] = {
 }
 
 
-def install_outbound_validation(sio: Any, logger: Any = None) -> None:
+def install_outbound_validation(
+    sio: socketio.AsyncServer,
+    logger: logging.Logger | None = None,
+) -> None:
     """Validate every known server event while preserving its wire payload."""
     if getattr(sio, "_outbound_payload_validated", False):
         return
     original_emit = sio.emit
 
     @wraps(original_emit)
-    async def validated_emit(event: str, data: Any = None, *args: Any, **kwargs: Any):
+    async def validated_emit(
+        event: str,
+        data: object = None,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
         model = OUTBOUND_MODELS.get(event)
         if model is not None:
             try:
@@ -321,11 +331,14 @@ def install_outbound_validation(sio: Any, logger: Any = None) -> None:
                 raise ValueError(f"Invalid outbound {event} payload") from exc
         return await original_emit(event, data, *args, **kwargs)
 
-    sio.emit = validated_emit
-    sio._outbound_payload_validated = True
+    setattr(sio, "emit", validated_emit)
+    setattr(sio, "_outbound_payload_validated", True)
 
 
-def install_inbound_validation(sio: Any, logger: Any = None) -> None:
+def install_inbound_validation(
+    sio: socketio.AsyncServer,
+    logger: logging.Logger | None = None,
+) -> None:
     """Wrap registered handlers without changing valid wire payloads."""
     namespace_handlers = sio.handlers.get("/", {})
     for event, model in INBOUND_MODELS.items():
@@ -334,8 +347,13 @@ def install_inbound_validation(sio: Any, logger: Any = None) -> None:
             continue
 
         @wraps(handler)
-        async def validated(sid: str, data: Any, _handler=handler,
-                            _model=model, _event=event):
+        async def validated(
+            sid: str,
+            data: object,
+            _handler=handler,
+            _model=model,
+            _event=event,
+        ) -> object:
             started = perf_counter()
             party_id = data.get("party_id", "-") if isinstance(data, dict) else "-"
             try:

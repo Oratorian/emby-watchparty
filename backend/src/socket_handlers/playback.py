@@ -14,7 +14,7 @@ Identity model:
 import asyncio
 import time
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TypedDict
 
 from backend.src.domain import (
     AutoAdvance,
@@ -28,6 +28,16 @@ from backend.src.quality import (
     normalise_quality_id,
     resolve_quality,
 )
+
+
+class EpisodeContext(TypedDict):
+    item_type: str | None
+    series_id: str | None
+    season_id: str | None
+    episode_index: int | None
+    index_number: int | None
+    next_item_id: str | None
+    next_item_title: str | None
 
 
 def register(ctx):
@@ -77,7 +87,7 @@ def register(ctx):
         Episode list caching keys on season_id; switching to a different
         season's episode (or to a non-Episode item) clears the cache.
         """
-        result: dict[str, Any] = {
+        result: EpisodeContext = {
             "item_type": None, "series_id": None,
             "season_id": None, "episode_index": None,
             "index_number": None,

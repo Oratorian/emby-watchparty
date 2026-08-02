@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import secrets
-from typing import Any
 
 import httpx
 
@@ -172,7 +171,7 @@ class EmbyClient:
                 effective_type = mapping[collection_type]
                 effective_recursive = True
         path = f"/emby/Users/{user_id}/Items" if user_id else "/emby/Items"
-        params: dict[str, Any] = {
+        params: dict[str, str | int] = {
             "Recursive": str(effective_recursive).lower(),
             "Fields": (
                 "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,"
@@ -285,7 +284,7 @@ class EmbyClient:
     ):
         if not user_id:
             return None
-        params: dict[str, Any] = {
+        params: dict[str, str | int] = {
             "UserId": user_id,
             "api_key": self._auth_param(access_token),
             "IsPlayback": "true",
