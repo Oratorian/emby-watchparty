@@ -307,10 +307,10 @@ def register(ctx):
                 # Remove from any active ready check so we don't wait forever
                 # for a signal from a disconnected client
                 rc = party.ready_check
-                if rc and rc.get("active"):
-                    rc["expected_sids"].discard(sid)
-                    rc["ready_sids"].discard(sid)
-                    if rc["ready_sids"] >= rc["expected_sids"] and rc["expected_sids"]:
+                if rc and rc.active:
+                    rc.expected_sids.discard(sid)
+                    rc.ready_sids.discard(sid)
+                    if rc.ready_sids >= rc.expected_sids and rc.expected_sids:
                         party.ready_check = None
                         playback_state = party.playback_state
                         # Consume auto_play_after_ready flag exactly like
@@ -339,15 +339,15 @@ def register(ctx):
                                 "username": None,
                                 "auto_binge": True,
                             }, room=party_id)
-                    elif not rc["expected_sids"]:
+                    elif not rc.expected_sids:
                         # No one left to wait for -- cancel the check entirely
                         party.ready_check = None
                         # And drop the auto-play flag so it doesn't leak
                         # into an unrelated future ready check.
                         party.auto_play_after_ready = False
                     else:
-                        ready_names = [party.users.get(s, "?") for s in rc["ready_sids"]]
-                        waiting_names = [party.users.get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]
+                        ready_names = [party.users.get(s, "?") for s in rc.ready_sids]
+                        waiting_names = [party.users.get(s, "?") for s in rc.expected_sids - rc.ready_sids]
                         await sio.emit("ready_check_update", {
                             "ready": ready_names, "waiting": waiting_names,
                         }, room=party_id)

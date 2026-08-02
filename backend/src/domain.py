@@ -96,7 +96,7 @@ class Party:
     current_video: dict[str, Any] | None = None
     user_streams: dict[str, dict[str, Any]] = field(default_factory=dict)
     playback_state: PlaybackState = field(default_factory=PlaybackState)
-    ready_check: dict[str, Any] | None = None
+    ready_check: ReadyCheck | None = None
     pending_join: dict[str, Any] | None = None
     join_cooldown_until: float = 0.0
     host_client_id: str | None = None

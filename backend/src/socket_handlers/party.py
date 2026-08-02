@@ -97,13 +97,13 @@ def register(ctx):
                 drift_strikes[new_sid] = drift_strikes.pop(old_sid)
 
             rc = party.ready_check
-            if rc and rc.get("active"):
-                if old_sid in rc["expected_sids"]:
-                    rc["expected_sids"].discard(old_sid)
-                    rc["expected_sids"].add(new_sid)
-                if old_sid in rc["ready_sids"]:
-                    rc["ready_sids"].discard(old_sid)
-                    rc["ready_sids"].add(new_sid)
+            if rc and rc.active:
+                if old_sid in rc.expected_sids:
+                    rc.expected_sids.discard(old_sid)
+                    rc.expected_sids.add(new_sid)
+                if old_sid in rc.ready_sids:
+                    rc.ready_sids.discard(old_sid)
+                    rc.ready_sids.add(new_sid)
 
         party.users[new_sid] = username
         party.join_times[new_sid] = datetime.now().isoformat()
@@ -846,10 +846,10 @@ def register(ctx):
 
             # Remove from any active ready check so we don't wait forever
             rc = party.ready_check
-            if rc and rc.get("active"):
-                rc["expected_sids"].discard(sid)
-                rc["ready_sids"].discard(sid)
-                if rc["ready_sids"] >= rc["expected_sids"] and rc["expected_sids"]:
+            if rc and rc.active:
+                rc.expected_sids.discard(sid)
+                rc.ready_sids.discard(sid)
+                if rc.ready_sids >= rc.expected_sids and rc.expected_sids:
                     party.ready_check = None
                     playback_state = party.playback_state
                     if playback_state.playing:
@@ -859,11 +859,11 @@ def register(ctx):
                         "time": playback_state.time,
                         "playing": playback_state.playing,
                     }, room=party_id)
-                elif not rc["expected_sids"]:
+                elif not rc.expected_sids:
                     party.ready_check = None
                 else:
-                    ready_names = [party.users.get(s, "?") for s in rc["ready_sids"]]
-                    waiting_names = [party.users.get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]
+                    ready_names = [party.users.get(s, "?") for s in rc.ready_sids]
+                    waiting_names = [party.users.get(s, "?") for s in rc.expected_sids - rc.ready_sids]
                     await sio.emit("ready_check_update", {
                         "ready": ready_names, "waiting": waiting_names,
                     }, room=party_id)

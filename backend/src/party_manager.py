@@ -12,6 +12,7 @@ from backend.src.domain import (
     PlaybackControlCommit,
     PlaybackReportSnapshot,
     PlaybackState,
+    ReadyCheck,
 )
 from backend.src.utils import generate_party_code
 
@@ -194,7 +195,7 @@ class PartyManager:
             if client_id is None:
                 return None
             ready_check = party.ready_check
-            if ready_check and ready_check.get("active"):
+            if ready_check and ready_check.active:
                 return None
             party.playback_state = PlaybackState(
                 playing=was_playing,
@@ -203,11 +204,7 @@ class PartyManager:
             waiting_names: tuple[str, ...] = ()
             if was_playing:
                 expected = set(party.users)
-                party.ready_check = {
-                    "active": True,
-                    "expected_sids": expected,
-                    "ready_sids": set(),
-                }
+                party.ready_check = ReadyCheck(expected_sids=expected)
                 waiting_names = tuple(party.users.get(member, "?") for member in expected)
             return PlaybackControlCommit(
                 client_id=client_id,

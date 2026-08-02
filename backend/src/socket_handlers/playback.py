@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any
 
-from backend.src.domain import PlaybackState
+from backend.src.domain import PlaybackState, ReadyCheck
 from backend.src.quality import (
     DEFAULT_QUALITY_ID,
     normalise_quality_id,
@@ -310,20 +310,16 @@ def register(ctx):
     def _start_ready_check(party, party_id):
         """Start a ready check for all users in the party."""
         expected = set(party.users.keys())
-        party.ready_check = {
-            "active": True,
-            "expected_sids": expected,
-            "ready_sids": set(),
-        }
+        party.ready_check = ReadyCheck(expected_sids=expected)
         logger.debug(f"Ready check started for party {party_id}: expecting {len(expected)} users")
 
     async def _check_all_ready(party, party_id):
         """Check if all users are ready and emit all_ready if so."""
         rc = party.ready_check
-        if not rc or not rc.get("active"):
+        if not rc or not rc.active:
             return
 
-        if rc["ready_sids"] >= rc["expected_sids"]:
+        if rc.ready_sids >= rc.expected_sids:
             party.ready_check = None
             playback_state = party.playback_state
             # Auto-play hand-off for binge-advance: when the previous
@@ -356,8 +352,8 @@ def register(ctx):
                     "auto_binge": True,
                 }, room=party_id)
         else:
-            ready_names = [party.users.get(s, "?") for s in rc["ready_sids"]]
-            waiting_names = [party.users.get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]
+            ready_names = [party.users.get(s, "?") for s in rc.ready_sids]
+            waiting_names = [party.users.get(s, "?") for s in rc.expected_sids - rc.ready_sids]
             await sio.emit("ready_check_update", {
                 "ready": ready_names, "waiting": waiting_names,
             }, room=party_id)
@@ -473,7 +469,7 @@ def register(ctx):
         # Start a ready check so clients show the waiting overlay until
         # every user has loaded their stream
         _start_ready_check(party, party_id)
-        waiting_names = [party.users.get(s, "?") for s in party.ready_check["expected_sids"]]
+        waiting_names = [party.users.get(s, "?") for s in party.ready_check.expected_sids]
 
         # Create per-user streams and emit individually. When a user's
         # stream fails to build (Emby playback_info transient error,
@@ -498,7 +494,7 @@ def register(ctx):
                 )
                 rc = party.ready_check
                 if rc:
-                    rc["expected_sids"].discard(user_sid)
+                    rc.expected_sids.discard(user_sid)
                 # Notify the failed client so they don't stare at a
                 # blank player waiting for a video_selected that will
                 # never come.
@@ -534,8 +530,8 @@ def register(ctx):
         # Recompute waiting_names from the LIVE expected_sids because
         # some may have been discarded due to stream-creation failures
         # above; otherwise the overlay lists ghosts nobody is waiting on.
-        rc = party.ready_check or {}
-        live_expected = rc.get("expected_sids") or set()
+        rc = party.ready_check
+        live_expected = rc.expected_sids if rc else set()
         waiting_names = [party.users.get(s, "?") for s in live_expected]
         await sio.emit("ready_check_update", {
             "ready": [], "waiting": waiting_names,
@@ -1170,8 +1166,8 @@ def register(ctx):
             user_stream["ready"] = True
 
         rc = party.ready_check
-        if rc and rc.get("active"):
-            rc["ready_sids"].add(sid)
+        if rc and rc.active:
+            rc.ready_sids.add(sid)
             username = party.users.get(sid, "Unknown")
             logger.debug(f"{username} stream ready in party {party_id}")
             await _check_all_ready(party, party_id)
