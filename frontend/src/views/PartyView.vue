@@ -54,6 +54,7 @@ import { usePartyChat } from '@/composables/usePartyChat'
 import { usePartyAdmin } from '@/composables/usePartyAdmin'
 import { usePartyReconnect } from '@/composables/usePartyReconnect'
 import { usePartyVoting } from '@/composables/usePartyVoting'
+import { usePartyStream } from '@/composables/usePartyStream'
 // Brand mark asset. Vite resolves this to a hashed URL at build time
 // (and inlines small assets), so the WebP ships with cache-busting and
 // no runtime path drift. Sits on top of the cyan->magenta gradient
@@ -81,6 +82,10 @@ const {
 const { showAdminModal, adminTriggerBtn, adminModalShellRef } = usePartyAdmin(party)
 const { attach: attachReconnect } = usePartyReconnect(socket, party, avatar, getClientId)
 const { attach: attachVoting } = usePartyVoting(socket, party)
+const { reloading: myStreamReloading, signalReady: onStreamReady } = usePartyStream(
+  socket,
+  party,
+)
 
 const showBecomeHostModal = ref(false)
 const becomeHostBusy = ref(false)
@@ -129,13 +134,6 @@ const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const currentTime = ref(0)
 let pendingPauseTimer: ReturnType<typeof setTimeout> | null = null
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null
-
-// True while my own HLS stream is reloading (after change_streams). Used
-// to distinguish "I am the user whose stream changed" from "I am an
-// observer whose stream is already buffered" when a ready_check_update
-// arrives. Set by the watcher on party.myStreamUrl, cleared by
-// onStreamReady when the new stream finishes loading.
-const myStreamReloading = ref(false)
 
 const versionInfo = ref({ version: '', codename: '' })
 
@@ -1105,23 +1103,6 @@ function onVideoTimeUpdate(time: number) {
     socket.emit('report_progress', { party_id: party.partyId, time: toMediaTime(time) })
   }
 }
-
-function onStreamReady() {
-  if (!party.partyId) return
-  // Our stream finished (re)loading -- clear the reloading flag so
-  // future ready_check_update events know we are buffered.
-  myStreamReloading.value = false
-  socket.emit('stream_ready', { party_id: party.partyId })
-}
-
-// Whenever myStreamUrl changes (initial load OR a change_streams reload),
-// mark our stream as reloading until onStreamReady fires. This is what
-// the ready_check_update listener uses to decide whether to auto-signal.
-watch(() => party.myStreamUrl, (newUrl, oldUrl) => {
-  if (newUrl && newUrl !== oldUrl) {
-    myStreamReloading.value = true
-  }
-})
 
 function stopVideo() {
   if (!party.partyId) return
