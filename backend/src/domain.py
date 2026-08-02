@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+import asyncio
+from collections.abc import Iterator, MutableMapping
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -59,47 +61,82 @@ class AutoAdvance:
     task: Any = None
 
 
-class Party(dict[str, Any]):
-    """Typed party aggregate.
+@dataclass
+class Party(MutableMapping[str, Any]):
+    """Typed party aggregate with temporary mapping compatibility."""
 
-    It remains mapping-compatible while legacy event handlers migrate to
-    narrow manager operations. New code should use manager methods instead
-    of mutating this mapping directly.
-    """
+    id: str
+    created_at: str = field(default_factory=_now)
+    users: dict[str, str] = field(default_factory=dict)
+    participants: dict[str, Participant] = field(default_factory=dict)
+    sid_client_ids: dict[str, str] = field(default_factory=dict)
+    current_video: dict[str, Any] | None = None
+    user_streams: dict[str, dict[str, Any]] = field(default_factory=dict)
+    playback_state: dict[str, Any] = field(
+        default_factory=lambda: {
+            "playing": False,
+            "time": 0.0,
+            "last_update": _now(),
+        }
+    )
+    ready_check: dict[str, Any] | None = None
+    pending_join: dict[str, Any] | None = None
+    join_cooldown_until: float = 0.0
+    host_client_id: str | None = None
+    host_user_id: str | None = None
+    host_access_token: str | None = None
+    host_is_admin: bool = False
+    host_username: str | None = None
+    host_left_at: str | None = None
+    binge_watch_active: bool = False
+    episode_list: list[dict[str, Any]] | None = None
+    episode_list_season_id: str | None = None
+    pending_auto_advance: dict[str, Any] | None = None
+    generation: int = 0
+    closing: bool = False
+    operation_reservations: dict[str, str] = field(default_factory=dict)
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+    _extra: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    _MAPPED_FIELDS = frozenset({
+        "id", "created_at", "users", "participants", "sid_client_ids",
+        "current_video", "user_streams", "playback_state", "ready_check",
+        "pending_join", "join_cooldown_until", "host_client_id", "host_user_id",
+        "host_access_token", "host_is_admin", "host_username", "host_left_at",
+        "binge_watch_active", "episode_list", "episode_list_season_id",
+        "pending_auto_advance", "generation", "closing", "operation_reservations",
+    })
 
     @classmethod
     def create(cls, party_id: str) -> "Party":
-        now = _now()
-        return cls({
-            "id": party_id,
-            "created_at": now,
-            "users": {},
-            "participants": {},
-            "sid_client_ids": {},
-            "current_video": None,
-            "user_streams": {},
-            "playback_state": asdict(PlaybackState(last_update=now)),
-            "ready_check": None,
-            "pending_join": None,
-            "join_cooldown_until": 0,
-            "host_client_id": None,
-            "host_user_id": None,
-            "host_access_token": None,
-            "host_is_admin": False,
-            "host_username": None,
-            "host_left_at": None,
-            "binge_watch_active": False,
-            "episode_list": None,
-            "episode_list_season_id": None,
-            "pending_auto_advance": None,
-            "generation": 0,
-            "closing": False,
-            "operation_reservations": {},
-        })
+        return cls(id=party_id)
+
+    def __getitem__(self, key: str) -> Any:
+        if key in self._MAPPED_FIELDS:
+            return getattr(self, key)
+        return self._extra[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        if key in self._MAPPED_FIELDS:
+            setattr(self, key, value)
+        else:
+            self._extra[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        if key in self._MAPPED_FIELDS:
+            raise KeyError(f"required party field cannot be deleted: {key}")
+        del self._extra[key]
+
+    def __iter__(self) -> Iterator[str]:
+        yield from self._MAPPED_FIELDS
+        yield from self._extra
+
+    def __len__(self) -> int:
+        return len(self._MAPPED_FIELDS) + len(self._extra)
 
     @property
     def party_id(self) -> str:
-        return self["id"]
+        return self.id
 
     def playback_snapshot(self) -> PlaybackState:
-        return PlaybackState(**self["playback_state"])
+        return PlaybackState(**self.playback_state)

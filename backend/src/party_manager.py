@@ -1,16 +1,8 @@
-"""
-Party Manager Module
-Manages watch party state.
-
-During the 2.0 transition, party state is stored as raw dicts (watch_parties)
-for backward compatibility with old handlers. The typed dataclasses and clean
-API will be used once all handlers are converted to classes in Phase 3.
-"""
+"""Owns typed watch-party aggregates and their transition locks."""
 
 import asyncio
 import logging
 import secrets
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -20,78 +12,11 @@ from backend.src.utils import generate_party_code
 
 
 # =============================================================================
-# Typed dataclasses (used by new code, Phase 3+)
-# =============================================================================
-
-@dataclass
-class PlaybackState:
-    """Tracks playback position and state for a party"""
-    playing: bool = False
-    time: float = 0.0
-    last_update: str = field(default_factory=lambda: datetime.now().isoformat())
-
-    def update(self, playing: Optional[bool] = None, time: Optional[float] = None):
-        if playing is not None:
-            self.playing = playing
-        if time is not None:
-            self.time = time
-        self.last_update = datetime.now().isoformat()
-
-    def reset(self):
-        self.playing = False
-        self.time = 0.0
-        self.last_update = datetime.now().isoformat()
-
-    def to_dict(self) -> dict:
-        return {
-            "playing": self.playing,
-            "time": self.time,
-            "last_update": self.last_update,
-        }
-
-
-@dataclass
-class VideoInfo:
-    """Information about the currently playing video"""
-    item_id: str
-    title: str
-    overview: str
-    stream_url_base: str
-    audio_index: Optional[int]
-    subtitle_index: Optional[int]
-    media_source_id: str
-    play_session_id: Optional[str]
-    run_time_seconds: Optional[float]
-    selected_by: str
-    quality: str
-
-    def to_dict(self) -> dict:
-        return {
-            "item_id": self.item_id,
-            "title": self.title,
-            "overview": self.overview,
-            "stream_url_base": self.stream_url_base,
-            "audio_index": self.audio_index,
-            "subtitle_index": self.subtitle_index,
-            "media_source_id": self.media_source_id,
-            "play_session_id": self.play_session_id,
-            "run_time_seconds": self.run_time_seconds,
-            "selected_by": self.selected_by,
-            "quality": self.quality,
-        }
-
-
-# =============================================================================
-# Party Manager (dict-based internals for backward compatibility)
+# Party Manager
 # =============================================================================
 
 class PartyManager:
-    """
-    Manages all watch parties and their state.
-
-    Internally stores parties as raw dicts for backward compatibility
-    with old-style handlers that access watch_parties[party_id]["users"] etc.
-    """
+    """Manages all watch parties and their state transitions."""
 
     def __init__(self, config: Config, logger: logging.Logger):
         self.watch_parties: Dict[str, Party] = {}
@@ -117,20 +42,20 @@ class PartyManager:
         return None
 
     def _new_party_dict(self, party_id: str) -> Party:
-        """Create a raw party dict in the old format"""
+        """Create a party aggregate."""
         return Party.create(party_id)
 
     def _create_party_dict(self, party_id: str) -> Party:
-        """Create and store a party dict"""
+        """Create and store a party aggregate."""
         party = self._new_party_dict(party_id)
         self.watch_parties[party_id] = party
-        self._party_locks.setdefault(party_id, asyncio.Lock())
+        self._party_locks[party_id] = party.lock
         return party
 
     def lock_for(self, party_id: str) -> asyncio.Lock:
         return self._party_locks.setdefault(party_id, asyncio.Lock())
 
-    async def pop_if_empty(self, party_id: str) -> Optional[dict]:
+    async def pop_if_empty(self, party_id: str) -> Optional[Party]:
         if party_id == self.static_party_id:
             return None
         lock = self.lock_for(party_id)
@@ -145,7 +70,7 @@ class PartyManager:
         self._party_locks.pop(party_id, None)
         return removed
 
-    async def pop_party(self, party_id: str) -> Optional[dict]:
+    async def pop_party(self, party_id: str) -> Optional[Party]:
         lock = self.lock_for(party_id)
         async with lock:
             removed = self.watch_parties.get(party_id)
@@ -159,7 +84,9 @@ class PartyManager:
 
     async def reserve_operation(self, party_id: str, kind: str) -> tuple[int, str] | None:
         """Reserve a network-dependent operation without holding its party lock."""
-        lock = self.lock_for(party_id)
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
         async with lock:
             party = self.watch_parties.get(party_id)
             if not party or party.get("closing"):
@@ -175,7 +102,9 @@ class PartyManager:
         kind: str,
         reservation: tuple[int, str],
     ) -> bool:
-        lock = self.lock_for(party_id)
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
         async with lock:
             party = self.watch_parties.get(party_id)
             if not party or party.get("closing"):
@@ -211,14 +140,14 @@ class PartyManager:
         return party_id
 
     def get(self, party_id: str) -> Optional[Party]:
-        """Get a party dict by ID, or None"""
+        """Get a party by ID, or None."""
         return self.watch_parties.get(party_id)
 
     def exists(self, party_id: str) -> bool:
         return party_id in self.watch_parties
 
     def get_all(self) -> Dict[str, Party]:
-        """Get the raw watch_parties dict (for backward compat)"""
+        """Get all active parties."""
         return self.watch_parties
 
     def ensure_static_party(self) -> Optional[str]:
