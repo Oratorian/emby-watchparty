@@ -83,6 +83,16 @@ class SlidingWindowRateLimiter:
             self._last_seen.pop(key, None)
             self._expires_at.pop(key, None)
 
+    def clear_prefix(self, prefix: str) -> int:
+        """Remove owned buckets during resource teardown."""
+        with self._lock:
+            keys = [key for key in self._buckets if key.startswith(prefix)]
+            for key in keys:
+                self._buckets.pop(key, None)
+                self._last_seen.pop(key, None)
+                self._expires_at.pop(key, None)
+            return len(keys)
+
     def _expire_inactive_locked(self, now: float) -> None:
         expired = [key for key, expiry in self._expires_at.items() if expiry <= now]
         for key in expired:

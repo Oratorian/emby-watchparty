@@ -16,6 +16,7 @@ def register(ctx):
     logger = ctx['logger']
     party_manager = ctx['party_manager']
     token_manager = ctx['token_manager']
+    rate_limiter = ctx.get('rate_limiter')
     restart_video_from_beginning = ctx['restart_video_from_beginning']
     create_user_stream = ctx.get('create_user_stream')
     session_secret = ctx.get('session_secret')
@@ -843,6 +844,8 @@ def register(ctx):
                     access_token=departure.host_access_token,
                 )
             token_manager.revoke_user(party_id, sid)
+            if rate_limiter:
+                rate_limiter.clear(f"chat:{sid}")
 
             await sio.leave_room(sid, party_id)
             if departure.all_ready:

@@ -15,6 +15,7 @@ class PartyLifecycle:
         self._emby = ctx["emby_client"]
         self._parties = ctx["party_manager"]
         self._tokens = ctx["token_manager"]
+        self._limiter = ctx.get("rate_limiter")
         self._logger = ctx["logger"]
         self._pending_empty: dict[str, asyncio.Task] = {}
 
@@ -115,7 +116,19 @@ class PartyLifecycle:
                     access_token=access_token,
                 )
 
-        self._tokens.revoke_party(party_id)
+        revoked_tokens = self._tokens.revoke_party(party_id)
+        cleared_limiters = 0
+        if self._limiter is not None:
+            for sid in party.sids():
+                cleared_limiters += self._limiter.clear_prefix(f"chat:{sid}")
         with suppress(Exception):
             await self._sio.close_room(party_id)
-        self._logger.info("Party dissolved: %s", party_id)
+        self._logger.info(
+            "cleanup party=%s outcome=ok task_cleanup=%s "
+            "transcode_cleanup=%s token_cleanup=%s limiter_cleanup=%s",
+            party_id,
+            len(tasks),
+            sum(1 for stream in party.user_streams.values() if stream.play_session_id),
+            revoked_tokens,
+            cleared_limiters,
+        )

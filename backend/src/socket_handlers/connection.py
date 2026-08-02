@@ -301,6 +301,8 @@ def register(ctx):
                     )
                 if token_manager:
                     token_manager.revoke_user(party_id, sid)
+                if rate_limiter:
+                    rate_limiter.clear(f"chat:{sid}")
 
                 if departure.all_ready:
                     logger.info(f"All users ready in party {party_id} (after disconnect)")
