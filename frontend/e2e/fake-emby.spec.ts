@@ -158,11 +158,20 @@ test('active viewers can approve a late joiner', async ({ browser, page }) => {
   await expect(charlie.getByRole('heading', { name: 'Waiting for party approval' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Charlie wants to join' })).toBeVisible()
 
+  const daveContext = await browser.newContext()
+  const dave = await daveContext.newPage()
+  await dave.goto(partyUrl)
+  await dave.getByPlaceholder('Your name (optional)').fill('Dave')
+  await dave.getByRole('button', { name: 'Join', exact: true }).click()
+  await expect(dave).toHaveURL(/\/$/)
+  await expect(page.getByText('0 of 2 voted')).toBeVisible()
+
   await page.getByRole('button', { name: 'Accept' }).click()
   await bob.getByRole('button', { name: 'Accept' }).click()
   await expect(charlie.getByText('3 watching')).toBeVisible()
   await expect(charlie.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
 
+  await daveContext.close()
   await charlieContext.close()
   await bobContext.close()
 })
