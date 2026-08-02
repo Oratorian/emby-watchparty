@@ -51,6 +51,7 @@ import { copyToClipboard } from '@/utils/clipboard'
 import { useAuthStore } from '@/stores/auth'
 import { useAvatarStore } from '@/stores/avatar'
 import { usePartyChat } from '@/composables/usePartyChat'
+import { usePartyAdmin } from '@/composables/usePartyAdmin'
 // Brand mark asset. Vite resolves this to a hashed URL at build time
 // (and inlines small assets), so the WebP ships with cache-busting and
 // no runtime path drift. Sits on top of the cyan->magenta gradient
@@ -75,6 +76,7 @@ const {
   insertEmoji,
   addSystemMessage,
 } = usePartyChat(socket, party)
+const { showAdminModal, adminTriggerBtn, adminModalShellRef } = usePartyAdmin(party)
 
 const showBecomeHostModal = ref(false)
 const becomeHostBusy = ref(false)
@@ -119,9 +121,6 @@ const awaitingAutoJoin = ref(!!localStorage.getItem(STORAGE_KEY))
 const showLibrary = ref(false)
 const copyLabel = ref('Copy')
 const showVersionModal = ref(false)
-const showAdminModal = ref(false)
-const adminTriggerBtn = ref<HTMLButtonElement | null>(null)
-const adminModalShellRef = ref<HTMLElement | null>(null)
 const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const currentTime = ref(0)
 let pendingPauseTimer: ReturnType<typeof setTimeout> | null = null
@@ -135,40 +134,6 @@ let heartbeatInterval: ReturnType<typeof setInterval> | null = null
 const myStreamReloading = ref(false)
 
 const versionInfo = ref({ version: '', codename: '' })
-
-function onAdminEscKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && showAdminModal.value) {
-    showAdminModal.value = false
-  }
-}
-
-// Document-level ESC listener works even when focus is inside admin
-// inputs. Focus moves into the modal shell on open and back to the
-// gear trigger on close.
-watch(showAdminModal, (open, prev) => {
-  if (open) {
-    document.addEventListener('keydown', onAdminEscKey)
-    nextTick(() => {
-      adminModalShellRef.value?.focus()
-    })
-  } else {
-    document.removeEventListener('keydown', onAdminEscKey)
-    if (prev) {
-      nextTick(() => {
-        adminTriggerBtn.value?.focus()
-      })
-    }
-  }
-})
-
-// Auto-close the admin modal when a vote or ready check arrives, so
-// the admin doesn't miss party-blocking prompts stacked underneath.
-watch(() => party.pendingVote, (v) => {
-  if (v && showAdminModal.value) showAdminModal.value = false
-})
-watch(() => party.readyCheckActive, (active) => {
-  if (active && showAdminModal.value) showAdminModal.value = false
-})
 
 onMounted(async () => {
   socket.connect()
@@ -629,7 +594,6 @@ onUnmounted(() => {
     clearTimeout(pendingPauseTimer)
     pendingPauseTimer = null
   }
-  document.removeEventListener('keydown', onAdminEscKey)
   // Do NOT call party.leave() here. PartyView unmounts on every
   // navigation (e.g. clicking the Admin or Version links), and a full
   // leave would emit leave_party to the backend AND clear the session
