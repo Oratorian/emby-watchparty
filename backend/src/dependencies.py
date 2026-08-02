@@ -6,6 +6,7 @@ Plus the party-bound session gates used to protect every route that
 touches Emby on behalf of a watch party.
 """
 
+import secrets
 from dataclasses import dataclass
 from typing import Optional
 
@@ -73,6 +74,9 @@ class PartySession:
     client_id: str
     display_name: str
     party: dict
+    # The host's server-issued proof, present only in the real host's
+    # cookie. None for ordinary members. See _owns_host_identity.
+    host_session_grant: Optional[str] = None
 
 
 def require_party_session(
@@ -103,6 +107,7 @@ def require_party_session(
         client_id=client_id,
         display_name=display_name,
         party=party,
+        host_session_grant=session.get("host_session_grant"),
     )
 
 
@@ -137,17 +142,44 @@ def require_host_token(
     return party_session
 
 
+def _owns_host_identity(party: dict, client_id: Optional[str],
+                        grant: Optional[str]) -> bool:
+    """True only when the caller can PROVE they are the party's host.
+
+    `client_id` is not proof. It is broadcast to every party member in
+    the `host_changed` event, and `POST /api/party/<id>/join` stores a
+    caller-supplied `client_id` verbatim, so any attendee could scrape
+    the host's id, re-join supplying it, and receive a validly signed
+    cookie carrying the host's identity. Matching on client_id alone
+    therefore handed admin rights to anyone in the room whenever the
+    host's Emby account had `IsAdministrator=true`.
+
+    `host_session_grant` is minted server-side by `set_host` and only
+    ever written to the real host's cookie, so it cannot be scraped from
+    any broadcast. Compared with `compare_digest` to avoid leaking a
+    match position through timing.
+    """
+    expected = party.get("host_session_grant")
+    if not expected or not grant or not client_id:
+        return False
+    if party.get("host_client_id") != client_id:
+        return False
+    return secrets.compare_digest(str(grant), str(expected))
+
+
 def require_admin(
     party_session: PartySession = Depends(require_party_session),
 ) -> PartySession:
     """Require the caller to be the party's host AND an Emby administrator.
 
     Admin is a sub-grant of host: the caller must be inside a party,
-    must be that party's current host, and that host must have logged
-    in with an Emby account that has `IsAdministrator=true`.
+    must prove they are that party's current host, and that host must
+    have logged in with an Emby account that has `IsAdministrator=true`.
     """
     party = party_session.party
-    if party_session.client_id != party.get("host_client_id"):
+    if not _owns_host_identity(
+        party, party_session.client_id, party_session.host_session_grant
+    ):
         raise HTTPException(status_code=403, detail="Host only")
     if not party.get("host_is_admin"):
         raise HTTPException(status_code=403, detail="Admin only")
@@ -176,7 +208,7 @@ def is_admin_authenticated(request: Request, party_manager: PartyManager) -> boo
     if not party:
         return False
     return (
-        party.get("host_client_id") == client_id
+        _owns_host_identity(party, client_id, session.get("host_session_grant"))
         and bool(party.get("host_is_admin"))
     )
 
@@ -194,7 +226,9 @@ def admin_display_name(request: Request, party_manager: PartyManager) -> Optiona
         party = party_manager.get(party_id.upper())
         if (
             party
-            and party.get("host_client_id") == client_id
+            and _owns_host_identity(
+                party, client_id, session.get("host_session_grant")
+            )
             and party.get("host_is_admin")
         ):
             return party.get("host_username")

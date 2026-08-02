@@ -13,6 +13,8 @@ from http.cookies import SimpleCookie
 
 from itsdangerous import TimestampSigner, BadSignature
 
+from backend.src.dependencies import _owns_host_identity
+
 
 # Must stay in sync with the `session_cookie` kwarg passed to
 # SessionMiddleware in backend/app.py; otherwise the socket handshake
@@ -137,12 +139,14 @@ def register(ctx):
 
         Auth model: client_id alone is NOT proof of identity, because
         the host's client_id is broadcast in the `host_changed` event to
-        every party member. Reclaim additionally requires the socket to
-        carry a valid session cookie signed by this server for the same
-        party_id + client_id. HTTP `/api/party/<id>/join` is the only
-        route that mints such a cookie, so a co-attendee who scraped
-        the host's client_id from the socket stream still can't reclaim
-        without the signed cookie.
+        every party member. A signed session cookie is not proof either:
+        `/api/party/<id>/join` stores whatever client_id the caller sends,
+        so an attendee who scraped the host's id could re-join supplying
+        it and be handed a validly signed cookie carrying that identity.
+
+        Proof is `host_session_grant`, minted server-side by set_host and
+        written only to the real host's cookie. It is never broadcast, so
+        it cannot be scraped from the socket stream.
         """
         party = party_manager.get(party_id)
         if not party:
@@ -169,6 +173,15 @@ def register(ctx):
                 f"Host reclaim REJECTED for {party_id}: cookie "
                 f"party={cookie_party}/client={cookie_client and cookie_client[:8]} "
                 f"does not match rejoin party/client"
+            )
+            return False
+        if not _owns_host_identity(
+            party, cookie_client, session.get("host_session_grant")
+        ):
+            logger.warning(
+                f"Host reclaim REJECTED for {party_id}: cookie carries no "
+                f"valid host_session_grant (client_id {client_id[:8]}... may "
+                f"be scraped from the host_changed broadcast)"
             )
             return False
 

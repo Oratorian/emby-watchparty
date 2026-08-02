@@ -123,7 +123,7 @@ async def api_login(
     if not auth:
         return LoginResponse(success=False, message="Invalid Emby credentials")
 
-    party_manager.set_host(
+    grant = party_manager.set_host(
         party_id,
         client_id=client_id,
         user_id=auth["user_id"],
@@ -131,6 +131,10 @@ async def api_login(
         username=auth["username"],
         is_admin=auth["is_admin"],
     )
+    # Proof of host identity. client_id is broadcast to the whole room
+    # below, so it cannot be the credential; this grant never leaves the
+    # host's own cookie.
+    session["host_session_grant"] = grant
 
     logger.info(
         f"Party {party_id} host changed to '{auth['username']}' "

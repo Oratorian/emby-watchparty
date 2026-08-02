@@ -161,7 +161,7 @@ def create_party(
         else:
             party_id = party_manager.create_party()
             display_name = body.display_name or stashed_username or "Host"
-            party_manager.set_host(
+            grant = party_manager.set_host(
                 party_id,
                 client_id=body.client_id,
                 user_id=stashed_user_id,
@@ -172,6 +172,7 @@ def create_party(
             request.session["party_id"] = party_id
             request.session["client_id"] = body.client_id
             request.session["display_name"] = display_name
+            request.session["host_session_grant"] = grant
             logger.info(
                 f"Created party {party_id} with stashed admin '{stashed_username}' "
                 f"auto-promoted to host (admin={stashed_is_admin})"
@@ -208,7 +209,7 @@ def create_party(
 
         party_id = party_manager.create_party()
         display_name = body.display_name or auth["username"]
-        party_manager.set_host(
+        grant = party_manager.set_host(
             party_id,
             client_id=body.client_id,
             user_id=auth["user_id"],
@@ -220,6 +221,7 @@ def create_party(
         request.session["party_id"] = party_id
         request.session["client_id"] = body.client_id
         request.session["display_name"] = display_name
+        request.session["host_session_grant"] = grant
         logger.info(
             f"Created party {party_id} with host '{auth['username']}' "
             f"(admin={auth['is_admin']})"
@@ -269,6 +271,10 @@ async def join_party(
     request.session["party_id"] = party_id
     request.session["client_id"] = body.client_id
     request.session["display_name"] = body.display_name
+    # Joining is never itself a promotion. Drop any grant carried over
+    # from a party this browser previously hosted, so re-joining can
+    # only ever lose host rights, never silently retain them.
+    request.session.pop("host_session_grant", None)
     if body.avatar_uuid:
         request.session["avatar_uuid"] = body.avatar_uuid
     else:
@@ -289,7 +295,7 @@ async def join_party(
     if dev_user and dev_pw and not party_manager.is_unlocked(party_id):
         auth = emby_client.authenticate(dev_user, dev_pw)
         if auth:
-            party_manager.set_host(
+            request.session["host_session_grant"] = party_manager.set_host(
                 party_id,
                 client_id=body.client_id,
                 user_id=auth["user_id"],
@@ -343,6 +349,7 @@ def leave_party(request: Request, logger=Depends(get_logger)):
     session.pop("client_id", None)
     session.pop("display_name", None)
     session.pop("avatar_uuid", None)
+    session.pop("host_session_grant", None)
     if party_id:
         logger.info(f"Session unbound from party {party_id}")
     return SuccessResponse(success=True)

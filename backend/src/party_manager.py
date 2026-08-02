@@ -8,6 +8,7 @@ API will be used once all handlers are converted to classes in Phase 3.
 """
 
 import logging
+import secrets
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Optional
@@ -143,6 +144,12 @@ class PartyManager:
             "host_is_admin": False,
             "host_username": None,
             "host_left_at": None,
+            # Server-issued secret proving host identity. host_client_id
+            # is broadcast to every member in host_changed, and /join
+            # stores a caller-supplied client_id verbatim, so client_id
+            # alone is not proof. This value only ever reaches the real
+            # host's session cookie. See dependencies._owns_host_identity.
+            "host_session_grant": None,
             # Binge-watching: per-party host opt-in (admin gates whether
             # the host even sees the button). The active flag is only
             # meaningful when config.BINGE_WATCH_ENABLED is True; if the
@@ -320,22 +327,32 @@ class PartyManager:
         access_token: str,
         username: str,
         is_admin: bool = False,
-    ) -> bool:
-        """Mark a party member as host. Returns False if party is missing.
+    ) -> Optional[str]:
+        """Mark a party member as host. Returns None if party is missing.
 
         Overwrites any prior host and clears host_left_at so the party
         moves to UNLOCKED.
+
+        Returns the freshly minted `host_session_grant`, which the caller
+        MUST write to the new host's session cookie. Every host/admin
+        privilege check requires it, so a host promoted without it stored
+        will be treated as an ordinary member. Truthy on success, so
+        existing `if not set_host(...)` callers keep working.
         """
         party = self.watch_parties.get(party_id)
         if not party:
-            return False
+            return None
+        grant = secrets.token_urlsafe(32)
         party["host_client_id"] = client_id
         party["host_user_id"] = user_id
         party["host_access_token"] = access_token
         party["host_username"] = username
         party["host_is_admin"] = bool(is_admin)
         party["host_left_at"] = None
-        return True
+        # Rotated on every promotion, so a previous host's cookie stops
+        # proving anything the moment someone else takes over.
+        party["host_session_grant"] = grant
+        return grant
 
     def clear_host(self, party_id: str) -> bool:
         """Wipe all host fields. Library and HLS are now both locked."""
@@ -348,6 +365,10 @@ class PartyManager:
         party["host_username"] = None
         party["host_is_admin"] = False
         party["host_left_at"] = None
+        # Invalidate the old host's proof. Any cookie still carrying it
+        # stops verifying immediately rather than lingering until the
+        # cookie's own 14-day expiry.
+        party["host_session_grant"] = None
         return True
 
     def mark_host_left(self, party_id: str) -> bool:
