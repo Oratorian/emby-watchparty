@@ -11,6 +11,17 @@ const hlsMock = vi.hoisted(() => ({
 
 vi.mock('hls.js', () => ({
   default: class FakeHls {
+    static Events = {
+      MEDIA_ATTACHED: 'mediaAttached',
+      MANIFEST_PARSED: 'manifestParsed',
+      ERROR: 'error',
+    }
+
+    static ErrorTypes = {
+      NETWORK_ERROR: 'networkError',
+      MEDIA_ERROR: 'mediaError',
+    }
+
     static isSupported() {
       return hlsMock.supported
     }
@@ -18,6 +29,14 @@ vi.mock('hls.js', () => ({
     constructor() {
       hlsMock.constructed()
     }
+
+    attachMedia() {}
+
+    loadSource() {}
+
+    on() {}
+
+    destroy() {}
   },
 }))
 
@@ -47,6 +66,32 @@ describe('VideoPlayer native HLS support', () => {
 
     expect(wrapper.get('video').attributes('src')).toBe('/hls/native/master.m3u8')
     expect(hlsMock.constructed).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it.each([
+    [
+      'Android Chrome',
+      'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36',
+    ],
+    [
+      'desktop Safari',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15',
+    ],
+  ])('keeps %s on Hls.js when MediaSource is supported', (_browser, userAgent) => {
+    hlsMock.supported = true
+    vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(userAgent)
+
+    const wrapper = mount(VideoPlayer, {
+      props: {
+        streamUrl: '/hls/managed/master.m3u8',
+        title: 'Movie',
+        playing: false,
+      },
+    })
+
+    expect(hlsMock.constructed).toHaveBeenCalledOnce()
+    expect(wrapper.get('video').attributes('src')).toBeUndefined()
     wrapper.unmount()
   })
 
