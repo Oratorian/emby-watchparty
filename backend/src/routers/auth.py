@@ -5,7 +5,6 @@ Auth Router -- become-host / drop-host / status / version.
 and promotes them to host of their current party.
 """
 
-import os
 import secrets
 
 from fastapi import APIRouter, Depends, Request
@@ -55,19 +54,22 @@ router = APIRouter(prefix="/api", tags=["auth"])
 # so a casual reader of /api/admin/config, /admin, or the source
 # tree can't guess at their existence. Operators who want them set
 # them directly in the container env or untracked `.env`.
-def _env_dev_host_risk_accepted() -> bool:
-    return os.getenv("EMBY_WATCHPARTY_X_DEV_HOST_ACCEPT_RISK", "").strip().lower() == "true"
+def _env_dev_host_risk_accepted(config) -> bool:
+    return (
+        config._private_env_value("EMBY_WATCHPARTY_X_DEV_HOST_ACCEPT_RISK").strip().lower()
+        == "true"
+    )
 
 
-def _env_dev_host_creds() -> tuple[str | None, str | None]:
-    raw = os.getenv("EMBY_WATCHPARTY_X_DEV_HOST", "").strip()
+def _env_dev_host_creds(config) -> tuple[str | None, str | None]:
+    raw = config._private_env_value("EMBY_WATCHPARTY_X_DEV_HOST").strip()
     if not raw or ":" not in raw:
         return None, None
     # Fail closed when the acknowledgement is missing or set to
     # anything other than the literal string "true". This is the
     # second key that arms the gate -- without it the creds are
     # treated as if they weren't set at all.
-    if not _env_dev_host_risk_accepted():
+    if not _env_dev_host_risk_accepted(config):
         return None, None
     user, _, pw = raw.partition(":")
     user = user.strip()
@@ -81,7 +83,7 @@ def _env_dev_host_creds() -> tuple[str | None, str | None]:
 async def api_login(
     body: LoginRequest,
     request: Request,
-    _config=Depends(get_config),
+    config=Depends(get_config),
     emby_client=Depends(get_emby_client),
     party_manager=Depends(get_party_manager),
     sio=Depends(get_sio),
@@ -120,7 +122,7 @@ async def api_login(
     # "Become Host" with junk input and still get promoted across
     # backend restarts. Loud WARNING on every use so it never goes
     # unnoticed if accidentally left set in a non-dev environment.
-    dev_user, dev_pw = _env_dev_host_creds()
+    dev_user, dev_pw = _env_dev_host_creds(config)
     if dev_user and dev_pw:
         logger.warning(
             f"Party {party_id}: host login auto-promoted via dev gate "

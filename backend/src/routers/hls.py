@@ -102,32 +102,38 @@ def _safe_hls_subpath(subpath: str) -> bool:
     return not any(part in {".", ".."} for part in normalized.split("/"))
 
 
-def _resolve_host_creds(request: Request, token_manager, party_manager, logger):
-    """Validate the HLS token and return (host_access_token, host_user_id, party_id).
+def _resolve_host_creds(request: Request, config, token_manager, party_manager, logger):
+    """Authorize through token or dev session; return host credentials and party ID.
 
     Returns (None, None, None) when validation or host lookup fails so
     the caller can render the right HTTP error.
     """
-    token = request.query_params.get("token")
-    if not token:
-        logger.debug("HLS denied: no token")
-        return None, None, None
+    if config.ENABLE_HLS_TOKEN_VALIDATION:
+        token = request.query_params.get("token")
+        if not token:
+            logger.debug("HLS denied: no token")
+            return None, None, None
 
-    party_id = token_manager.get_party_id(token)
-    if not party_id:
-        logger.debug("HLS denied: token unknown or expired")
-        return None, None, None
+        party_id = token_manager.get_party_id(token)
+        if not party_id:
+            logger.debug("HLS denied: token unknown or expired")
+            return None, None, None
 
-    valid = token_manager.validate(
-        token,
-        party_exists_fn=party_manager.exists,
-        user_in_party_fn=lambda pid, sid: (
-            party_manager.get(pid) is not None and party_manager.get(pid).has_sid(sid)
-        ),
-    )
-    if not valid:
-        logger.debug(f"HLS denied: token failed validation for party {party_id}")
-        return None, None, None
+        valid = token_manager.validate(
+            token,
+            party_exists_fn=party_manager.exists,
+            user_in_party_fn=lambda pid, sid: (
+                party_manager.get(pid) is not None and party_manager.get(pid).has_sid(sid)
+            ),
+        )
+        if not valid:
+            logger.debug(f"HLS denied: token failed validation for party {party_id}")
+            return None, None, None
+    else:
+        party_id = request.session.get("party_id")
+        if not party_id:
+            logger.debug("HLS denied: validation disabled but no party session")
+            return None, None, None
 
     party = party_manager.get(party_id)
     if not party or not party.host_access_token:
@@ -210,7 +216,7 @@ async def proxy_hls_master(
 ):
     try:
         access_token, user_id, _ = _resolve_host_creds(
-            request, token_manager, party_manager, logger
+            request, config, token_manager, party_manager, logger
         )
         if not access_token:
             return Response(
@@ -308,7 +314,7 @@ async def proxy_hls_segment(
                 media_type="application/json",
             )
         access_token, user_id, _ = _resolve_host_creds(
-            request, token_manager, party_manager, logger
+            request, config, token_manager, party_manager, logger
         )
         if not access_token:
             return Response(

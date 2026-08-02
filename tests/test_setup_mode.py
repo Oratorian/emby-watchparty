@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from backend.app import _json_for_html_script, create_app
+from backend.src.bootstrap import BOOTSTRAP_FIELDS
 from backend.src.config import Config, EnvConfig, RuntimeConfig
 from tests.support.asgi import asgi_client
 
@@ -324,6 +325,43 @@ def test_saved_configuration_enters_normal_mode_after_restart(
 
     restarted = create_app(project_root=tmp_path, enable_update_check=False)
     assert hasattr(restarted.state, "sio")
+
+
+def test_setup_snapshots_complete_effective_environment_configuration(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    (tmp_path / ".env").write_text(
+        "APP_ENV=production\n"
+        "EMBY_SERVER_URL=https://dotenv-emby.example\n"
+        "EMBY_API_KEY=dotenv-key\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("EMBY_API_KEY", "process-key")
+    app = create_app(project_root=tmp_path, enable_update_check=False)
+    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
+
+    async def save() -> None:
+        async with asgi_client(app) as client:
+            response = await client.post(
+                "/api/setup",
+                headers={"X-Emby-Watchparty-Setup-Token": token},
+                json=_valid_setup_payload(),
+            )
+            assert response.status_code == 200
+
+    asyncio.run(save())
+    saved = json.loads((tmp_path / "data" / "bootstrap.json").read_text(encoding="utf-8"))
+    assert set(saved) == set(BOOTSTRAP_FIELDS)
+    assert saved["APP_ENV"] == "production"
+    assert saved["EMBY_SERVER_URL"] == "https://dotenv-emby.example"
+    assert saved["EMBY_API_KEY"] == "process-key"
+
+    monkeypatch.delenv("EMBY_API_KEY")
+    (tmp_path / ".env").unlink()
+    restarted = Config.from_env(tmp_path)
+    assert restarted.APP_ENV == "production"
+    assert restarted.EMBY_SERVER_URL == "https://dotenv-emby.example"
+    assert restarted.EMBY_API_KEY == "process-key"
 
 
 def test_invalid_setup_fields_return_safe_errors(tmp_path: Path, capsys, caplog) -> None:

@@ -193,16 +193,13 @@ def _create_setup_app(config: Config, project_root: Path) -> FastAPI:
                 {"status": "invalid", "errors": errors},
                 status_code=400,
             )
-        persisted = {
-            name: value for name, value in values.items() if name not in config.explicit_env_fields
-        }
         with setup_lock:
             if setup_state["saved"]:
                 return JSONResponse(
                     {"status": "saved", "restart_required": True},
                     status_code=409,
                 )
-            save_bootstrap_config(project_root, persisted)
+            save_bootstrap_config(project_root, values)
             setup_state["saved"] = True
             setup_state["token"] = None
         return {"status": "saved", "restart_required": True}

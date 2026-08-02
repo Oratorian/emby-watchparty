@@ -169,7 +169,7 @@ export const usePartyStore = defineStore('party', () => {
     const events = [
       'user_joined', 'user_left', 'sync_state', 'video_selected',
       'video_stopped', 'video_ended', 'play', 'pause', 'seek',
-      'streams_changed', 'ready_check_update', 'all_ready',
+      'streams_changed', 'members_update', 'ready_check_update', 'all_ready',
       'binge_watch_state_changed', 'auto_advance_pending',
       'auto_advance_cancelled', 'auto_advance_fired', 'binge_finished',
     ] as const

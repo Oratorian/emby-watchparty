@@ -1,11 +1,14 @@
+import asyncio
 import json
 import os
 from pathlib import Path
 
 import pytest
 
-from backend.src.bootstrap import SetupAttemptLimiter, save_bootstrap_config
+from backend.app import create_app
+from backend.src.bootstrap import BOOTSTRAP_FIELDS, SetupAttemptLimiter, save_bootstrap_config
 from backend.src.config import Config
+from tests.support.asgi import asgi_client
 
 
 def test_boot_config_source_precedence_does_not_mutate_environment(
@@ -27,6 +30,48 @@ def test_boot_config_source_precedence_does_not_mutate_environment(
     monkeypatch.setenv("EMBY_API_KEY", "process-key")
     process_config = Config.from_env(tmp_path)
     assert process_config.EMBY_API_KEY == "process-key"
+
+
+def test_private_dev_host_credentials_use_dotenv_with_process_precedence(
+    tmp_path: Path, monkeypatch, fake_emby_server
+) -> None:
+    names = (
+        "EMBY_WATCHPARTY_X_DEV_HOST",
+        "EMBY_WATCHPARTY_X_DEV_HOST_ACCEPT_RISK",
+    )
+    for name in names:
+        monkeypatch.delenv(name, raising=False)
+    (tmp_path / ".env").write_text(
+        f"EMBY_SERVER_URL={fake_emby_server.url}\n"
+        "EMBY_API_KEY=test-key\n"
+        "SESSION_SECRET=test-session-secret-with-at-least-32-characters\n"
+        "EMBY_WATCHPARTY_X_DEV_HOST=dotenv-user:dotenv-pass\n"
+        "EMBY_WATCHPARTY_X_DEV_HOST_ACCEPT_RISK=true\n",
+        encoding="utf-8",
+    )
+
+    async def promoted_username() -> str | None:
+        app = create_app(project_root=tmp_path, enable_update_check=False)
+        async with asgi_client(app) as client:
+            created = await client.post("/api/party/create", json={})
+            party_id = created.json()["party_id"]
+            joined = await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            assert joined.json()["is_host"] is True
+            status = await client.get("/api/auth/status")
+            return status.json()["username"]
+
+    assert asyncio.run(promoted_username()) == "dotenv-user"
+    assert all(name not in os.environ for name in names)
+
+    monkeypatch.setenv("EMBY_WATCHPARTY_X_DEV_HOST", "process-user:process-pass")
+    assert asyncio.run(promoted_username()) == "process-user"
+
+
+def test_bootstrap_field_list_covers_complete_effective_config() -> None:
+    assert set(BOOTSTRAP_FIELDS) == set(Config.from_env().boot_values())
 
 
 def test_bootstrap_save_failure_preserves_previous_file(tmp_path: Path, monkeypatch) -> None:

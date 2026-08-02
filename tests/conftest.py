@@ -66,8 +66,12 @@ def fake_emby_server() -> RunningFakeEmby:
         thread.join(timeout=5)
 
 
-@pytest.fixture
-def live_watchparty(tmp_path, fake_emby_server: RunningFakeEmby) -> RunningWatchParty:
+def _run_watchparty(
+    tmp_path,
+    fake_emby_server: RunningFakeEmby,
+    *,
+    hls_token_validation: bool,
+):
     config = Config(
         EnvConfig(
             WATCH_PARTY_BIND="127.0.0.1",
@@ -81,6 +85,7 @@ def live_watchparty(tmp_path, fake_emby_server: RunningFakeEmby) -> RunningWatch
             SESSION_COOKIE_SECURE=False,
             CORS_ALLOWED_ORIGINS=("*",),
             TRUSTED_PROXY_CIDRS=(),
+            ENABLE_HLS_TOKEN_VALIDATION=hls_token_validation,
         ),
         RuntimeConfig(LOG_TO_FILE=False),
     )
@@ -118,3 +123,23 @@ def live_watchparty(tmp_path, fake_emby_server: RunningFakeEmby) -> RunningWatch
     finally:
         server.should_exit = True
         thread.join(timeout=5)
+
+
+@pytest.fixture
+def live_watchparty(tmp_path, fake_emby_server: RunningFakeEmby) -> RunningWatchParty:
+    yield from _run_watchparty(
+        tmp_path,
+        fake_emby_server,
+        hls_token_validation=True,
+    )
+
+
+@pytest.fixture
+def live_watchparty_hls_disabled(
+    tmp_path, fake_emby_server: RunningFakeEmby
+) -> RunningWatchParty:
+    yield from _run_watchparty(
+        tmp_path,
+        fake_emby_server,
+        hls_token_validation=False,
+    )

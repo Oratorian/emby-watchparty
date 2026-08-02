@@ -92,6 +92,39 @@ def test_zero_limit_is_rejected_instead_of_crashing_request_handling():
         parse_rate("0 per minute")
 
 
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "RATE_LIMIT_PARTY_CREATION",
+        "RATE_LIMIT_API_CALLS",
+        "RATE_LIMIT_LOGIN",
+        "RATE_LIMIT_AVATAR_RECOVERY",
+        "RATE_LIMIT_CHAT",
+        "RATE_LIMIT_SOCKET_CONNECTIONS",
+    ],
+)
+def test_invalid_runtime_rate_limit_is_rejected(field_name: str):
+    config = _config()
+    previous = getattr(config, field_name)
+
+    changed, rejected = config.update_runtime({field_name: "ten/minute"})
+
+    assert changed == []
+    assert rejected == [
+        {"key": field_name, "reason": "Invalid rate limit: 'ten/minute'"}
+    ]
+    assert getattr(config, field_name) == previous
+
+
+def test_invalid_persisted_rate_limit_falls_back_to_default(tmp_path: Path):
+    path = tmp_path / "config.json"
+    path.write_text('{"RATE_LIMIT_LOGIN": "ten/minute"}', encoding="utf-8")
+
+    runtime = RuntimeConfig.from_file(path)
+
+    assert runtime.RATE_LIMIT_LOGIN == RuntimeConfig().RATE_LIMIT_LOGIN
+
+
 def test_general_api_limit_returns_429_with_retry_after():
     app = _limited_app()
 

@@ -478,7 +478,7 @@ Quick checks before opening an issue:
 - **Session secret and process model.** `SESSION_SECRET` must remain stable across restarts. Run exactly one application process/worker; party state, admin sessions, limiters, background tasks, streams, and HLS tokens are intentionally in-memory and are not shared between workers.
 - **HLS URLs.** Since beta18, HLS playlist and segment URLs served to the browser no longer carry the admin `EMBY_API_KEY` as a query parameter. Access is gated by a per-stream HLS token bound to the session cookie; the API key stays server-side.
 - **Party codes** are generated with cryptographically secure random tokens.
-- **Built-in controls.** HLS token validation, bounded per-IP API/party-creation rate limiting, and configurable party size limits are on by default; tune them in **/admin -> Security**. Configure `TRUSTED_PROXY_CIDRS` when a reverse proxy supplies client addresses.
+- **Built-in controls.** HLS token validation is on by default and is a restart-required boot setting configured through first-run setup or `ENABLE_HLS_TOKEN_VALIDATION` in `.env`. Bounded per-IP API/party-creation rate limiting and party size limits remain tunable in **/admin -> Security**. Configure `TRUSTED_PROXY_CIDRS` when a reverse proxy supplies client addresses.
 - **For internet-facing deployments**, terminate TLS at a reverse proxy (nginx, Caddy, Traefik), set `SESSION_COOKIE_SECURE=true`, and pin `CORS_ALLOWED_ORIGINS` to your real origin(s) instead of `*`.
 
 ## License

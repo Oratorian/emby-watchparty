@@ -32,6 +32,22 @@ CONFIG_JSON_PATH = Path(__file__).parent.parent.parent / "config.json"
 BOOTSTRAP_CONFIG_NAME = "bootstrap.json"
 _APP_PREFIX_RE = re.compile(r"(?:/[A-Za-z0-9][A-Za-z0-9._~-]*)+")
 _DNS_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+_PRIVATE_ENV_FIELDS = frozenset(
+    {
+        "EMBY_WATCHPARTY_X_DEV_HOST",
+        "EMBY_WATCHPARTY_X_DEV_HOST_ACCEPT_RISK",
+    }
+)
+_RATE_LIMIT_FIELDS = frozenset(
+    {
+        "RATE_LIMIT_PARTY_CREATION",
+        "RATE_LIMIT_API_CALLS",
+        "RATE_LIMIT_LOGIN",
+        "RATE_LIMIT_AVATAR_RECOVERY",
+        "RATE_LIMIT_CHAT",
+        "RATE_LIMIT_SOCKET_CONNECTIONS",
+    }
+)
 
 
 def _valid_url_host(hostname: str | None) -> bool:
@@ -454,6 +470,15 @@ class RuntimeConfig:
                 rejected.append({"key": key, "reason": f"coercion failed: {e}"})
                 continue
 
+            if key in _RATE_LIMIT_FIELDS:
+                from backend.src.rate_limit import parse_rate
+
+                try:
+                    parse_rate(value)
+                except ValueError as e:
+                    rejected.append({"key": key, "reason": str(e)})
+                    continue
+
             if value != current:
                 setattr(self, key, value)
                 changed.append(key)
@@ -522,6 +547,7 @@ class Config:
         *,
         load_errors: dict[str, str] | None = None,
         explicit_env_fields: set[str] | None = None,
+        private_env: dict[str, str] | None = None,
     ):
         # Use object.__setattr__ to avoid triggering __getattr__
         object.__setattr__(self, "_env", env)
@@ -529,6 +555,7 @@ class Config:
         object.__setattr__(self, "_lock", threading.Lock())
         object.__setattr__(self, "_load_errors", dict(load_errors or {}))
         object.__setattr__(self, "_explicit_env_fields", frozenset(explicit_env_fields or set()))
+        object.__setattr__(self, "_private_env", dict(private_env or {}))
 
     def __getattr__(self, name: str):
         if name == "ENABLE_HLS_TOKEN_VALIDATION":
@@ -548,6 +575,12 @@ class Config:
     def from_env(cls, project_root: Path | None = None) -> "Config":
         root = Path(project_root or Path(__file__).parent.parent.parent)
         runtime = RuntimeConfig.from_file(root / "config.json")
+        dot_env = dotenv_values(root / ".env")
+        private_env = {
+            name: str(os.environ[name] if name in os.environ else dot_env[name])
+            for name in _PRIVATE_ENV_FIELDS
+            if name in os.environ or dot_env.get(name) is not None
+        }
         load_errors: dict[str, str] = {}
         explicit_fields: set[str] = set()
         env = EnvConfig.from_env(
@@ -561,6 +594,7 @@ class Config:
             runtime,
             load_errors=load_errors,
             explicit_env_fields=explicit_fields,
+            private_env=private_env,
         )
 
     def update_runtime(self, data: dict) -> tuple[list, list]:
@@ -603,6 +637,12 @@ class Config:
     def explicit_env_fields(self) -> frozenset[str]:
         return object.__getattribute__(self, "_explicit_env_fields")
 
+    def _private_env_value(self, name: str) -> str:
+        """Return a boot-loaded private setting that must never reach admin APIs."""
+        if name not in _PRIVATE_ENV_FIELDS:
+            raise KeyError(name)
+        return object.__getattribute__(self, "_private_env").get(name, "")
+
     def boot_values(self) -> dict[str, object]:
         """Return boot values for trusted server-side setup processing."""
         env = object.__getattribute__(self, "_env")
@@ -623,6 +663,7 @@ class Config:
             runtime,
             load_errors=explicit_errors,
             explicit_env_fields=explicit_fields,
+            private_env=object.__getattribute__(self, "_private_env"),
         )
 
     def validate_for_startup(self) -> None:

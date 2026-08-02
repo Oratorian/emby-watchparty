@@ -90,6 +90,32 @@ def test_live_hls_streams_first_chunk_and_forwards_ios_range(live_watchparty) ->
     asyncio.run(_exercise_streaming_and_range(live_watchparty))
 
 
+async def _exercise_tokenless_development_playback(live_watchparty) -> None:
+    client, realtime, master_url = await _select_video(live_watchparty.url)
+    try:
+        assert "token=" not in master_url
+
+        master = await client.get(master_url)
+        assert master.status_code == 200
+        variant_url = urljoin(master_url, _media_line(master.text))
+        assert "token=" not in variant_url
+
+        variant = await client.get(variant_url)
+        assert variant.status_code == 200
+        segment_url = urljoin(variant_url, _media_line(variant.text))
+        assert (await client.get(segment_url)).status_code == 200
+
+        async with httpx.AsyncClient(base_url=live_watchparty.url) as unrelated:
+            assert (await unrelated.get(master_url)).status_code == 401
+    finally:
+        await realtime.disconnect()
+        await client.aclose()
+
+
+def test_hls_disabled_development_uses_party_session(live_watchparty_hls_disabled) -> None:
+    asyncio.run(_exercise_tokenless_development_playback(live_watchparty_hls_disabled))
+
+
 async def _exercise_disconnect_closes_upstream(live_watchparty) -> None:
     async with httpx.AsyncClient() as controls:
         await controls.post(f"{live_watchparty.fake.url}/__test__/reset")

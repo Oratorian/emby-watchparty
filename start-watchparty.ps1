@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$watchPartyRoot = 'C:\Users\Dnord\Documents\Codex\2026-08-01\computer-plugin-computer-use-openai-bundled\work\emby-watchparty'
+$watchPartyRoot = $PSScriptRoot
 $watchPartyPython = Join-Path $watchPartyRoot '.venv\Scripts\python.exe'
 
 function Get-WatchPartyDotEnvValue([string] $Name) {
@@ -35,7 +35,7 @@ if ([string]::IsNullOrWhiteSpace($watchPartyPrefix)) {
 }
 if ($null -eq $watchPartyPrefix) { $watchPartyPrefix = '' }
 $watchPartyPrefix = $watchPartyPrefix.TrimEnd('/')
-$watchPartyBaseUrl = "http://127.0.0.1:$watchPartyPort$watchPartyPrefix"
+$watchPartyBaseUrl = "http://localhost:$watchPartyPort$watchPartyPrefix"
 
 # Avoid starting a second instance when configured endpoint is already healthy.
 try {

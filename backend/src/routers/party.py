@@ -250,6 +250,7 @@ async def join_party(
     party_id: str,
     body: JoinPartyRequest,
     request: Request,
+    config=Depends(get_config),
     party_manager=Depends(get_party_manager),
     emby_client=Depends(get_emby_client),
     sio=Depends(get_sio),
@@ -310,7 +311,7 @@ async def join_party(
     # Host" modal never appears during a continuous dev / restart loop.
     # Skipped silently when the party already has a host so existing
     # members don't get bumped on every new join.
-    dev_user, dev_pw = _env_dev_host_creds()
+    dev_user, dev_pw = _env_dev_host_creds(config)
     is_host = party.host_client_id == body.client_id
     if dev_user and dev_pw and not party_manager.is_unlocked(party_id):
         auth = await emby_client.authenticate(dev_user, dev_pw)

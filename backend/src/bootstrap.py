@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 BOOTSTRAP_FIELDS = (
+    "WATCH_PARTY_BIND",
+    "WATCH_PARTY_PORT",
+    "SESSION_EXPIRY",
     "APP_ENV",
     "EMBY_SERVER_URL",
     "EMBY_API_KEY",
@@ -29,6 +32,7 @@ BOOTSTRAP_FIELDS = (
     "ENABLE_HLS_TOKEN_VALIDATION",
 )
 _BOOLEAN_FIELDS = {"SESSION_COOKIE_SECURE", "ENABLE_HLS_TOKEN_VALIDATION"}
+_INTEGER_FIELDS = {"WATCH_PARTY_PORT", "SESSION_EXPIRY"}
 _LIST_FIELDS = {"CORS_ALLOWED_ORIGINS", "TRUSTED_PROXY_CIDRS"}
 
 
@@ -132,6 +136,12 @@ def validate_bootstrap_submission(
                 normalized[name] = current_values[name]
             else:
                 normalized[name] = raw
+        elif name in _INTEGER_FIELDS:
+            if isinstance(raw, int) and not isinstance(raw, bool):
+                normalized[name] = raw
+            else:
+                shape_errors[name] = "Must be an integer"
+                normalized[name] = current_values[name]
         elif name in _LIST_FIELDS:
             if isinstance(raw, str):
                 normalized[name] = tuple(item.strip() for item in raw.split(",") if item.strip())
