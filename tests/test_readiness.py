@@ -1,57 +1,46 @@
-import unittest
+from pathlib import Path
 
-from fastapi import FastAPI
+import httpx
 from fastapi.testclient import TestClient
 
-from backend.src.dependencies import get_avatar_store, get_config, get_emby_gateway
-from backend.src.routers import health
+from backend.app import create_app
+from backend.src.config import Config, EnvConfig, RuntimeConfig
 
 
-class _Config:
-    EMBY_SERVER_URL = "http://emby.test"
-    EMBY_API_KEY = "admin-key"
+def test_ready_reports_named_checks_through_running_app(live_watchparty) -> None:
+    response = httpx.get(f"{live_watchparty.url}/api/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ready",
+        "checks": {"config": True, "storage": True, "emby": True},
+    }
 
 
-class _Response:
-    status_code = 200
+def test_not_ready_when_emby_api_key_is_missing(
+    tmp_path: Path,
+    fake_emby_server,
+) -> None:
+    config = Config(
+        EnvConfig(
+            WATCH_PARTY_BIND="127.0.0.1",
+            WATCH_PARTY_PORT=5000,
+            APP_PREFIX="",
+            SESSION_EXPIRY=3600,
+            EMBY_SERVER_URL=fake_emby_server.url,
+            EMBY_API_KEY="",
+            APP_ENV="development",
+            SESSION_SECRET="test-session-secret-with-at-least-32-characters",
+            SESSION_COOKIE_SECURE=False,
+            CORS_ALLOWED_ORIGINS=("*",),
+            TRUSTED_PROXY_CIDRS=(),
+        ),
+        RuntimeConfig(LOG_TO_FILE=False),
+    )
+    app = create_app(config=config, project_root=tmp_path, enable_update_check=False)
 
+    with TestClient(app) as client:
+        response = client.get("/api/ready")
 
-class _EmbyGateway:
-    async def get(self, *_args, **_kwargs):
-        return _Response()
-
-
-class _AvatarStore:
-    def readiness_check(self):
-        return True
-
-
-def _client(config=None):
-    app = FastAPI()
-    app.include_router(health.router)
-    app.dependency_overrides[get_config] = lambda: config or _Config()
-    app.dependency_overrides[get_emby_gateway] = lambda: _EmbyGateway()
-    app.dependency_overrides[get_avatar_store] = lambda: _AvatarStore()
-    return TestClient(app)
-
-
-class ReadinessTests(unittest.TestCase):
-    def test_ready_when_required_config_and_emby_are_available(self):
-        response = _client().get("/api/ready")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["status"], "ready")
-        self.assertEqual(
-            response.json()["checks"],
-            {"config": True, "storage": True, "emby": True},
-        )
-
-    def test_not_ready_when_emby_api_key_is_missing(self):
-        config = _Config()
-        config.EMBY_API_KEY = ""
-        response = _client(config).get("/api/ready")
-        self.assertEqual(response.status_code, 503)
-        self.assertFalse(response.json()["checks"]["config"])
-
-
-if __name__ == "__main__":
-    unittest.main()
+    assert response.status_code == 503
+    assert response.json()["checks"]["config"] is False
