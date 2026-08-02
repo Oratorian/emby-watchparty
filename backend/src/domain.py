@@ -69,6 +69,14 @@ class PlaybackReportSnapshot:
     host_user_id: str | None
 
 
+@dataclass(frozen=True)
+class PlaybackControlCommit:
+    client_id: str
+    username: str
+    report: PlaybackReportSnapshot
+    waiting_names: tuple[str, ...] = ()
+
+
 @dataclass
 class Party:
     """Typed party aggregate."""

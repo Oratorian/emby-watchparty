@@ -1,8 +1,4 @@
-"""Sync handlers: play, pause, seek"""
-
-from datetime import datetime
-
-from backend.src.domain import PlaybackReportSnapshot
+"""Sync handlers: play, pause, seek."""
 
 
 def register(ctx):
@@ -10,23 +6,6 @@ def register(ctx):
     emby_client = ctx['emby_client']
     logger = ctx['logger']
     party_manager = ctx['party_manager']
-
-    def _get_server_time(party):
-        """Get the server's best estimate of current playback position."""
-        ps = party.playback_state
-        server_time = ps.get("time", 0)
-        if ps.get("playing") and ps.get("last_update"):
-            try:
-                last = datetime.fromisoformat(ps["last_update"])
-                elapsed = (datetime.now() - last).total_seconds()
-                if 0 < elapsed < 30:
-                    server_time += elapsed
-            except Exception:
-                pass
-        return server_time
-
-    def _client_id_for_sid(party, sid):
-        return party.sid_client_ids.get(sid)
 
     async def _report_emby_progress(snapshot, position, is_paused, event_name):
         """Report playback progress to Emby for a specific user's stream."""
@@ -46,71 +25,21 @@ def register(ctx):
             user_id=snapshot.host_user_id,
         )
 
-    def _progress_snapshot(party, sid):
-        """Copy only Emby report fields before any network/socket await."""
-        stream = party.user_streams.get(sid)
-        return PlaybackReportSnapshot(
-            current_video=dict(party.current_video) if party.current_video else None,
-            user_stream=dict(stream) if stream else None,
-            host_access_token=party.host_access_token,
-            host_user_id=party.host_user_id,
-        )
-
-    def _authorized_controller(party, sid):
-        """Democratic playback control: ANY joined party member may drive
-        play/pause/seek, and it syncs to the whole room ("if one pauses,
-        everyone pauses"). This is the intended watch-party model.
-
-        The only gate is membership: the socket must map to a known
-        client_id registered on the party. That blocks a stray / non-
-        member socket from injecting control events without narrowing
-        control back to a single person. It does NOT re-open the old
-        griefing surface in a meaningful way for a private, code-gated
-        party -- every controller is already a trusted member who joined
-        with the party code.
-
-        NOTE: this deliberately relaxes the selector-only gate added in
-        6f8edb8 ("gate playback control"). That commit made control
-        selector-authoritative to stop spectators pausing/scrubbing for
-        the room; product decision since then is that shared control IS
-        the watch-party experience, so the gate is loosened to a plain
-        membership check. Seek stutter-loops are still prevented by the
-        ready-check handshake in handle_seek + the ready-check early-out
-        below, independent of who initiates the seek.
-
-        Returns (caller_client_id, allowed_bool).
-        """
-        caller_client_id = _client_id_for_sid(party, sid)
-        # Membership check: a registered client_id means this socket
-        # joined the party properly. Unknown sid -> not a member -> deny.
-        allowed = caller_client_id is not None
-        return caller_client_id, allowed
-
     @sio.on("play")
     async def handle_play(sid, data):
         party_id = data.get("party_id", "").strip().upper()
         current_time = data.get("time", 0)
-        party = party_manager.get(party_id)
-        if not party:
-            return
-
-        caller_client_id, allowed = _authorized_controller(party, sid)
-        if not allowed:
+        commit = await party_manager.commit_playback_control(
+            party_id, sid, playing=True, position=current_time
+        )
+        if commit is None:
             logger.info(
-                f"handle_play REJECTED: sid={sid} client_id={caller_client_id} "
-                f"is not the selector/host of party {party_id}"
+                f"handle_play REJECTED: sid={sid} is not a member of {party_id}"
             )
             return
-
-        party.playback_state = {
-            "playing": True, "time": current_time,
-            "last_update": datetime.now().isoformat(),
-        }
-
-        username = party.users.get(sid, "Someone")
-        progress = _progress_snapshot(party, sid)
         logger.debug(
-            f"PLAY accepted from {username} (sid={sid}, client={caller_client_id}) "
+            f"PLAY accepted from {commit.username} (sid={sid}, "
+            f"client={commit.client_id}) "
             f"in {party_id} at {current_time:.1f}s -> broadcasting to room"
         )
 
@@ -122,46 +51,36 @@ def register(ctx):
         # broadcast-fire duplicate that used to show up whenever the
         # server broadcasted to the sender (e.g. seek during playback).
         # See the matching comment in handle_seek.
-        await sio.emit("play", {"time": current_time, "username": username},
+        await sio.emit("play", {"time": current_time, "username": commit.username},
                         room=party_id)
         await _report_emby_progress(
-            progress, current_time, is_paused=False, event_name="Unpause"
+            commit.report, current_time, is_paused=False, event_name="Unpause"
         )
 
     @sio.on("pause")
     async def handle_pause(sid, data):
         party_id = data.get("party_id", "").strip().upper()
         current_time = data.get("time", 0)
-        party = party_manager.get(party_id)
-        if not party:
-            return
-
-        caller_client_id, allowed = _authorized_controller(party, sid)
-        if not allowed:
+        commit = await party_manager.commit_playback_control(
+            party_id, sid, playing=False, position=current_time
+        )
+        if commit is None:
             logger.info(
-                f"handle_pause REJECTED: sid={sid} client_id={caller_client_id} "
-                f"is not the selector/host of party {party_id}"
+                f"handle_pause REJECTED: sid={sid} is not a member of {party_id}"
             )
             return
-
-        party.playback_state = {
-            "playing": False, "time": current_time,
-            "last_update": datetime.now().isoformat(),
-        }
-
-        username = party.users.get(sid, "Someone")
-        progress = _progress_snapshot(party, sid)
         logger.debug(
-            f"PAUSE accepted from {username} (sid={sid}, client={caller_client_id}) "
+            f"PAUSE accepted from {commit.username} (sid={sid}, "
+            f"client={commit.client_id}) "
             f"in {party_id} at {current_time:.1f}s -> broadcasting to room"
         )
 
         # Broadcast to everyone including the sender. See the matching
         # comment on handle_play / handle_seek for the rationale.
-        await sio.emit("pause", {"time": current_time, "username": username},
+        await sio.emit("pause", {"time": current_time, "username": commit.username},
                         room=party_id)
         await _report_emby_progress(
-            progress, current_time, is_paused=True, event_name="Pause"
+            commit.report, current_time, is_paused=True, event_name="Pause"
         )
 
     @sio.on("seek")
@@ -169,64 +88,25 @@ def register(ctx):
         party_id = data.get("party_id", "").strip().upper()
         seek_time = data.get("time", 0)
         was_playing = data.get("was_playing", False)
-        party = party_manager.get(party_id)
-        if not party:
+        commit = await party_manager.commit_seek(
+            party_id, sid, position=seek_time, was_playing=was_playing
+        )
+        if commit is None:
+            logger.debug(f"Ignoring unauthorized or overlapping seek in {party_id}")
             return
-
-        caller_client_id, allowed = _authorized_controller(party, sid)
-        if not allowed:
-            logger.info(
-                f"handle_seek REJECTED: sid={sid} client_id={caller_client_id} "
-                f"is not the selector/host of party {party_id}"
-            )
-            return
-
-        # Ignore seek events while a ready check is active. During a
-        # ready check, clients are still buffering their streams and
-        # may emit stray native `seeked` events (from HLS.js initial
-        # frame decoding or currentTime=0 resets). Treating those as
-        # real user seeks creates cascades of 00:00 seek spam across
-        # the party. Real user-initiated seeks only happen after the
-        # ready-check overlay dismisses.
-        rc = party.ready_check
-        if rc and rc.get("active"):
-            logger.debug(f"Ignoring seek from {sid}: ready check active in {party_id}")
-            return
-
-        # `was_playing` reflects the true playback state -- the selector
-        # is authoritative here, so trust their claim without
-        # reconciling against server state (previous versions did
-        # `party.playback_state['playing'] = was_playing`
-        # unconditionally from any sender, letting a stale local flag
-        # from a spectator pause the party).
-        party.playback_state["playing"] = was_playing
-        party.playback_state["time"] = seek_time
-        party.playback_state["last_update"] = datetime.now().isoformat()
-
-        username = party.users.get(sid, "Someone")
-        progress = _progress_snapshot(party, sid)
 
         if was_playing:
             logger.info("Seek during playback - pausing all clients first for buffering")
 
             # Start a ready check so everyone buffers before resuming
-            expected = set(party.users.keys())
-            party.ready_check = {
-                "active": True,
-                "expected_sids": expected,
-                "ready_sids": set(),
-            }
-
-            waiting_names = [party.users.get(s, "?") for s in expected]
-
             # Pause everyone, show overlay, then seek
             await sio.emit("force_pause_before_seek", {"time": seek_time},
                             room=party_id)
             await sio.emit("ready_check_update", {
-                "ready": [], "waiting": waiting_names,
+                "ready": [], "waiting": list(commit.waiting_names),
             }, room=party_id)
             await sio.emit("seek", {
-                "time": seek_time, "playing": True, "username": username,
+                "time": seek_time, "playing": True, "username": commit.username,
                 "wait_for_ready": True,
             }, room=party_id)
         else:
@@ -242,11 +122,11 @@ def register(ctx):
             # the ready-check handshake) produced a duplicate "seeked
             # to" message in chat.
             await sio.emit("seek", {
-                "time": seek_time, "playing": False, "username": username,
+                "time": seek_time, "playing": False, "username": commit.username,
             }, room=party_id)
 
         await _report_emby_progress(
-            progress, seek_time,
+            commit.report, seek_time,
             is_paused=not was_playing,
             event_name="TimeUpdate",
         )

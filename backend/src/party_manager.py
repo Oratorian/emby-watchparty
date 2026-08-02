@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Dict, Optional
 
 from backend.src.config import Config
-from backend.src.domain import Party
+from backend.src.domain import Party, PlaybackControlCommit, PlaybackReportSnapshot
 from backend.src.utils import generate_party_code
 
 
@@ -132,6 +132,89 @@ class PartyManager:
             reservations = party.operation_reservations
             if reservations.get(kind) == token:
                 reservations.pop(kind, None)
+
+    @staticmethod
+    def _playback_report_snapshot(party: Party, sid: str) -> PlaybackReportSnapshot:
+        stream = party.user_streams.get(sid)
+        return PlaybackReportSnapshot(
+            current_video=dict(party.current_video) if party.current_video else None,
+            user_stream=dict(stream) if stream else None,
+            host_access_token=party.host_access_token,
+            host_user_id=party.host_user_id,
+        )
+
+    async def commit_playback_control(
+        self,
+        party_id: str,
+        sid: str,
+        *,
+        playing: bool,
+        position: float,
+    ) -> PlaybackControlCommit | None:
+        """Validate membership and atomically commit play/pause state."""
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing:
+                return None
+            client_id = party.sid_client_ids.get(sid)
+            if client_id is None:
+                return None
+            party.playback_state = {
+                "playing": playing,
+                "time": position,
+                "last_update": datetime.now().isoformat(),
+            }
+            return PlaybackControlCommit(
+                client_id=client_id,
+                username=party.users.get(sid, "Someone"),
+                report=self._playback_report_snapshot(party, sid),
+            )
+
+    async def commit_seek(
+        self,
+        party_id: str,
+        sid: str,
+        *,
+        position: float,
+        was_playing: bool,
+    ) -> PlaybackControlCommit | None:
+        """Atomically validate and commit a seek plus optional ready check."""
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing:
+                return None
+            client_id = party.sid_client_ids.get(sid)
+            if client_id is None:
+                return None
+            ready_check = party.ready_check
+            if ready_check and ready_check.get("active"):
+                return None
+            party.playback_state = {
+                "playing": was_playing,
+                "time": position,
+                "last_update": datetime.now().isoformat(),
+            }
+            waiting_names: tuple[str, ...] = ()
+            if was_playing:
+                expected = set(party.users)
+                party.ready_check = {
+                    "active": True,
+                    "expected_sids": expected,
+                    "ready_sids": set(),
+                }
+                waiting_names = tuple(party.users.get(member, "?") for member in expected)
+            return PlaybackControlCommit(
+                client_id=client_id,
+                username=party.users.get(sid, "Someone"),
+                report=self._playback_report_snapshot(party, sid),
+                waiting_names=waiting_names,
+            )
 
     def create_party(self) -> str:
         """Create a new party with a generated ID. Returns party_id."""
