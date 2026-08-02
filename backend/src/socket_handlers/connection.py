@@ -244,7 +244,7 @@ def register(ctx):
         for party_id, party in list(party_manager.get_all().items()):
             # Host-leave detection runs before the rest of the cleanup
             # so the grace task is scheduled even when the user's
-            # presence in party.users has already been pruned.
+            # connected membership has already been pruned.
             sid_client_ids = party.sid_client_ids
             departing_client_id = sid_client_ids.get(sid)
             host_client_id = party.host_client_id
@@ -274,7 +274,7 @@ def register(ctx):
                 if pj.sid == sid or sid in pj.eligible_voters:
                     await handle_disconnect_from_vote(party, party_id, sid)
 
-            if sid in party.users:
+            if party.has_sid(sid):
                 departure = await party_manager.depart_socket(
                     party_id, sid, forget_participant=False
                 )
@@ -324,7 +324,7 @@ def register(ctx):
                     "user_left",
                     {
                         "username": username,
-                        "users": list(party.users.values()),
+                        "users": party.usernames(),
                         "members": party_manager.members_list(party_id),
                     },
                     room=party_id,

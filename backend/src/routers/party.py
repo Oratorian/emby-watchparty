@@ -67,15 +67,14 @@ def list_parties(
     for code, party in party_manager.get_all().items():
         if code == static_id:
             continue
-        users = party.users
-        if not users:
+        if not party.member_count:
             continue
         try:
             cv = party.current_video
             items.append(PartyListItem(
                 code=code,
                 title=cv.title if cv else None,
-                user_count=len(users),
+                user_count=party.member_count,
                 playing=cv is not None,
                 locked=not party.host_access_token,
             ))
@@ -321,7 +320,7 @@ def leave_party(request: Request, logger=Depends(get_logger)):
     """Drop the party-bound session cookie.
 
     The Socket.IO `leave_party` event handles the in-memory party state
-    (removing the user from `party.users` and so on), but it can't
+    (removing connected participant state and so on), but it can't
     touch the HTTP session cookie. Without this endpoint a user who
     leaves and then visits `/admin` or `/version` would still have
     `party_id` in their session, and "Back to Party" would relaunch the
@@ -362,7 +361,7 @@ def party_info(party_id: str, party_manager=Depends(get_party_manager)):
         raise HTTPException(status_code=404, detail="Party not found")
     return PartyInfoResponse(
         id=party.id,
-        users=list(party.users.values()),
+        users=party.usernames(),
         current_video=party.current_video.to_wire() if party.current_video else None,
         playback_state=party.playback_state.to_wire(),
     )

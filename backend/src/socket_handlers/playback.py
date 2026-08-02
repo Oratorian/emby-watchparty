@@ -273,7 +273,7 @@ def register(ctx):
             user_id=user_id,
         )
 
-        logger.info(f"Created user stream for {party.users.get(sid, sid)}: "
+        logger.info(f"Created user stream for {party.username_for_sid(sid, sid)}: "
                      f"session={play_session_id}, start={start_seconds:.1f}s")
         return stream_info
 
@@ -477,7 +477,9 @@ def register(ctx):
         party = committed_party
 
         # The manager started a ready check in the same atomic commit.
-        waiting_names = [party.users.get(s, "?") for s in party.ready_check.expected_sids]
+        waiting_names = [
+            party.username_for_sid(s, "?") for s in party.ready_check.expected_sids
+        ]
 
         # Create per-user streams and emit individually. When a user's
         # stream fails to build (Emby playback_info transient error,
@@ -488,7 +490,7 @@ def register(ctx):
         # 15s safety timeout that dismisses the overlay, but the party
         # is still in a broken state (ready_check dict never cleared,
         # auto_play_after_ready never consumed) unless we cleanup here.
-        for user_sid in list(party.users.keys()):
+        for user_sid in party.sids():
             stream = await _create_user_stream(
                 party, party_id, user_sid, item_id, media_source,
                 audio_index=default_audio, subtitle_index=None,
@@ -540,7 +542,7 @@ def register(ctx):
         # above; otherwise the overlay lists ghosts nobody is waiting on.
         rc = party.ready_check
         live_expected = rc.expected_sids if rc else set()
-        waiting_names = [party.users.get(s, "?") for s in live_expected]
+        waiting_names = [party.username_for_sid(s, "?") for s in live_expected]
         await sio.emit("ready_check_update", {
             "ready": [], "waiting": waiting_names,
         }, room=party_id)
@@ -644,7 +646,7 @@ def register(ctx):
             return
 
         video_title = party.current_video.title
-        username = party.users.get(sid, "Unknown")
+        username = party.username_for_sid(sid)
         current_time = party.playback_state.time
 
         await _stop_all_user_streams(party, current_time)
@@ -788,7 +790,7 @@ def register(ctx):
             "was_playing": was_playing,
         }, to=sid)
 
-        username = party.users.get(sid, "Unknown")
+        username = party.username_for_sid(sid)
         logger.info(
             f"Stream changed for {username}: audio={audio_index}, "
             f"sub={subtitle_index}, quality={quality}, resume_at={current_time:.1f}s"
@@ -1071,7 +1073,7 @@ def register(ctx):
         party = party_manager.get(party_id)
         if not party:
             return
-        username = party.users.get(sid)
+        username = party.username_for_sid(sid, "") or None
         await _cancel_pending_auto_advance(party_id, party, by_username=username)
 
     @sio.on("set_binge_watch_active")
@@ -1107,7 +1109,7 @@ def register(ctx):
         }, room=party_id)
         logger.info(
             f"Binge-watch {'enabled' if active else 'disabled'} in party {party_id} "
-            f"by {party.users.get(sid, '?')}"
+            f"by {party.username_for_sid(sid, '?')}"
         )
 
     # report_progress throttle. The handler fires a synchronous outbound

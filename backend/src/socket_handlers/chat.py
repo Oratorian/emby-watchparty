@@ -34,13 +34,13 @@ def register(ctx):
             return
         party = party_manager.get(party_id)
 
-        if party and sid in party.users:
+        if party and party.has_sid(sid):
             limit, window = parse_rate(getattr(config, "RATE_LIMIT_CHAT", "5 per 3 seconds"))
             decision = rate_limiter.check(f"chat:{sid}", limit, window)
             if not decision.allowed:
                 logger.debug(f"Chat message dropped: sid={sid} rate-limited in {party_id}")
                 return
-            username = party.users[sid]
+            username = party.username_for_sid(sid)
             # Look up the sender's persistent avatar identity so the
             # client can render their chosen avatar instead of the
             # username-derived monsterid.

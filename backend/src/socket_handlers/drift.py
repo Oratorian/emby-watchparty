@@ -36,7 +36,7 @@ def register(ctx):
             return
 
         drift = abs(client_time - expected_time)
-        username = party.users.get(sid, "Unknown")
+        username = party.username_for_sid(sid)
         logger.debug(
             f"Heartbeat from {username}: client={client_time:.1f}s, "
             f"expected={expected_time:.1f}s, drift={drift:.1f}s"

@@ -167,7 +167,6 @@ class Party:
 
     id: str
     created_at: str = field(default_factory=_now)
-    users: dict[str, str] = field(default_factory=dict)
     participants: dict[str, Participant] = field(default_factory=dict)
     sid_client_ids: dict[str, str] = field(default_factory=dict)
     current_video: SelectedMedia | None = None
@@ -208,3 +207,27 @@ class Party:
             time=self.playback_state.time,
             last_update=self.playback_state.last_update,
         )
+
+    def has_sid(self, sid: str) -> bool:
+        return sid in self.sid_client_ids
+
+    def client_id_for_sid(self, sid: str) -> str | None:
+        return self.sid_client_ids.get(sid)
+
+    def username_for_sid(self, sid: str, default: str = "Unknown") -> str:
+        client_id = self.sid_client_ids.get(sid)
+        participant = self.participants.get(client_id) if client_id else None
+        return participant.username if participant else default
+
+    def sids(self) -> tuple[str, ...]:
+        return tuple(self.sid_client_ids)
+
+    def usernames(self) -> list[str]:
+        return [
+            self.username_for_sid(sid)
+            for sid in self.sid_client_ids
+        ]
+
+    @property
+    def member_count(self) -> int:
+        return len(self.sid_client_ids)

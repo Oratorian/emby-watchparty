@@ -109,7 +109,7 @@ def _resolve_host_creds(request: Request, token_manager, party_manager, logger):
         party_exists_fn=party_manager.exists,
         user_in_party_fn=lambda pid, sid: (
             party_manager.get(pid) is not None
-            and sid in party_manager.get(pid).users
+            and party_manager.get(pid).has_sid(sid)
         ),
     )
     if not valid:

@@ -77,7 +77,7 @@ class PartyManager:
         lock = self.lock_for(party_id)
         async with lock:
             party = self.watch_parties.get(party_id)
-            if not party or party.users:
+            if not party or party.member_count:
                 return None
             party.closing = True
             party.generation = int(party.generation) + 1
@@ -181,7 +181,7 @@ class PartyManager:
             party.playback_state = PlaybackState(playing=playing, time=position)
             return PlaybackControlCommit(
                 client_id=client_id,
-                username=party.users.get(sid, "Someone"),
+                username=party.username_for_sid(sid, "Someone"),
                 report=self._playback_report_snapshot(party, sid),
             )
 
@@ -213,12 +213,14 @@ class PartyManager:
             )
             waiting_names: tuple[str, ...] = ()
             if was_playing:
-                expected = set(party.users)
+                expected = set(party.sids())
                 party.ready_check = ReadyCheck(expected_sids=expected)
-                waiting_names = tuple(party.users.get(member, "?") for member in expected)
+                waiting_names = tuple(
+                    party.username_for_sid(member, "?") for member in expected
+                )
             return PlaybackControlCommit(
                 client_id=client_id,
-                username=party.users.get(sid, "Someone"),
+                username=party.username_for_sid(sid, "Someone"),
                 report=self._playback_report_snapshot(party, sid),
                 waiting_names=waiting_names,
             )
@@ -251,7 +253,7 @@ class PartyManager:
             party.playback_state = playback_state
             party.episode_list = episode_list
             party.episode_list_season_id = episode_list_season_id
-            party.ready_check = ReadyCheck(expected_sids=set(party.users))
+            party.ready_check = ReadyCheck(expected_sids=set(party.sids()))
             return party
 
     async def commit_user_stream(
@@ -265,7 +267,7 @@ class PartyManager:
             return False
         async with lock:
             party = self.watch_parties.get(party_id)
-            if party is None or party.closing or sid not in party.users:
+            if party is None or party.closing or not party.has_sid(sid):
                 return False
             party.user_streams[sid] = stream
             return True
@@ -285,9 +287,10 @@ class PartyManager:
             party = self.watch_parties.get(party_id)
             if party is None or party.closing:
                 return None
-            username = party.users.pop(sid, None)
             stream = party.user_streams.pop(sid, None)
             client_id = party.sid_client_ids.pop(sid, None)
+            participant = party.participants.get(client_id) if client_id else None
+            username = participant.username if participant else None
             party.join_times.pop(sid, None)
             party.drift_strikes.pop(sid, None)
             if forget_participant and client_id:
@@ -318,11 +321,11 @@ class PartyManager:
                     party.auto_play_after_ready = False
                 else:
                     ready_names = tuple(
-                        party.users.get(member, "?")
+                        party.username_for_sid(member, "?")
                         for member in ready_check.ready_sids
                     )
                     waiting_names = tuple(
-                        party.users.get(member, "?")
+                        party.username_for_sid(member, "?")
                         for member in ready_check.expected_sids
                         - ready_check.ready_sids
                     )
@@ -361,7 +364,6 @@ class PartyManager:
                 return None
             old_stream = None
             if old_sid and old_sid != new_sid:
-                party.users.pop(old_sid, None)
                 party.join_times.pop(old_sid, None)
                 party.sid_client_ids.pop(old_sid, None)
                 drift_strikes = party.drift_strikes.pop(old_sid, None)
@@ -377,7 +379,6 @@ class PartyManager:
                         ready_check.ready_sids.discard(old_sid)
                         ready_check.ready_sids.add(new_sid)
 
-            party.users[new_sid] = username
             party.join_times[new_sid] = datetime.now().isoformat()
             if client_id:
                 existing = party.participants.get(client_id)
@@ -514,7 +515,7 @@ class PartyManager:
             if stream:
                 stream.ready = True
             party.ready_check.ready_sids.add(sid)
-            return party.users.get(sid, "Unknown")
+            return party.username_for_sid(sid)
 
     async def settle_ready_check(self, party_id: str) -> ReadyCommit | None:
         lock = self._party_locks.get(party_id)
@@ -539,10 +540,10 @@ class PartyManager:
                     party.playback_state.last_update = datetime.now().isoformat()
             else:
                 ready_names = tuple(
-                    party.users.get(sid, "?") for sid in ready.ready_sids
+                    party.username_for_sid(sid, "?") for sid in ready.ready_sids
                 )
                 waiting_names = tuple(
-                    party.users.get(sid, "?")
+                    party.username_for_sid(sid, "?")
                     for sid in ready.expected_sids - ready.ready_sids
                 )
             return ReadyCommit(
@@ -802,22 +803,16 @@ class PartyManager:
     def members_list(self, party_id: str) -> list:
         """Return [{username, avatar_uuid}, ...] for everyone in the party.
 
-        Combines `party.users` (sid -> name) with `party.participants`
-        (client_id keyed metadata) so the frontend can render the
-        right avatar per member. Used by user_joined / user_left /
-        chat_message emits.
+        Derives connected members from canonical participant state.
         """
         party = self.watch_parties.get(party_id)
         if not party:
             return []
-        sid_client_ids = party.sid_client_ids
-        participants = party.participants
         out = []
-        for sid, username in party.users.items():
-            cid = sid_client_ids.get(sid)
-            p = participants.get(cid) if cid else None
+        for sid, cid in party.sid_client_ids.items():
+            p = party.participants.get(cid)
             out.append({
-                "username": username,
+                "username": p.username if p else party.username_for_sid(sid),
                 "avatar_uuid": p.avatar_uuid if p else None,
             })
         return out

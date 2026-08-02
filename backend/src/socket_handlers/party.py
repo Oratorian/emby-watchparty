@@ -47,7 +47,7 @@ def register(ctx):
 
     def _vote_usernames(party, sids):
         """Convert a collection of sids to a list of display usernames."""
-        return [party.users.get(s, "?") for s in sids]
+        return [party.username_for_sid(s, "?") for s in sids]
 
     def _current_party_time(party):
         """Return the server's current best estimate of playback position."""
@@ -142,7 +142,10 @@ def register(ctx):
 
     def _votes_by_username(party, votes_dict):
         """Convert {sid: "yes"|"no"} to {username: "yes"|"no"} for client broadcasts."""
-        return {party.users.get(sid, "?"): vote for sid, vote in votes_dict.items()}
+        return {
+            party.username_for_sid(sid, "?"): vote
+            for sid, vote in votes_dict.items()
+        }
 
     async def _broadcast_vote_update(party, party_id):
         """Emit the current vote state to the whole party room."""
@@ -179,7 +182,7 @@ def register(ctx):
 
         # Promote the late joiner to a full user so they participate in the
         # restart. Until now they were only in the Socket.IO room but NOT in
-        # party.users.
+        # connected participant state.
         await _replace_sid(party, None, late_sid, late_username, client_id)
 
         # Clear pending_join BEFORE emitting resolution so a simultaneous join
@@ -192,7 +195,7 @@ def register(ctx):
         # Emit user_joined so existing clients update their participant list
         await sio.emit("user_joined", {
             "username": late_username,
-            "users": list(party.users.values()),
+            "users": party.usernames(),
             "members": party_manager.members_list(party_id),
             "rejoin": False,
         }, room=party_id)
@@ -348,7 +351,7 @@ def register(ctx):
             return False
 
         # Snapshot eligible voters: everyone currently in the party
-        eligible_voters = set(party.users.keys())
+        eligible_voters = set(party.sids())
         # current_video.selected_by holds the selector's persistent client_id,
         # but votes are keyed by sid. Resolve the selector's *current* sid so
         # the tiebreak rule can find their vote.
@@ -375,7 +378,7 @@ def register(ctx):
             return False
 
         # Put the late joiner into the Socket.IO room so they receive
-        # vote-progress broadcasts, but do NOT add them to party.users
+        # vote-progress broadcasts, but do NOT add connected membership
         # yet -- they are held in a pending state.
         await sio.enter_room(late_sid, party_id)
 
@@ -516,7 +519,8 @@ def register(ctx):
             same_browser = (
                 cookie_client_id == client_id and cookie_party_id == party_id
             )
-            for stale_sid, existing_name in list(party.users.items()):
+            for stale_sid in party.sids():
+                existing_name = party.username_for_sid(stale_sid)
                 if existing_name == username and stale_sid != sid:
                     if not same_browser:
                         logger.warning(
@@ -544,7 +548,7 @@ def register(ctx):
                     break
 
         # Check max users (count includes any pending late joiner)
-        current_count = len(party.users)
+        current_count = party.member_count
         if party.pending_join:
             current_count += 1
         if not rejoin and config.MAX_USERS_PER_PARTY > 0 and current_count >= config.MAX_USERS_PER_PARTY:
@@ -557,7 +561,7 @@ def register(ctx):
         # -----------------------------------------------------------------
         vote_enabled = getattr(config, "LATE_JOIN_VOTE_ENABLED", True)
         has_active_video = party.current_video is not None
-        has_existing_users = len(party.users) > 0
+        has_existing_users = party.member_count > 0
 
         if not rejoin and vote_enabled and has_active_video and has_existing_users:
             # Don't start a second vote on top of an active one
@@ -589,7 +593,7 @@ def register(ctx):
                 return
 
             # Start the vote -- this puts the late joiner into the Socket.IO
-            # room but does NOT add them to party.users yet.
+            # room but does NOT add connected membership yet.
             started = await _start_late_join_vote(party, party_id, sid, username, client_id)
             if started:
                 return  # Vote flow takes over; no immediate sync_state
@@ -618,7 +622,7 @@ def register(ctx):
 
         await sio.emit("user_joined", {
             "username": username,
-            "users": list(party.users.values()),
+            "users": party.usernames(),
             "members": party_manager.members_list(party_id),
             "rejoin": rejoin,
         }, room=party_id)
@@ -722,7 +726,10 @@ def register(ctx):
         # Record the vote (overwriting any previous vote from the same user)
         if not await party_manager.record_join_vote(party_id, sid, vote):
             return
-        logger.debug(f"Vote recorded in {party_id}: {party.users.get(sid, sid)} -> {vote}")
+        logger.debug(
+            f"Vote recorded in {party_id}: "
+            f"{party.username_for_sid(sid, sid)} -> {vote}"
+        )
 
         # Broadcast the updated tally and check for early resolution
         await _broadcast_vote_update(party, party_id)
@@ -779,7 +786,7 @@ def register(ctx):
                     "reason": "leave",
                 }, room=party_id, skip_sid=sid)
 
-        if sid in party.users:
+        if party.has_sid(sid):
             departure = await party_manager.depart_socket(
                 party_id, sid, forget_participant=True
             )
@@ -827,7 +834,7 @@ def register(ctx):
 
             await sio.emit("user_left", {
                 "username": username,
-                "users": list(party.users.values()),
+                "users": party.usernames(),
                 "members": party_manager.members_list(party_id),
             }, room=party_id)
 
