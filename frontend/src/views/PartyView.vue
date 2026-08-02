@@ -43,7 +43,6 @@ const AdminPanel = defineAsyncComponent(
   () => import('@/components/AdminPanel.vue'),
 )
 import { api } from '@/api/client'
-import type { LibraryItem } from '@/api/client'
 import type { ServerToClientPayloads } from '@/types/socket.generated'
 import { withPrefix } from '@/utils/appPrefix'
 import { avatarUrl as fallbackAvatarUrl } from '@/utils/avatar'
@@ -89,12 +88,6 @@ const {
 } = usePartyAdmin(party)
 const { attach: attachReconnect } = usePartyReconnect(socket, party, avatar, getClientId)
 const { attach: attachVoting } = usePartyVoting(socket, party)
-const {
-  reloading: myStreamReloading,
-  signalReady: onStreamReady,
-  loadSubtitleStreams,
-  loadSelectionStreams,
-} = usePartyStream(socket, party)
 const {
   on: onPlaybackEvent,
   schedule: schedulePlayback,
@@ -150,6 +143,23 @@ const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const currentTime = ref(0)
 let pendingPauseTimer: ReturnType<typeof setTimeout> | null = null
 let seekSettleTimer: ReturnType<typeof setTimeout> | null = null
+let hasStarted = false
+const {
+  reloading: myStreamReloading,
+  versionPickerState,
+  resumePromptState,
+  signalReady: onStreamReady,
+  loadSubtitleStreams,
+  selectVideo,
+  resumeSelection: onResume,
+  startSelectionOver: onStartOver,
+  cancelResume: onResumeCancel,
+  pickVersion: onVersionPick,
+  cancelVersionPick: onVersionPickCancel,
+} = usePartyStream(socket, party, () => {
+  hasStarted = false
+  showLibrary.value = false
+})
 
 const versionInfo = ref({ version: '', codename: '' })
 
@@ -763,156 +773,10 @@ async function leaveParty() {
   router.push('/')
 }
 
-// Modal state for the multi-version picker (issue #43). When the
-// library item the host clicked has more than one Emby alternate
-// source, we open the modal and stall the select_video emit until
-// the host picks. `pendingSelection` holds the original item so we
-// can finish the emit once the modal resolves.
-interface PendingVersionPick {
-  item: LibraryItem
-  startSeconds: number
-  versions: Array<{
-    id: string
-    name: string
-    container: string | null
-    run_time_ticks: number | null
-  }>
-}
-const versionPickerState = ref<PendingVersionPick | null>(null)
-
-// Resume prompt state. Populated when the host clicks a library item
-// that has UserData.PlaybackPositionTicks > 0 and Played === false.
-// User picks Resume (start_seconds = position) or Start over
-// (start_seconds = 0); either way we then fall through to the
-// multi-version picker (or directly to the emit if there's only one).
-const resumePromptState = ref<{
-  item: LibraryItem
-  resumeSeconds: number
-  runTimeSeconds: number | null
-} | null>(null)
-
-function emitSelectVideo(item: LibraryItem, mediaSourceId?: string, startSeconds = 0) {
-  if (!party.partyId) return
-  hasStarted = false
-  socket.emit('select_video', {
-    party_id: party.partyId,
-    item_id: item.Id,
-    item_name: item.Name,
-    item_overview: item.Overview || '',
-    quality: '1080p-high',
-    media_source_id: mediaSourceId,
-    start_seconds: startSeconds,
-  })
-  showLibrary.value = false
-}
-
-// Continues the select flow after the resume prompt has been answered.
-// Same body as the second half of selectVideo: probe for alternate
-// versions, route through the version picker if needed, otherwise
-// emit directly.
-async function continueSelectAfterResume(item: LibraryItem, startSeconds: number) {
-  let versions: PendingVersionPick['versions'] = []
-  try {
-    const streams = await loadSelectionStreams(item.Id)
-    versions = streams.versions || []
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') return
-    // If the lookup fails fall through to the legacy path -- backend
-    // will pick Emby's default source on its own. Better to play
-    // something than to block the host on a transient probe error.
-  }
-
-  if (versions.length > 1) {
-    versionPickerState.value = { item, versions, startSeconds }
-    return
-  }
-
-  emitSelectVideo(item, undefined, startSeconds)
-}
-
-async function selectVideo(item: LibraryItem) {
-  if (!party.partyId) return
-
-  // Resume check first: if Emby reports a current resume position
-  // for this item (UserData.PlaybackPositionTicks > 0), ask the host
-  // whether to resume or start over before picking a version /
-  // emitting. We deliberately don't gate on UserData.Played -- that
-  // flag is "this item has been completed in history" and stays true
-  // forever after the first completion, but Emby still tracks
-  // PlaybackPositionTicks for re-watches. Emby's own thresholds
-  // already gate small positions (under ~5%) to zero, so any
-  // positive PositionTicks here represents a real resume point.
-  const ud = item?.UserData
-  const positionTicks = Number(ud?.PlaybackPositionTicks ?? 0)
-  if (positionTicks > 0) {
-    const runTimeSeconds = item.RunTimeTicks
-      ? Number(item.RunTimeTicks) / 10_000_000
-      : null
-    resumePromptState.value = {
-      item,
-      resumeSeconds: positionTicks / 10_000_000,
-      runTimeSeconds,
-    }
-    return
-  }
-
-  await continueSelectAfterResume(item, 0)
-}
-
-function onResume() {
-  const pending = resumePromptState.value
-  resumePromptState.value = null
-  if (!pending) return
-  continueSelectAfterResume(pending.item, pending.resumeSeconds)
-}
-
-function onStartOver() {
-  const pending = resumePromptState.value
-  resumePromptState.value = null
-  if (!pending) return
-  continueSelectAfterResume(pending.item, 0)
-}
-
-function onResumeCancel() {
-  resumePromptState.value = null
-}
-
-function onVersionPick(mediaSourceId: string) {
-  const pending = versionPickerState.value
-  versionPickerState.value = null
-  if (!pending) return
-  // Clamp the resume seconds against the PICKED version's runtime.
-  // The prompt was built from the item's aggregate RunTimeTicks (the
-  // default version); if the host picks a shorter alternate cut, the
-  // stored position can exceed the picked version's length. Backend
-  // clamps to (runtime - 5s) silently, landing mid-credits instead
-  // of where the modal promised. Recompute here so the emitted
-  // start_seconds matches the actual picked-version geometry.
-  let startSeconds = pending.startSeconds
-  const picked = pending.versions.find((v) => v.id === mediaSourceId)
-  if (picked?.run_time_ticks && startSeconds > 0) {
-    const versionRuntime = Number(picked.run_time_ticks) / 10_000_000
-    const maxResume = Math.max(0, versionRuntime - 5)
-    if (startSeconds > maxResume) {
-      console.debug(
-        '[PartyView] clamping resume position for alternate version',
-        { original: startSeconds, clamped: maxResume, versionRuntime },
-      )
-      startSeconds = 0
-    }
-  }
-  emitSelectVideo(pending.item, mediaSourceId, startSeconds)
-}
-
-function onVersionPickCancel() {
-  versionPickerState.value = null
-}
-
 let wasPlayingBeforeSeek = false
 
 let isForcePausing = false
 let isUserSeeking: boolean = false
-let hasStarted = false
 let isInitialSync = false
 
 // Throttling -- matching v1.6.0
