@@ -167,6 +167,46 @@ test('active viewers can approve a late joiner', async ({ browser, page }) => {
   await bobContext.close()
 })
 
+test('active viewers can reject a late joiner without stopping playback', async ({ browser, page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await expect(page).toHaveURL(/\/party\/[A-Z0-9]+$/)
+  const partyUrl = page.url()
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+
+  const bobContext = await browser.newContext()
+  const bob = await bobContext.newPage()
+  await bob.goto(partyUrl)
+  await bob.getByPlaceholder('Your name (optional)').fill('Bob')
+  await bob.getByRole('button', { name: 'Join', exact: true }).click()
+  await page.getByRole('main').getByRole(
+    'button', { name: 'Login to Become Host', exact: true },
+  ).click()
+  await page.getByPlaceholder('Emby username').fill('Alice')
+  await page.getByPlaceholder('Emby password').fill('password')
+  await page.getByRole('button', { name: 'Become Host', exact: true }).click()
+  await page.getByText('Movies', { exact: true }).click()
+  await page.getByText('Fake Movie', { exact: true }).click()
+  await expect(bob.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
+
+  const charlieContext = await browser.newContext()
+  const charlie = await charlieContext.newPage()
+  await charlie.goto(partyUrl)
+  await charlie.getByPlaceholder('Your name (optional)').fill('Charlie')
+  await charlie.getByRole('button', { name: 'Join', exact: true }).click()
+  await expect(charlie.getByRole('heading', { name: 'Waiting for party approval' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Decline' }).click()
+  await bob.getByRole('button', { name: 'Decline' }).click()
+  await expect(charlie).toHaveURL(/\/$/)
+  await expect(page.getByText('2 watching')).toBeVisible()
+  await expect(page.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
+
+  await charlieContext.close()
+  await bobContext.close()
+})
+
 test('guest reload restores membership and a fresh HLS stream', async ({ browser, page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Create Party', exact: true }).click()
