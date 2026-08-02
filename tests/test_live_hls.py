@@ -87,3 +87,37 @@ async def _exercise_streaming_and_range(live_watchparty) -> None:
 
 def test_live_hls_streams_first_chunk_and_forwards_ios_range(live_watchparty) -> None:
     asyncio.run(_exercise_streaming_and_range(live_watchparty))
+
+
+async def _exercise_disconnect_closes_upstream(live_watchparty) -> None:
+    async with httpx.AsyncClient() as controls:
+        await controls.post(f"{live_watchparty.fake.url}/__test__/reset")
+        await controls.post(
+            f"{live_watchparty.fake.url}/__test__/behavior",
+            json={"segment_delay_ms": 1000},
+        )
+    client, realtime, master_url = await _select_video(live_watchparty.url)
+    try:
+        master = await client.get(master_url)
+        variant_url = urljoin(master_url, _media_line(master.text))
+        variant = await client.get(variant_url)
+        segment_url = urljoin(variant_url, _media_line(variant.text))
+
+        async with client.stream("GET", segment_url) as response:
+            await anext(response.aiter_bytes())
+
+        async with httpx.AsyncClient() as controls:
+            for _ in range(50):
+                state = await controls.get(f"{live_watchparty.fake.url}/__test__/state")
+                if state.status_code == 200 and state.json()["stream_closed"]:
+                    break
+                await asyncio.sleep(0.02)
+            else:
+                raise AssertionError("upstream HLS stream remained open after disconnect")
+    finally:
+        await realtime.disconnect()
+        await client.aclose()
+
+
+def test_live_hls_disconnect_closes_upstream(live_watchparty) -> None:
+    asyncio.run(_exercise_disconnect_closes_upstream(live_watchparty))
