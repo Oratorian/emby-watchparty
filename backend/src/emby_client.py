@@ -65,7 +65,10 @@ class EmbyClient:
                 "is_admin": bool((user.get("Policy") or {}).get("IsAdministrator")),
             }
         except httpx.HTTPError as exc:
-            self.logger.error("Emby authentication failed: %s", exc)
+            self.logger.error(
+                "Emby authentication failed: error=%s",
+                type(exc).__name__,
+            )
             return None
 
     _authenticate_user = authenticate
