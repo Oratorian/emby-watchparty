@@ -214,6 +214,14 @@ def test_disconnected_participant_can_reclaim_identity(tmp_path: Path) -> None:
 def test_admin_login_and_logout_scrub_legacy_cookie_credentials(tmp_path: Path) -> None:
     async def exercise() -> None:
         app = _application(tmp_path)
+        legacy_keys = {
+            "admin_emby_token",
+            "admin_emby_user_id",
+            "admin_emby_is_admin",
+            "admin_authenticated",
+            "admin_username",
+            "admin_session",
+        }
 
         async def seed_legacy(request: Request):
             request.session.update(
@@ -221,6 +229,9 @@ def test_admin_login_and_logout_scrub_legacy_cookie_credentials(tmp_path: Path) 
                     "admin_emby_token": "legacy-secret",
                     "admin_emby_user_id": "legacy-user",
                     "admin_emby_is_admin": True,
+                    "admin_authenticated": True,
+                    "admin_username": "Legacy",
+                    "admin_session": "legacy-handle",
                 }
             )
             return {"success": True}
@@ -253,7 +264,23 @@ def test_admin_login_and_logout_scrub_legacy_cookie_credentials(tmp_path: Path) 
             await client.post("/_test/seed-legacy")
             assert (await _login(client)).json()["success"] is True
             keys = cookie_keys(client)
-            assert not {"admin_emby_token", "admin_emby_user_id", "admin_emby_is_admin"} & set(keys)
+            assert not legacy_keys & keys
+
+            await client.post("/api/admin/logout")
+            created = await client.post(
+                "/api/party/create",
+                json={"client_id": "legacy-client", "display_name": "Legacy"},
+            )
+            assert created.status_code == 200
+            party_id = created.json()["party_id"]
+            joined = await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "legacy-client", "display_name": "Legacy"},
+            )
+            assert joined.status_code == 200
+            await client.post("/_test/seed-legacy")
+            assert (await client.get("/api/libraries")).status_code == 423
+            assert not legacy_keys & cookie_keys(client)
 
             await client.post("/_test/seed-invalid-stashed-admin")
             created = await client.post(
@@ -262,11 +289,11 @@ def test_admin_login_and_logout_scrub_legacy_cookie_credentials(tmp_path: Path) 
             )
             assert created.status_code == 200
             keys = cookie_keys(client)
-            assert not {"admin_emby_token", "admin_emby_user_id", "admin_emby_is_admin"} & set(keys)
+            assert not legacy_keys & keys
 
             await client.post("/_test/seed-legacy")
             await client.post("/api/admin/logout")
             keys = cookie_keys(client)
-            assert not {"admin_emby_token", "admin_emby_user_id", "admin_emby_is_admin"} & set(keys)
+            assert not legacy_keys & keys
 
     asyncio.run(exercise())

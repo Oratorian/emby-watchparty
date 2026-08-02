@@ -126,7 +126,7 @@ Emby Watch Party works best with the following browsers:
 - The app must be reachable by your remote viewers - use a VPN such as Tailscale or Hamachi if you cannot port-forward
 - **For Docker installs (recommended):** Docker 20.10+ (and optionally Docker Compose v2)
 - **For manual installs:**
-  - Python **3.12** or higher (matches the runtime used in the official image)
+  - Python **3.12.x** (matches the runtime supported by the official image)
   - Node.js **20.19+** (or 22.12+) and npm - the Vue 3 frontend is a Vite build that must be produced before FastAPI can serve it
 
 ### Manual installation

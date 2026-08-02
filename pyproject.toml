@@ -1,3 +1,11 @@
+[project]
+name = "emby-watchparty"
+version = "3.0.0.dev0"
+requires-python = ">=3.12,<3.13"
+
+[tool.setuptools]
+packages = []
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"

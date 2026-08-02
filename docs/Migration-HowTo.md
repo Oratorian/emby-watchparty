@@ -11,7 +11,7 @@ the latest 2.1.x release, then return here.
 
 3.0 changes deployment requirements and configuration ownership:
 
-- Python 3.12 or newer is required for source installs.
+- Python 3.12.x is required for source installs.
 - Node 20.19 or newer is required when building the frontend from source. The
   project CI and Docker builder use Node 24.
 - Run exactly one application worker. Party state, administrator sessions,

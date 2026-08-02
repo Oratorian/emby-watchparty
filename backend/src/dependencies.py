@@ -27,6 +27,9 @@ LEGACY_ADMIN_SESSION_KEYS = (
     "admin_emby_token",
     "admin_emby_user_id",
     "admin_emby_is_admin",
+    "admin_authenticated",
+    "admin_username",
+    "admin_session",
 )
 
 
@@ -130,6 +133,7 @@ def require_party_session(
     and the request rejected with 404.
     """
     session = request.session
+    scrub_legacy_admin_session(session)
     party_id = session.get("party_id")
     client_id = session.get("client_id")
     display_name = session.get("display_name", "")

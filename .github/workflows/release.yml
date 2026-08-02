@@ -223,7 +223,7 @@ jobs:
             - MIT License
 
             ### Requirements
-            - Python 3.12 or higher (manual install)
+            - Python 3.12.x (manual install)
             - Docker (container install)
             - Emby server with API key
             - Modern web browser
