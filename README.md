@@ -76,7 +76,7 @@ https://discord.gg/RWUpxq9xsA
 - **[Socket.IO API](docs/SOCKET_API.md)** - developer reference for the Socket.IO event protocol
 - **OpenAPI reference** - `GET /docs` (Swagger UI) or `GET /redoc` on a running instance
 - **[CHANGELOG.md](CHANGELOG.md)** - per-release details including every fix and the reasoning behind it
-- **[SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md)** - condensed release-by-release summary of the 2.0 betas
+- **[SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md)** - detailed development log for the current cycle, including breaking changes and their blast radius. The 2.0 beta log is preserved at the [v2.1.0 tag](https://github.com/Oratorian/emby-watchparty/blob/v2.1.0/SUMMARY-OF-CHANGES.md)
 - **[Emby quirks we learned the hard way](docs/Emby%20quirks%20we%20learned%20the%20hard%20way.md)** - Why 2.0 came to be.
 
 ## Features

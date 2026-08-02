@@ -1,8 +1,8 @@
 """
 Emby Watch Party - Source Modules
-Version: 2.0.2
-Codename: Midnight Premiere
+Version: 3.0.0-dev
+Codename: Director's Cut
 """
 
-__version__ = "2.0.2"
-__codename__ = "Midnight Premiere"
+__version__ = "3.0.0-dev"
+__codename__ = "Director's Cut"

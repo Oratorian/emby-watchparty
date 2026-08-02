@@ -16,6 +16,66 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [3.0.0] - TBA - Director's Cut
+
+**In development on `3.0-dev`.** The running version reads `3.0.0-dev` until the release cut, the same convention 2.0 used through its beta cycle. Nothing here is released, tagged, or safe to deploy yet.
+
+2.0 rebuilt the product. 3.0 rebuilds the foundation underneath it. Nothing about what a watch party *does* changes: same parties, same per-user transcodes, same late-joiner vote, same admin panel, same look. What changes is how much of it the server can prove before it runs.
+
+Three things drive the release:
+
+- **Nothing untyped crosses a boundary.** Socket events, REST responses and the party's own state were passed around as raw dictionaries, so a mistyped payload key surfaced as a runtime `None` three layers away, and an untrusted socket payload was trusted as it arrived. Inbound events are now validated against generated contracts before a handler sees them, outbound events are validated on the way out, the party is a typed aggregate rather than a dict, and `mypy` runs across the whole backend.
+- **The app is built, not imported.** Construction moved into an application factory, so the server is assembled by a function instead of assembling itself at import time. A test can bring up a real app per case, and a startup that fails halfway releases what it already opened instead of leaving it behind.
+- **Tests talk to something that behaves like Emby.** The mocked routers are gone, replaced by a fake Emby server that serves real, playable HLS. Rate limits, socket validation, HLS rejection and browser-to-browser sync are exercised over the public surface, and CI gained a macOS WebKit job, so Safari's native-HLS path is finally covered by something other than a user reporting it.
+
+Alongside those: a guided first-run setup mode, so a fresh install no longer begins with hand-editing `.env`; a production readiness gate that refuses to boot an unsafe configuration instead of warning and continuing; redacted structured route logs, so an upstream failure cannot spill credentials into a log aggregator; hash-pinned Python dependencies; and `PartyView.vue` broken up into composables.
+
+The work is **[dnordel](https://github.com/dnordel)**'s, contributed as [#45](https://github.com/Oratorian/emby-watchparty/pull/45): 165 commits over 139 files, of which 57 are tests and 51 are refactors. Too large and too breaking to land as one merge, so it lives on `3.0-dev` and is being worked issue by issue against the [3.0 milestone](https://github.com/Oratorian/emby-watchparty/milestone/2).
+
+### Expect a migration, not a drop-in
+
+Unlike every 2.x release, this one will need reading before you upgrade. Rate limiting becomes **enforced** using the values already in your `config.json`, and behind a reverse proxy without `TRUSTED_PROXY_CIDRS` set, your whole deployment shares one bucket; bare-metal installs must recreate their virtualenv, because the hash-locked requirements put pip into `--require-hashes` mode; `EMBY_SERVER_URL` values like `http://emby_server:8096` stop validating; and a misconfigured container currently reports healthy while serving nothing but a setup page. A `docs/Migration-HowTo-2x-to-3.md` ships with the release, and every one of these is being made to announce itself in a log line naming the field before then.
+
+### Before this can ship
+
+`3.0-dev` forked from `2.0.2`, **before** the 2.1.0 security release, so none of the 2.1.0 authorization work is on the branch: `/hls` has no session gate, cookie and stream-token parties are not compared, and the legacy admin-token cookie keys are no longer scrubbed. Those, plus four findings the rework introduced, are filed as milestone blockers, six of the eight labelled `security`. 3.0 does not get a version number until every one is closed with a test that fails when the fix is removed.
+
+The full breakdown, breaking changes with their blast radius, the security analysis and the complete change log, lives in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+
+---
+
+## [2.1.0] - 2026-08-03 - Midnight Premiere
+
+A security release. Two authorization gaps are closed, and because the stricter gating can now refuse requests that used to succeed, the UI gained the banners needed to explain itself instead of leaving you staring at a dead player.
+
+Nothing you have to configure, no `.env` changes, no migration. Upgrade, restart, done.
+
+### Security
+
+- **`/hls/...` now requires the party-bound session cookie.** These were the only browser-facing routes with no session gate: possession of the URL was the entire credential, and an HLS URL leaks easily through browser history, the `Referer` header, reverse-proxy access logs, and copy-as-cURL. They are now gated by `require_host_token`, the same gate `/api/image` and `/api/subtitles` have used since 2.0.0. This is what [CHANGELOG 2.0.0's breaking-change note](#200---2026-07-11---midnight-premiere) and `hls.py`'s own module docstring have described all along; `git log -S require_host_token -- backend/src/routers/hls.py` returns nothing, so the gate was documented but never actually applied.
+- **The cookie's party and the stream token's party must now agree.** Adding the gate alone would have been close to cosmetic. `require_host_token` resolves a party from the *cookie*; the HLS proxy resolved one from the *URL token* and used that party's host credentials to sign the upstream Emby call. Nothing compared them, so both gates were independently satisfiable by different parties: a leaked token for a private party plus a session cookie from any open party streamed the private party's content under its host's Emby token. Verified during development that with the gate in place but the match assert removed, the cross-party request returns 200 and serves the playlist.
+- **A scraped `client_id` no longer confers host or admin rights.** Host identity was established by matching `client_id` alone, but `host_client_id` is broadcast to every member in the `host_changed` event, and `POST /api/party/<id>/join` stores whatever `client_id` the caller supplies. Any attendee could therefore read the host's id off the broadcast, re-join supplying it, receive a **validly signed** session cookie carrying the host's identity, and reach `/api/admin/config` with full read/write whenever the host's Emby account had `IsAdministrator=true`. No leaked cookie and no network position were needed, only being in the party, which is the normal state for every viewer. Host identity is now proved by `host_session_grant`, a 256-bit secret minted server-side by `set_host`, written only to the real host's cookie, never broadcast, and compared with `compare_digest`. It is rotated on every promotion and cleared on `clear_host`, so a previous host's cookie stops proving anything the moment someone else takes over. The same check now guards host reclaim over Socket.IO, whose docstring had claimed a cookie-proof protection that this bypass defeated. Found by **[dnordel](https://github.com/dnordel)** while reviewing [#45](https://github.com/Oratorian/emby-watchparty/pull/45); the flaw predates 2.1.0 and shipped in every 2.0.x release.
+- **The Emby admin token is no longer stored in the session cookie.** Starlette's `SessionMiddleware` *signs* the cookie but does not *encrypt* it, so the payload is `base64(json)` and anyone holding the cookie could decode it and recover a full Emby **administrator** access token, with no secret and no server access. That token grants control of the whole Emby server, far beyond Watch Party. Credentials now live in a server-side `AdminSessionStore` with only an opaque handle in the cookie, mirroring how `host_access_token` has always been kept server-side. Not XSS-reachable (the cookie is `httponly`); the realistic exposure was proxy and CDN logs that capture headers, infostealers scraping browser cookie jars, and plaintext on the wire wherever `SESSION_COOKIE_SECURE=false`. Admin logout now destroys the stored credentials rather than only forgetting where they live, and logging in scrubs the old plaintext keys from an upgrading admin's existing cookie.
+
+### Fixed
+
+- **The variant-playlist fetch is time-bounded again.** The `.m3u8` branch of the segment proxy called `httpx.get` without `timeout=_EMBY_HTTP_TIMEOUT`, unlike the master-playlist and segment fetches either side of it. Every HLS request pulls a variant playlist, so this was the most-hit of the three upstream calls and the only unbounded one; a slow or misbehaving Emby could pin a uvicorn worker slot until the OS TCP timeout, which is the exact failure the constant exists to prevent.
+- **A failed session bind is no longer swallowed.** Joining a party caught a failed cookie call and carried on, on the reasoning that the socket join carried the same identity. That held while `/hls` authenticated on the URL token alone. It does not hold now: such a viewer would receive a stream URL and then 401 on every segment while chat, the participant list, and the member count kept working, so the party looked healthy and only the video was dead, with nothing logged and nothing shown. The bind now retries once to absorb a genuinely transient blip, then surfaces a banner with a working Retry that re-announces to the server and recovers playback without a page reload.
+
+- **Better behaviour on iPhone and iPad.** The layout now honours the notch and home-indicator safe areas (`viewport-fit=cover` plus `env(safe-area-inset-*)`) and sizes against the dynamic viewport (`100dvh`), so controls no longer sit under Safari's collapsing toolbar. On the native-HLS path Safari uses, leaving a party now releases the stream instead of leaving the Emby transcode running, and playback blocked by the browser's autoplay policy is reported rather than failing silently. Lifted from [#45](https://github.com/Oratorian/emby-watchparty/pull/45).
+- **The Emby login modal traps focus.** Tab and Shift+Tab cycle inside the dialog rather than escaping to the page behind it, Escape cancels, focus lands on the username field on open, and returns to wherever it was when the modal closes. Also from [#45](https://github.com/Oratorian/emby-watchparty/pull/45).
+
+### Added
+
+- **A tab tells you when another tab takes over the party.** The session cookie holds exactly one party id and cookies are shared across every tab in a browser profile, so a second tab joining a *different* party silently repoints it and the first tab's playback stops. Each tab now announces its party over a `BroadcastChannel` and a superseded tab says so, naming the other party, rather than stalling silently. Two tabs on the *same* party stay quiet, since both point the cookie at the same place. The banner leads with the no-action path (switch to the other tab) and puts the consequence in the button itself, because resuming here stops the other tab in turn: only one party can hold the cookie at a time.
+- **Test coverage for both gaps** (`tests/test_admin_session.py`, plus expansion of `tests/test_hls_proxy.py` to 8 tests). The admin tests decode the `Set-Cookie` header exactly the way an attacker would and assert the token never appears in it. The HLS tests cover a missing cookie, a cleared host token, and a cookie/token party mismatch, the first automated coverage of the 423 the docstring has claimed since it was written. Both guards were checked for vacuousness by reintroducing the original bugs and confirming the suite fails.
+
+### Known limitation
+
+Two **different** parties open in two tabs of the same browser profile now break the older tab's playback immediately, where previously the video kept playing. This is inherent to the session cookie holding a single party id; `/api/image` and `/api/subtitles` have degraded this way since 2.0.0, and this makes it total and visible rather than partial and silent. Separate browsers, separate profiles, incognito windows, and separate devices are all unaffected. Scoping session state per party would fix it properly and is deliberately left for a future release.
+
+---
+
 ## [2.0.2] - 2026-08-01 - Midnight Premiere
 
 A single-fix patch release for a playback failure that only showed up on some Emby servers: the video would sit at 0:00 buffering forever and never start, while the party itself, chat, participants, sync, looked perfectly healthy. If your setup worked fine, nothing here changes for you; this is a safe drop-in either way.
@@ -78,7 +138,7 @@ Codename: **Midnight Premiere**. Branch: `2.0-Rework` (becoming `main` on cutove
 - **Silent socket disconnects no longer strand users in the party.** Reported by [@xyxxyxxy](https://github.com/xyxxyxxy) on Discord: a mid-session network blip caused pause / play / seek events to stop reaching the affected user in both directions, with no indication anything had gone wrong -- only a page reload restored sync. Traced end-to-end: the server hard-evicts the user from the party room on `disconnect`, `socket.io-client` auto-reconnects with a fresh sid, and nothing on the client re-issued `join_party`. So the reconnected socket belonged to no party room, and every `sio.emit(..., room=party_id)` silently skipped it. The socket store now tracks a `hasEverConnected` flag; the party store re-emits `join_party` on every subsequent connect (client_id is stable, so the server takes the known-participant fast path via `_replace_sid` -- no late-joiner vote, no lost transcode). An amber "Reconnecting to party…" banner renders during the outage so the drop is visible instead of invisible.
 - **Library rescan no longer traps users in a fake-empty grid.** Reported by [@xyxxyxxy](https://github.com/xyxxyxxy) on Discord: mid-scan Emby responses came back empty, the frontend pinned that empty state to `localStorage` as the restore target, and every subsequent mount rendered "no items" until the container was restarted. Three separate bugs stacked: `emby_client.get_items` swallowed `requests.RequestException` into `{}` so a genuine upstream error looked identical to an empty folder; `/api/items` returned no `Cache-Control` header so intermediate proxies could cache the empty page; and `LibraryBrowser.saveLibraryState` unconditionally pinned the current location on load, including when the response was empty. Now `get_items` re-raises and the router returns a proper `502 Bad Gateway`, `/api/items` responses carry `Cache-Control: no-store`, and the localStorage restore target is only pinned when the response actually contained items -- so a mid-rescan empty response is treated as ambiguous instead of authoritative.
 
-The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, every Added / Changed / Fixed bullet, breaking changes, and technical deep-dives) lives in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, every Added / Changed / Fixed bullet, breaking changes, and technical deep-dives) is preserved at the [v2.1.0 tag](https://github.com/Oratorian/emby-watchparty/blob/v2.1.0/SUMMARY-OF-CHANGES.md); `SUMMARY-OF-CHANGES.md` on this branch tracks the 3.0 cycle instead.
 
 
 
@@ -105,6 +165,8 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
+- **v3.0.0**  (TBA): Architecture release -- typed socket/REST contracts with runtime validation, application factory, first-run setup mode, production readiness gate, and a fake-Emby test suite. In development on `3.0-dev`.
+- **v2.1.0**  (2026-08-03): Security -- `/hls` now session-gated with a cookie/token party match, and the Emby admin token moved out of the session cookie.
 - **v2.0.2**  (2026-08-01): HLS token rewriting fixed for CRLF playlists (playback stuck buffering at 0:00) + first HLS proxy tests.
 - **v2.0.1**  (2026-07-14): Democratic playback control (any member can play/pause/seek) + sync-guard fixes.
 - **v2.0.0**  (2026-07-11): Official release after 6 months of beta.
