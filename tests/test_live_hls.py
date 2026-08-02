@@ -78,7 +78,8 @@ async def _exercise_streaming_and_range(live_watchparty) -> None:
 
         ranged = await client.get(segment_url, headers={"Range": "bytes=0-17"})
         assert ranged.status_code == 206
-        assert ranged.headers["content-range"] == "bytes 0-17/36"
+        assert ranged.headers["content-range"] == "bytes 0-17/168260"
+        assert len(ranged.content) == 18
         assert ranged.headers["accept-ranges"] == "bytes"
     finally:
         await realtime.disconnect()

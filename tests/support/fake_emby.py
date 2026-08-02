@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
+
+
+_SEGMENT_BYTES = (Path(__file__).parent / "assets" / "fake_segment.ts").read_bytes()
+_SEGMENT_CHUNKS = [
+    _SEGMENT_BYTES[: len(_SEGMENT_BYTES) // 2],
+    _SEGMENT_BYTES[len(_SEGMENT_BYTES) // 2 :],
+]
 
 
 MOVIE = {
@@ -52,13 +60,19 @@ class FakeEmbyBehavior:
     transient_failures: dict[str, int] = field(default_factory=dict)
     transient_status: int = 503
     segment_chunks: list[bytes] = field(
-        default_factory=lambda: [b"fake-segment-first", b"fake-segment-last"]
+        default_factory=lambda: list(_SEGMENT_CHUNKS)
     )
     segment_delay_ms: int = 0
     master_playlist: str = (
-        "#EXTM3U\r\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\r\nmain.m3u8\r\n"
+        "#EXTM3U\r\n#EXT-X-VERSION:3\r\n"
+        '#EXT-X-STREAM-INF:BANDWIDTH=1000000,CODECS="avc1.42c00d,mp4a.40.2"\r\n'
+        "main.m3u8\r\n"
     )
-    variant_playlist: str = "#EXTM3U\r\n#EXTINF:1.0,\r\nsegment0.ts\r\n"
+    variant_playlist: str = (
+        "#EXTM3U\r\n#EXT-X-VERSION:3\r\n#EXT-X-TARGETDURATION:10\r\n"
+        "#EXT-X-MEDIA-SEQUENCE:0\r\n#EXTINF:10.0,\r\nsegment0.ts\r\n"
+        "#EXT-X-ENDLIST\r\n"
+    )
 
 
 @dataclass
@@ -256,9 +270,20 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         del item_id, segment_name
         state.record(request)
 
+        chunks = state.behavior.segment_chunks
+        range_header = request.headers.get("range")
+        range_start = 0
+        range_end = len(_SEGMENT_BYTES) - 1
+        if range_header and range_header.startswith("bytes="):
+            start_text, _, end_text = range_header.removeprefix("bytes=").partition("-")
+            range_start = int(start_text or 0)
+            range_end = min(int(end_text or range_end), range_end)
+            ranged = b"".join(chunks)[range_start : range_end + 1]
+            chunks = [ranged]
+
         async def body() -> AsyncIterator[bytes]:
             try:
-                for chunk in state.behavior.segment_chunks:
+                for chunk in chunks:
                     yield chunk
                     if state.behavior.segment_delay_ms:
                         await asyncio.sleep(state.behavior.segment_delay_ms / 1000)
@@ -267,9 +292,12 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
 
         headers: dict[str, str] = {"Accept-Ranges": "bytes"}
         status = 200
-        if request.headers.get("range"):
+        if range_header:
             status = 206
-            headers["Content-Range"] = "bytes 0-17/36"
+            headers["Content-Range"] = (
+                f"bytes {range_start}-{range_end}/{len(_SEGMENT_BYTES)}"
+            )
+            headers["Content-Length"] = str(range_end - range_start + 1)
         return StreamingResponse(body(), status_code=status, media_type="video/MP2T", headers=headers)
 
     return app
