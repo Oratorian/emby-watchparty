@@ -25,6 +25,7 @@ from backend.src.dependencies import (
     get_party_manager,
     get_sio,
     is_admin_authenticated,
+    scrub_legacy_admin_session,
 )
 from backend.src.log_levels import apply_log_levels
 from backend.src.rate_limit import parse_rate
@@ -101,6 +102,7 @@ async def admin_login(
         username = auth["username"]
         old_handle = request.session.pop("admin_session_id", None)
         admin_session_store.revoke(old_handle)
+        scrub_legacy_admin_session(request.session)
         request.session["admin_session_id"] = admin_session_store.create(
             username=username,
             access_token=auth["access_token"],
@@ -126,6 +128,7 @@ def admin_logout(
     policy stays admin as long as they remain host.
     """
     admin_session_store.revoke(request.session.pop("admin_session_id", None))
+    scrub_legacy_admin_session(request.session)
     return {"success": True}
 
 

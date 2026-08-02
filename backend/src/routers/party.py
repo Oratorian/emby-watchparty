@@ -19,6 +19,7 @@ from backend.src.dependencies import (
     get_party_manager,
     get_sio,
     party_host_session_matches,
+    scrub_legacy_admin_session,
 )
 
 # Shared dev-host gate -- single source of truth lives in auth.py so the
@@ -157,6 +158,7 @@ async def create_party(
                 f"credential login"
             )
             admin_session_store.revoke(session.pop("admin_session_id", None))
+            scrub_legacy_admin_session(session)
         else:
             party_id = party_manager.create_party()
             display_name = body.display_name or stashed_username or "Host"
@@ -278,7 +280,7 @@ async def join_party(
         "client_id"
     ) == body.client_id
     identity_reserved = (
-        body.client_id in party.participants or party.host_client_id == body.client_id
+        body.client_id in party.sid_client_ids.values() or party.host_client_id == body.client_id
     )
     owns_host_identity = party_host_session_matches(
         party,

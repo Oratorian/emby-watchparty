@@ -24,6 +24,16 @@ class ClientIPTests(unittest.TestCase):
             == "198.51.100.25"
         )
 
+    def test_fully_trusted_forwarded_chain_falls_back_to_peer(self):
+        assert (
+            resolve_client_ip(
+                peer_ip="10.0.0.3",
+                x_forwarded_for="10.0.0.1, 10.0.0.2",
+                trusted_proxy_cidrs=("10.0.0.0/8",),
+            )
+            == "10.0.0.3"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

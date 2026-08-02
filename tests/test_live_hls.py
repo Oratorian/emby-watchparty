@@ -116,6 +116,25 @@ def test_hls_disabled_development_uses_party_session(live_watchparty_hls_disable
     asyncio.run(_exercise_tokenless_development_playback(live_watchparty_hls_disabled))
 
 
+async def _exercise_hls_requires_matching_party_session(live_watchparty) -> None:
+    owner, owner_realtime, master_url = await _select_video(live_watchparty.url)
+    other, other_realtime, _ = await _select_video(live_watchparty.url)
+    try:
+        async with httpx.AsyncClient(base_url=live_watchparty.url) as anonymous:
+            assert (await anonymous.get(master_url)).status_code == 401
+        assert (await other.get(master_url)).status_code == 401
+        assert (await owner.get(master_url)).status_code == 200
+    finally:
+        await owner_realtime.disconnect()
+        await other_realtime.disconnect()
+        await owner.aclose()
+        await other.aclose()
+
+
+def test_hls_requires_cookie_for_same_party_as_token(live_watchparty) -> None:
+    asyncio.run(_exercise_hls_requires_matching_party_session(live_watchparty))
+
+
 async def _exercise_disconnect_closes_upstream(live_watchparty) -> None:
     async with httpx.AsyncClient() as controls:
         await controls.post(f"{live_watchparty.fake.url}/__test__/reset")
@@ -240,8 +259,8 @@ async def _exercise_playlist_fidelity_and_security(live_watchparty) -> None:
         response = await client.get(duplicate_url)
         assert response.status_code == 200
         assert "access-control-allow-origin" not in response.headers
-        assert response.text.endswith("\r\n")
-        assert "\r\n" in response.text
+        assert response.content.endswith(b"\r\n")
+        assert b"\r\n" in response.content
         recorded = (await controls.get("/__test__/requests")).json()["requests"]
         master_request = next(
             row for row in reversed(recorded) if row["path"].endswith("/master.m3u8")
@@ -255,6 +274,18 @@ async def _exercise_playlist_fidelity_and_security(live_watchparty) -> None:
         assert response.status_code == 200
         assert "\r\n" not in response.text
         assert not response.text.endswith("\n")
+
+        for upstream_uri in (
+            f"{live_watchparty.fake.url}/emby/Videos/movie-1/main.m3u8",
+            "/emby/Videos/movie-1/main.m3u8",
+        ):
+            await controls.post(
+                "/__test__/behavior",
+                json={"master_playlist": f"#EXTM3U\n{upstream_uri}\n"},
+            )
+            rewritten = await client.get(master_url)
+            assert rewritten.status_code == 200
+            assert _media_line(rewritten.text).startswith("/hls/movie-1/main.m3u8")
 
         for unsafe_uri in ("../outside.ts", "segment%2501.ts"):
             await controls.post(
