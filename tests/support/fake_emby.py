@@ -213,6 +213,11 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         state.record(request)
         return {"Items": [MOVIE], "TotalRecordCount": 1}
 
+    @app.get("/emby/Items/Intros")
+    async def intros(request: Request):
+        state.record(request)
+        return [{"Id": "movie-1", "Start": 0, "End": 30_000_000}]
+
     @app.get("/emby/Users/{user_id}/Items/{item_id}")
     async def user_item(request: Request, user_id: str, item_id: str):
         del user_id
