@@ -109,7 +109,7 @@ def _resolve_host_creds(request: Request, token_manager, party_manager, logger):
         party_exists_fn=party_manager.exists,
         user_in_party_fn=lambda pid, sid: (
             party_manager.get(pid) is not None
-            and sid in party_manager.get(pid)["users"]
+            and sid in party_manager.get(pid).users
         ),
     )
     if not valid:
@@ -117,11 +117,11 @@ def _resolve_host_creds(request: Request, token_manager, party_manager, logger):
         return None, None, None
 
     party = party_manager.get(party_id)
-    if not party or not party.get("host_access_token"):
+    if not party or not party.host_access_token:
         logger.debug(f"HLS denied: party {party_id} has no host token")
         return None, None, None
 
-    return party["host_access_token"], party.get("host_user_id"), party_id
+    return party.host_access_token, party.host_user_id, party_id
 
 
 def _rewrite_playlist(

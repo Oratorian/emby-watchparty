@@ -11,7 +11,7 @@ def register(ctx):
 
     def _get_server_time(party):
         """Get the server's best estimate of current playback position."""
-        ps = party["playback_state"]
+        ps = party.playback_state
         server_time = ps.get("time", 0)
         if ps.get("playing") and ps.get("last_update"):
             try:
@@ -24,12 +24,12 @@ def register(ctx):
         return server_time
 
     def _client_id_for_sid(party, sid):
-        return party.get("sid_client_ids", {}).get(sid)
+        return party.sid_client_ids.get(sid)
 
     async def _report_emby_progress(party, sid, position, is_paused, event_name):
         """Report playback progress to Emby for a specific user's stream."""
-        current_video = party.get("current_video")
-        user_stream = party.get("user_streams", {}).get(sid)
+        current_video = party.current_video
+        user_stream = party.user_streams.get(sid)
         if not current_video or not user_stream or not user_stream.get("play_session_id"):
             return
         await emby_client.report_playback_progress(
@@ -40,19 +40,19 @@ def register(ctx):
             audio_index=user_stream.get("audio_index"),
             subtitle_index=user_stream.get("subtitle_index") if user_stream.get("subtitle_index") != -1 else None,
             run_time_seconds=current_video.get("run_time_seconds"),
-            access_token=party.get("host_access_token"),
-            user_id=party.get("host_user_id"),
+            access_token=party.host_access_token,
+            user_id=party.host_user_id,
         )
 
     def _progress_snapshot(party, sid):
         """Copy only Emby report fields before any network/socket await."""
-        stream = party.get("user_streams", {}).get(sid)
+        stream = party.user_streams.get(sid)
         return {
-            "current_video": dict(party["current_video"])
-            if party.get("current_video") else None,
+            "current_video": dict(party.current_video)
+            if party.current_video else None,
             "user_streams": {sid: dict(stream)} if stream else {},
-            "host_access_token": party.get("host_access_token"),
-            "host_user_id": party.get("host_user_id"),
+            "host_access_token": party.host_access_token,
+            "host_user_id": party.host_user_id,
         }
 
     def _authorized_controller(party, sid):
@@ -101,12 +101,12 @@ def register(ctx):
             )
             return
 
-        party["playback_state"] = {
+        party.playback_state = {
             "playing": True, "time": current_time,
             "last_update": datetime.now().isoformat(),
         }
 
-        username = party["users"].get(sid, "Someone")
+        username = party.users.get(sid, "Someone")
         progress = _progress_snapshot(party, sid)
         logger.debug(
             f"PLAY accepted from {username} (sid={sid}, client={caller_client_id}) "
@@ -143,12 +143,12 @@ def register(ctx):
             )
             return
 
-        party["playback_state"] = {
+        party.playback_state = {
             "playing": False, "time": current_time,
             "last_update": datetime.now().isoformat(),
         }
 
-        username = party["users"].get(sid, "Someone")
+        username = party.users.get(sid, "Someone")
         progress = _progress_snapshot(party, sid)
         logger.debug(
             f"PAUSE accepted from {username} (sid={sid}, client={caller_client_id}) "
@@ -187,7 +187,7 @@ def register(ctx):
         # real user seeks creates cascades of 00:00 seek spam across
         # the party. Real user-initiated seeks only happen after the
         # ready-check overlay dismisses.
-        rc = party.get("ready_check")
+        rc = party.ready_check
         if rc and rc.get("active"):
             logger.debug(f"Ignoring seek from {sid}: ready check active in {party_id}")
             return
@@ -195,28 +195,28 @@ def register(ctx):
         # `was_playing` reflects the true playback state -- the selector
         # is authoritative here, so trust their claim without
         # reconciling against server state (previous versions did
-        # `party['playback_state']['playing'] = was_playing`
+        # `party.playback_state['playing'] = was_playing`
         # unconditionally from any sender, letting a stale local flag
         # from a spectator pause the party).
-        party["playback_state"]["playing"] = was_playing
-        party["playback_state"]["time"] = seek_time
-        party["playback_state"]["last_update"] = datetime.now().isoformat()
+        party.playback_state["playing"] = was_playing
+        party.playback_state["time"] = seek_time
+        party.playback_state["last_update"] = datetime.now().isoformat()
 
-        username = party["users"].get(sid, "Someone")
+        username = party.users.get(sid, "Someone")
         progress = _progress_snapshot(party, sid)
 
         if was_playing:
             logger.info("Seek during playback - pausing all clients first for buffering")
 
             # Start a ready check so everyone buffers before resuming
-            expected = set(party["users"].keys())
-            party["ready_check"] = {
+            expected = set(party.users.keys())
+            party.ready_check = {
                 "active": True,
                 "expected_sids": expected,
                 "ready_sids": set(),
             }
 
-            waiting_names = [party["users"].get(s, "?") for s in expected]
+            waiting_names = [party.users.get(s, "?") for s in expected]
 
             # Pause everyone, show overlay, then seek
             await sio.emit("force_pause_before_seek", {"time": seek_time},

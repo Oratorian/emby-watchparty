@@ -61,11 +61,11 @@ class PartyManager:
         lock = self.lock_for(party_id)
         async with lock:
             party = self.watch_parties.get(party_id)
-            if not party or party.get("users"):
+            if not party or party.users:
                 return None
-            party["closing"] = True
-            party["generation"] = int(party.get("generation", 0)) + 1
-            party.get("operation_reservations", {}).clear()
+            party.closing = True
+            party.generation = int(party.generation) + 1
+            party.operation_reservations.clear()
             removed = self.watch_parties.pop(party_id)
         self._party_locks.pop(party_id, None)
         return removed
@@ -75,9 +75,9 @@ class PartyManager:
         async with lock:
             removed = self.watch_parties.get(party_id)
             if removed is not None:
-                removed["closing"] = True
-                removed["generation"] = int(removed.get("generation", 0)) + 1
-                removed.get("operation_reservations", {}).clear()
+                removed.closing = True
+                removed.generation += 1
+                removed.operation_reservations.clear()
                 self.watch_parties.pop(party_id, None)
         self._party_locks.pop(party_id, None)
         return removed
@@ -89,11 +89,11 @@ class PartyManager:
             return None
         async with lock:
             party = self.watch_parties.get(party_id)
-            if not party or party.get("closing"):
+            if not party or party.closing:
                 return None
             token = secrets.token_urlsafe(18)
-            generation = int(party.get("generation", 0))
-            party.setdefault("operation_reservations", {})[kind] = token
+            generation = int(party.generation)
+            party.operation_reservations[kind] = token
             return generation, token
 
     async def reservation_is_current(
@@ -107,12 +107,12 @@ class PartyManager:
             return False
         async with lock:
             party = self.watch_parties.get(party_id)
-            if not party or party.get("closing"):
+            if not party or party.closing:
                 return False
             generation, token = reservation
             return (
-                int(party.get("generation", 0)) == generation
-                and party.get("operation_reservations", {}).get(kind) == token
+                int(party.generation) == generation
+                and party.operation_reservations.get(kind) == token
             )
 
     async def release_operation(
@@ -129,7 +129,7 @@ class PartyManager:
             if not party:
                 return
             _, token = reservation
-            reservations = party.get("operation_reservations", {})
+            reservations = party.operation_reservations
             if reservations.get(kind) == token:
                 reservations.pop(kind, None)
 
@@ -201,10 +201,10 @@ class PartyManager:
             return False
 
         max_users = self._config.MAX_USERS_PER_PARTY
-        if max_users > 0 and len(party["users"]) >= max_users:
+        if max_users > 0 and len(party.users) >= max_users:
             return False
 
-        party["users"][sid] = username
+        party.users[sid] = username
         return True
 
     def remove_user(self, party_id: str, sid: str) -> bool:
@@ -213,12 +213,11 @@ class PartyManager:
         if not party:
             return False
 
-        party["users"].pop(sid, None)
-        if "drift_strikes" in party:
-            party["drift_strikes"].pop(sid, None)
-        party.get("user_streams", {}).pop(sid, None)
+        party.users.pop(sid, None)
+        party.drift_strikes.pop(sid, None)
+        party.user_streams.pop(sid, None)
 
-        if len(party["users"]) == 0 and party_id != self.static_party_id:
+        if len(party.users) == 0 and party_id != self.static_party_id:
             del self.watch_parties[party_id]
             self._logger.info(f"Party deleted (last user left): {party_id}")
             return True
@@ -228,7 +227,7 @@ class PartyManager:
     def find_user_party(self, sid: str) -> Optional[str]:
         """Find which party a user is in by their socket ID"""
         for party_id, party in self.watch_parties.items():
-            if sid in party["users"]:
+            if sid in party.users:
                 return party_id
         return None
 
@@ -236,19 +235,19 @@ class PartyManager:
         """Get list of usernames in party"""
         party = self.watch_parties.get(party_id)
         if party:
-            return list(party["users"].values())
+            return list(party.users.values())
         return []
 
     def set_video(self, party_id: str, video_data: dict):
         party = self.watch_parties.get(party_id)
         if party:
-            party["current_video"] = video_data
+            party.current_video = video_data
 
     def clear_video(self, party_id: str):
         party = self.watch_parties.get(party_id)
         if party:
-            party["current_video"] = None
-            party["playback_state"] = {
+            party.current_video = None
+            party.playback_state = {
                 "playing": False,
                 "time": 0,
                 "last_update": datetime.now().isoformat(),
@@ -258,10 +257,10 @@ class PartyManager:
         party = self.watch_parties.get(party_id)
         if party:
             if playing is not None:
-                party["playback_state"]["playing"] = playing
+                party.playback_state["playing"] = playing
             if time is not None:
-                party["playback_state"]["time"] = time
-            party["playback_state"]["last_update"] = datetime.now().isoformat()
+                party.playback_state["time"] = time
+            party.playback_state["last_update"] = datetime.now().isoformat()
 
     def count(self) -> int:
         return len(self.watch_parties)
@@ -288,12 +287,12 @@ class PartyManager:
         party = self.watch_parties.get(party_id)
         if not party:
             return False
-        party["host_client_id"] = client_id
-        party["host_user_id"] = user_id
-        party["host_access_token"] = access_token
-        party["host_username"] = username
-        party["host_is_admin"] = bool(is_admin)
-        party["host_left_at"] = None
+        party.host_client_id = client_id
+        party.host_user_id = user_id
+        party.host_access_token = access_token
+        party.host_username = username
+        party.host_is_admin = bool(is_admin)
+        party.host_left_at = None
         return True
 
     def clear_host(self, party_id: str) -> bool:
@@ -301,12 +300,12 @@ class PartyManager:
         party = self.watch_parties.get(party_id)
         if not party:
             return False
-        party["host_client_id"] = None
-        party["host_user_id"] = None
-        party["host_access_token"] = None
-        party["host_username"] = None
-        party["host_is_admin"] = False
-        party["host_left_at"] = None
+        party.host_client_id = None
+        party.host_user_id = None
+        party.host_access_token = None
+        party.host_username = None
+        party.host_is_admin = False
+        party.host_left_at = None
         return True
 
     def mark_host_left(self, party_id: str) -> bool:
@@ -317,15 +316,15 @@ class PartyManager:
         on grace expiry or on video_ended/stop_video.
         """
         party = self.watch_parties.get(party_id)
-        if not party or not party.get("host_access_token"):
+        if not party or not party.host_access_token:
             return False
-        party["host_left_at"] = datetime.now().isoformat()
+        party.host_left_at = datetime.now().isoformat()
         return True
 
     def has_host_token(self, party_id: str) -> bool:
         """True iff an Emby access token is stored (HLS usable)."""
         party = self.watch_parties.get(party_id)
-        return bool(party and party.get("host_access_token"))
+        return bool(party and party.host_access_token)
 
     def disable_binge_watch_globally(self) -> list[str]:
         """Tear down per-party binge state across every party. Used by
@@ -339,16 +338,16 @@ class PartyManager:
         """
         affected = []
         for party_id, party in self.watch_parties.items():
-            was_active = bool(party.get("binge_watch_active"))
-            pending = party.get("pending_auto_advance")
+            was_active = bool(party.binge_watch_active)
+            pending = party.pending_auto_advance
             if not was_active and not pending:
                 continue
             if pending:
                 task = pending.get("task")
                 if task and not task.done():
                     task.cancel()
-                party["pending_auto_advance"] = None
-            party["binge_watch_active"] = False
+                party.pending_auto_advance = None
+            party.binge_watch_active = False
             affected.append(party_id)
         return affected
 
@@ -357,7 +356,7 @@ class PartyManager:
         party = self.watch_parties.get(party_id)
         if not party:
             return False
-        return bool(party.get("host_access_token")) and party.get("host_left_at") is None
+        return bool(party.host_access_token) and party.host_left_at is None
 
     def is_playing_only(self, party_id: str) -> bool:
         """True iff host has left but HLS is still serving a current video."""
@@ -365,9 +364,9 @@ class PartyManager:
         if not party:
             return False
         return (
-            bool(party.get("host_access_token"))
-            and party.get("host_left_at") is not None
-            and party.get("current_video") is not None
+            bool(party.host_access_token)
+            and party.host_left_at is not None
+            and party.current_video is not None
         )
 
     def get_host_token(self, party_id: str) -> Optional[str]:
@@ -375,14 +374,14 @@ class PartyManager:
         party = self.watch_parties.get(party_id)
         if not party:
             return None
-        return party.get("host_access_token")
+        return party.host_access_token
 
     def get_host_user_id(self, party_id: str) -> Optional[str]:
         """Return the host's Emby user id (used for Emby API calls)."""
         party = self.watch_parties.get(party_id)
         if not party:
             return None
-        return party.get("host_user_id")
+        return party.host_user_id
 
     def members_list(self, party_id: str) -> list:
         """Return [{username, avatar_uuid}, ...] for everyone in the party.
@@ -395,14 +394,14 @@ class PartyManager:
         party = self.watch_parties.get(party_id)
         if not party:
             return []
-        sid_client_ids = party.get("sid_client_ids", {})
-        participants = party.get("participants", {})
+        sid_client_ids = party.sid_client_ids
+        participants = party.participants
         out = []
-        for sid, username in party.get("users", {}).items():
+        for sid, username in party.users.items():
             cid = sid_client_ids.get(sid)
             p = participants.get(cid) if cid else None
             out.append({
                 "username": username,
-                "avatar_uuid": p.get("avatar_uuid") if p else None,
+                "avatar_uuid": p.avatar_uuid if p else None,
             })
         return out

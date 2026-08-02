@@ -3,6 +3,8 @@
 import asyncio
 import time
 from datetime import datetime
+
+from backend.src.domain import Participant
 from backend.src.quality import DEFAULT_QUALITY_ID
 from backend.src.utils import generate_random_username
 
@@ -44,11 +46,11 @@ def register(ctx):
 
     def _vote_usernames(party, sids):
         """Convert a collection of sids to a list of display usernames."""
-        return [party["users"].get(s, "?") for s in sids]
+        return [party.users.get(s, "?") for s in sids]
 
     def _current_party_time(party):
         """Return the server's current best estimate of playback position."""
-        playback_state = party.get("playback_state", {})
+        playback_state = party.playback_state
         current_time = playback_state.get("time", 0)
         if playback_state.get("playing") and playback_state.get("last_update"):
             try:
@@ -64,24 +66,24 @@ def register(ctx):
                      avatar_uuid=None):
         """Move all sid-keyed party state from an old socket to a new one."""
         if old_sid and old_sid != new_sid:
-            party["users"].pop(old_sid, None)
-            party.setdefault("join_times", {}).pop(old_sid, None)
-            party.setdefault("sid_client_ids", {}).pop(old_sid, None)
+            party.users.pop(old_sid, None)
+            party.join_times.pop(old_sid, None)
+            party.sid_client_ids.pop(old_sid, None)
 
             # selected_by is keyed on client_id (stable across reloads),
             # so no remapping is needed when sid changes.
 
-            old_stream = party.get("user_streams", {}).pop(old_sid, None)
-            if old_stream and old_stream.get("play_session_id") and party.get("current_video"):
-                current_time = party["playback_state"].get("time", 0)
-                host_token = party.get("host_access_token")
-                host_user = party.get("host_user_id")
+            old_stream = party.user_streams.pop(old_sid, None)
+            if old_stream and old_stream.get("play_session_id") and party.current_video:
+                current_time = party.playback_state.get("time", 0)
+                host_token = party.host_access_token
+                host_user = party.host_user_id
                 await emby_client.report_playback_stopped(
-                    item_id=party["current_video"]["item_id"],
+                    item_id=party.current_video["item_id"],
                     media_source_id=old_stream["media_source_id"],
                     play_session_id=old_stream["play_session_id"],
                     position_seconds=current_time,
-                    run_time_seconds=party["current_video"].get("run_time_seconds"),
+                    run_time_seconds=party.current_video.get("run_time_seconds"),
                     access_token=host_token,
                     user_id=host_user,
                 )
@@ -90,11 +92,11 @@ def register(ctx):
                     access_token=host_token,
                 )
 
-            drift_strikes = party.get("drift_strikes")
+            drift_strikes = party.drift_strikes
             if drift_strikes and old_sid in drift_strikes:
                 drift_strikes[new_sid] = drift_strikes.pop(old_sid)
 
-            rc = party.get("ready_check")
+            rc = party.ready_check
             if rc and rc.get("active"):
                 if old_sid in rc["expected_sids"]:
                     rc["expected_sids"].discard(old_sid)
@@ -103,25 +105,26 @@ def register(ctx):
                     rc["ready_sids"].discard(old_sid)
                     rc["ready_sids"].add(new_sid)
 
-        party["users"][new_sid] = username
-        party.setdefault("join_times", {})[new_sid] = datetime.now().isoformat()
+        party.users[new_sid] = username
+        party.join_times[new_sid] = datetime.now().isoformat()
         if client_id:
-            participants = party.setdefault("participants", {})
+            participants = party.participants
             # Preserve any previously-recorded avatar_uuid if the new
             # call did not supply one, so a reconnect without
             # avatar_uuid in the payload does not erase it.
-            existing = participants.get(client_id, {})
-            participants[client_id] = {
-                "username": username,
-                "sid": new_sid,
-                "last_seen": datetime.now().isoformat(),
-                "avatar_uuid": avatar_uuid or existing.get("avatar_uuid"),
-            }
-            party.setdefault("sid_client_ids", {})[new_sid] = client_id
+            existing = participants.get(client_id)
+            participants[client_id] = Participant(
+                client_id=client_id,
+                username=username,
+                sid=new_sid,
+                last_seen=datetime.now().isoformat(),
+                avatar_uuid=avatar_uuid or (existing.avatar_uuid if existing else None),
+            )
+            party.sid_client_ids[new_sid] = client_id
 
     async def _build_rejoin_video(party, party_id, sid):
         """Create a fresh per-user stream for a known participant rejoining."""
-        current_video = party.get("current_video")
+        current_video = party.current_video
         if not current_video or not create_user_stream:
             return None
 
@@ -168,11 +171,11 @@ def register(ctx):
 
     def _votes_by_username(party, votes_dict):
         """Convert {sid: "yes"|"no"} to {username: "yes"|"no"} for client broadcasts."""
-        return {party["users"].get(sid, "?"): vote for sid, vote in votes_dict.items()}
+        return {party.users.get(sid, "?"): vote for sid, vote in votes_dict.items()}
 
     async def _broadcast_vote_update(party, party_id):
         """Emit the current vote state to the whole party room."""
-        pj = party.get("pending_join")
+        pj = party.pending_join
         if not pj:
             return
         remaining = len(pj["eligible_voters"]) - len(pj["votes"])
@@ -188,7 +191,7 @@ def register(ctx):
         party = party_manager.get(party_id)
         if not party:
             return
-        pj = party.get("pending_join")
+        pj = party.pending_join
         if not pj:
             return
 
@@ -205,12 +208,12 @@ def register(ctx):
 
         # Promote the late joiner to a full user so they participate in the
         # restart. Until now they were only in the Socket.IO room but NOT in
-        # party["users"].
+        # party.users.
         await _replace_sid(party, None, late_sid, late_username, client_id)
 
         # Clear pending_join BEFORE emitting resolution so a simultaneous join
         # attempt from another user sees no active vote.
-        party["pending_join"] = None
+        party.pending_join = None
 
         # Tell everyone the vote resolved (they dismiss the modal / waiting room)
         await sio.emit("join_vote_resolved", {"result": "pass"}, room=party_id)
@@ -218,14 +221,14 @@ def register(ctx):
         # Emit user_joined so existing clients update their participant list
         await sio.emit("user_joined", {
             "username": late_username,
-            "users": list(party["users"].values()),
+            "users": list(party.users.values()),
             "members": party_manager.members_list(party_id),
             "rejoin": False,
         }, room=party_id)
 
         # Restart the current video from segment 0. Use the existing
         # current_video metadata to keep the same title/item_id.
-        cv = party.get("current_video")
+        cv = party.current_video
         if not cv:
             logger.warning(f"Vote passed but no current_video in party {party_id}")
             return
@@ -250,14 +253,14 @@ def register(ctx):
         attacks where a malicious user keeps hitting /party/<id>."""
         cooldown = getattr(config, "LATE_JOIN_VOTE_COOLDOWN_SECONDS", 30)
         if cooldown > 0:
-            party["join_cooldown_until"] = time.time() + cooldown
+            party.join_cooldown_until = time.time() + cooldown
 
     async def _resolve_vote_fail(party_id):
         """Vote failed: reject the late joiner and leave existing users undisturbed."""
         party = party_manager.get(party_id)
         if not party:
             return
-        pj = party.get("pending_join")
+        pj = party.pending_join
         if not pj:
             return
 
@@ -270,7 +273,7 @@ def register(ctx):
 
         logger.info(f"Vote failed in party {party_id}: rejecting late joiner {late_username}")
 
-        party["pending_join"] = None
+        party.pending_join = None
         _set_cooldown(party)
 
         # Tell the room the vote failed (closes the modal)
@@ -296,7 +299,7 @@ def register(ctx):
         party = party_manager.get(party_id)
         if not party:
             return
-        pj = party.get("pending_join")
+        pj = party.pending_join
         if not pj:
             return
 
@@ -323,7 +326,7 @@ def register(ctx):
         party = party_manager.get(party_id)
         if not party:
             return
-        pj = party.get("pending_join")
+        pj = party.pending_join
         if not pj:
             return
 
@@ -359,7 +362,7 @@ def register(ctx):
         party = party_manager.get(party_id)
         if not party:
             return
-        pj = party.get("pending_join")
+        pj = party.pending_join
         if not pj:
             return  # Already resolved
 
@@ -376,27 +379,27 @@ def register(ctx):
     async def _start_late_join_vote(party, party_id, late_sid, late_username, client_id=None):
         """Initialize a vote for a new late joiner. Returns True if the vote
         started, False if a vote was already in progress."""
-        if party.get("pending_join") is not None:
+        if party.pending_join is not None:
             return False
 
         # Snapshot eligible voters: everyone currently in the party
-        eligible_voters = set(party["users"].keys())
+        eligible_voters = set(party.users.keys())
         # current_video.selected_by holds the selector's persistent client_id,
         # but votes are keyed by sid. Resolve the selector's *current* sid so
         # the tiebreak rule can find their vote.
         selector_sid = None
-        cv = party.get("current_video")
+        cv = party.current_video
         if cv:
             selector_client_id = cv.get("selected_by")
             if selector_client_id:
-                for s, cid in party.get("sid_client_ids", {}).items():
+                for s, cid in party.sid_client_ids.items():
                     if cid == selector_client_id:
                         selector_sid = s
                         break
 
         timeout_seconds = getattr(config, "LATE_JOIN_VOTE_TIMEOUT_SECONDS", 20)
 
-        party["pending_join"] = {
+        party.pending_join = {
             "sid": late_sid,
             "username": late_username,
             "client_id": client_id,
@@ -408,7 +411,7 @@ def register(ctx):
         }
 
         # Put the late joiner into the Socket.IO room so they receive
-        # vote-progress broadcasts, but do NOT add them to party["users"]
+        # vote-progress broadcasts, but do NOT add them to party.users
         # yet -- they are held in a pending state.
         await sio.enter_room(late_sid, party_id)
 
@@ -432,7 +435,7 @@ def register(ctx):
 
         # Spawn the timeout watchdog
         task = asyncio.create_task(_vote_timeout_watchdog(party_id, timeout_seconds))
-        party["pending_join"]["timeout_task"] = task
+        party.pending_join["timeout_task"] = task
 
         logger.info(
             f"Started late join vote in party {party_id} for {late_username} "
@@ -446,7 +449,7 @@ def register(ctx):
         Called from both disconnect and leave_party paths. Modifies
         eligible_voters/votes and re-checks resolution if needed.
         """
-        pj = party.get("pending_join")
+        pj = party.pending_join
         if not pj:
             return
 
@@ -457,7 +460,7 @@ def register(ctx):
             task = pj.get("timeout_task")
             if task and not task.done():
                 task.cancel()
-            party["pending_join"] = None
+            party.pending_join = None
             # Apply cooldown to prevent spam (same user immediately rejoining
             # and spawning another vote, e.g. after a force-reload)
             _set_cooldown(party)
@@ -514,11 +517,12 @@ def register(ctx):
             return
 
         party = party_manager.get(party_id)
-        participants = party.setdefault("participants", {})
-        sid_client_ids = party.setdefault("sid_client_ids", {})
+        participants = party.participants
+        sid_client_ids = party.sid_client_ids
         known_participant = client_id in participants
         rejoin = known_participant
-        old_sid = participants.get(client_id, {}).get("sid")
+        existing_participant = participants.get(client_id)
+        old_sid = existing_participant.sid if existing_participant else None
 
         if known_participant:
             if old_sid and old_sid != sid:
@@ -548,7 +552,7 @@ def register(ctx):
             same_browser = (
                 cookie_client_id == client_id and cookie_party_id == party_id
             )
-            for stale_sid, existing_name in list(party["users"].items()):
+            for stale_sid, existing_name in list(party.users.items()):
                 if existing_name == username and stale_sid != sid:
                     if not same_browser:
                         logger.warning(
@@ -576,8 +580,8 @@ def register(ctx):
                     break
 
         # Check max users (count includes any pending late joiner)
-        current_count = len(party["users"])
-        if party.get("pending_join"):
+        current_count = len(party.users)
+        if party.pending_join:
             current_count += 1
         if not rejoin and config.MAX_USERS_PER_PARTY > 0 and current_count >= config.MAX_USERS_PER_PARTY:
             logger.warning(f"Party {party_id} is full")
@@ -588,12 +592,12 @@ def register(ctx):
         # Late joiner vote flow
         # -----------------------------------------------------------------
         vote_enabled = getattr(config, "LATE_JOIN_VOTE_ENABLED", True)
-        has_active_video = party.get("current_video") is not None
-        has_existing_users = len(party["users"]) > 0
+        has_active_video = party.current_video is not None
+        has_existing_users = len(party.users) > 0
 
         if not rejoin and vote_enabled and has_active_video and has_existing_users:
             # Don't start a second vote on top of an active one
-            if party.get("pending_join") is not None:
+            if party.pending_join is not None:
                 logger.info(f"Join rejected: vote already in progress in party {party_id}")
                 await sio.emit("join_rejected", {
                     "message": "Another user is currently waiting for approval. Try again shortly.",
@@ -603,7 +607,7 @@ def register(ctx):
             # Enforce post-vote cooldown. Prevents a malicious user from
             # spamming /party/<id> to repeatedly pop vote modals on the
             # existing watchers.
-            cooldown_until = party.get("join_cooldown_until", 0) or 0
+            cooldown_until = party.join_cooldown_until or 0
             now = time.time()
             if cooldown_until > now:
                 wait_seconds = int(cooldown_until - now) + 1
@@ -621,7 +625,7 @@ def register(ctx):
                 return
 
             # Start the vote -- this puts the late joiner into the Socket.IO
-            # room but does NOT add them to party["users"] yet.
+            # room but does NOT add them to party.users yet.
             started = await _start_late_join_vote(party, party_id, sid, username, client_id)
             if started:
                 return  # Vote flow takes over; no immediate sync_state
@@ -649,7 +653,7 @@ def register(ctx):
 
         await sio.emit("user_joined", {
             "username": username,
-            "users": list(party["users"].values()),
+            "users": list(party.users.values()),
             "members": party_manager.members_list(party_id),
             "rejoin": rejoin,
         }, room=party_id)
@@ -658,14 +662,14 @@ def register(ctx):
         # stream at the current party position so reload/rejoin can resume
         # without triggering the late-join vote or restarting everyone.
         current_video = None
-        playback_state = party["playback_state"].copy()
-        if party.get("current_video"):
+        playback_state = party.playback_state.copy()
+        if party.current_video:
             rejoin_video = await _build_rejoin_video(party, party_id, sid)
             if rejoin_video:
                 current_video, current_time = rejoin_video
                 playback_state["time"] = current_time
             else:
-                cv = party["current_video"]
+                cv = party.current_video
                 current_video = {
                     "item_id": cv.get("item_id"),
                     "title": cv.get("title"),
@@ -688,7 +692,7 @@ def register(ctx):
         # mirror the auto_advance_pending event so the frontend store
         # (party.ts) can reuse the same hydration path.
         pending_advance_payload = None
-        pending = party.get("pending_auto_advance")
+        pending = party.pending_auto_advance
         if pending:
             deadline = pending.get("deadline")
             countdown_seconds = None
@@ -706,8 +710,8 @@ def register(ctx):
                 "next_index_number": pending.get("next_index_number"),
                 "total_episodes": max(
                     (ep.get("IndexNumber") or 0)
-                    for ep in (party.get("episode_list") or [])
-                ) if party.get("episode_list") else 0,
+                    for ep in (party.episode_list or [])
+                ) if party.episode_list else 0,
                 "deadline": deadline,
                 "countdown_seconds": countdown_seconds,
             }
@@ -723,7 +727,7 @@ def register(ctx):
             # the very next join.
             "binge_watch": {
                 "available": bool(config.BINGE_WATCH_ENABLED),
-                "active": bool(party.get("binge_watch_active")),
+                "active": bool(party.binge_watch_active),
             },
             "pending_auto_advance": pending_advance_payload,
         }, to=sid)
@@ -741,7 +745,7 @@ def register(ctx):
         if not party:
             return
 
-        pj = party.get("pending_join")
+        pj = party.pending_join
         if not pj:
             logger.debug(f"Vote from {sid} ignored: no active vote in {party_id}")
             return
@@ -752,7 +756,7 @@ def register(ctx):
 
         # Record the vote (overwriting any previous vote from the same user)
         pj["votes"][sid] = vote
-        logger.debug(f"Vote recorded in {party_id}: {party['users'].get(sid, sid)} -> {vote}")
+        logger.debug(f"Vote recorded in {party_id}: {party.users.get(sid, sid)} -> {vote}")
 
         # Broadcast the updated tally and check for early resolution
         await _broadcast_vote_update(party, party_id)
@@ -774,18 +778,18 @@ def register(ctx):
         # sid_client_ids pop below, which erases the mapping used to identify
         # the host (and is why the disconnect handler alone could not catch an
         # explicit leave).
-        departing_client_id = party.get("sid_client_ids", {}).get(sid)
+        departing_client_id = party.sid_client_ids.get(sid)
         if (
             departing_client_id
-            and departing_client_id == party.get("host_client_id")
-            and party.get("host_left_at") is None
+            and departing_client_id == party.host_client_id
+            and party.host_left_at is None
         ):
-            host_username = party.get("host_username") or "?"
+            host_username = party.host_username or "?"
             pending = ctx.get("pending_host_clear", {})
             grace_task = pending.pop(party_id, None)
             if grace_task and not grace_task.done():
                 grace_task.cancel()
-            if party.get("current_video"):
+            if party.current_video:
                 # PLAYING-ONLY: keep the token so the in-flight stream finishes
                 # for everyone else; a later video_ended/stop_video clears it.
                 party_manager.mark_host_left(party_id)
@@ -809,21 +813,21 @@ def register(ctx):
                     "reason": "leave",
                 }, room=party_id, skip_sid=sid)
 
-        if sid in party["users"]:
-            username = party["users"][sid]
+        if sid in party.users:
+            username = party.users[sid]
 
             # Stop this user's individual transcode
-            user_stream = party.get("user_streams", {}).get(sid)
-            if user_stream and user_stream.get("play_session_id") and party.get("current_video"):
-                current_time = party["playback_state"].get("time", 0)
-                host_token = party.get("host_access_token")
-                host_user = party.get("host_user_id")
+            user_stream = party.user_streams.get(sid)
+            if user_stream and user_stream.get("play_session_id") and party.current_video:
+                current_time = party.playback_state.get("time", 0)
+                host_token = party.host_access_token
+                host_user = party.host_user_id
                 await emby_client.report_playback_stopped(
-                    item_id=party["current_video"]["item_id"],
+                    item_id=party.current_video["item_id"],
                     media_source_id=user_stream["media_source_id"],
                     play_session_id=user_stream["play_session_id"],
                     position_seconds=current_time,
-                    run_time_seconds=party["current_video"].get("run_time_seconds"),
+                    run_time_seconds=party.current_video.get("run_time_seconds"),
                     access_token=host_token,
                     user_id=host_user,
                 )
@@ -831,23 +835,23 @@ def register(ctx):
                     play_session_id=user_stream["play_session_id"],
                     access_token=host_token,
                 )
-            party.get("user_streams", {}).pop(sid, None)
+            party.user_streams.pop(sid, None)
             token_manager.revoke_user(party_id, sid)
 
             await sio.leave_room(sid, party_id)
-            client_id = party.setdefault("sid_client_ids", {}).pop(sid, None)
+            client_id = party.sid_client_ids.pop(sid, None)
             if client_id:
-                party.setdefault("participants", {}).pop(client_id, None)
-            del party["users"][sid]
+                party.participants.pop(client_id, None)
+            del party.users[sid]
 
             # Remove from any active ready check so we don't wait forever
-            rc = party.get("ready_check")
+            rc = party.ready_check
             if rc and rc.get("active"):
                 rc["expected_sids"].discard(sid)
                 rc["ready_sids"].discard(sid)
                 if rc["ready_sids"] >= rc["expected_sids"] and rc["expected_sids"]:
-                    party["ready_check"] = None
-                    playback_state = party.get("playback_state", {})
+                    party.ready_check = None
+                    playback_state = party.playback_state
                     if playback_state.get("playing"):
                         playback_state["last_update"] = datetime.now().isoformat()
                     logger.info(f"All users ready in party {party_id} (after leave)")
@@ -856,17 +860,17 @@ def register(ctx):
                         "playing": playback_state.get("playing", False),
                     }, room=party_id)
                 elif not rc["expected_sids"]:
-                    party["ready_check"] = None
+                    party.ready_check = None
                 else:
-                    ready_names = [party["users"].get(s, "?") for s in rc["ready_sids"]]
-                    waiting_names = [party["users"].get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]
+                    ready_names = [party.users.get(s, "?") for s in rc["ready_sids"]]
+                    waiting_names = [party.users.get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]
                     await sio.emit("ready_check_update", {
                         "ready": ready_names, "waiting": waiting_names,
                     }, room=party_id)
 
             await sio.emit("user_left", {
                 "username": username,
-                "users": list(party["users"].values()),
+                "users": list(party.users.values()),
                 "members": party_manager.members_list(party_id),
             }, room=party_id)
 
@@ -893,13 +897,13 @@ def register(ctx):
         party = party_manager.get(party_id)
         if not party:
             return
-        client_id = party.get("sid_client_ids", {}).get(sid)
+        client_id = party.sid_client_ids.get(sid)
         if not client_id:
             return
-        participant = party.get("participants", {}).get(client_id)
+        participant = party.participants.get(client_id)
         if not participant:
             return
-        participant["avatar_uuid"] = new_uuid
+        participant.avatar_uuid = new_uuid
 
         await sio.emit("members_update", {
             "members": party_manager.members_list(party_id),

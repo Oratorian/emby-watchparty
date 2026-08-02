@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 
+from backend.src.domain import Party
+
 
 class PartyLifecycle:
     def __init__(self, ctx: dict):
@@ -39,11 +41,11 @@ class PartyLifecycle:
         for party_id in list(self._parties.get_all()):
             await self.dissolve(party_id, reason=reason)
 
-    async def _cleanup(self, party_id: str, party: dict) -> None:
+    async def _cleanup(self, party_id: str, party: Party) -> None:
         current = asyncio.current_task()
         tasks: list[asyncio.Task] = []
-        pending_join = party.get("pending_join") or {}
-        pending_auto = party.get("pending_auto_advance") or {}
+        pending_join = party.pending_join or {}
+        pending_auto = party.pending_auto_advance or {}
         for task in (
             pending_join.get("timeout_task"),
             pending_auto.get("task"),
@@ -55,11 +57,11 @@ class PartyLifecycle:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-        video = party.get("current_video") or {}
-        access_token = party.get("host_access_token")
-        user_id = party.get("host_user_id")
-        position = (party.get("playback_state") or {}).get("time", 0)
-        for stream in list((party.get("user_streams") or {}).values()):
+        video = party.current_video or {}
+        access_token = party.host_access_token
+        user_id = party.host_user_id
+        position = (party.playback_state or {}).get("time", 0)
+        for stream in list((party.user_streams or {}).values()):
             play_session_id = stream.get("play_session_id")
             if not play_session_id:
                 continue

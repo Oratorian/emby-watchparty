@@ -233,7 +233,7 @@ async def update_config(
                     try:
                         await sio.emit("binge_watch_state_changed", {
                             "available": True,
-                            "active": bool(active_party.get("binge_watch_active")),
+                            "active": bool(active_party.binge_watch_active),
                         }, room=active_id)
                     except Exception as e:
                         logger.warning(

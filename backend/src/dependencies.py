@@ -158,9 +158,9 @@ def require_admin(
     in with an Emby account that has `IsAdministrator=true`.
     """
     party = party_session.party
-    if party_session.client_id != party.get("host_client_id"):
+    if party_session.client_id != party.host_client_id:
         raise HTTPException(status_code=403, detail="Host only")
-    if not party.get("host_is_admin"):
+    if not party.host_is_admin:
         raise HTTPException(status_code=403, detail="Admin only")
     return party_session
 
@@ -191,8 +191,8 @@ def is_admin_authenticated(
     if not party:
         return False
     return (
-        party.get("host_client_id") == client_id
-        and bool(party.get("host_is_admin"))
+        party.host_client_id == client_id
+        and bool(party.host_is_admin)
     )
 
 
@@ -213,10 +213,10 @@ def admin_display_name(
         party = party_manager.get(party_id.upper())
         if (
             party
-            and party.get("host_client_id") == client_id
-            and party.get("host_is_admin")
+            and party.host_client_id == client_id
+            and party.host_is_admin
         ):
-            return party.get("host_username")
+            return party.host_username
     if admin_session_store:
         admin_session = admin_session_store.get(session.get("admin_session_id"))
         if admin_session:

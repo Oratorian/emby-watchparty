@@ -89,16 +89,16 @@ def register(ctx):
 
         # Host changed (someone else logged in during the grace window)
         # or already restored by a fast rejoin. Drop the task quietly.
-        if party.get("host_client_id") != client_id:
+        if party.host_client_id != client_id:
             pending_host_clear.pop(party_id, None)
             return
-        if party.get("host_left_at") is None:
+        if party.host_left_at is None:
             pending_host_clear.pop(party_id, None)
             return
 
-        sid_client_ids = party.get("sid_client_ids", {})
+        sid_client_ids = party.sid_client_ids
         if client_id in sid_client_ids.values():
-            party["host_left_at"] = None
+            party.host_left_at = None
             pending_host_clear.pop(party_id, None)
             logger.info(
                 f"Host '{username}' rejoined party {party_id} within grace; "
@@ -109,7 +109,7 @@ def register(ctx):
             )
             return
 
-        if not party.get("current_video"):
+        if not party.current_video:
             party_manager.clear_host(party_id)
             logger.info(
                 f"Host '{username}' left party {party_id} (no playback) -> LOCKED"
@@ -154,9 +154,9 @@ def register(ctx):
         party = party_manager.get(party_id)
         if not party:
             return False
-        if party.get("host_client_id") != client_id:
+        if party.host_client_id != client_id:
             return False
-        if party.get("host_left_at") is None:
+        if party.host_left_at is None:
             return False
 
         # Session-cookie proof gate.
@@ -183,8 +183,8 @@ def register(ctx):
         if task and not task.done():
             task.cancel()
 
-        party["host_left_at"] = None
-        username = party.get("host_username") or "?"
+        party.host_left_at = None
+        username = party.host_username or "?"
         logger.info(
             f"Host '{username}' reclaimed party {party_id} via fast rejoin"
         )
@@ -243,16 +243,16 @@ def register(ctx):
         for party_id, party in list(party_manager.get_all().items()):
             # Host-leave detection runs before the rest of the cleanup
             # so the grace task is scheduled even when the user's
-            # presence in party["users"] has already been pruned.
-            sid_client_ids = party.get("sid_client_ids", {})
+            # presence in party.users has already been pruned.
+            sid_client_ids = party.sid_client_ids
             departing_client_id = sid_client_ids.get(sid)
-            host_client_id = party.get("host_client_id")
+            host_client_id = party.host_client_id
             if (
                 host_client_id
                 and departing_client_id == host_client_id
-                and party.get("host_left_at") is None
+                and party.host_left_at is None
             ):
-                username = party.get("host_username") or "?"
+                username = party.host_username or "?"
                 party_manager.mark_host_left(party_id)
                 old_task = pending_host_clear.get(party_id)
                 if old_task and not old_task.done():
@@ -268,26 +268,26 @@ def register(ctx):
             # Handle late-joiner vote cleanup (the disconnecting user may be
             # the pending late joiner, or an eligible voter whose absence
             # changes the majority math).
-            if party.get("pending_join") and handle_disconnect_from_vote:
-                pj = party["pending_join"]
+            if party.pending_join and handle_disconnect_from_vote:
+                pj = party.pending_join
                 if pj["sid"] == sid or sid in pj.get("eligible_voters", set()):
                     await handle_disconnect_from_vote(party, party_id, sid)
 
-            if sid in party["users"]:
-                username = party["users"][sid]
+            if sid in party.users:
+                username = party.users[sid]
 
                 # Stop this user's individual transcode
-                user_stream = party.get("user_streams", {}).get(sid)
-                if user_stream and user_stream.get("play_session_id") and party.get("current_video"):
-                    current_time = party["playback_state"].get("time", 0)
-                    access_token = party.get("host_access_token")
-                    user_id = party.get("host_user_id")
+                user_stream = party.user_streams.get(sid)
+                if user_stream and user_stream.get("play_session_id") and party.current_video:
+                    current_time = party.playback_state.get("time", 0)
+                    access_token = party.host_access_token
+                    user_id = party.host_user_id
                     await emby_client.report_playback_stopped(
-                        item_id=party["current_video"]["item_id"],
+                        item_id=party.current_video["item_id"],
                         media_source_id=user_stream["media_source_id"],
                         play_session_id=user_stream["play_session_id"],
                         position_seconds=current_time,
-                        run_time_seconds=party["current_video"].get("run_time_seconds"),
+                        run_time_seconds=party.current_video.get("run_time_seconds"),
                         access_token=access_token,
                         user_id=user_id,
                     )
@@ -295,24 +295,24 @@ def register(ctx):
                         play_session_id=user_stream["play_session_id"],
                         access_token=access_token,
                     )
-                party.get("user_streams", {}).pop(sid, None)
+                party.user_streams.pop(sid, None)
                 if token_manager:
                     token_manager.revoke_user(party_id, sid)
 
-                del party["users"][sid]
-                party.setdefault("sid_client_ids", {}).pop(sid, None)
-                if "drift_strikes" in party and sid in party["drift_strikes"]:
-                    del party["drift_strikes"][sid]
+                del party.users[sid]
+                party.sid_client_ids.pop(sid, None)
+                if sid in party.drift_strikes:
+                    del party.drift_strikes[sid]
 
                 # Remove from any active ready check so we don't wait forever
                 # for a signal from a disconnected client
-                rc = party.get("ready_check")
+                rc = party.ready_check
                 if rc and rc.get("active"):
                     rc["expected_sids"].discard(sid)
                     rc["ready_sids"].discard(sid)
                     if rc["ready_sids"] >= rc["expected_sids"] and rc["expected_sids"]:
-                        party["ready_check"] = None
-                        playback_state = party.get("playback_state", {})
+                        party.ready_check = None
+                        playback_state = party.playback_state
                         # Consume auto_play_after_ready flag exactly like
                         # _check_all_ready in playback.py does. Without
                         # this the binge auto-advance flow can complete
@@ -322,7 +322,8 @@ def register(ctx):
                         # it inappropriately fires on a later manual
                         # select. Mirror the playback.py:326-348 logic
                         # to keep the two completion paths in lockstep.
-                        auto_play_pending = party.pop("auto_play_after_ready", False)
+                        auto_play_pending = party.auto_play_after_ready
+                        party.auto_play_after_ready = False
                         if auto_play_pending:
                             playback_state["playing"] = True
                         if playback_state.get("playing"):
@@ -340,13 +341,13 @@ def register(ctx):
                             }, room=party_id)
                     elif not rc["expected_sids"]:
                         # No one left to wait for -- cancel the check entirely
-                        party["ready_check"] = None
+                        party.ready_check = None
                         # And drop the auto-play flag so it doesn't leak
                         # into an unrelated future ready check.
-                        party.pop("auto_play_after_ready", None)
+                        party.auto_play_after_ready = False
                     else:
-                        ready_names = [party["users"].get(s, "?") for s in rc["ready_sids"]]
-                        waiting_names = [party["users"].get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]
+                        ready_names = [party.users.get(s, "?") for s in rc["ready_sids"]]
+                        waiting_names = [party.users.get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]
                         await sio.emit("ready_check_update", {
                             "ready": ready_names, "waiting": waiting_names,
                         }, room=party_id)
@@ -355,7 +356,7 @@ def register(ctx):
                     "user_left",
                     {
                         "username": username,
-                        "users": list(party["users"].values()),
+                        "users": list(party.users.values()),
                         "members": party_manager.members_list(party_id),
                     },
                     room=party_id,

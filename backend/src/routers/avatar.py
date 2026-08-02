@@ -211,8 +211,8 @@ async def host_avatar(
     party = party_manager.get(party_id)
     if not party:
         return Response(status_code=404)
-    host_user_id = party.get("host_user_id")
-    host_token = party.get("host_access_token")
+    host_user_id = party.host_user_id
+    host_token = party.host_access_token
     if not host_user_id or not host_token:
         return Response(status_code=404)
     url = f"{config.EMBY_SERVER_URL}/emby/Users/{host_user_id}/Images/Primary"

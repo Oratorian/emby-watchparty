@@ -67,17 +67,17 @@ def list_parties(
     for code, party in party_manager.get_all().items():
         if code == static_id:
             continue
-        users = party.get("users", {})
+        users = party.users
         if not users:
             continue
         try:
-            cv = party.get("current_video")
+            cv = party.current_video
             items.append(PartyListItem(
                 code=code,
                 title=cv.get("title") if cv else None,
                 user_count=len(users),
                 playing=cv is not None,
-                locked=not party.get("host_access_token"),
+                locked=not party.host_access_token,
             ))
         except Exception as e:
             # One bad party record should not break the whole index listing.
@@ -275,7 +275,7 @@ async def join_party(
     # Skipped silently when the party already has a host so existing
     # members don't get bumped on every new join.
     dev_user, dev_pw = _env_dev_host_creds()
-    is_host = party.get("host_client_id") == body.client_id
+    is_host = party.host_client_id == body.client_id
     if dev_user and dev_pw and not party_manager.is_unlocked(party_id):
         auth = await emby_client.authenticate(dev_user, dev_pw)
         if auth:
@@ -321,7 +321,7 @@ def leave_party(request: Request, logger=Depends(get_logger)):
     """Drop the party-bound session cookie.
 
     The Socket.IO `leave_party` event handles the in-memory party state
-    (removing the user from `party["users"]` and so on), but it can't
+    (removing the user from `party.users` and so on), but it can't
     touch the HTTP session cookie. Without this endpoint a user who
     leaves and then visits `/admin` or `/version` would still have
     `party_id` in their session, and "Back to Party" would relaunch the
@@ -361,8 +361,8 @@ def party_info(party_id: str, party_manager=Depends(get_party_manager)):
         # PartyInfoResponse requires id, users, and playback_state.
         raise HTTPException(status_code=404, detail="Party not found")
     return PartyInfoResponse(
-        id=party["id"],
-        users=list(party["users"].values()),
-        current_video=party["current_video"],
-        playback_state=party["playback_state"],
+        id=party.id,
+        users=list(party.users.values()),
+        current_video=party.current_video,
+        playback_state=party.playback_state,
     )

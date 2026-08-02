@@ -30,7 +30,11 @@ router = APIRouter(prefix="/api", tags=["library"])
 def _host_creds(party_session: PartySession) -> tuple[str, str]:
     """Pull (access_token, user_id) for the party's current host."""
     party = party_session.party
-    return party["host_access_token"], party["host_user_id"]
+    access_token = party.host_access_token
+    user_id = party.host_user_id
+    if access_token is None or user_id is None:
+        raise HTTPException(status_code=423, detail="Party library is locked")
+    return access_token, user_id
 
 
 @router.get(

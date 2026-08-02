@@ -32,11 +32,11 @@ def register(ctx):
 
     def _client_id_for_sid(party, sid):
         """Look up the persistent client_id mapped to this socket sid."""
-        return party.get("sid_client_ids", {}).get(sid)
+        return party.sid_client_ids.get(sid)
 
     def _host_creds(party):
         """Return (access_token, user_id) for the party's current host."""
-        return party.get("host_access_token"), party.get("host_user_id")
+        return party.host_access_token, party.host_user_id
 
     def _find_next_episode(episode_list, current_index_number):
         """Return the episode dict with the smallest IndexNumber strictly
@@ -81,8 +81,8 @@ def register(ctx):
             "next_item_title": None,
         }
         if not user_id:
-            party["episode_list"] = None
-            party["episode_list_season_id"] = None
+            party.episode_list = None
+            party.episode_list_season_id = None
             return result
 
         details = await emby_client.get_item_details(
@@ -91,15 +91,15 @@ def register(ctx):
             user_id=user_id,
         )
         if not details:
-            party["episode_list"] = None
-            party["episode_list_season_id"] = None
+            party.episode_list = None
+            party.episode_list_season_id = None
             return result
 
         item_type = details.get("Type")
         result["item_type"] = item_type
         if item_type != "Episode":
-            party["episode_list"] = None
-            party["episode_list_season_id"] = None
+            party.episode_list = None
+            party.episode_list_season_id = None
             return result
 
         series_id = details.get("SeriesId")
@@ -111,12 +111,12 @@ def register(ctx):
         result["season_id"] = season_id
 
         if not season_id:
-            party["episode_list"] = None
-            party["episode_list_season_id"] = None
+            party.episode_list = None
+            party.episode_list_season_id = None
             return result
 
         # Cache hit: same season as last selection, reuse the list.
-        if party.get("episode_list_season_id") != season_id or not party.get("episode_list"):
+        if party.episode_list_season_id != season_id or not party.episode_list:
             episodes = await emby_client.get_season_episodes(
                 season_id,
                 access_token=access_token,
@@ -125,7 +125,7 @@ def register(ctx):
             items = episodes.get("Items", []) if episodes else []
             # Trim to the fields binge-watching needs; we don't want to
             # store full Emby payloads on long-lived party state.
-            party["episode_list"] = [
+            party.episode_list = [
                 {
                     "Id": ep.get("Id"),
                     "Name": ep.get("Name"),
@@ -137,7 +137,7 @@ def register(ctx):
                 for ep in items
                 if ep.get("Id")
             ]
-            party["episode_list_season_id"] = season_id
+            party.episode_list_season_id = season_id
 
         # Capture both list position AND canonical IndexNumber. The list
         # position is informational (used for "Episode N of M" display);
@@ -146,12 +146,12 @@ def register(ctx):
         # mis-sort Ep1 to a non-zero position and make idx+1 jump past
         # the real next episode).
         result["index_number"] = details.get("IndexNumber")
-        for idx, ep in enumerate(party["episode_list"]):
+        for idx, ep in enumerate(party.episode_list):
             if ep.get("Id") == item_id:
                 result["episode_index"] = idx
                 break
 
-        next_ep = _find_next_episode(party["episode_list"], result["index_number"])
+        next_ep = _find_next_episode(party.episode_list, result["index_number"])
         if next_ep:
             result["next_item_id"] = next_ep.get("Id")
             result["next_item_title"] = next_ep.get("Name")
@@ -160,7 +160,7 @@ def register(ctx):
         # behaviour can hand us a log line to diagnose. Includes the season's
         # IndexNumber distribution so we can spot specials / split-cour
         # numbering at a glance.
-        list_numbers = [ep.get("IndexNumber") for ep in party["episode_list"]]
+        list_numbers = [ep.get("IndexNumber") for ep in party.episode_list]
         logger.info(
             f"Binge ctx resolved: item={item_id} name={details.get('Name')!r} "
             f"IndexNumber={result['index_number']} "
@@ -251,9 +251,9 @@ def register(ctx):
             "ready": False,
         }
 
-        party.setdefault("user_streams", {})[sid] = stream_info
+        party.user_streams[sid] = stream_info
 
-        run_time_seconds = party.get("current_video", {}).get("run_time_seconds")
+        run_time_seconds = party.current_video.get("run_time_seconds")
         await emby_client.report_playback_start(
             item_id=item_id, media_source_id=media_source_id,
             play_session_id=play_session_id, position_seconds=start_seconds,
@@ -264,19 +264,19 @@ def register(ctx):
             user_id=user_id,
         )
 
-        logger.info(f"Created user stream for {party['users'].get(sid, sid)}: "
+        logger.info(f"Created user stream for {party.users.get(sid, sid)}: "
                      f"session={play_session_id}, start={start_seconds:.1f}s")
         return stream_info
 
     async def _stop_user_stream(party, sid, position_seconds=0):
         """Stop a single user's Emby transcode and clean up."""
-        user_streams = party.get("user_streams", {})
+        user_streams = party.user_streams
         stream = user_streams.pop(sid, None)
         if not stream or not stream.get("play_session_id"):
             return
 
         access_token, user_id = _host_creds(party)
-        current_video = party.get("current_video")
+        current_video = party.current_video
         if current_video:
             await emby_client.report_playback_stopped(
                 item_id=current_video["item_id"],
@@ -294,21 +294,21 @@ def register(ctx):
 
     async def _stop_all_user_streams(party, position_seconds=0):
         """Stop all per-user transcodes."""
-        for sid in list(party.get("user_streams", {}).keys()):
+        for sid in list(party.user_streams.keys()):
             await _stop_user_stream(party, sid, position_seconds)
 
     def _wipe_host_if_orphan(party_id, party):
         """If host has already left and there's nothing left to play, wipe
         the stored token so the party fully transitions to LOCKED.
         """
-        if party.get("host_left_at") is not None:
+        if party.host_left_at is not None:
             party_manager.clear_host(party_id)
             logger.info(f"Party {party_id} -> LOCKED (host gone, playback ended)")
 
     def _start_ready_check(party, party_id):
         """Start a ready check for all users in the party."""
-        expected = set(party["users"].keys())
-        party["ready_check"] = {
+        expected = set(party.users.keys())
+        party.ready_check = {
             "active": True,
             "expected_sids": expected,
             "ready_sids": set(),
@@ -317,13 +317,13 @@ def register(ctx):
 
     async def _check_all_ready(party, party_id):
         """Check if all users are ready and emit all_ready if so."""
-        rc = party.get("ready_check")
+        rc = party.ready_check
         if not rc or not rc.get("active"):
             return
 
         if rc["ready_sids"] >= rc["expected_sids"]:
-            party["ready_check"] = None
-            playback_state = party.get("playback_state", {})
+            party.ready_check = None
+            playback_state = party.playback_state
             # Auto-play hand-off for binge-advance: when the previous
             # video ended into auto-advance, the user expectation is
             # "next episode just keeps playing" -- requiring the host
@@ -331,7 +331,8 @@ def register(ctx):
             # feature. The flag is set on the party when the watchdog
             # fires the restart and cleared here so a subsequent
             # manual select still pauses on ready as usual.
-            auto_play_pending = party.pop("auto_play_after_ready", False)
+            auto_play_pending = party.auto_play_after_ready
+            party.auto_play_after_ready = False
             if auto_play_pending:
                 playback_state["playing"] = True
             if playback_state.get("playing"):
@@ -353,8 +354,8 @@ def register(ctx):
                     "auto_binge": True,
                 }, room=party_id)
         else:
-            ready_names = [party["users"].get(s, "?") for s in rc["ready_sids"]]
-            waiting_names = [party["users"].get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]
+            ready_names = [party.users.get(s, "?") for s in rc["ready_sids"]]
+            waiting_names = [party.users.get(s, "?") for s in rc["expected_sids"] - rc["ready_sids"]]
             await sio.emit("ready_check_update", {
                 "ready": ready_names, "waiting": waiting_names,
             }, room=party_id)
@@ -428,7 +429,7 @@ def register(ctx):
         run_time_seconds = run_time_ticks / 10_000_000 if run_time_ticks else None
 
         # Stop all previous user streams
-        prev_time = party["playback_state"].get("time", 0)
+        prev_time = party.playback_state.get("time", 0)
         await _stop_all_user_streams(party, prev_time)
 
         # Resolve episode metadata (Type / SeriesId / SeasonId / IndexNumber)
@@ -442,7 +443,7 @@ def register(ctx):
 
         # Store shared video info (no per-user fields). selected_by is the
         # persistent client_id, not the current sid.
-        party["current_video"] = {
+        party.current_video = {
             "item_id": item_id, "title": item_name, "overview": item_overview,
             "run_time_seconds": run_time_seconds,
             "media_source_id": resolved_media_source_id,
@@ -465,7 +466,7 @@ def register(ctx):
         if run_time_seconds:
             resume_offset = min(resume_offset, max(0.0, run_time_seconds - 5))
 
-        party["playback_state"] = {
+        party.playback_state = {
             "playing": False, "time": resume_offset,
             "last_update": datetime.now().isoformat(),
         }
@@ -473,7 +474,7 @@ def register(ctx):
         # Start a ready check so clients show the waiting overlay until
         # every user has loaded their stream
         _start_ready_check(party, party_id)
-        waiting_names = [party["users"].get(s, "?") for s in party["ready_check"]["expected_sids"]]
+        waiting_names = [party.users.get(s, "?") for s in party.ready_check["expected_sids"]]
 
         # Create per-user streams and emit individually. When a user's
         # stream fails to build (Emby playback_info transient error,
@@ -484,7 +485,7 @@ def register(ctx):
         # 15s safety timeout that dismisses the overlay, but the party
         # is still in a broken state (ready_check dict never cleared,
         # auto_play_after_ready never consumed) unless we cleanup here.
-        for user_sid in list(party["users"].keys()):
+        for user_sid in list(party.users.keys()):
             stream = await _create_user_stream(
                 party, party_id, user_sid, item_id, media_source,
                 audio_index=default_audio, subtitle_index=None,
@@ -496,7 +497,7 @@ def register(ctx):
                     f"_create_user_stream failed for sid={user_sid} in {party_id}; "
                     f"dropping from ready_check.expected_sids to prevent deadlock"
                 )
-                rc = party.get("ready_check")
+                rc = party.ready_check
                 if rc:
                     rc["expected_sids"].discard(user_sid)
                 # Notify the failed client so they don't stare at a
@@ -524,7 +525,7 @@ def register(ctx):
                     "series_id": episode_ctx["series_id"],
                     "season_id": episode_ctx["season_id"],
                     "episode_index": episode_ctx["episode_index"],
-                    "episode_count": len(party.get("episode_list") or []) if episode_ctx["item_type"] == "Episode" else 0,
+                    "episode_count": len(party.episode_list or []) if episode_ctx["item_type"] == "Episode" else 0,
                     "next_item_id": episode_ctx["next_item_id"],
                     "next_item_title": episode_ctx["next_item_title"],
                 }
@@ -534,9 +535,9 @@ def register(ctx):
         # Recompute waiting_names from the LIVE expected_sids because
         # some may have been discarded due to stream-creation failures
         # above; otherwise the overlay lists ghosts nobody is waiting on.
-        rc = party.get("ready_check") or {}
+        rc = party.ready_check or {}
         live_expected = rc.get("expected_sids") or set()
-        waiting_names = [party["users"].get(s, "?") for s in live_expected]
+        waiting_names = [party.users.get(s, "?") for s in live_expected]
         await sio.emit("ready_check_update", {
             "ready": [], "waiting": waiting_names,
         }, room=party_id)
@@ -606,7 +607,7 @@ def register(ctx):
         # library doesn't unexpectedly start playing without the
         # selector having to hit play.
         await _cancel_pending_auto_advance(party_id, party, silent=True)
-        party.pop("auto_play_after_ready", None)
+        party.auto_play_after_ready = False
 
         reservation = await party_manager.reserve_operation(party_id, "select_video")
         if reservation is None:
@@ -631,17 +632,17 @@ def register(ctx):
         party_id = data.get("party_id", "").strip().upper()
         party = party_manager.get(party_id)
 
-        if not party or not party.get("current_video"):
+        if not party or not party.current_video:
             return
 
         caller_client_id = _client_id_for_sid(party, sid)
-        if party["current_video"].get("selected_by") != caller_client_id:
+        if party.current_video.get("selected_by") != caller_client_id:
             await sio.emit("error", {"message": "Only the selector can stop the video"}, to=sid)
             return
 
-        video_title = party["current_video"].get("title", "Unknown")
-        username = party["users"].get(sid, "Unknown")
-        current_time = party["playback_state"].get("time", 0)
+        video_title = party.current_video.get("title", "Unknown")
+        username = party.users.get(sid, "Unknown")
+        current_time = party.playback_state.get("time", 0)
 
         await _stop_all_user_streams(party, current_time)
 
@@ -649,9 +650,9 @@ def register(ctx):
         # down. Loud cancel so any modal currently up snaps closed.
         await _cancel_pending_auto_advance(party_id, party, by_username=username)
 
-        party["current_video"] = None
-        party["ready_check"] = None
-        party["playback_state"] = {
+        party.current_video = None
+        party.ready_check = None
+        party.playback_state = {
             "playing": False, "time": 0, "last_update": datetime.now().isoformat(),
         }
 
@@ -682,7 +683,7 @@ def register(ctx):
         quality = data.get("quality")
 
         party = party_manager.get(party_id)
-        if not party or not party.get("current_video"):
+        if not party or not party.current_video:
             return
 
         # Need a usable host token. Allowed in both UNLOCKED and
@@ -696,7 +697,7 @@ def register(ctx):
             )
             return
 
-        current_video = party["current_video"]
+        current_video = party.current_video
         item_id = current_video["item_id"]
         # The version was locked at select_video time. Pull from the
         # party's current_video so every per-user stream stays on the
@@ -712,12 +713,12 @@ def register(ctx):
         # transcode), fall back to either the previously-running stream
         # or the safe default.
         force_transcode = bool(config.FORCE_TRANSCODE)
-        candidate = quality or party.get("user_streams", {}).get(sid, {}).get("quality")
+        candidate = quality or party.user_streams.get(sid, {}).get("quality")
         quality = normalise_quality_id(candidate, force_transcode=force_transcode)
 
         # Snapshot the party clock using the same elapsed-time projection
         # the sync handlers use.
-        ps = party["playback_state"]
+        ps = party.playback_state
         was_playing = ps.get("playing", False)
         snapshot_time = ps.get("time", 0)
         if was_playing and ps.get("last_update"):
@@ -787,7 +788,7 @@ def register(ctx):
             "was_playing": was_playing,
         }, to=sid)
 
-        username = party["users"].get(sid, "Unknown")
+        username = party.users.get(sid, "Unknown")
         logger.info(
             f"Stream changed for {username}: audio={audio_index}, "
             f"sub={subtitle_index}, quality={quality}, resume_at={current_time:.1f}s"
@@ -808,10 +809,10 @@ def register(ctx):
         # signal end-of-video; if there is no selector on record we
         # fall back to the host so vote-pass / binge-fired states still
         # work.
-        caller_client_id = party.get("sid_client_ids", {}).get(sid)
-        current_video = party.get("current_video") or {}
+        caller_client_id = party.sid_client_ids.get(sid)
+        current_video = party.current_video or {}
         selected_by = current_video.get("selected_by")
-        host_client_id = party.get("host_client_id")
+        host_client_id = party.host_client_id
         allowed = (
             (selected_by and caller_client_id == selected_by)
             or (not selected_by and host_client_id and caller_client_id == host_client_id)
@@ -836,15 +837,15 @@ def register(ctx):
         prev_video = current_video
         await _stop_all_user_streams(party, final_pos)
 
-        party["playback_state"] = {
+        party.playback_state = {
             "playing": False, "time": 0, "last_update": datetime.now().isoformat(),
         }
-        party["ready_check"] = None
+        party.ready_check = None
         # Clear current_video BEFORE the auto-advance check so a
         # duplicate video_ended emit bails at the idempotency guard
         # above. _maybe_start_auto_advance still has prev_video in its
         # closure so binge lookup still works.
-        party["current_video"] = None
+        party.current_video = None
 
         # If host already left, this is the moment we fully lock the party.
         # Do this BEFORE the binge-advance check; auto-advance can't start
@@ -880,14 +881,14 @@ def register(ctx):
         gaps (missing Ep6 in a season -> next is Ep7).
         """
         # Admin master switch + per-party host opt-in.
-        if not config.BINGE_WATCH_ENABLED or not party.get("binge_watch_active"):
+        if not config.BINGE_WATCH_ENABLED or not party.binge_watch_active:
             return
         if not party_manager.is_unlocked(party_id):
             return
         if prev_video.get("item_type") != "Episode":
             return
 
-        episode_list = party.get("episode_list") or []
+        episode_list = party.episode_list or []
         current_idx_number = prev_video.get("index_number")
         if current_idx_number is None or not episode_list:
             # Can't compute "next episode" without an IndexNumber (rare;
@@ -933,7 +934,7 @@ def register(ctx):
     def _selector_still_present(party, selector_client_id):
         if not selector_client_id:
             return False
-        return selector_client_id in (party.get("sid_client_ids") or {}).values()
+        return selector_client_id in (party.sid_client_ids or {}).values()
 
     async def _queue_auto_advance(party_id, party, prev_video, next_episode):
         """Set the pending auto-advance state, emit auto_advance_pending,
@@ -954,11 +955,11 @@ def register(ctx):
         # list length, which would include any specials Emby returns.
         next_index_number = next_episode.get("IndexNumber")
         total_episodes = max(
-            (ep.get("IndexNumber") or 0) for ep in (party.get("episode_list") or [])
-        ) if party.get("episode_list") else 0
+            (ep.get("IndexNumber") or 0) for ep in (party.episode_list or [])
+        ) if party.episode_list else 0
 
         task = asyncio.create_task(_auto_advance_watchdog(party_id, countdown))
-        party["pending_auto_advance"] = {
+        party.pending_auto_advance = {
             "next_item_id": next_item_id,
             "next_title": next_title,
             "next_index_number": next_index_number,
@@ -991,13 +992,13 @@ def register(ctx):
         party = party_manager.get(party_id)
         if not party:
             return
-        pending = party.get("pending_auto_advance")
+        pending = party.pending_auto_advance
         if not pending:
             return
 
         # Re-check the gates -- the host may have left or the admin may
         # have flipped the toggle off in the interval.
-        if not config.BINGE_WATCH_ENABLED or not party.get("binge_watch_active"):
+        if not config.BINGE_WATCH_ENABLED or not party.binge_watch_active:
             await _cancel_pending_auto_advance(party_id, party, by_username=None)
             return
         if not party_manager.is_unlocked(party_id):
@@ -1007,7 +1008,7 @@ def register(ctx):
         next_item_id = pending["next_item_id"]
         next_title = pending["next_title"]
         selector_client_id = pending["selector_client_id"]
-        party["pending_auto_advance"] = None
+        party.pending_auto_advance = None
 
         await sio.emit("auto_advance_fired", {
             "next_item_id": next_item_id,
@@ -1019,7 +1020,7 @@ def register(ctx):
         # the host would have to click play after every episode -- not
         # what anyone expects from "binge mode". Set BEFORE the
         # restart so the new ready-check phase sees it.
-        party["auto_play_after_ready"] = True
+        party.auto_play_after_ready = True
 
         success = await _restart_video_from_beginning(
             party, party_id, selector_client_id, next_item_id, next_title, "",
@@ -1029,7 +1030,7 @@ def register(ctx):
             # above so a later restart (via vote-pass, or a manual
             # select-then-play) doesn't inherit it and auto-play a
             # different video without the host clicking play.
-            party.pop("auto_play_after_ready", None)
+            party.auto_play_after_ready = False
             logger.warning(
                 f"Auto-advance failed to start next episode in party {party_id}: "
                 f"{next_item_id}"
@@ -1044,13 +1045,13 @@ def register(ctx):
         with another -- the new auto_advance_pending event is the
         authoritative signal and an intermediate 'cancelled' would just
         confuse the UI."""
-        pending = party.get("pending_auto_advance")
+        pending = party.pending_auto_advance
         if not pending:
             return False
         task = pending.get("task")
         if task and not task.done():
             task.cancel()
-        party["pending_auto_advance"] = None
+        party.pending_auto_advance = None
         if not silent:
             await sio.emit("auto_advance_cancelled", {
                 "by_username": by_username,
@@ -1071,7 +1072,7 @@ def register(ctx):
         party = party_manager.get(party_id)
         if not party:
             return
-        username = party["users"].get(sid)
+        username = party.users.get(sid)
         await _cancel_pending_auto_advance(party_id, party, by_username=username)
 
     @sio.on("set_binge_watch_active")
@@ -1087,7 +1088,7 @@ def register(ctx):
         # send back an error because the button shouldn't have been
         # visible to them in the first place.
         caller_client_id = _client_id_for_sid(party, sid)
-        if not caller_client_id or party.get("host_client_id") != caller_client_id:
+        if not caller_client_id or party.host_client_id != caller_client_id:
             return
         if not config.BINGE_WATCH_ENABLED:
             # Admin toggle is off -- feature isn't available. Silently
@@ -1098,7 +1099,7 @@ def register(ctx):
             }, room=party_id)
             return
 
-        party["binge_watch_active"] = active
+        party.binge_watch_active = active
         # Turning it off mid-countdown should kill the queued advance.
         if not active:
             await _cancel_pending_auto_advance(party_id, party, by_username=None)
@@ -1107,7 +1108,7 @@ def register(ctx):
         }, room=party_id)
         logger.info(
             f"Binge-watch {'enabled' if active else 'disabled'} in party {party_id} "
-            f"by {party['users'].get(sid, '?')}"
+            f"by {party.users.get(sid, '?')}"
         )
 
     # report_progress throttle. The handler fires a synchronous outbound
@@ -1125,20 +1126,20 @@ def register(ctx):
         party_id = data.get("party_id", "").strip().upper()
         current_time = data.get("time", 0)
         party = party_manager.get(party_id)
-        if not party or not party.get("current_video"):
+        if not party or not party.current_video:
             return
 
-        user_stream = party.get("user_streams", {}).get(sid)
+        user_stream = party.user_streams.get(sid)
         if not user_stream or not user_stream.get("play_session_id"):
             return
 
         # Only the selector updates the authoritative party clock.
         # Match by persistent client_id so a reload preserves the role.
-        current_video = party["current_video"]
+        current_video = party.current_video
         caller_client_id = _client_id_for_sid(party, sid)
         if current_video.get("selected_by") == caller_client_id:
-            party["playback_state"]["time"] = current_time
-            party["playback_state"]["last_update"] = datetime.now().isoformat()
+            party.playback_state["time"] = current_time
+            party.playback_state["last_update"] = datetime.now().isoformat()
 
         # Throttle Emby-facing reports per sid.
         now = time.monotonic()
@@ -1147,7 +1148,7 @@ def register(ctx):
             return
         _last_report_progress[sid] = now
 
-        is_playing = party["playback_state"].get("playing", False)
+        is_playing = party.playback_state.get("playing", False)
         access_token, user_id = _host_creds(party)
         await emby_client.report_playback_progress(
             item_id=current_video["item_id"],
@@ -1169,13 +1170,13 @@ def register(ctx):
         if not party:
             return
 
-        user_stream = party.get("user_streams", {}).get(sid)
+        user_stream = party.user_streams.get(sid)
         if user_stream:
             user_stream["ready"] = True
 
-        rc = party.get("ready_check")
+        rc = party.ready_check
         if rc and rc.get("active"):
             rc["ready_sids"].add(sid)
-            username = party["users"].get(sid, "Unknown")
+            username = party.users.get(sid, "Unknown")
             logger.debug(f"{username} stream ready in party {party_id}")
             await _check_all_ready(party, party_id)

@@ -93,8 +93,8 @@ async def api_image(
     logger=Depends(get_logger),
     party_session: PartySession = Depends(require_host_token),
 ):
-    access_token = party_session.party["host_access_token"]
-    user_id = party_session.party["host_user_id"]
+    access_token = party_session.party.host_access_token
+    user_id = party_session.party.host_user_id
     image_url = emby_client.get_image_url(
         item_id, type,
         access_token=access_token,
@@ -140,8 +140,8 @@ async def api_subtitles(
     logger=Depends(get_logger),
     party_session: PartySession = Depends(require_host_token),
 ):
-    access_token = party_session.party["host_access_token"]
-    user_id = party_session.party["host_user_id"]
+    access_token = party_session.party.host_access_token
+    user_id = party_session.party.host_user_id
     try:
         subtitle_url = (
             f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/{media_source_id}"

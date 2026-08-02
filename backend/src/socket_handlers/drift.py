@@ -17,10 +17,10 @@ def register(ctx):
         client_time = data.get("time", 0)
         party = party_manager.get(party_id)
 
-        if not party or not party.get("current_video"):
+        if not party or not party.current_video:
             return
 
-        playback_state = party.get("playback_state", {})
+        playback_state = party.playback_state
         if not playback_state.get("playing"):
             return
 
@@ -36,13 +36,13 @@ def register(ctx):
             return
 
         drift = abs(client_time - expected_time)
-        username = party["users"].get(sid, "Unknown")
+        username = party.users.get(sid, "Unknown")
         logger.debug(
             f"Heartbeat from {username}: client={client_time:.1f}s, "
             f"expected={expected_time:.1f}s, drift={drift:.1f}s"
         )
 
-        drift_strikes = party.setdefault("drift_strikes", {})
+        drift_strikes = party.drift_strikes
 
         if drift > DRIFT_THRESHOLD:
             drift_strikes[sid] = drift_strikes.get(sid, 0) + 1

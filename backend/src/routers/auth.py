@@ -181,11 +181,11 @@ async def api_logout(
     if not party:
         return LoginResponse(success=True, message="Party no longer exists")
 
-    if party.get("host_client_id") != client_id:
+    if party.host_client_id != client_id:
         # Caller is not host; nothing to clear.
         return LoginResponse(success=True, message="Not the host")
 
-    previous_username = party.get("host_username")
+    previous_username = party.host_username
     party_manager.clear_host(party_id)
     logger.info(
         f"Party {party_id} host '{previous_username}' stepped down "
@@ -230,15 +230,15 @@ def api_auth_status(
             party_id=party_id,
         )
 
-    is_host = party.get("host_client_id") == client_id
+    is_host = party.host_client_id == client_id
     return AuthStatusResponse(
         authenticated=is_host,
-        username=party.get("host_username") if is_host else None,
-        is_admin=bool(party.get("host_is_admin")) if is_host else False,
+        username=party.host_username if is_host else None,
+        is_admin=bool(party.host_is_admin) if is_host else False,
         require_login=config.REQUIRE_LOGIN,
         is_host=is_host,
         party_id=party_id,
-        host_username=party.get("host_username"),
+        host_username=party.host_username,
         party_unlocked=party_manager.is_unlocked(party_id),
     )
 

@@ -34,19 +34,19 @@ def register(ctx):
             return
         party = party_manager.get(party_id)
 
-        if party and sid in party["users"]:
+        if party and sid in party.users:
             limit, window = parse_rate(getattr(config, "RATE_LIMIT_CHAT", "5 per 3 seconds"))
             decision = rate_limiter.check(f"chat:{sid}", limit, window)
             if not decision.allowed:
                 logger.debug(f"Chat message dropped: sid={sid} rate-limited in {party_id}")
                 return
-            username = party["users"][sid]
+            username = party.users[sid]
             # Look up the sender's persistent avatar identity so the
             # client can render their chosen avatar instead of the
             # username-derived monsterid.
-            client_id = party.get("sid_client_ids", {}).get(sid)
-            participant = party.get("participants", {}).get(client_id) if client_id else None
-            avatar_uuid = participant.get("avatar_uuid") if participant else None
+            client_id = party.sid_client_ids.get(sid)
+            participant = party.participants.get(client_id) if client_id else None
+            avatar_uuid = participant.avatar_uuid if participant else None
             await sio.emit("chat_message", {
                 "username": username,
                 "avatar_uuid": avatar_uuid,
@@ -65,8 +65,8 @@ def register(ctx):
         party = party_manager.get(party_id)
         if not party:
             return
-        caller_client_id = party.get("sid_client_ids", {}).get(sid)
-        if caller_client_id != party.get("host_client_id"):
+        caller_client_id = party.sid_client_ids.get(sid)
+        if caller_client_id != party.host_client_id:
             logger.debug(
                 f"toggle_library REJECTED: sid={sid} is not host of {party_id}"
             )

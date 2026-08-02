@@ -1,9 +1,8 @@
-"""Typed watch-party domain state with temporary mapping compatibility."""
+"""Typed watch-party domain state."""
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator, MutableMapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -19,6 +18,7 @@ class Participant:
     username: str
     avatar_uuid: str | None = None
     sid: str | None = None
+    last_seen: str = field(default_factory=_now)
 
 
 @dataclass
@@ -62,8 +62,8 @@ class AutoAdvance:
 
 
 @dataclass
-class Party(MutableMapping[str, Any]):
-    """Typed party aggregate with temporary mapping compatibility."""
+class Party:
+    """Typed party aggregate."""
 
     id: str
     created_at: str = field(default_factory=_now)
@@ -95,44 +95,14 @@ class Party(MutableMapping[str, Any]):
     generation: int = 0
     closing: bool = False
     operation_reservations: dict[str, str] = field(default_factory=dict)
+    join_times: dict[str, str] = field(default_factory=dict)
+    drift_strikes: dict[str, int] = field(default_factory=dict)
+    auto_play_after_ready: bool = False
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
-    _extra: dict[str, Any] = field(default_factory=dict, repr=False)
-
-    _MAPPED_FIELDS = frozenset({
-        "id", "created_at", "users", "participants", "sid_client_ids",
-        "current_video", "user_streams", "playback_state", "ready_check",
-        "pending_join", "join_cooldown_until", "host_client_id", "host_user_id",
-        "host_access_token", "host_is_admin", "host_username", "host_left_at",
-        "binge_watch_active", "episode_list", "episode_list_season_id",
-        "pending_auto_advance", "generation", "closing", "operation_reservations",
-    })
 
     @classmethod
     def create(cls, party_id: str) -> "Party":
         return cls(id=party_id)
-
-    def __getitem__(self, key: str) -> Any:
-        if key in self._MAPPED_FIELDS:
-            return getattr(self, key)
-        return self._extra[key]
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        if key in self._MAPPED_FIELDS:
-            setattr(self, key, value)
-        else:
-            self._extra[key] = value
-
-    def __delitem__(self, key: str) -> None:
-        if key in self._MAPPED_FIELDS:
-            raise KeyError(f"required party field cannot be deleted: {key}")
-        del self._extra[key]
-
-    def __iter__(self) -> Iterator[str]:
-        yield from self._MAPPED_FIELDS
-        yield from self._extra
-
-    def __len__(self) -> int:
-        return len(self._MAPPED_FIELDS) + len(self._extra)
 
     @property
     def party_id(self) -> str:
