@@ -102,7 +102,7 @@ and the session-cookie hardening block moves to `/admin`.
 | `LOG_MAX_SIZE` | `.env` | `/admin` → Logging section |
 | `CONSOLE_LOG_LEVEL` | `.env` | `/admin` → Logging section |
 | `MAX_USERS_PER_PARTY` | `.env` | `/admin` → Security section |
-| `ENABLE_HLS_TOKEN_VALIDATION` | `.env` | `/admin` → Security section |
+| `ENABLE_HLS_TOKEN_VALIDATION` | `.env` or `data/bootstrap.json` | Boot security setting; restart required |
 | `HLS_TOKEN_EXPIRY` | `.env` | `/admin` → Security section |
 | `ENABLE_RATE_LIMITING` | `.env` | `/admin` → Security section |
 | `RATE_LIMIT_PARTY_CREATION` | `.env` | `/admin` → Security section |

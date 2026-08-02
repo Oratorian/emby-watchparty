@@ -209,7 +209,7 @@ docker run -d \
 
 | Host path | Container path | Purpose |
 |-----------|----------------|---------|
-| `./data` | `/app/data` | SQLite avatar DB (`avatars.db`) |
+| `./data` | `/app/data` | First-run bootstrap config (`bootstrap.json`) and avatar DB (`avatars.db`) |
 | `./images/avatars` | `/app/images/avatars` | Uploaded avatar image files |
 | `./config.json` | `/app/config.json` | Runtime admin settings (edited via `/admin`) |
 
@@ -221,7 +221,7 @@ docker run -d \
 
 `SESSION_SECRET` is the signing key for the party-bound session cookie. Set it once (`openssl rand -hex 32`) and keep it stable across restarts. When unset, an ephemeral key is generated at boot and every restart invalidates existing sessions. This application is explicitly single-process: do not run multiple Uvicorn workers because parties, sessions, limiters, tasks, and HLS tokens are process-local. Pair production mode with `SESSION_COOKIE_SECURE=true` and explicit `CORS_ALLOWED_ORIGINS`. Full block in [`.env.example`](.env.example).
 
-**Config split (2.0):** `.env` is boot-only (~6 keys: bind/port, Emby URL/key, session hardening). All other settings - including `LOG_TO_FILE`, transcoding options, feature toggles - live in `config.json` and are edited from the admin panel at `/admin`. Do not try to set them as environment variables; they will be ignored.
+**Config split (2.0):** boot settings come from process environment, `.env`, or `data/bootstrap.json` and require restart. Runtime options such as `LOG_TO_FILE`, transcoding, and feature toggles remain in `config.json` and the admin panel.
 
 ## Usage
 
@@ -264,8 +264,37 @@ If you join **before** a video has been selected, you land directly in the party
 
 Configuration is split into two tiers:
 
-1. **Boot-essential settings** live in `.env` and require a server restart to change. Copy `.env.example` to `.env` and set these before starting the service.
+1. **Boot-essential settings** come from environment variables, `.env`, or persistent `data/bootstrap.json` and require restart.
 2. **Runtime settings** are editable from the **admin panel** at `/admin` (Emby administrator credentials required) and are hot-reloadable -- no restart needed.
+
+### First-run setup
+
+When boot configuration is invalid, the process remains reachable in restricted setup mode. Normal API, Socket.IO, HLS, admin, and application routes return `503`; liveness remains at `${APP_PREFIX}/api/health`, and readiness returns `503` with `setup_required`.
+
+1. Read the one-time bootstrap token from the server console. **Treat this token like a password: never publish it, paste it into a URL, or include it in support logs.**
+2. Open `http://localhost:5000/setup` (or `${APP_PREFIX}/setup`) and enter the token in the form.
+3. Choose **Local development** for plain local HTTP with a non-secure cookie, or **Production HTTPS** for a TLS-terminating reverse proxy with a secure cookie and explicit public CORS origin.
+4. Validate and save. The server writes `data/bootstrap.json` atomically, disables further setup writes in that process, and requests restart; it never restarts itself from the HTTP request.
+5. Restart the service. Valid saved settings start the normal application.
+
+`data/bootstrap.json` contains the Emby API key and session signing secret in plaintext with restrictive file permissions where supported. Protect the host directory and backups. Docker users must keep `./data:/app/data` mounted; otherwise container replacement loses first-run configuration.
+
+Boot precedence is exact: **process environment → `.env` → `data/bootstrap.json` → defaults**. Process environment and `.env` are one explicit-operator tier, with process values winning. Setup cannot override an invalid explicit environment value; remove or fix it, then restart. Reading `.env` does not mutate the running process environment.
+
+Production reverse-proxy example:
+
+```env
+APP_ENV=production
+SESSION_SECRET=generate-one-stable-64-character-random-hex-value
+SESSION_COOKIE_SECURE=true
+CORS_ALLOWED_ORIGINS=https://watchparty.example.com
+EMBY_SERVER_URL=http://emby:8096
+EMBY_API_KEY=your-dedicated-emby-api-key
+ENABLE_HLS_TOKEN_VALIDATION=true
+TRUSTED_PROXY_CIDRS=172.16.0.0/12
+```
+
+If saved configuration becomes invalid, restart to enter setup mode again and use the newly printed token. If `data/bootstrap.json` is unreadable or damaged, move it aside or remove it, restart, and reconfigure. If an environment override is invalid, repair that deployment setting first. Never send `bootstrap.json` or bootstrap tokens to untrusted parties.
 
 ### .env
 
@@ -285,6 +314,7 @@ Boot-essential, restart required.
 | **Socket.IO CORS** _(new in 2.0.0-beta18)_ | | |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for the Socket.IO server (`https://a.example.com,https://b.example.com`). `*` accepts any origin (historical default). Pin to your real origin(s) in production. | `*` |
 | `TRUSTED_PROXY_CIDRS` | Comma-separated proxy CIDRs allowed to supply client-IP forwarding headers. Empty ignores forwarded headers. | (empty) |
+| `ENABLE_HLS_TOKEN_VALIDATION` | Restart-required stream-access protection. Production requires `true`. | `true` |
 | **Emby server** | | |
 | `EMBY_SERVER_URL` | Your Emby server URL | `http://localhost:8096` |
 | `EMBY_API_KEY` | Emby API key (server admin key) | (required) |
@@ -311,7 +341,6 @@ Runtime, hot-reloadable. All of the following settings are editable at `/admin`.
 | Setting | Description | Default |
 |---|---|---|
 | Max users per party | 0 = unlimited | `0` |
-| HLS token validation | Prevent direct stream access bypass | `true` |
 | HLS token expiry (s) | Token lifetime | `86400` |
 | Rate limiting | Enable API rate limiting | `true` |
 | Party creation limit | Max per IP | `5 per hour` |

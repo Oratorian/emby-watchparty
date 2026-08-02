@@ -8,15 +8,16 @@ Two tiers:
 """
 
 import contextlib
+import ipaddress
 import json
 import os
 import threading
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import get_origin
 from urllib.parse import urlsplit
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 from backend.src.quality import DEFAULT_ENABLED_OPTIONS, QUALITY_TIERS, RESOLUTION_ORDER
 
@@ -27,6 +28,7 @@ def _bool(value: str) -> bool:
 
 
 CONFIG_JSON_PATH = Path(__file__).parent.parent.parent / "config.json"
+BOOTSTRAP_CONFIG_NAME = "bootstrap.json"
 
 
 @dataclass(frozen=True)
@@ -44,29 +46,104 @@ class EnvConfig:
     SESSION_COOKIE_SECURE: bool
     CORS_ALLOWED_ORIGINS: tuple[str, ...]
     TRUSTED_PROXY_CIDRS: tuple[str, ...]
+    ENABLE_HLS_TOKEN_VALIDATION: bool = True
 
     @classmethod
-    def from_env(cls) -> "EnvConfig":
-        env_path = Path(__file__).parent.parent.parent / ".env"
-        load_dotenv(env_path)
+    def from_env(
+        cls,
+        project_root: Path | None = None,
+        *,
+        legacy_hls_validation: bool = True,
+        errors: dict[str, str] | None = None,
+        explicit_fields: set[str] | None = None,
+    ) -> "EnvConfig":
+        root = Path(project_root or Path(__file__).parent.parent.parent)
+        persisted: dict = {}
+        bootstrap_path = root / "data" / BOOTSTRAP_CONFIG_NAME
+        if bootstrap_path.exists():
+            try:
+                raw = json.loads(bootstrap_path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    persisted = raw
+                elif errors is not None:
+                    errors["BOOTSTRAP_CONFIG"] = "Persisted bootstrap config must be an object"
+            except json.JSONDecodeError:
+                if errors is not None:
+                    errors["BOOTSTRAP_CONFIG"] = "Persisted bootstrap config is invalid JSON"
+            except OSError:
+                if errors is not None:
+                    errors["BOOTSTRAP_CONFIG"] = "Persisted bootstrap config cannot be read"
+        dot_env = {key: value for key, value in dotenv_values(root / ".env").items() if value is not None}
 
-        origins_raw = os.getenv("CORS_ALLOWED_ORIGINS", "*").strip()
-        proxy_cidrs_raw = os.getenv("TRUSTED_PROXY_CIDRS", "").strip()
+        defaults: dict[str, object] = {
+            "WATCH_PARTY_BIND": "0.0.0.0",
+            "WATCH_PARTY_PORT": "5000",
+            "APP_PREFIX": "",
+            "SESSION_EXPIRY": "86400",
+            "EMBY_SERVER_URL": "http://localhost:8096",
+            "EMBY_API_KEY": "",
+            "APP_ENV": "development",
+            "SESSION_SECRET": "",
+            "SESSION_COOKIE_SECURE": "false",
+            "CORS_ALLOWED_ORIGINS": "*",
+            "TRUSTED_PROXY_CIDRS": "",
+            "ENABLE_HLS_TOKEN_VALIDATION": legacy_hls_validation,
+        }
+
+        def value(name: str) -> object:
+            if name in os.environ:
+                if explicit_fields is not None:
+                    explicit_fields.add(name)
+                return os.environ[name]
+            if name in dot_env:
+                if explicit_fields is not None:
+                    explicit_fields.add(name)
+                return dot_env[name]
+            if name in persisted:
+                return persisted[name]
+            return defaults[name]
+
+        def csv(name: str) -> tuple[str, ...]:
+            raw_value = value(name)
+            if isinstance(raw_value, list):
+                return tuple(str(item).strip() for item in raw_value if str(item).strip())
+            return tuple(item.strip() for item in str(raw_value).split(",") if item.strip())
+
+        def integer(name: str, fallback: int) -> int:
+            try:
+                return int(str(value(name)))
+            except (TypeError, ValueError):
+                if errors is not None:
+                    errors[name] = "Must be an integer"
+                return fallback
+
+        def boolean(name: str, fallback: bool) -> bool:
+            raw_value = value(name)
+            if isinstance(raw_value, bool):
+                return raw_value
+            normalized = str(raw_value).strip().lower()
+            if normalized in {"true", "1", "yes"}:
+                return True
+            if normalized in {"false", "0", "no"}:
+                return False
+            if errors is not None:
+                errors[name] = "Must be true or false"
+            return fallback
+
         return cls(
-            WATCH_PARTY_BIND=os.getenv("WATCH_PARTY_BIND", "0.0.0.0"),
-            WATCH_PARTY_PORT=int(os.getenv("WATCH_PARTY_PORT", "5000")),
-            APP_PREFIX=os.getenv("APP_PREFIX", "").rstrip("/"),
-            SESSION_EXPIRY=int(os.getenv("SESSION_EXPIRY", "86400")),
-            EMBY_SERVER_URL=os.getenv("EMBY_SERVER_URL", "http://localhost:8096"),
-            EMBY_API_KEY=os.getenv("EMBY_API_KEY", ""),
-            APP_ENV=os.getenv("APP_ENV", "development").strip().lower(),
-            SESSION_SECRET=os.getenv("SESSION_SECRET", "").strip(),
-            SESSION_COOKIE_SECURE=_bool(os.getenv("SESSION_COOKIE_SECURE", "false")),
-            CORS_ALLOWED_ORIGINS=tuple(
-                value.strip() for value in origins_raw.split(",") if value.strip()
-            ),
-            TRUSTED_PROXY_CIDRS=tuple(
-                value.strip() for value in proxy_cidrs_raw.split(",") if value.strip()
+            WATCH_PARTY_BIND=str(value("WATCH_PARTY_BIND")),
+            WATCH_PARTY_PORT=integer("WATCH_PARTY_PORT", 5000),
+            APP_PREFIX=str(value("APP_PREFIX")).rstrip("/"),
+            SESSION_EXPIRY=integer("SESSION_EXPIRY", 86400),
+            EMBY_SERVER_URL=str(value("EMBY_SERVER_URL")),
+            EMBY_API_KEY=str(value("EMBY_API_KEY")),
+            APP_ENV=str(value("APP_ENV")).strip().lower(),
+            SESSION_SECRET=str(value("SESSION_SECRET")).strip(),
+            SESSION_COOKIE_SECURE=boolean("SESSION_COOKIE_SECURE", False),
+            CORS_ALLOWED_ORIGINS=csv("CORS_ALLOWED_ORIGINS"),
+            TRUSTED_PROXY_CIDRS=csv("TRUSTED_PROXY_CIDRS"),
+            ENABLE_HLS_TOKEN_VALIDATION=boolean(
+                "ENABLE_HLS_TOKEN_VALIDATION", legacy_hls_validation
             ),
         )
 
@@ -356,7 +433,6 @@ class RuntimeConfig:
             ],
             "Security": [
                 "MAX_USERS_PER_PARTY",
-                "ENABLE_HLS_TOKEN_VALIDATION",
                 "HLS_TOKEN_EXPIRY",
                 "ENABLE_RATE_LIMITING",
                 "RATE_LIMIT_PARTY_CREATION",
@@ -395,13 +471,24 @@ class Config:
     All existing config.X accesses work via __getattr__.
     """
 
-    def __init__(self, env: EnvConfig, runtime: RuntimeConfig):
+    def __init__(
+        self,
+        env: EnvConfig,
+        runtime: RuntimeConfig,
+        *,
+        load_errors: dict[str, str] | None = None,
+        explicit_env_fields: set[str] | None = None,
+    ):
         # Use object.__setattr__ to avoid triggering __getattr__
         object.__setattr__(self, "_env", env)
         object.__setattr__(self, "_runtime", runtime)
         object.__setattr__(self, "_lock", threading.Lock())
+        object.__setattr__(self, "_load_errors", dict(load_errors or {}))
+        object.__setattr__(self, "_explicit_env_fields", frozenset(explicit_env_fields or set()))
 
     def __getattr__(self, name: str):
+        if name == "ENABLE_HLS_TOKEN_VALIDATION":
+            return object.__getattribute__(self, "_env").ENABLE_HLS_TOKEN_VALIDATION
         # Check runtime first (mutable settings), then env (frozen)
         runtime = object.__getattribute__(self, "_runtime")
         if hasattr(runtime, name):
@@ -414,10 +501,23 @@ class Config:
         raise AttributeError(f"Config has no setting '{name}'")
 
     @classmethod
-    def from_env(cls) -> "Config":
-        env = EnvConfig.from_env()
-        runtime = RuntimeConfig.from_file()
-        return cls(env, runtime)
+    def from_env(cls, project_root: Path | None = None) -> "Config":
+        root = Path(project_root or Path(__file__).parent.parent.parent)
+        runtime = RuntimeConfig.from_file(root / "config.json")
+        load_errors: dict[str, str] = {}
+        explicit_fields: set[str] = set()
+        env = EnvConfig.from_env(
+            root,
+            legacy_hls_validation=runtime.ENABLE_HLS_TOKEN_VALIDATION,
+            errors=load_errors,
+            explicit_fields=explicit_fields,
+        )
+        return cls(
+            env,
+            runtime,
+            load_errors=load_errors,
+            explicit_env_fields=explicit_fields,
+        )
 
     def update_runtime(self, data: dict) -> tuple[list, list]:
         """Update runtime settings, persist to config.json.
@@ -432,7 +532,18 @@ class Config:
         lock = object.__getattribute__(self, "_lock")
         runtime = object.__getattribute__(self, "_runtime")
         with lock:
-            changed, rejected = runtime.update_from_dict(data)
+            payload = dict(data)
+            rejected: list[dict] = []
+            if "ENABLE_HLS_TOKEN_VALIDATION" in payload:
+                payload.pop("ENABLE_HLS_TOKEN_VALIDATION")
+                rejected.append(
+                    {
+                        "key": "ENABLE_HLS_TOKEN_VALIDATION",
+                        "reason": "boot setting; restart required",
+                    }
+                )
+            changed, runtime_rejected = runtime.update_from_dict(payload)
+            rejected.extend(runtime_rejected)
             if changed:
                 runtime.save()
             return changed, rejected
@@ -440,26 +551,88 @@ class Config:
     def get_runtime_dict(self) -> dict:
         """Get all runtime settings as a dict (for admin API)"""
         runtime = object.__getattribute__(self, "_runtime")
-        return runtime.to_dict()
+        values = runtime.to_dict()
+        values.pop("ENABLE_HLS_TOKEN_VALIDATION", None)
+        return values
+
+    @property
+    def explicit_env_fields(self) -> frozenset[str]:
+        return object.__getattribute__(self, "_explicit_env_fields")
+
+    def boot_values(self) -> dict[str, object]:
+        """Return boot values for trusted server-side setup processing."""
+        env = object.__getattribute__(self, "_env")
+        return {field_info.name: getattr(env, field_info.name) for field_info in fields(env)}
+
+    def with_boot_values(self, values: dict[str, object]) -> "Config":
+        """Build an isolated validation candidate without mutating live config."""
+        env = object.__getattribute__(self, "_env")
+        runtime = object.__getattribute__(self, "_runtime")
+        candidate_env = replace(env, **values)
+        explicit_fields = set(self.explicit_env_fields)
+        load_errors = object.__getattribute__(self, "_load_errors")
+        explicit_errors = {
+            name: message for name, message in load_errors.items() if name in explicit_fields
+        }
+        return Config(
+            candidate_env,
+            runtime,
+            load_errors=explicit_errors,
+            explicit_env_fields=explicit_fields,
+        )
 
     def validate_for_startup(self) -> None:
         """Reject unsafe boot configuration when production mode is explicit."""
+        errors = self.startup_errors()
+        if errors:
+            field_name, message = next(iter(errors.items()))
+            raise ValueError(f"{field_name}: {message}")
+
+    def startup_errors(self) -> dict[str, str]:
+        """Return safe field-level boot errors without including submitted values."""
+        errors = dict(object.__getattribute__(self, "_load_errors"))
         if self.APP_ENV not in {"development", "production"}:
-            raise ValueError("APP_ENV must be 'development' or 'production'")
-        if self.APP_ENV != "production":
-            return
-        if not self.SESSION_SECRET:
-            raise ValueError("SESSION_SECRET is required in production")
-        if len(self.SESSION_SECRET) < 32:
-            raise ValueError("SESSION_SECRET must be at least 32 characters in production")
-        if not self.SESSION_COOKIE_SECURE:
-            raise ValueError("SESSION_COOKIE_SECURE must be true in production")
-        if not self.CORS_ALLOWED_ORIGINS or "*" in self.CORS_ALLOWED_ORIGINS:
-            raise ValueError("CORS_ALLOWED_ORIGINS must be explicit in production")
-        if not self.EMBY_API_KEY:
-            raise ValueError("EMBY_API_KEY is required in production")
+            errors.setdefault("APP_ENV", "must be 'development' or 'production'")
+        if not (1 <= self.WATCH_PARTY_PORT <= 65535):
+            errors.setdefault("WATCH_PARTY_PORT", "must be between 1 and 65535")
+        prefix = self.APP_PREFIX
+        if prefix and (
+            not prefix.startswith("/")
+            or "//" in prefix
+            or any(char in prefix for char in "?#\\")
+            or any(part in {".", ".."} for part in prefix.split("/"))
+        ):
+            errors.setdefault("APP_PREFIX", "must be empty or a safe absolute URL path")
+        for cidr in self.TRUSTED_PROXY_CIDRS:
+            try:
+                ipaddress.ip_network(cidr, strict=False)
+            except ValueError:
+                errors.setdefault("TRUSTED_PROXY_CIDRS", "must contain valid IP networks")
+                break
         emby_url = urlsplit(self.EMBY_SERVER_URL)
         if emby_url.scheme not in {"http", "https"} or not emby_url.hostname:
-            raise ValueError("EMBY_SERVER_URL must be a valid HTTP(S) URL in production")
-        if not self.ENABLE_HLS_TOKEN_VALIDATION:
-            raise ValueError("HLS token validation must be enabled in production")
+            errors.setdefault("EMBY_SERVER_URL", "must be a valid HTTP(S) URL")
+        if self.APP_ENV == "production":
+            if not self.SESSION_SECRET:
+                errors.setdefault("SESSION_SECRET", "is required in production")
+            elif len(self.SESSION_SECRET) < 32:
+                errors.setdefault("SESSION_SECRET", "must be at least 32 characters in production")
+            if not self.SESSION_COOKIE_SECURE:
+                errors.setdefault("SESSION_COOKIE_SECURE", "must be true in production")
+            if not self.CORS_ALLOWED_ORIGINS or "*" in self.CORS_ALLOWED_ORIGINS:
+                errors.setdefault("CORS_ALLOWED_ORIGINS", "must be explicit in production")
+            else:
+                for origin in self.CORS_ALLOWED_ORIGINS:
+                    parsed = urlsplit(origin)
+                    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                        errors.setdefault(
+                            "CORS_ALLOWED_ORIGINS", "must contain valid HTTP(S) origins"
+                        )
+                        break
+            if not self.EMBY_API_KEY:
+                errors.setdefault("EMBY_API_KEY", "is required in production")
+            if not self.ENABLE_HLS_TOKEN_VALIDATION:
+                errors.setdefault(
+                    "ENABLE_HLS_TOKEN_VALIDATION", "must be enabled in production"
+                )
+        return errors

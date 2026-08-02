@@ -397,13 +397,6 @@ loadConfig()
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>HLS Token Validation</span>
-            <span class="setting-hint">Prevent direct stream access bypass</span>
-          </div>
-          <ToggleSwitch v-model="config.ENABLE_HLS_TOKEN_VALIDATION" />
-        </div>
-        <div class="setting-row">
-          <div class="setting-label">
             <span>HLS Token Expiry (s)</span>
             <span class="setting-hint">Token lifetime (default: 86400 = 24h)</span>
           </div>

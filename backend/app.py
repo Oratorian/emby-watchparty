@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
+import html
 import json
 import secrets
+import threading
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 
 import httpx
 import socketio
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from backend.src import __codename__, __version__
 from backend.src.admin_session_store import AdminSessionStore
 from backend.src.avatar_store import AvatarStore
+from backend.src.bootstrap import save_bootstrap_config, validate_bootstrap_submission
 from backend.src.config import Config
 from backend.src.emby_client import EmbyClient
 from backend.src.emby_gateway import EmbyGateway
@@ -32,6 +35,176 @@ from backend.src.update_checker import check_for_updates
 
 PROJECT_ROOT = Path(__file__).parent.parent
 STATIC_ROOT = Path(__file__).parent / "static"
+
+
+def _setup_html(config: Config, prefix: str, *, saved: bool) -> str:
+    if saved:
+        return """<!doctype html><html><head><meta charset="utf-8"><title>Setup saved</title>
+<style>body{font:16px system-ui;background:#0b1220;color:#e5edf8;max-width:48rem;margin:5rem auto;padding:2rem}main{background:#142033;padding:2rem;border-radius:16px}h1{color:#60d5ff}</style>
+</head><body><main><h1>Configuration saved; restart required.</h1><p>Restart Emby Watch Party to load boot settings. This process will not restart itself.</p></main></body></html>"""
+
+    esc = html.escape
+    mode = config.APP_ENV if config.APP_ENV in {"development", "production"} else "production"
+    cors = ", ".join(config.CORS_ALLOWED_ORIGINS)
+    proxies = ", ".join(config.TRUSTED_PROXY_CIDRS)
+    endpoint = json.dumps(f"{prefix}/api/setup")
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Emby Watch Party setup</title><style>
+:root{{color-scheme:dark;font:16px system-ui}}body{{margin:0;background:#08111f;color:#e8f1fb}}main{{max-width:52rem;margin:2rem auto;padding:2rem;background:#111f33;border-radius:18px}}h1{{color:#66d9ff}}label{{display:block;font-weight:650;margin-top:1rem}}input,select{{box-sizing:border-box;width:100%;padding:.7rem;margin-top:.35rem;border:1px solid #52657d;border-radius:7px;background:#091524;color:#fff}}input[type=checkbox]{{width:auto;margin-right:.5rem}}small{{display:block;color:#b5c4d7;margin-top:.3rem}}button{{margin-top:1rem;padding:.75rem 1rem;border:0;border-radius:7px;background:#16a7d4;color:#041019;font-weight:700;cursor:pointer}}button.secondary{{background:#33465f;color:#fff}}#errors{{color:#ff9b9b;white-space:pre-wrap}}.notice{{padding:1rem;background:#20334d;border-left:4px solid #66d9ff}}</style></head>
+<body><main><h1>First-run configuration</h1>
+<p class="notice">Boot-setting changes require restart. Token shown in server console is required to save. Never share it or place it in a URL.</p>
+<p>Local plain HTTP uses development mode and a non-secure cookie. Reverse-proxied HTTPS uses production mode, a secure cookie, and explicit public origin.</p>
+<form id="setup-form" autocomplete="off">
+<label>Deployment mode<select name="APP_ENV"><option value="development"{' selected' if mode == 'development' else ''}>Local development</option><option value="production"{' selected' if mode == 'production' else ''}>Production HTTPS</option></select></label>
+<label>Emby server URL<input name="EMBY_SERVER_URL" type="url" value="{esc(config.EMBY_SERVER_URL, quote=True)}" required><small>HTTP(S) URL reachable by server.</small></label>
+<label>Emby API key<input name="EMBY_API_KEY" type="password" value="" autocomplete="new-password"><small>Leave blank only to retain an already configured key.</small></label>
+<label>Session secret<input name="SESSION_SECRET" type="password" value="" minlength="32" autocomplete="new-password"></label>
+<button type="button" class="secondary" id="generate-secret">Generate secure secret</button>
+<label><input name="SESSION_COOKIE_SECURE" type="checkbox"{' checked' if config.SESSION_COOKIE_SECURE else ''}>Secure session cookie</label>
+<label>Allowed CORS origins<input name="CORS_ALLOWED_ORIGINS" value="{esc(cors, quote=True)}"><small>Comma-separated public origins; wildcard forbidden in production.</small></label>
+<label>Trusted proxy CIDRs (optional)<input name="TRUSTED_PROXY_CIDRS" value="{esc(proxies, quote=True)}"></label>
+<label>Application prefix (optional)<input name="APP_PREFIX" value="{esc(config.APP_PREFIX, quote=True)}" placeholder="/watchparty"></label>
+<label><input name="ENABLE_HLS_TOKEN_VALIDATION" type="checkbox"{' checked' if config.ENABLE_HLS_TOKEN_VALIDATION else ''}>Enable HLS token validation (required in production)</label>
+<label>Bootstrap token<input name="BOOTSTRAP_TOKEN" type="password" value="" autocomplete="off" required><small>Copy from server console. Token is sent only in request header.</small></label>
+<div id="errors" role="alert"></div><button type="submit">Validate and save</button></form>
+<script>
+const form=document.getElementById('setup-form');const errors=document.getElementById('errors');
+document.getElementById('generate-secret').addEventListener('click',()=>{{const bytes=new Uint8Array(32);crypto.getRandomValues(bytes);form.elements.SESSION_SECRET.value=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');}});
+form.addEventListener('submit',async(event)=>{{event.preventDefault();errors.textContent='';const token=form.elements.BOOTSTRAP_TOKEN.value;
+const payload={{APP_ENV:form.elements.APP_ENV.value,EMBY_SERVER_URL:form.elements.EMBY_SERVER_URL.value,EMBY_API_KEY:form.elements.EMBY_API_KEY.value,SESSION_SECRET:form.elements.SESSION_SECRET.value,SESSION_COOKIE_SECURE:form.elements.SESSION_COOKIE_SECURE.checked,CORS_ALLOWED_ORIGINS:form.elements.CORS_ALLOWED_ORIGINS.value,TRUSTED_PROXY_CIDRS:form.elements.TRUSTED_PROXY_CIDRS.value,APP_PREFIX:form.elements.APP_PREFIX.value,ENABLE_HLS_TOKEN_VALIDATION:form.elements.ENABLE_HLS_TOKEN_VALIDATION.checked}};
+try{{const response=await fetch({endpoint},{{method:'POST',headers:{{'Content-Type':'application/json','X-Emby-Watchparty-Setup-Token':token}},body:JSON.stringify(payload)}});const result=await response.json();
+if(response.ok){{form.elements.EMBY_API_KEY.value='';form.elements.SESSION_SECRET.value='';form.elements.BOOTSTRAP_TOKEN.value='';document.body.innerHTML='<main><h1>Configuration saved; restart required.</h1><p>Restart server to enter normal mode.</p></main>';return;}}
+errors.textContent=result.errors?Object.entries(result.errors).map(([field,message])=>field+': '+message).join('\n'):(result.detail||'Save failed');}}catch(_error){{errors.textContent='Save failed. Check server and try again.';}}}});
+</script></main></body></html>"""
+
+
+@asynccontextmanager
+async def setup_lifespan(_application: FastAPI):
+    """Setup mode intentionally owns no normal application resources."""
+    yield
+
+
+def _create_setup_app(config: Config, project_root: Path) -> FastAPI:
+    application = FastAPI(
+        title="Emby Watch Party Setup",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+        lifespan=setup_lifespan,
+    )
+    application.state.bootstrap_config = config
+    application.state.project_root = project_root
+    bootstrap_token = secrets.token_urlsafe(32)
+    setup_state: dict[str, object] = {"token": bootstrap_token, "saved": False}
+    setup_lock = threading.Lock()
+    setup_attempts = SlidingWindowRateLimiter(max_keys=1024)
+    print(f"Emby Watch Party setup required. Bootstrap token: {bootstrap_token}", flush=True)
+    prefix = "" if "APP_PREFIX" in config.startup_errors() else config.APP_PREFIX
+
+    @application.get(f"{prefix}/setup", include_in_schema=False)
+    async def setup_page():
+        return HTMLResponse(
+            _setup_html(config, prefix, saved=bool(setup_state["saved"])),
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Security-Policy": (
+                    "default-src 'none'; style-src 'unsafe-inline'; "
+                    "script-src 'unsafe-inline'; connect-src 'self'; "
+                    "form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+                ),
+                "Referrer-Policy": "no-referrer",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    @application.get(prefix or "/", include_in_schema=False)
+    async def setup_root():
+        return RedirectResponse(url=f"{prefix}/setup")
+
+    if prefix:
+
+        @application.get("/", include_in_schema=False)
+        async def unprefixed_setup_root():
+            return RedirectResponse(url=f"{prefix}/setup")
+
+    @application.get(f"{prefix}/api/health", include_in_schema=False)
+    async def setup_health():
+        return {"status": "ok", "version": __version__, "codename": __codename__}
+
+    @application.get(f"{prefix}/api/ready", include_in_schema=False)
+    async def setup_ready():
+        return JSONResponse({"status": "setup_required"}, status_code=503)
+
+    @application.post(f"{prefix}/api/setup", include_in_schema=False)
+    async def save_setup(request: Request):
+        if setup_state["saved"]:
+            return JSONResponse(
+                {"status": "saved", "restart_required": True},
+                status_code=409,
+            )
+        supplied = request.headers.get("X-Emby-Watchparty-Setup-Token", "")
+        expected = str(setup_state["token"] or "disabled")
+        token_matches = len(supplied) <= 1024 and secrets.compare_digest(
+            supplied, expected
+        )
+        if not token_matches:
+            peer = request.client.host if request.client else "unknown"
+            peer_decision = setup_attempts.check(f"setup-peer:{peer}", 5, 15 * 60)
+            global_decision = setup_attempts.check("setup-global", 100, 15 * 60)
+            if not peer_decision.allowed or not global_decision.allowed:
+                retry_after = max(peer_decision.retry_after, global_decision.retry_after)
+                return JSONResponse(
+                    {"detail": "Too many failed bootstrap token attempts"},
+                    status_code=429,
+                    headers={"Retry-After": str(retry_after)},
+                )
+            return JSONResponse({"detail": "Invalid bootstrap token"}, status_code=403)
+        content_length = request.headers.get("content-length")
+        if content_length and content_length.isdigit() and int(content_length) > 32 * 1024:
+            return JSONResponse({"detail": "Request body too large"}, status_code=413)
+        body = await request.body()
+        if len(body) > 32 * 1024:
+            return JSONResponse({"detail": "Request body too large"}, status_code=413)
+        try:
+            payload = json.loads(body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JSONResponse(
+                {"status": "invalid", "errors": {"FORM": "Invalid JSON request"}},
+                status_code=400,
+            )
+        values, errors = validate_bootstrap_submission(config, payload)
+        if errors:
+            return JSONResponse(
+                {"status": "invalid", "errors": errors},
+                status_code=400,
+            )
+        persisted = {
+            name: value
+            for name, value in values.items()
+            if name not in config.explicit_env_fields
+        }
+        with setup_lock:
+            if setup_state["saved"]:
+                return JSONResponse(
+                    {"status": "saved", "restart_required": True},
+                    status_code=409,
+                )
+            save_bootstrap_config(project_root, persisted)
+            setup_state["saved"] = True
+            setup_state["token"] = None
+        return {"status": "saved", "restart_required": True}
+
+    @application.api_route(
+        "/{full_path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+        include_in_schema=False,
+    )
+    async def setup_unavailable(full_path: str):
+        del full_path
+        return JSONResponse({"status": "setup_required"}, status_code=503)
+
+    return application
 
 
 async def _shutdown_runtime(
@@ -214,7 +387,12 @@ def create_app(
     http_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     """Build an isolated app instance suitable for production or public tests."""
-    resolved_config = config or Config.from_env()
+    resolved_root = Path(project_root or PROJECT_ROOT)
+    resolved_config = config or Config.from_env(resolved_root)
+    try:
+        resolved_config.validate_for_startup()
+    except ValueError:
+        return _create_setup_app(resolved_config, resolved_root)
     prefix = resolved_config.APP_PREFIX
     session_secret = resolved_config.SESSION_SECRET or secrets.token_hex(32)
     origins: str | list[str]
@@ -237,7 +415,7 @@ def create_app(
         lifespan=lifespan,
     )
     application.state.bootstrap_config = resolved_config
-    application.state.project_root = Path(project_root or PROJECT_ROOT)
+    application.state.project_root = resolved_root
     application.state.http_transport = http_transport
     application.state.enable_update_check = enable_update_check
     application.state.session_secret = session_secret
@@ -260,16 +438,18 @@ def create_app(
 
 
 app = create_app()
-sio = app.state.sio
+sio = getattr(app.state, "sio", None)
 
 
 if __name__ == "__main__":
     import uvicorn
 
     cfg = app.state.bootstrap_config
+    startup_errors = cfg.startup_errors()
+    port = 5000 if "WATCH_PARTY_PORT" in startup_errors else cfg.WATCH_PARTY_PORT
     uvicorn.run(
         app,
         host=cfg.WATCH_PARTY_BIND,
-        port=cfg.WATCH_PARTY_PORT,
+        port=port,
         proxy_headers=False,
     )

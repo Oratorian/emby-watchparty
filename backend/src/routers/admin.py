@@ -167,6 +167,7 @@ async def update_config(
         "SESSION_EXPIRY",
         "EMBY_SERVER_URL",
         "EMBY_API_KEY",
+        "ENABLE_HLS_TOKEN_VALIDATION",
     }
     env_only_hit = [k for k in payload if k in env_only]
     if env_only_hit:

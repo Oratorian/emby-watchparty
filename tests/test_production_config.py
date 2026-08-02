@@ -18,6 +18,7 @@ def _config(runtime: RuntimeConfig | None = None, **overrides) -> Config:
         "SESSION_COOKIE_SECURE": True,
         "CORS_ALLOWED_ORIGINS": ("https://watch.example",),
         "TRUSTED_PROXY_CIDRS": (),
+        "ENABLE_HLS_TOKEN_VALIDATION": True,
     }
     values.update(overrides)
     return Config(EnvConfig(**values), runtime or RuntimeConfig())
@@ -53,9 +54,9 @@ class ProductionConfigTests(unittest.TestCase):
             ),
             ({"SESSION_SECRET": "s" * 32, "EMBY_API_KEY": ""}, None, "EMBY_API_KEY"),
             (
-                {"SESSION_SECRET": "s" * 32},
-                RuntimeConfig(ENABLE_HLS_TOKEN_VALIDATION=False),
-                "HLS token validation",
+                {"SESSION_SECRET": "s" * 32, "ENABLE_HLS_TOKEN_VALIDATION": False},
+                None,
+                "ENABLE_HLS_TOKEN_VALIDATION",
             ),
         ]
         for env_overrides, runtime, expected in cases:
@@ -69,6 +70,20 @@ class ProductionConfigTests(unittest.TestCase):
             CORS_ALLOWED_ORIGINS=("*",),
             EMBY_API_KEY="",
         ).validate_for_startup()
+
+    def test_hls_validation_is_rejected_as_runtime_update(self):
+        config = _config(SESSION_SECRET="s" * 32)
+
+        changed, rejected = config.update_runtime({"ENABLE_HLS_TOKEN_VALIDATION": False})
+
+        assert changed == []
+        assert rejected == [
+            {
+                "key": "ENABLE_HLS_TOKEN_VALIDATION",
+                "reason": "boot setting; restart required",
+            }
+        ]
+        assert config.ENABLE_HLS_TOKEN_VALIDATION is True
 
 
 if __name__ == "__main__":

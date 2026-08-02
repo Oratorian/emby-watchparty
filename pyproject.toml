@@ -44,6 +44,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"backend/app.py" = ["S608"] # Inline setup HTML is not a SQL query.
 "backend/src/client_ip.py" = ["S104"] # Explicit wildcard-address detection.
 "backend/src/config.py" = ["S104"] # Supported bind-all deployment default.
 "backend/src/routers/*.py" = ["BLE001"] # Route boundaries produce stable HTTP errors.

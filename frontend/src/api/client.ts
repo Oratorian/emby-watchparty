@@ -123,7 +123,6 @@ export interface AdminConfig {
   BINGE_WATCH_ENABLED: boolean
   CONSOLE_LOG_LEVEL: string
   ENABLED_QUALITY_OPTIONS: Record<string, number[]>
-  ENABLE_HLS_TOKEN_VALIDATION: boolean
   ENABLE_RATE_LIMITING: boolean
   FORCE_TRANSCODE: boolean
   HLS_TOKEN_EXPIRY: number

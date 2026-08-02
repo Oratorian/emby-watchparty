@@ -108,6 +108,14 @@ Ensure your `.env` file has restricted permissions:
 chmod 600 .env
 ```
 
+#### First-run bootstrap
+
+Unsafe production boot settings start a restricted setup application rather than the normal service. A cryptographically random one-time token is printed once to the server console and is required in a request header for configuration writes. Never expose this token in URLs, screenshots, shared logs, or reverse-proxy configuration.
+
+Saved boot values live in `data/bootstrap.json`; this file contains `EMBY_API_KEY` and `SESSION_SECRET`. The application uses atomic replacement and requests restrictive permissions, but operators must protect the mounted directory and backups. Source precedence is process environment, then `.env`, then `data/bootstrap.json`, then defaults. Invalid explicit environment values must be fixed outside the browser.
+
+Recovery: restart to receive a new token. For a damaged saved file, move or remove `data/bootstrap.json`, restart, then complete setup again. The setup endpoint never terminates or restarts the process.
+
 #### API Key Protection
 
 - Use a dedicated Emby API key for the watch party application

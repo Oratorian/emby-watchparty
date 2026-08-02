@@ -31,9 +31,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY --from=frontend-build /app/backend/static ./backend/static/
 
-# Pre-create the log directory so a docker-compose volume mount
-# lands somewhere already-writable.
-RUN mkdir -p /app/logs
+# Pre-create persistent data and log directories so volume mounts land
+# somewhere writable. /app/data also stores first-run bootstrap.json.
+RUN mkdir -p /app/data /app/logs
 
 # Default port; override at runtime with WATCH_PARTY_PORT. EXPOSE is
 # metadata only and cannot read runtime env, so it documents the default.
