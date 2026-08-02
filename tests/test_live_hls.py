@@ -204,3 +204,51 @@ async def _exercise_select_leave_race(live_watchparty) -> None:
 
 def test_concurrent_select_and_leave_cancels_stale_transcode(live_watchparty) -> None:
     asyncio.run(_exercise_select_leave_race(live_watchparty))
+
+
+async def _exercise_playlist_fidelity_and_security(live_watchparty) -> None:
+    client, realtime, master_url = await _select_video(live_watchparty.url)
+    controls = httpx.AsyncClient(base_url=live_watchparty.fake.url)
+    try:
+        crlf = (
+            "#EXTM3U\r\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\r\n"
+            "main.m3u8?PlaySessionId=one\r\n"
+        )
+        await controls.post("/__test__/behavior", json={"master_playlist": crlf})
+        duplicate_url = f"{master_url}&AudioCodec=aac&AudioCodec=mp3"
+        response = await client.get(duplicate_url)
+        assert response.status_code == 200
+        assert response.text.endswith("\r\n")
+        assert "\r\n" in response.text
+        recorded = (await controls.get("/__test__/requests")).json()["requests"]
+        master_request = next(
+            row for row in reversed(recorded) if row["path"].endswith("/master.m3u8")
+        )
+        audio_codecs = [value for key, value in master_request["query"] if key == "AudioCodec"]
+        assert audio_codecs[-2:] == ["aac", "mp3"]
+
+        lf_without_terminator = (
+            "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\nmain.m3u8"
+        )
+        await controls.post(
+            "/__test__/behavior", json={"master_playlist": lf_without_terminator}
+        )
+        response = await client.get(master_url)
+        assert response.status_code == 200
+        assert "\r\n" not in response.text
+        assert not response.text.endswith("\n")
+
+        rejected_query = await client.get(f"{master_url}&api_key=not-allowed")
+        assert rejected_query.status_code == 400
+        rejected_control = await client.get(
+            master_url.replace("master.m3u8", "nested%252f..%252fsecret.ts")
+        )
+        assert rejected_control.status_code == 400
+    finally:
+        await realtime.disconnect()
+        await client.aclose()
+        await controls.aclose()
+
+
+def test_live_playlist_preserves_format_and_rejects_unsafe_inputs(live_watchparty) -> None:
+    asyncio.run(_exercise_playlist_fidelity_and_security(live_watchparty))

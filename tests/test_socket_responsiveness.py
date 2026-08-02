@@ -1,81 +1,64 @@
 import asyncio
-import unittest
+from time import perf_counter
 
-from backend.src.socket_handlers import sync
-
-
-class _Sio:
-    def __init__(self):
-        self.handlers = {}
-        self.emitted = []
-
-    def on(self, event):
-        def decorate(handler):
-            self.handlers[event] = handler
-            return handler
-        return decorate
-
-    async def emit(self, *args, **kwargs):
-        self.emitted.append((args, kwargs))
+import httpx
+import socketio
 
 
-class _EmbyClient:
-    async def report_playback_progress(self, **_kwargs):
-        await asyncio.sleep(0.15)
+async def _exercise_independent_controls(live_watchparty) -> None:
+    client = httpx.AsyncClient(base_url=live_watchparty.url)
+    controls = httpx.AsyncClient(base_url=live_watchparty.fake.url)
+    created = await client.post("/api/party/create", json={})
+    party_id = created.json()["party_id"]
+    await client.post(
+        f"/api/party/{party_id}/join",
+        json={"client_id": "client-1", "display_name": "Alice"},
+    )
+    await client.post(
+        "/api/auth/login", json={"username": "Alice", "password": "password"}
+    )
+    cookie = "; ".join(f"{name}={value}" for name, value in client.cookies.items())
+    realtime = socketio.AsyncClient()
+    selected = asyncio.Event()
+
+    @realtime.on("video_selected")
+    async def video_selected(_data):
+        selected.set()
+
+    await realtime.connect(live_watchparty.url, headers={"Cookie": cookie})
+    try:
+        await realtime.emit(
+            "join_party",
+            {"party_id": party_id, "username": "Alice", "client_id": "client-1"},
+        )
+        await realtime.emit(
+            "select_video",
+            {"party_id": party_id, "item_id": "movie-1", "item_name": "Fake Movie"},
+        )
+        await asyncio.wait_for(selected.wait(), timeout=5)
+        await controls.post(
+            "/__test__/behavior",
+            json={"delays_ms": {"/emby/Sessions/Playing/Progress": 500}},
+        )
+
+        pause_received = asyncio.Event()
+
+        @realtime.on("pause")
+        async def paused(_data):
+            pause_received.set()
+
+        started = perf_counter()
+        await realtime.emit("play", {"party_id": party_id, "time": 1.0})
+        await realtime.emit("pause", {"party_id": party_id, "time": 1.1})
+        await asyncio.wait_for(pause_received.wait(), timeout=0.25)
+        assert perf_counter() - started < 0.25
+    finally:
+        await realtime.disconnect()
+        await client.aclose()
+        await controls.aclose()
 
 
-class _PartyManager:
-    def __init__(self):
-        self.party = {
-            "users": {"sid-1": "Alice"},
-            "sid_client_ids": {"sid-1": "client-1"},
-            "current_video": {"item_id": "item", "run_time_seconds": 60},
-            "user_streams": {
-                "sid-1": {
-                    "play_session_id": "play-session",
-                    "media_source_id": "source",
-                }
-            },
-            "playback_state": {"playing": False, "time": 0, "last_update": ""},
-            "host_access_token": "token",
-            "host_user_id": "user",
-            "ready_check": None,
-        }
-
-    def get(self, party_id):
-        return self.party if party_id == "PARTY" else None
-
-
-class _Logger:
-    def debug(self, _message):
-        pass
-
-    def info(self, _message):
-        pass
-
-
-class SocketResponsivenessTests(unittest.IsolatedAsyncioTestCase):
-    async def test_slow_emby_progress_does_not_block_event_loop(self):
-        sio = _Sio()
-        sync.register({
-            "sio": sio,
-            "emby_client": _EmbyClient(),
-            "logger": _Logger(),
-            "party_manager": _PartyManager(),
-        })
-
-        started = asyncio.get_running_loop().time()
-        task = asyncio.create_task(sio.handlers["play"](
-            "sid-1", {"party_id": "PARTY", "time": 12},
-        ))
-        await asyncio.sleep(0.01)
-        elapsed = asyncio.get_running_loop().time() - started
-
-        self.assertLess(elapsed, 0.08)
-        self.assertFalse(task.done())
-        self.assertEqual(sio.emitted[0][0][0], "play")
-        await task
-
-
-if __name__ == "__main__":
-    unittest.main()
+def test_slow_emby_progress_does_not_block_independent_socket_control(
+    live_watchparty,
+) -> None:
+    asyncio.run(_exercise_independent_controls(live_watchparty))
