@@ -67,3 +67,74 @@ async def _exercise_unknown_field(base_url: str) -> None:
 
 def test_unknown_socket_fields_remain_compatible(live_watchparty) -> None:
     asyncio.run(_exercise_unknown_field(live_watchparty.url))
+
+
+async def _exercise_identity_claim(base_url: str) -> None:
+    client, owner, party_id = await _connected_member(base_url)
+    attacker = socketio.AsyncClient()
+    rejected = asyncio.Event()
+
+    @attacker.on("error")
+    async def on_error(data):
+        if data["message"] == "Participant identity is already in use":
+            rejected.set()
+
+    await attacker.connect(base_url)
+    try:
+        await attacker.emit(
+            "join_party",
+            {"party_id": party_id, "username": "Mallory", "client_id": "client-1"},
+        )
+        await asyncio.wait_for(rejected.wait(), timeout=2)
+    finally:
+        await attacker.disconnect()
+        await owner.disconnect()
+        await client.aclose()
+
+
+def test_socket_cannot_claim_existing_participant_identity(live_watchparty) -> None:
+    asyncio.run(_exercise_identity_claim(live_watchparty.url))
+
+
+async def _exercise_preclaimed_host_identity(base_url: str) -> None:
+    host = httpx.AsyncClient(base_url=base_url)
+    attacker_http = httpx.AsyncClient(base_url=base_url)
+    attacker_socket = socketio.AsyncClient()
+    rejected = asyncio.Event()
+
+    try:
+        created = await host.post("/api/party/create", json={})
+        party_id = created.json()["party_id"]
+        identity = {"client_id": "future-host", "display_name": "Alice"}
+        await host.post(f"/api/party/{party_id}/join", json=identity)
+        await attacker_http.post(
+            f"/api/party/{party_id}/join",
+            json={"client_id": "future-host", "display_name": "Mallory"},
+        )
+        login = await host.post(
+            "/api/auth/login",
+            json={"username": "Alice", "password": "password"},
+        )
+        assert login.json()["is_host"] is True
+
+        @attacker_socket.on("error")
+        async def on_error(data):
+            if data["message"] == "Participant identity is already in use":
+                rejected.set()
+
+        cookie = "; ".join(f"{key}={value}" for key, value in attacker_http.cookies.items())
+        await attacker_socket.connect(base_url, headers={"Cookie": cookie})
+        await attacker_socket.emit(
+            "join_party",
+            {"party_id": party_id, "username": "Mallory", "client_id": "future-host"},
+        )
+        await asyncio.wait_for(rejected.wait(), timeout=2)
+    finally:
+        if attacker_socket.connected:
+            await attacker_socket.disconnect()
+        await attacker_http.aclose()
+        await host.aclose()
+
+
+def test_socket_preclaim_cannot_take_future_host_identity(live_watchparty) -> None:
+    asyncio.run(_exercise_preclaimed_host_identity(live_watchparty.url))

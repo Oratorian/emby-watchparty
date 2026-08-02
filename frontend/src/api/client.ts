@@ -137,7 +137,11 @@ export interface AdminConfig {
   LOG_TO_FILE: boolean
   MAX_USERS_PER_PARTY: number
   RATE_LIMIT_API_CALLS: string
+  RATE_LIMIT_AVATAR_RECOVERY: string
+  RATE_LIMIT_CHAT: string
+  RATE_LIMIT_LOGIN: string
   RATE_LIMIT_PARTY_CREATION: string
+  RATE_LIMIT_SOCKET_CONNECTIONS: string
   REQUIRE_LOGIN: boolean
   STATIC_SESSION_ENABLED: boolean
   STATIC_SESSION_ID: string

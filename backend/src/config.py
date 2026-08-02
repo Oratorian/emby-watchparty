@@ -361,6 +361,10 @@ class RuntimeConfig:
                 "ENABLE_RATE_LIMITING",
                 "RATE_LIMIT_PARTY_CREATION",
                 "RATE_LIMIT_API_CALLS",
+                "RATE_LIMIT_LOGIN",
+                "RATE_LIMIT_AVATAR_RECOVERY",
+                "RATE_LIMIT_CHAT",
+                "RATE_LIMIT_SOCKET_CONNECTIONS",
             ],
             "Session": ["STATIC_SESSION_ENABLED", "STATIC_SESSION_ID"],
             "Late Join Vote": [

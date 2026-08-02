@@ -134,11 +134,20 @@ async function loadConfig() {
 
 function validate(): string | null {
   const c = config.value
+  const ratePattern = /^\s*[1-9]\d*\s+per(?:\s+[1-9]\d*)?\s+(second|minute|hour|day)s?\s*$/i
   if (c.MAX_USERS_PER_PARTY < 0 || !Number.isInteger(c.MAX_USERS_PER_PARTY)) return 'Max Users must be a positive integer'
   if (c.HLS_TOKEN_EXPIRY < 300) return 'HLS Token Expiry must be at least 300 seconds'
   if (c.LOG_MAX_SIZE < 1) return 'Max Log Size must be at least 1 MB'
   if (partyLimitValue.value < 1) return 'Party Creation Limit must be at least 1'
   if (apiLimitValue.value < 1) return 'API Rate Limit must be at least 1'
+  for (const [label, value] of [
+    ['Login', c.RATE_LIMIT_LOGIN],
+    ['Avatar recovery', c.RATE_LIMIT_AVATAR_RECOVERY],
+    ['Chat', c.RATE_LIMIT_CHAT],
+    ['Socket connection', c.RATE_LIMIT_SOCKET_CONNECTIONS],
+  ] as const) {
+    if (!ratePattern.test(value)) return `${label} rate limit is invalid`
+  }
   if (!c.LOG_FILE || !c.LOG_FILE.trim()) return 'Log File path cannot be empty'
   return null
 }
@@ -403,14 +412,14 @@ loadConfig()
         <div class="setting-row">
           <div class="setting-label">
             <span>Rate Limiting</span>
-            <span class="setting-hint">Requires restart to take effect</span>
+            <span class="setting-hint">Master switch for HTTP and Socket.IO limits</span>
           </div>
           <ToggleSwitch v-model="config.ENABLE_RATE_LIMITING" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
             <span>Party Creation Limit</span>
-            <span class="setting-hint">Max per IP (requires restart)</span>
+            <span class="setting-hint">Max per IP</span>
           </div>
           <div class="rate-limit-group">
             <input type="number" v-model.number="partyLimitValue" min="1" class="setting-input setting-input-xs" />
@@ -424,7 +433,7 @@ loadConfig()
         <div class="setting-row">
           <div class="setting-label">
             <span>API Rate Limit</span>
-            <span class="setting-hint">Max per IP (requires restart)</span>
+            <span class="setting-hint">Max per IP</span>
           </div>
           <div class="rate-limit-group">
             <input type="number" v-model.number="apiLimitValue" min="1" class="setting-input setting-input-xs" />
@@ -434,6 +443,22 @@ loadConfig()
               <option value="per day">per day</option>
             </select>
           </div>
+        </div>
+        <div
+          v-for="field in ([
+            ['Admin Login Limit', 'RATE_LIMIT_LOGIN'],
+            ['Avatar Recovery Limit', 'RATE_LIMIT_AVATAR_RECOVERY'],
+            ['Chat Limit', 'RATE_LIMIT_CHAT'],
+            ['Socket Connection Limit', 'RATE_LIMIT_SOCKET_CONNECTIONS'],
+          ] as const)"
+          :key="field[1]"
+          class="setting-row"
+        >
+          <div class="setting-label">
+            <span>{{ field[0] }}</span>
+            <span class="setting-hint">Format: “10 per 15 minutes”</span>
+          </div>
+          <input v-model="config[field[1]]" type="text" class="setting-input" />
         </div>
       </div>
 

@@ -158,7 +158,6 @@ async def api_subtitles(
                 content=emby_resp.content,
                 media_type="text/vtt",
                 headers={
-                    "Access-Control-Allow-Origin": "*",
                     "X-Content-Type-Options": "nosniff",
                 },
             )

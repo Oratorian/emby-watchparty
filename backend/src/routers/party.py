@@ -7,6 +7,8 @@ anonymous create when off, Emby-authenticated create-as-host when on.
 party-bound session cookie used by every protected route.
 """
 
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.src.dependencies import (
@@ -16,6 +18,7 @@ from backend.src.dependencies import (
     get_logger,
     get_party_manager,
     get_sio,
+    party_host_session_matches,
 )
 
 # Shared dev-host gate -- single source of truth lives in auth.py so the
@@ -157,9 +160,11 @@ async def create_party(
         else:
             party_id = party_manager.create_party()
             display_name = body.display_name or stashed_username or "Host"
+            host_session_grant = secrets.token_urlsafe(32)
             party_manager.set_host(
                 party_id,
                 client_id=body.client_id,
+                session_grant=host_session_grant,
                 user_id=stashed_user_id,
                 access_token=stashed_token,
                 username=stashed_username or "Host",
@@ -168,6 +173,7 @@ async def create_party(
             request.session["party_id"] = party_id
             request.session["client_id"] = body.client_id
             request.session["display_name"] = display_name
+            request.session["host_session_grant"] = host_session_grant
             logger.info(
                 f"Created party {party_id} with stashed admin '{stashed_username}' "
                 f"auto-promoted to host (admin={stashed_is_admin})"
@@ -204,9 +210,11 @@ async def create_party(
 
         party_id = party_manager.create_party()
         display_name = body.display_name or auth["username"]
+        host_session_grant = secrets.token_urlsafe(32)
         party_manager.set_host(
             party_id,
             client_id=body.client_id,
+            session_grant=host_session_grant,
             user_id=auth["user_id"],
             access_token=auth["access_token"],
             username=auth["username"],
@@ -216,6 +224,7 @@ async def create_party(
         request.session["party_id"] = party_id
         request.session["client_id"] = body.client_id
         request.session["display_name"] = display_name
+        request.session["host_session_grant"] = host_session_grant
         logger.info(
             f"Created party {party_id} with host '{auth['username']}' (admin={auth['is_admin']})"
         )
@@ -259,13 +268,37 @@ async def join_party(
     if not body.client_id or not body.display_name:
         return JoinPartyResponse(success=False, message="client_id and display_name are required")
 
-    request.session["party_id"] = party_id
-    request.session["client_id"] = body.client_id
-    request.session["display_name"] = body.display_name
+    # client_id is public protocol data, not an authentication secret. Do
+    # not let a fresh browser mint a signed cookie for an identity already
+    # owned by a participant or host; that cookie would otherwise satisfy
+    # require_admin whenever the host's Emby account is an administrator.
+    session = request.session
+    owns_identity = (session.get("party_id") or "").upper() == party_id and session.get(
+        "client_id"
+    ) == body.client_id
+    identity_reserved = (
+        body.client_id in party.participants or party.host_client_id == body.client_id
+    )
+    owns_host_identity = party_host_session_matches(
+        party,
+        body.client_id,
+        session.get("host_session_grant"),
+    )
+    if identity_reserved and not (
+        owns_identity and (party.host_client_id != body.client_id or owns_host_identity)
+    ):
+        logger.warning("Rejected attempt to claim reserved identity in party %s", party_id)
+        return JoinPartyResponse(success=False, message="Participant identity is already in use")
+
+    session["party_id"] = party_id
+    session["client_id"] = body.client_id
+    session["display_name"] = body.display_name
+    if not owns_identity:
+        session.pop("host_session_grant", None)
     if body.avatar_uuid:
-        request.session["avatar_uuid"] = body.avatar_uuid
+        session["avatar_uuid"] = body.avatar_uuid
     else:
-        request.session.pop("avatar_uuid", None)
+        session.pop("avatar_uuid", None)
     logger.info(
         f"Party {party_id} session bound for '{body.display_name}' "
         f"(client_id={body.client_id[:8]}...)"
@@ -282,14 +315,17 @@ async def join_party(
     if dev_user and dev_pw and not party_manager.is_unlocked(party_id):
         auth = await emby_client.authenticate(dev_user, dev_pw)
         if auth:
+            host_session_grant = secrets.token_urlsafe(32)
             party_manager.set_host(
                 party_id,
                 client_id=body.client_id,
+                session_grant=host_session_grant,
                 user_id=auth["user_id"],
                 access_token=auth["access_token"],
                 username=auth["username"],
                 is_admin=auth["is_admin"],
             )
+            session["host_session_grant"] = host_session_grant
             is_host = True
             logger.warning(
                 f"Party {party_id}: auto-promoted '{body.display_name}' to "
@@ -336,6 +372,7 @@ def leave_party(request: Request, logger=Depends(get_logger)):
     session.pop("client_id", None)
     session.pop("display_name", None)
     session.pop("avatar_uuid", None)
+    session.pop("host_session_grant", None)
     if party_id:
         logger.info(f"Session unbound from party {party_id}")
     return SuccessResponse(success=True)

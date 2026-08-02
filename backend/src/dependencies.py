@@ -6,6 +6,7 @@ Plus the party-bound session gates used to protect every route that
 touches Emby on behalf of a watch party.
 """
 
+import secrets
 from dataclasses import dataclass
 
 import httpx
@@ -84,7 +85,25 @@ class PartySession:
     party_id: str
     client_id: str
     display_name: str
+    host_session_grant: str | None
     party: Party
+
+
+def party_host_session_matches(
+    party: Party,
+    client_id: str | None,
+    session_grant: str | None,
+) -> bool:
+    """Match the current host using an opaque grant, never public client_id alone."""
+    if (
+        not client_id
+        or not session_grant
+        or not party.host_client_id
+        or not party.host_session_grant
+        or client_id != party.host_client_id
+    ):
+        return False
+    return secrets.compare_digest(session_grant, party.host_session_grant)
 
 
 def require_party_session(
@@ -114,6 +133,7 @@ def require_party_session(
         party_id=party_id,
         client_id=client_id,
         display_name=display_name,
+        host_session_grant=session.get("host_session_grant"),
         party=party,
     )
 
@@ -159,7 +179,11 @@ def require_admin(
     in with an Emby account that has `IsAdministrator=true`.
     """
     party = party_session.party
-    if party_session.client_id != party.host_client_id:
+    if not party_host_session_matches(
+        party,
+        party_session.client_id,
+        party_session.host_session_grant,
+    ):
         raise HTTPException(status_code=403, detail="Host only")
     if not party.host_is_admin:
         raise HTTPException(status_code=403, detail="Admin only")
@@ -191,7 +215,11 @@ def is_admin_authenticated(
     party = party_manager.get(party_id.upper())
     if not party:
         return False
-    return party.host_client_id == client_id and bool(party.host_is_admin)
+    return party_host_session_matches(
+        party,
+        client_id,
+        session.get("host_session_grant"),
+    ) and bool(party.host_is_admin)
 
 
 def admin_display_name(
@@ -209,7 +237,15 @@ def admin_display_name(
     client_id = session.get("client_id")
     if party_id and client_id:
         party = party_manager.get(party_id.upper())
-        if party and party.host_client_id == client_id and party.host_is_admin:
+        if (
+            party
+            and party_host_session_matches(
+                party,
+                client_id,
+                session.get("host_session_grant"),
+            )
+            and party.host_is_admin
+        ):
             return party.host_username
     if admin_session_store:
         admin_session = admin_session_store.get(session.get("admin_session_id"))

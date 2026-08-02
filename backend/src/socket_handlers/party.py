@@ -5,6 +5,7 @@ import contextlib
 import time
 from datetime import UTC, datetime
 
+from backend.src.dependencies import party_host_session_matches
 from backend.src.domain import JoinVote
 from backend.src.quality import DEFAULT_QUALITY_ID
 from backend.src.utils import generate_random_username
@@ -514,6 +515,33 @@ def register(ctx):
         existing_participant = participants.get(client_id)
         old_sid = existing_participant.sid if existing_participant else None
 
+        environ = sio.get_environ(sid) or {}
+        cookie_session = _cookie_session(environ)
+        cookie_client_id = cookie_session.get("client_id") if cookie_session else None
+        cookie_party_id = (cookie_session.get("party_id") or "").upper() if cookie_session else ""
+        same_browser = cookie_client_id == client_id and cookie_party_id == party_id
+        identity_reserved = known_participant or party.host_client_id == client_id
+        owns_host_identity = party_host_session_matches(
+            party,
+            client_id,
+            cookie_session.get("host_session_grant") if cookie_session else None,
+        )
+        if identity_reserved and not (
+            same_browser and (party.host_client_id != client_id or owns_host_identity)
+        ):
+            logger.warning(
+                "Join identity claim rejected in %s: sid=%s client_id=%s",
+                party_id,
+                sid,
+                client_id[:8],
+            )
+            await sio.emit(
+                "error",
+                {"message": "Participant identity is already in use"},
+                to=sid,
+            )
+            return
+
         if known_participant:
             if old_sid and old_sid != sid:
                 await sio.leave_room(old_sid, party_id)
@@ -535,13 +563,6 @@ def register(ctx):
             # the caller-supplied client_id verbatim -- so a legitimate
             # duplicate-tab / same-browser user matches, but a random
             # attacker with just the party code + username does not.
-            environ = sio.get_environ(sid) or {}
-            cookie_session = _cookie_session(environ)
-            cookie_client_id = cookie_session.get("client_id") if cookie_session else None
-            cookie_party_id = (
-                (cookie_session.get("party_id") or "").upper() if cookie_session else ""
-            )
-            same_browser = cookie_client_id == client_id and cookie_party_id == party_id
             for stale_sid in party.sids():
                 existing_name = party.username_for_sid(stale_sid)
                 if existing_name == username and stale_sid != sid:
@@ -891,6 +912,7 @@ def register(ctx):
             token_manager.revoke_user(party_id, sid)
             if rate_limiter:
                 rate_limiter.clear(f"chat:{sid}")
+                rate_limiter.clear(f"progress:{sid}")
 
             await sio.leave_room(sid, party_id)
             if departure.all_ready:

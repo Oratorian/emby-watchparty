@@ -65,25 +65,28 @@ async def admin_login(
     every Emby admin account -- previously there was no throttle at
     all and the endpoint returned a clean success/failure signal.
     """
-    ip = _client_ip(request)
-    limit, window = parse_rate(
-        getattr(request.app.state.config, "RATE_LIMIT_LOGIN", "10 per 15 minutes")
-    )
-    decision = request.app.state.rate_limiter.check(
-        f"admin-login:{ip}", limit=limit, window_seconds=window
-    )
-    if not decision.allowed:
-        logger.warning(f"Admin login rate-limited for IP {ip} (retry in {decision.retry_after}s)")
-        return JSONResponse(
-            {
-                "success": False,
-                "message": (
-                    f"Too many login attempts. Try again in {decision.retry_after} seconds."
-                ),
-            },
-            status_code=429,
-            headers={"Retry-After": str(decision.retry_after)},
+    if request.app.state.config.ENABLE_RATE_LIMITING:
+        ip = _client_ip(request)
+        limit, window = parse_rate(
+            getattr(request.app.state.config, "RATE_LIMIT_LOGIN", "10 per 15 minutes")
         )
+        decision = request.app.state.rate_limiter.check(
+            f"admin-login:{ip}", limit=limit, window_seconds=window
+        )
+        if not decision.allowed:
+            logger.warning(
+                f"Admin login rate-limited for IP {ip} (retry in {decision.retry_after}s)"
+            )
+            return JSONResponse(
+                {
+                    "success": False,
+                    "message": (
+                        f"Too many login attempts. Try again in {decision.retry_after} seconds."
+                    ),
+                },
+                status_code=429,
+                headers={"Retry-After": str(decision.retry_after)},
+            )
     auth = await emby_client.authenticate(body.username, body.password)
     if not auth:
         return {"success": False, "message": "Invalid credentials"}

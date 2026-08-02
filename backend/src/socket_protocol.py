@@ -94,7 +94,7 @@ INBOUND_MODELS: dict[str, type[SocketPayload]] = {
 
 
 class OutboundPayload(BaseModel):
-    model_config = ConfigDict(extra="allow", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True)
 
 
 class EmptyOutbound(OutboundPayload):
@@ -103,6 +103,10 @@ class EmptyOutbound(OutboundPayload):
 
 class MessageOutbound(OutboundPayload):
     message: str
+
+
+class JoinRejectedOutbound(MessageOutbound):
+    retry_after: int | None = None
 
 
 class ConnectedOutbound(OutboundPayload):
@@ -173,6 +177,16 @@ class VideoOutbound(OutboundPayload):
     video: VideoStateOutbound
 
 
+class VideoStoppedOutbound(OutboundPayload):
+    message: str
+    stopped_by: str
+
+
+class VideoEndedOutbound(OutboundPayload):
+    party_id: str
+    timestamp: str
+
+
 class TimedOutbound(OutboundPayload):
     time: float
     username: str | None = None
@@ -209,6 +223,7 @@ class HostOutbound(OutboundPayload):
     unlocked: bool = False
     reason: str | None = None
     playing_only: bool | None = None
+    previous_host: str | None = None
 
 
 class VoteStartedOutbound(OutboundPayload):
@@ -275,8 +290,8 @@ OUTBOUND_MODELS: dict[str, type[OutboundPayload]] = {
     "members_update": MembersOutbound,
     "sync_state": SyncStateOutbound,
     "video_selected": VideoOutbound,
-    "video_stopped": EmptyOutbound,
-    "video_ended": EmptyOutbound,
+    "video_stopped": VideoStoppedOutbound,
+    "video_ended": VideoEndedOutbound,
     "play": TimedOutbound,
     "pause": TimedOutbound,
     "seek": TimedOutbound,
@@ -294,7 +309,7 @@ OUTBOUND_MODELS: dict[str, type[OutboundPayload]] = {
     "join_vote_pending": VotePendingOutbound,
     "join_vote_update": VoteUpdateOutbound,
     "join_vote_resolved": VoteResolvedOutbound,
-    "join_rejected": MessageOutbound,
+    "join_rejected": JoinRejectedOutbound,
     "binge_watch_state_changed": BingeStateOutbound,
     "auto_advance_pending": AutoAdvancePendingOutbound,
     "auto_advance_cancelled": AutoAdvanceCancelledOutbound,

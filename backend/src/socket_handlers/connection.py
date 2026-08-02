@@ -14,6 +14,7 @@ from itsdangerous import BadSignature, TimestampSigner
 from socketio.exceptions import ConnectionRefusedError as SocketConnectionRefusedError
 
 from backend.src.client_ip import resolve_client_ip
+from backend.src.dependencies import party_host_session_matches
 from backend.src.rate_limit import parse_rate
 
 # Must stay in sync with the `session_cookie` kwarg passed to
@@ -162,7 +163,11 @@ def register(ctx):
             return False
         cookie_party = (session.get("party_id") or "").upper()
         cookie_client = session.get("client_id")
-        if cookie_party != party_id or cookie_client != client_id:
+        if cookie_party != party_id or not party_host_session_matches(
+            party,
+            cookie_client,
+            session.get("host_session_grant"),
+        ):
             logger.warning(
                 f"Host reclaim REJECTED for {party_id}: cookie "
                 f"party={cookie_party}/client={cookie_client and cookie_client[:8]} "
@@ -290,6 +295,7 @@ def register(ctx):
                     token_manager.revoke_user(party_id, sid)
                 if rate_limiter:
                     rate_limiter.clear(f"chat:{sid}")
+                    rate_limiter.clear(f"progress:{sid}")
 
                 if departure.all_ready:
                     logger.info(f"All users ready in party {party_id} (after disconnect)")

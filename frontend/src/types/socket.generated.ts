@@ -144,6 +144,7 @@ export interface ServerToClientPayloads {
     "unlocked"?: boolean
     "reason"?: string | null
     "playing_only"?: boolean | null
+    "previous_host"?: string | null
   }
   "host_left": {
     "host_username"?: string | null
@@ -152,6 +153,7 @@ export interface ServerToClientPayloads {
     "unlocked"?: boolean
     "reason"?: string | null
     "playing_only"?: boolean | null
+    "previous_host"?: string | null
   }
   "host_reclaimed": {
     "host_username"?: string | null
@@ -160,9 +162,11 @@ export interface ServerToClientPayloads {
     "unlocked"?: boolean
     "reason"?: string | null
     "playing_only"?: boolean | null
+    "previous_host"?: string | null
   }
   "join_rejected": {
     "message": string
+    "retry_after"?: number | null
   }
   "join_vote_pending": {
     "timeout_seconds": number
@@ -245,9 +249,15 @@ export interface ServerToClientPayloads {
     "username"?: string | null
     "rejoin"?: boolean | null
   }
-  "video_ended": Record<string, never>
+  "video_ended": {
+    "party_id": string
+    "timestamp": string
+  }
   "video_selected": {
     "video": { "item_id": string; "title": string; "overview"?: string; "stream_url"?: string | null; "audio_index"?: number | null; "subtitle_index"?: number | null; "media_source_id"?: string | null; "selected_by"?: string | null; "quality"?: string | null; "item_type"?: string | null; "series_id"?: string | null; "season_id"?: string | null; "episode_index"?: number | null; "episode_count"?: number | null; "next_item_id"?: string | null; "next_item_title"?: string | null; "run_time_seconds"?: number | null }
   }
-  "video_stopped": Record<string, never>
+  "video_stopped": {
+    "message": string
+    "stopped_by": string
+  }
 }

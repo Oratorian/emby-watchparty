@@ -140,3 +140,46 @@ def test_admin_login_limit_expires_and_returns_retry_after(tmp_path: Path) -> No
             assert (await _login(client)).status_code == 200
 
     asyncio.run(exercise())
+
+
+def test_join_cannot_claim_existing_admin_host_identity(tmp_path: Path) -> None:
+    async def exercise() -> None:
+        app = _application(tmp_path)
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as host,
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as attacker,
+        ):
+            created = await host.post("/api/party/create", json={})
+            party_id = created.json()["party_id"]
+            await host.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "host-client", "display_name": "Alice"},
+            )
+            preclaimed = await attacker.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "host-client", "display_name": "Mallory"},
+            )
+            assert preclaimed.json()["success"] is True
+            login = await host.post(
+                "/api/auth/login",
+                json={"username": "Alice", "password": "password"},
+            )
+            assert login.json()["is_admin"] is True
+            assert (await attacker.get("/api/admin/config")).json() == {
+                "error": "Not authenticated"
+            }
+            assert (await attacker.get("/api/auth/status")).json()["is_host"] is False
+            assert (await attacker.post("/api/auth/logout")).json()["message"] == "Not the host"
+
+            claimed = await attacker.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "host-client", "display_name": "Mallory"},
+            )
+            assert claimed.json()["success"] is False
+
+    asyncio.run(exercise())

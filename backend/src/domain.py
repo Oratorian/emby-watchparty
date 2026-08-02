@@ -187,6 +187,7 @@ class Party:
     pending_join: JoinVote | None = None
     join_cooldown_until: float = 0.0
     host_client_id: str | None = None
+    host_session_grant: str | None = None
     host_user_id: str | None = None
     host_access_token: str | None = None
     host_is_admin: bool = False

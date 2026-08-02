@@ -6,6 +6,7 @@ and promotes them to host of their current party.
 """
 
 import os
+import secrets
 
 from fastapi import APIRouter, Depends, Request
 
@@ -17,6 +18,7 @@ from backend.src.dependencies import (
     get_logger,
     get_party_manager,
     get_sio,
+    party_host_session_matches,
 )
 from backend.src.schemas import (
     AuthStatusResponse,
@@ -130,14 +132,17 @@ async def api_login(
     if not auth:
         return LoginResponse(success=False, message="Invalid Emby credentials")
 
+    host_session_grant = secrets.token_urlsafe(32)
     party_manager.set_host(
         party_id,
         client_id=client_id,
+        session_grant=host_session_grant,
         user_id=auth["user_id"],
         access_token=auth["access_token"],
         username=auth["username"],
         is_admin=auth["is_admin"],
     )
+    session["host_session_grant"] = host_session_grant
 
     logger.info(
         f"Party {party_id} host changed to '{auth['username']}' "
@@ -189,12 +194,17 @@ async def api_logout(
     if not party:
         return LoginResponse(success=True, message="Party no longer exists")
 
-    if party.host_client_id != client_id:
+    if not party_host_session_matches(
+        party,
+        client_id,
+        session.get("host_session_grant"),
+    ):
         # Caller is not host; nothing to clear.
         return LoginResponse(success=True, message="Not the host")
 
     previous_username = party.host_username
     party_manager.clear_host(party_id)
+    session.pop("host_session_grant", None)
     logger.info(
         f"Party {party_id} host '{previous_username}' stepped down (client_id={client_id[:8]}...)"
     )
@@ -237,7 +247,11 @@ def api_auth_status(
             party_id=party_id,
         )
 
-    is_host = party.host_client_id == client_id
+    is_host = party_host_session_matches(
+        party,
+        client_id,
+        session.get("host_session_grant"),
+    )
     return AuthStatusResponse(
         authenticated=is_host,
         username=party.host_username if is_host else None,

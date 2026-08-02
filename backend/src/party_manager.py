@@ -72,12 +72,17 @@ class PartyManager:
         return self._party_locks.setdefault(party_id, asyncio.Lock())
 
     async def pop_if_empty(self, party_id: str) -> Party | None:
-        if party_id == self.static_party_id:
-            return None
         lock = self.lock_for(party_id)
         async with lock:
             party = self.watch_parties.get(party_id)
             if not party or party.member_count:
+                return None
+            if party_id == self.static_party_id:
+                # Static party survives by design, but disconnected identities
+                # must not accumulate forever across unrelated visitors.
+                party.participants.clear()
+                party.join_times.clear()
+                party.drift_strikes.clear()
                 return None
             party.closing = True
             party.generation = int(party.generation) + 1
@@ -733,6 +738,7 @@ class PartyManager:
         party_id: str,
         *,
         client_id: str,
+        session_grant: str,
         user_id: str,
         access_token: str,
         username: str,
@@ -747,6 +753,7 @@ class PartyManager:
         if not party:
             return False
         party.host_client_id = client_id
+        party.host_session_grant = session_grant
         party.host_user_id = user_id
         party.host_access_token = access_token
         party.host_username = username
@@ -760,6 +767,7 @@ class PartyManager:
         if not party:
             return False
         party.host_client_id = None
+        party.host_session_grant = None
         party.host_user_id = None
         party.host_access_token = None
         party.host_username = None

@@ -213,6 +213,7 @@ async def _exercise_playlist_fidelity_and_security(live_watchparty) -> None:
         duplicate_url = f"{master_url}&AudioCodec=aac&AudioCodec=mp3"
         response = await client.get(duplicate_url)
         assert response.status_code == 200
+        assert "access-control-allow-origin" not in response.headers
         assert response.text.endswith("\r\n")
         assert "\r\n" in response.text
         recorded = (await controls.get("/__test__/requests")).json()["requests"]
@@ -228,6 +229,14 @@ async def _exercise_playlist_fidelity_and_security(live_watchparty) -> None:
         assert response.status_code == 200
         assert "\r\n" not in response.text
         assert not response.text.endswith("\n")
+
+        for unsafe_uri in ("../outside.ts", "segment%2501.ts"):
+            await controls.post(
+                "/__test__/behavior",
+                json={"master_playlist": f"#EXTM3U\n{unsafe_uri}\n"},
+            )
+            unsafe_playlist = await client.get(master_url)
+            assert unsafe_playlist.status_code == 502
 
         rejected_query = await client.get(f"{master_url}&api_key=not-allowed")
         assert rejected_query.status_code == 400

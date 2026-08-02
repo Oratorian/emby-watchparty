@@ -12,7 +12,6 @@ Identity model:
 """
 
 import asyncio
-import time
 from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 
@@ -47,6 +46,7 @@ def register(ctx):
     logger = ctx["logger"]
     party_manager = ctx["party_manager"]
     token_manager = ctx["token_manager"]
+    rate_limiter = ctx.get("rate_limiter")
 
     def _client_id_for_sid(party, sid):
         """Look up the persistent client_id mapped to this socket sid."""
@@ -1248,7 +1248,6 @@ def register(ctx):
     # per sid every 4 seconds (frontend fires at ~5s cadence in normal
     # operation, so this only clips abuse).
     report_progress_min_interval = 4.0
-    _last_report_progress: dict[str, float] = {}
 
     @sio.on("report_progress")
     async def handle_report_progress(sid, data):
@@ -1259,11 +1258,14 @@ def register(ctx):
             return
 
         # Throttle Emby-facing reports per sid.
-        now = time.monotonic()
-        last = _last_report_progress.get(sid, 0.0)
-        if now - last < report_progress_min_interval:
-            return
-        _last_report_progress[sid] = now
+        if rate_limiter is not None:
+            decision = rate_limiter.check(
+                f"progress:{sid}",
+                limit=1,
+                window_seconds=int(report_progress_min_interval),
+            )
+            if not decision.allowed:
+                return
 
         await emby_client.report_playback_progress(
             item_id=commit.video.item_id,

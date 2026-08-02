@@ -139,3 +139,29 @@ def test_rate_limit_honors_application_prefix():
             assert (await client.get("/watchparty/api/example")).status_code == 429
 
     asyncio.run(exercise())
+
+
+def test_avatar_recovery_honors_master_rate_limit_toggle(tmp_path: Path):
+    app = FastAPI()
+    app.state.config = _config()
+    app.state.config._runtime.ENABLE_RATE_LIMITING = False
+    app.state.config._runtime.RATE_LIMIT_AVATAR_RECOVERY = "1 per hour"
+    app.state.rate_limiter = SlidingWindowRateLimiter()
+    app.include_router(avatar.router)
+    store = AvatarStore(
+        tmp_path / "avatars.db",
+        tmp_path / "avatars",
+        logging.getLogger("test-rate-limit-disabled"),
+    )
+    app.dependency_overrides[get_avatar_store] = lambda: store
+    app.dependency_overrides[get_logger] = lambda: logging.getLogger("test-rate-limit-disabled")
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            for _ in range(3):
+                assert (
+                    await client.post("/api/avatar/recover", json={"code": "bad"})
+                ).status_code == 200
+
+    asyncio.run(exercise())
+    assert app.state.rate_limiter.active_bucket_count == 0

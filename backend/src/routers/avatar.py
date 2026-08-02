@@ -160,16 +160,17 @@ def recover(
 ):
     """Trade a recovery code for the avatar uuid it unlocks."""
     config = request.app.state.config
-    ip = request_client_ip(request, config.TRUSTED_PROXY_CIDRS)
-    limit, window = parse_rate(getattr(config, "RATE_LIMIT_AVATAR_RECOVERY", "10 per hour"))
-    decision = request.app.state.rate_limiter.check(f"avatar-recover:{ip}", limit, window)
-    if not decision.allowed:
-        logger.warning(f"Avatar recover rate-limited for ip={ip}")
-        raise HTTPException(
-            status_code=429,
-            detail="Too many recovery attempts. Try again later.",
-            headers={"Retry-After": str(decision.retry_after)},
-        )
+    if config.ENABLE_RATE_LIMITING:
+        ip = request_client_ip(request, config.TRUSTED_PROXY_CIDRS)
+        limit, window = parse_rate(getattr(config, "RATE_LIMIT_AVATAR_RECOVERY", "10 per hour"))
+        decision = request.app.state.rate_limiter.check(f"avatar-recover:{ip}", limit, window)
+        if not decision.allowed:
+            logger.warning(f"Avatar recover rate-limited for ip={ip}")
+            raise HTTPException(
+                status_code=429,
+                detail="Too many recovery attempts. Try again later.",
+                headers={"Retry-After": str(decision.retry_after)},
+            )
 
     code = (body.code or "").strip().lower()
     if not code:

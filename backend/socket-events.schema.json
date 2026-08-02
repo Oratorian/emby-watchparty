@@ -406,7 +406,7 @@
   },
   "server_to_client": {
     "all_ready": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "auto_binge": {
           "anyOf": [
@@ -468,7 +468,7 @@
       "type": "object"
     },
     "auto_advance_cancelled": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "by_username": {
           "anyOf": [
@@ -487,7 +487,7 @@
       "type": "object"
     },
     "auto_advance_fired": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "next_item_id": {
           "title": "Next Item Id",
@@ -506,7 +506,7 @@
       "type": "object"
     },
     "auto_advance_pending": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "countdown_seconds": {
           "title": "Countdown Seconds",
@@ -552,7 +552,7 @@
       "type": "object"
     },
     "binge_finished": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "reason": {
           "anyOf": [
@@ -595,7 +595,7 @@
       "type": "object"
     },
     "binge_watch_state_changed": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "active": {
           "title": "Active",
@@ -614,7 +614,7 @@
       "type": "object"
     },
     "chat_message": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "avatar_uuid": {
           "anyOf": [
@@ -650,7 +650,7 @@
       "type": "object"
     },
     "connected": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "sid": {
           "title": "Sid",
@@ -664,7 +664,7 @@
       "type": "object"
     },
     "drift_correction": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "auto_binge": {
           "anyOf": [
@@ -726,7 +726,7 @@
       "type": "object"
     },
     "error": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "message": {
           "title": "Message",
@@ -740,7 +740,7 @@
       "type": "object"
     },
     "force_pause_before_seek": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "auto_binge": {
           "anyOf": [
@@ -802,7 +802,7 @@
       "type": "object"
     },
     "host_changed": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "host_client_id": {
           "anyOf": [
@@ -844,6 +844,18 @@
           ],
           "default": null,
           "title": "Playing Only"
+        },
+        "previous_host": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Previous Host"
         },
         "reason": {
           "anyOf": [
@@ -867,7 +879,7 @@
       "type": "object"
     },
     "host_left": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "host_client_id": {
           "anyOf": [
@@ -909,6 +921,18 @@
           ],
           "default": null,
           "title": "Playing Only"
+        },
+        "previous_host": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Previous Host"
         },
         "reason": {
           "anyOf": [
@@ -932,7 +956,7 @@
       "type": "object"
     },
     "host_reclaimed": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "host_client_id": {
           "anyOf": [
@@ -975,6 +999,18 @@
           "default": null,
           "title": "Playing Only"
         },
+        "previous_host": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Previous Host"
+        },
         "reason": {
           "anyOf": [
             {
@@ -997,21 +1033,33 @@
       "type": "object"
     },
     "join_rejected": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "message": {
           "title": "Message",
           "type": "string"
+        },
+        "retry_after": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry After"
         }
       },
       "required": [
         "message"
       ],
-      "title": "MessageOutbound",
+      "title": "JoinRejectedOutbound",
       "type": "object"
     },
     "join_vote_pending": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "eligible_voters": {
           "items": {
@@ -1038,7 +1086,7 @@
       "type": "object"
     },
     "join_vote_resolved": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "reason": {
           "anyOf": [
@@ -1069,7 +1117,7 @@
       "type": "object"
     },
     "join_vote_started": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "eligible_voters": {
           "items": {
@@ -1101,7 +1149,7 @@
       "type": "object"
     },
     "join_vote_update": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "remaining": {
           "title": "Remaining",
@@ -1129,7 +1177,7 @@
     "members_update": {
       "$defs": {
         "MemberOutbound": {
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
             "avatar_uuid": {
               "anyOf": [
@@ -1155,7 +1203,7 @@
           "type": "object"
         }
       },
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "members": {
           "default": [],
@@ -1202,7 +1250,7 @@
       "type": "object"
     },
     "party_dissolved": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "party_id": {
           "title": "Party Id",
@@ -1221,7 +1269,7 @@
       "type": "object"
     },
     "pause": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "auto_binge": {
           "anyOf": [
@@ -1283,7 +1331,7 @@
       "type": "object"
     },
     "play": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "auto_binge": {
           "anyOf": [
@@ -1345,7 +1393,7 @@
       "type": "object"
     },
     "ready_check_update": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "ready": {
           "default": [],
@@ -1368,7 +1416,7 @@
       "type": "object"
     },
     "seek": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "auto_binge": {
           "anyOf": [
@@ -1432,7 +1480,7 @@
     "streams_changed": {
       "$defs": {
         "VideoStateOutbound": {
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
             "audio_index": {
               "anyOf": [
@@ -1624,7 +1672,7 @@
           "type": "object"
         }
       },
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "current_time": {
           "title": "Current Time",
@@ -1649,7 +1697,7 @@
     "sync_state": {
       "$defs": {
         "BingeWatchStateOutbound": {
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
             "active": {
               "title": "Active",
@@ -1668,7 +1716,7 @@
           "type": "object"
         },
         "PendingAutoAdvanceOutbound": {
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
             "countdown_seconds": {
               "anyOf": [
@@ -1747,7 +1795,7 @@
           "type": "object"
         },
         "PlaybackStateOutbound": {
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
             "last_update": {
               "title": "Last Update",
@@ -1771,7 +1819,7 @@
           "type": "object"
         },
         "VideoStateOutbound": {
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
             "audio_index": {
               "anyOf": [
@@ -1963,7 +2011,7 @@
           "type": "object"
         }
       },
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "binge_watch": {
           "anyOf": [
@@ -2017,7 +2065,7 @@
       "type": "object"
     },
     "toggle_library": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "show": {
           "title": "Show",
@@ -2033,7 +2081,7 @@
     "user_joined": {
       "$defs": {
         "MemberOutbound": {
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
             "avatar_uuid": {
               "anyOf": [
@@ -2059,7 +2107,7 @@
           "type": "object"
         }
       },
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "members": {
           "default": [],
@@ -2108,7 +2156,7 @@
     "user_left": {
       "$defs": {
         "MemberOutbound": {
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
             "avatar_uuid": {
               "anyOf": [
@@ -2134,7 +2182,7 @@
           "type": "object"
         }
       },
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "members": {
           "default": [],
@@ -2181,15 +2229,28 @@
       "type": "object"
     },
     "video_ended": {
-      "additionalProperties": true,
-      "properties": {},
-      "title": "EmptyOutbound",
+      "additionalProperties": false,
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id",
+        "timestamp"
+      ],
+      "title": "VideoEndedOutbound",
       "type": "object"
     },
     "video_selected": {
       "$defs": {
         "VideoStateOutbound": {
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
             "audio_index": {
               "anyOf": [
@@ -2381,7 +2442,7 @@
           "type": "object"
         }
       },
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "video": {
           "$ref": "#/$defs/VideoStateOutbound"
@@ -2394,9 +2455,22 @@
       "type": "object"
     },
     "video_stopped": {
-      "additionalProperties": true,
-      "properties": {},
-      "title": "EmptyOutbound",
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "stopped_by": {
+          "title": "Stopped By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message",
+        "stopped_by"
+      ],
+      "title": "VideoStoppedOutbound",
       "type": "object"
     }
   }

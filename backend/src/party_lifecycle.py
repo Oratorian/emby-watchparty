@@ -123,6 +123,7 @@ class PartyLifecycle:
         if self._limiter is not None:
             for sid in party.sids():
                 cleared_limiters += self._limiter.clear_prefix(f"chat:{sid}")
+                cleared_limiters += self._limiter.clear_prefix(f"progress:{sid}")
         with suppress(Exception):
             await self._sio.close_room(party_id)
         self._logger.info(

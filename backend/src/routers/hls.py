@@ -170,8 +170,14 @@ def _rewrite_playlist(
             uri = line.rstrip("\r\n")
             terminator = line[len(uri) :]
             parsed = urlsplit(uri)
-            if parsed.scheme or parsed.netloc or uri.startswith(("/", "\\")):
-                raise ValueError("playlist contains an unsafe absolute URI")
+            if (
+                parsed.scheme
+                or parsed.netloc
+                or uri.startswith(("/", "\\"))
+                or any(ord(character) < 32 or ord(character) == 127 for character in uri)
+                or not _safe_hls_subpath(parsed.path)
+            ):
+                raise ValueError("playlist contains an unsafe URI")
             if (".m3u8" in uri or ".ts" in uri) and "token=" not in uri:
                 sep = "&" if "?" in uri else "?"
                 lines[i] = uri + f"{sep}token={token}" + terminator
@@ -234,7 +240,6 @@ async def proxy_hls_master(
             content=playlist,
             media_type="application/vnd.apple.mpegurl",
             headers={
-                "Access-Control-Allow-Origin": "*",
                 "X-Content-Type-Options": "nosniff",
             },
         )
@@ -335,7 +340,6 @@ async def proxy_hls_segment(
                 content=playlist,
                 media_type="application/vnd.apple.mpegurl",
                 headers={
-                    "Access-Control-Allow-Origin": "*",
                     "X-Content-Type-Options": "nosniff",
                 },
             )
@@ -364,7 +368,6 @@ async def proxy_hls_segment(
                 await emby_resp.aclose()
 
         response_headers = {
-            "Access-Control-Allow-Origin": "*",
             "X-Content-Type-Options": "nosniff",
         }
         if emby_resp.status_code == 206:
