@@ -118,7 +118,7 @@ async def upload_avatar(
     try:
         avatar_uuid, code = store.create_uploaded(data, ext)
     except Exception as e:
-        logger.error(f"Avatar upload failed: {e}")
+        logger.error("Avatar upload failed: error=%s", type(e).__name__)
         return AvatarCreatedResponse(success=False, message="Could not save image")
 
     return AvatarCreatedResponse(success=True, uuid=avatar_uuid, code=code)
@@ -137,7 +137,7 @@ def create_gravatar(
     try:
         avatar_uuid, code = store.create_gravatar(email)
     except Exception as e:
-        logger.error(f"Gravatar avatar creation failed: {e}")
+        logger.error("Gravatar avatar creation failed: error=%s", type(e).__name__)
         return AvatarCreatedResponse(success=False, message="Could not register")
     return AvatarCreatedResponse(success=True, uuid=avatar_uuid, code=code)
 
@@ -233,7 +233,11 @@ async def host_avatar(
             },
         )
     except Exception as e:
-        logger.warning(f"Host avatar proxy failed for {party_id}: {e}")
+        logger.warning(
+            "Host avatar proxy failed party=%s error=%s",
+            party_id,
+            type(e).__name__,
+        )
         return Response(status_code=404)
 
 
@@ -305,7 +309,11 @@ async def serve_avatar(
                 },
             )
         except Exception as e:
-            logger.warning(f"Gravatar proxy failed for {avatar_uuid[:8]}: {e}")
+            logger.warning(
+                "Gravatar proxy failed avatar=%s error=%s",
+                avatar_uuid[:8],
+                type(e).__name__,
+            )
             return Response(status_code=404)
 
     return Response(status_code=404)

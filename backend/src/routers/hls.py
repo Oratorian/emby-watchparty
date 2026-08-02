@@ -228,7 +228,7 @@ async def proxy_hls_master(item_id: str, request: Request,
             media_type="application/json",
         )
     except ValueError as e:
-        logger.warning(f"Rejected unsafe master playlist: {e}")
+        logger.warning("Rejected unsafe master playlist: error=%s", type(e).__name__)
         return Response(content='{"error": "Unsafe upstream playlist"}',
                         status_code=502, media_type="application/json")
     except httpx.HTTPError as e:
@@ -352,7 +352,11 @@ async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
             media_type="application/json",
         )
     except ValueError as e:
-        logger.warning(f"Rejected unsafe HLS playlist {subpath}: {e}")
+        logger.warning(
+            "Rejected unsafe HLS playlist path=%s error=%s",
+            subpath,
+            type(e).__name__,
+        )
         return Response(content='{"error": "Unsafe upstream playlist"}',
                         status_code=502, media_type="application/json")
     except httpx.HTTPError as e:

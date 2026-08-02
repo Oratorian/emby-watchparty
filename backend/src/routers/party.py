@@ -80,7 +80,11 @@ def list_parties(
             ))
         except Exception as e:
             # One bad party record should not break the whole index listing.
-            logger.warning(f"Skipping party {code} in public listing: {e}")
+            logger.warning(
+                "Skipping party in public listing party=%s error=%s",
+                code,
+                type(e).__name__,
+            )
 
     logger.debug(f"Party list served: {len(items)} active part{'y' if len(items) == 1 else 'ies'}")
     return PartyListResponse(require_login=False, parties=items)

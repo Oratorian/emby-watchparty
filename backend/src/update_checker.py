@@ -19,4 +19,4 @@ async def check_for_updates(http_client, logger) -> None:
         else:
             logger.info("Running latest version: v%s", __version__)
     except Exception as exc:
-        logger.debug("Update check failed: %s", exc)
+        logger.debug("Update check failed: error=%s", type(exc).__name__)

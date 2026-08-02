@@ -259,5 +259,5 @@ async def api_version(
             result.update_available = bool(latest and latest != __version__)
             result.release_url = release.get("html_url")
     except Exception as e:
-        logger.warning(f"GitHub version check failed: {e}")
+        logger.warning("GitHub version check failed: error=%s", type(e).__name__)
     return result

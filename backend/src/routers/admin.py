@@ -105,7 +105,7 @@ async def admin_login(body: AdminLoginRequest, request: Request,
         return {"success": True}
 
     except Exception as e:
-        logger.error(f"Admin login error: {e}")
+        logger.error("Admin login error=%s", type(e).__name__)
         return {"success": False, "message": "Authentication failed"}
 
 
@@ -255,7 +255,7 @@ async def update_config(
             restart_required=restart_required,
         )
     except Exception as e:
-        logger.error(f"Config update failed: {e}")
+        logger.error("Config update failed: error=%s", type(e).__name__)
         return ConfigUpdateResponse(success=False)
 
 
