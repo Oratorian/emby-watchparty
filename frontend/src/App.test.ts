@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App.vue'
 import { api } from '@/api/client'
+import type { AuthResponse } from '@/api/client'
 
 vi.mock('@/api/client', () => ({
   api: {
@@ -17,7 +18,7 @@ describe('application startup', () => {
   })
 
   it('keeps routed content hidden until Vue finishes startup', async () => {
-    let finishStartup!: (value: Record<string, unknown>) => void
+    let finishStartup!: (value: AuthResponse) => void
     vi.mocked(api.authStatus).mockReturnValue(
       new Promise((resolve) => {
         finishStartup = resolve

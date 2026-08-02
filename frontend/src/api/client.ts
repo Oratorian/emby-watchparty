@@ -10,11 +10,19 @@
  */
 import { withPrefix } from '@/utils/appPrefix'
 
+export type JsonPrimitive = string | number | boolean | null
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]
+export interface JsonObject { [key: string]: JsonValue }
+
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
-    public readonly body: unknown,
+    public readonly body: JsonValue | undefined,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -67,8 +75,8 @@ export interface AvatarResponse extends SuccessResponse {
   uuid?: string
   code?: string
 }
-export type JsonRecord = Record<string, unknown>
-export interface AdminConfig extends JsonRecord {
+export type JsonRecord = JsonObject
+export interface AdminConfig {
   BINGE_WATCH_COUNTDOWN_SECONDS: number
   BINGE_WATCH_ENABLED: boolean
   CONSOLE_LOG_LEVEL: string
@@ -91,6 +99,7 @@ export interface AdminConfig extends JsonRecord {
   REQUIRE_LOGIN: boolean
   STATIC_SESSION_ENABLED: boolean
   STATIC_SESSION_ID: string
+  error?: string
 }
 export interface PartyListResponse {
   require_login: boolean
@@ -152,7 +161,7 @@ export interface QualityOptionsResponse {
   }>
   default_id: string
 }
-export interface ConfigUpdateResponse extends JsonRecord {
+export interface ConfigUpdateResponse {
   success: boolean
   changed: string[]
   rejected: Array<{ key: string; reason: string }>
@@ -161,26 +170,24 @@ export interface ConfigUpdateResponse extends JsonRecord {
   error?: string
 }
 
-export async function apiFetch<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
+export async function apiFetch<T = JsonValue>(path: string, options: RequestInit = {}): Promise<T> {
   const resp = await fetch(withPrefix(path), {
     headers: { 'Content-Type': 'application/json', ...options.headers },
     credentials: 'same-origin',
     ...options,
   })
   const text = await resp.text()
-  let body: unknown = undefined
+  let body: JsonValue | undefined
   if (text) {
     try {
-      body = JSON.parse(text)
+      body = JSON.parse(text) as JsonValue
     } catch {
       body = text
     }
   }
 
   if (!resp.ok) {
-    const record = body && typeof body === 'object'
-      ? body as Record<string, unknown>
-      : undefined
+    const record = isJsonObject(body) ? body : undefined
     const message = [record?.detail, record?.error, record?.message]
       .find((value): value is string => typeof value === 'string')
       || resp.statusText
