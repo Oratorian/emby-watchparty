@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import html
 import json
+import logging
 import secrets
+import sys
 import threading
-from contextlib import AsyncExitStack, asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from pathlib import Path
 
 import httpx
@@ -22,6 +24,7 @@ from backend.src.avatar_store import AvatarStore
 from backend.src.bootstrap import (
     SetupAttemptLimiter,
     save_bootstrap_config,
+    save_setup_token,
     validate_bootstrap_submission,
 )
 from backend.src.config import Config
@@ -98,8 +101,16 @@ errors.textContent=result.errors?Object.entries(result.errors).map(([field,messa
 
 
 @asynccontextmanager
-async def setup_lifespan(_application: FastAPI):
-    """Setup mode intentionally owns no normal application resources."""
+async def setup_lifespan(application: FastAPI):
+    """Setup mode owns only logging and bootstrap recovery state."""
+    config = application.state.bootstrap_config
+    logger = _setup_logging(config)
+    application.state.logger = logger
+    logger.warning(
+        "Setup required; invalid boot fields=%s token_file=%s",
+        ",".join(sorted(config.startup_errors())),
+        application.state.setup_token_path,
+    )
     yield
 
 
@@ -118,7 +129,25 @@ def _create_setup_app(config: Config, project_root: Path) -> FastAPI:
     setup_lock = threading.Lock()
     setup_attempts = SetupAttemptLimiter()
     print(f"Emby Watch Party setup required. Bootstrap token: {bootstrap_token}", flush=True)
+    token_path = save_setup_token(project_root, bootstrap_token)
+    application.state.setup_token_path = token_path
+    stderr_logger = logging.getLogger(f"emby-watchparty.setup.{id(application)}")
+    stderr_logger.setLevel(logging.WARNING)
+    stderr_logger.propagate = False
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    stderr_logger.addHandler(handler)
+    try:
+        stderr_logger.warning(
+            "Setup required; invalid boot fields=%s; recovery token file=%s",
+            ",".join(sorted(config.startup_errors())),
+            token_path,
+        )
+    finally:
+        stderr_logger.removeHandler(handler)
+        handler.close()
     prefix = "" if "APP_PREFIX" in config.startup_errors() else config.APP_PREFIX
+    application.add_middleware(RequestLogMiddleware)
 
     @application.get(f"{prefix}/setup", include_in_schema=False)
     async def setup_page():
@@ -148,7 +177,7 @@ def _create_setup_app(config: Config, project_root: Path) -> FastAPI:
 
     @application.get(f"{prefix}/api/health", include_in_schema=False)
     async def setup_health():
-        return {"status": "ok", "version": __version__, "codename": __codename__}
+        return {"status": "setup_required", "version": __version__, "codename": __codename__}
 
     @application.get(f"{prefix}/api/ready", include_in_schema=False)
     async def setup_ready():
@@ -167,6 +196,11 @@ def _create_setup_app(config: Config, project_root: Path) -> FastAPI:
         if not token_matches:
             peer = request.client.host if request.client else "unknown"
             decision = setup_attempts.record_failure(peer)
+            request.app.state.logger.warning(
+                "Failed bootstrap token attempt peer=%s limited=%s",
+                peer,
+                not decision.allowed,
+            )
             if not decision.allowed:
                 return JSONResponse(
                     {"detail": "Too many failed bootstrap token attempts"},
@@ -199,9 +233,20 @@ def _create_setup_app(config: Config, project_root: Path) -> FastAPI:
                     {"status": "saved", "restart_required": True},
                     status_code=409,
                 )
-            save_bootstrap_config(project_root, values)
+            save_bootstrap_config(
+                project_root,
+                values,
+                excluded_fields=config.explicit_env_fields,
+            )
             setup_state["saved"] = True
             setup_state["token"] = None
+            try:
+                token_path.unlink()
+            except OSError:
+                request.app.state.logger.error(
+                    "Failed to remove setup token recovery file path=%s",
+                    token_path,
+                )
         return {"status": "saved", "restart_required": True}
 
     @application.api_route(
@@ -403,6 +448,11 @@ def create_app(
         resolved_config.validate_for_startup()
     except ValueError:
         return _create_setup_app(resolved_config, resolved_root)
+    bootstrap_path = resolved_root / "data" / "bootstrap.json"
+    if config is None and not bootstrap_path.exists():
+        save_bootstrap_config(resolved_root, {})
+    with suppress(OSError):
+        (resolved_root / "data" / "setup-token").unlink()
     prefix = resolved_config.APP_PREFIX
     session_secret = resolved_config.SESSION_SECRET or secrets.token_hex(32)
     origins: str | list[str]

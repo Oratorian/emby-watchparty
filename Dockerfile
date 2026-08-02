@@ -44,7 +44,9 @@ EXPOSE 5000
 # expansion is empty and the URL stays /api/health; when set to /watchparty
 # the URL becomes /watchparty/api/health, matching the FastAPI router prefix.
 # ${APP_PREFIX%/} strips a trailing slash so operators who wrote
-# APP_PREFIX=/watchparty/ don't end up with a // in the path.
+# APP_PREFIX=/watchparty/ don't end up with a // in the path. Setup mode
+# intentionally remains live and returns HTTP 200 with status=setup_required;
+# use /api/ready when a load balancer needs normal-application readiness.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -fsS "http://localhost:${WATCH_PARTY_PORT:-5000}${APP_PREFIX%/}/api/health" || exit 1
 

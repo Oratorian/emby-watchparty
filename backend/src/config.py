@@ -117,12 +117,18 @@ class EnvConfig:
     ) -> "EnvConfig":
         root = Path(project_root or Path(__file__).parent.parent.parent)
         persisted: dict = {}
+        data_dir = root / "data"
         bootstrap_path = root / "data" / BOOTSTRAP_CONFIG_NAME
         if bootstrap_path.exists():
             try:
                 raw = json.loads(bootstrap_path.read_text(encoding="utf-8"))
                 if isinstance(raw, dict):
-                    persisted = raw
+                    if raw.get("CONFIGURED") is True:
+                        persisted = {
+                            key: value for key, value in raw.items() if key != "CONFIGURED"
+                        }
+                    elif errors is not None:
+                        errors["BOOTSTRAP_CONFIG"] = "Persisted bootstrap config is not configured"
                 elif errors is not None:
                     errors["BOOTSTRAP_CONFIG"] = "Persisted bootstrap config must be an object"
             except json.JSONDecodeError:
@@ -131,6 +137,8 @@ class EnvConfig:
             except OSError:
                 if errors is not None:
                     errors["BOOTSTRAP_CONFIG"] = "Persisted bootstrap config cannot be read"
+        elif data_dir.exists() and errors is not None:
+            errors["BOOTSTRAP_CONFIG"] = "Persistent data exists but bootstrap config is missing"
         dot_env = {
             key: value for key, value in dotenv_values(root / ".env").items() if value is not None
         }

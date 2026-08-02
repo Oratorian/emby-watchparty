@@ -169,7 +169,48 @@ def validate_bootstrap_submission(
     return normalized, errors
 
 
-def save_bootstrap_config(project_root: Path, values: dict[str, object]) -> Path:
+def save_setup_token(project_root: Path, token: str) -> Path:
+    """Atomically persist the one-time setup token with restrictive permissions."""
+    data_dir = project_root / "data"
+    path = data_dir / "setup-token"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        data_dir.chmod(0o700)
+
+    temp_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=data_dir,
+            prefix="setup-token.",
+            suffix=".tmp",
+            delete=False,
+            encoding="utf-8",
+        ) as temporary:
+            temp_name = temporary.name
+            with contextlib.suppress(OSError):
+                Path(temp_name).chmod(0o600)
+            temporary.write(f"{token}\n")
+            temporary.flush()
+            with contextlib.suppress(OSError):
+                os.fsync(temporary.fileno())
+        Path(temp_name).replace(path)
+        temp_name = None
+        with contextlib.suppress(OSError):
+            path.chmod(0o600)
+        return path
+    finally:
+        if temp_name is not None:
+            with contextlib.suppress(OSError):
+                Path(temp_name).unlink()
+
+
+def save_bootstrap_config(
+    project_root: Path,
+    values: dict[str, object],
+    *,
+    excluded_fields: set[str] | frozenset[str] = frozenset(),
+) -> Path:
     """Atomically save bootstrap values beside other mounted persistent data."""
     data_dir = project_root / "data"
     path = data_dir / BOOTSTRAP_CONFIG_NAME
@@ -180,8 +221,9 @@ def save_bootstrap_config(project_root: Path, values: dict[str, object]) -> Path
     persisted = {
         name: list(value) if isinstance(value, tuple) else value
         for name, value in values.items()
-        if name in BOOTSTRAP_FIELDS
+        if name in BOOTSTRAP_FIELDS and name not in excluded_fields
     }
+    persisted["CONFIGURED"] = True
     temp_name: str | None = None
     try:
         with tempfile.NamedTemporaryFile(

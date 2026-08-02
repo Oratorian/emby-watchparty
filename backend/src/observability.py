@@ -26,7 +26,13 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
                 session = request.scope.get("session") or {}
                 party_id = session.get("party_id", "-")
                 latency_ms = (perf_counter() - started) * 1000
-                logger.info(
+                log = (
+                    logger.debug
+                    if "/hls/" in request.url.path
+                    or request.url.path.endswith(("/api/health", "/api/ready"))
+                    else logger.info
+                )
+                log(
                     "request route=%s method=%s party=%s latency_ms=%.1f outcome=%s retry=0",
                     request.url.path,
                     request.method,
