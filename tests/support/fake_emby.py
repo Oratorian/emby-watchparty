@@ -238,6 +238,8 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     async def playback_report(request: Request, suffix: str):
         del suffix
         state.record(request, body=await request.json())
+        if failure := await state.before(request):
+            return failure
         return {}
 
     @app.delete("/emby/Videos/ActiveEncodings")

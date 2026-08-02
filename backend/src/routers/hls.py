@@ -49,12 +49,20 @@ _ALLOWED_EMBY_PARAMS = {
 }
 
 
+class UnsafeHLSQuery(ValueError):
+    """A client supplied a parameter outside the HLS allowlist."""
+
+
 def _sanitize_query(query_items):
-    """Drop `token` (our own) and anything not on the Emby allowlist."""
-    return [
-        (k, v) for k, v in query_items
-        if k != "token" and k in _ALLOWED_EMBY_PARAMS
-    ]
+    """Remove the party token and reject every unapproved upstream parameter."""
+    sanitized = []
+    for key, value in query_items:
+        if key == "token":
+            continue
+        if key not in _ALLOWED_EMBY_PARAMS:
+            raise UnsafeHLSQuery(key)
+        sanitized.append((key, value))
+    return sanitized
 
 
 def _safe_hls_subpath(subpath: str) -> bool:
@@ -212,6 +220,13 @@ async def proxy_hls_master(item_id: str, request: Request,
                 "X-Content-Type-Options": "nosniff",
             },
         )
+    except UnsafeHLSQuery as e:
+        logger.warning("Rejected unapproved HLS query parameter: %s", e)
+        return Response(
+            content='{"error": "Invalid HLS query"}',
+            status_code=400,
+            media_type="application/json",
+        )
     except ValueError as e:
         logger.warning(f"Rejected unsafe master playlist: {e}")
         return Response(content='{"error": "Unsafe upstream playlist"}',
@@ -329,6 +344,13 @@ async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
             headers=response_headers,
         )
 
+    except UnsafeHLSQuery as e:
+        logger.warning("Rejected unapproved HLS query parameter: %s", e)
+        return Response(
+            content='{"error": "Invalid HLS query"}',
+            status_code=400,
+            media_type="application/json",
+        )
     except ValueError as e:
         logger.warning(f"Rejected unsafe HLS playlist {subpath}: {e}")
         return Response(content='{"error": "Unsafe upstream playlist"}',
