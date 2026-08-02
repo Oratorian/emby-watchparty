@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import secrets
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 
 import httpx
@@ -59,66 +59,69 @@ async def lifespan(application: FastAPI):
     logger = _setup_logging(config)
     root: Path = application.state.project_root
 
-    party_manager = PartyManager(config, logger)
-    token_manager = HLSTokenManager(config, logger)
-    avatar_store = AvatarStore(
-        db_path=root / "data" / "avatars.db",
-        avatars_dir=root / "images" / "avatars",
-        logger=logger,
-    )
-    admin_session_store = AdminSessionStore(ttl_seconds=config.SESSION_EXPIRY)
-    rate_limiter = SlidingWindowRateLimiter()
-    http_client = httpx.AsyncClient(
-        timeout=httpx.Timeout(30.0, connect=5.0, pool=5.0),
-        follow_redirects=False,
-        transport=application.state.http_transport,
-    )
-    emby_gateway = EmbyGateway(http_client, config.EMBY_SERVER_URL, logger)
-    emby_client = EmbyClient(
-        config.EMBY_SERVER_URL, config.EMBY_API_KEY, logger, emby_gateway
-    )
-    stream_builder = StreamBuilder(emby_client, logger, config)
-
-    application.state.config = config
-    application.state.logger = logger
-    application.state.emby_client = emby_client
-    application.state.party_manager = party_manager
-    application.state.token_manager = token_manager
-    application.state.stream_builder = stream_builder
-    application.state.avatar_store = avatar_store
-    application.state.admin_session_store = admin_session_store
-    application.state.rate_limiter = rate_limiter
-    application.state.http_client = http_client
-    application.state.emby_gateway = emby_gateway
-
-    socket_context = register_socket_handlers(
-        application.state.sio,
-        emby_client,
-        party_manager,
-        token_manager,
-        stream_builder,
-        config,
-        logger,
-        session_secret=application.state.session_secret,
-        rate_limiter=rate_limiter,
-    )
-    application.state.socket_context = socket_context
-
-    logger.info('Emby Watch Party v%s - "%s"', __version__, __codename__)
-    logger.info("Emby Server: %s", config.EMBY_SERVER_URL)
-    if application.state.session_ephemeral:
-        logger.warning(
-            "SESSION_SECRET is empty; using an ephemeral key. Sessions expire on restart."
+    async with AsyncExitStack() as resources:
+        # Acquire the process-wide HTTP client first so every later startup
+        # failure still closes its transport through the exit stack.
+        http_client = await resources.enter_async_context(httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=5.0, pool=5.0),
+            follow_redirects=False,
+            transport=application.state.http_transport,
+        ))
+        party_manager = PartyManager(config, logger)
+        token_manager = HLSTokenManager(config, logger)
+        avatar_store = AvatarStore(
+            db_path=root / "data" / "avatars.db",
+            avatars_dir=root / "images" / "avatars",
+            logger=logger,
         )
-    if application.state.enable_update_check:
-        await check_for_updates(http_client, logger)
+        admin_session_store = AdminSessionStore(ttl_seconds=config.SESSION_EXPIRY)
+        rate_limiter = SlidingWindowRateLimiter()
+        emby_gateway = EmbyGateway(http_client, config.EMBY_SERVER_URL, logger)
+        emby_client = EmbyClient(
+            config.EMBY_SERVER_URL, config.EMBY_API_KEY, logger, emby_gateway
+        )
+        stream_builder = StreamBuilder(emby_client, logger, config)
 
-    try:
-        yield
-    finally:
-        logger.info("Shutting down")
-        await socket_context["party_lifecycle"].dissolve_all(reason="shutdown")
-        await http_client.aclose()
+        application.state.config = config
+        application.state.logger = logger
+        application.state.emby_client = emby_client
+        application.state.party_manager = party_manager
+        application.state.token_manager = token_manager
+        application.state.stream_builder = stream_builder
+        application.state.avatar_store = avatar_store
+        application.state.admin_session_store = admin_session_store
+        application.state.rate_limiter = rate_limiter
+        application.state.http_client = http_client
+        application.state.emby_gateway = emby_gateway
+
+        socket_context = register_socket_handlers(
+            application.state.sio,
+            emby_client,
+            party_manager,
+            token_manager,
+            stream_builder,
+            config,
+            logger,
+            session_secret=application.state.session_secret,
+            rate_limiter=rate_limiter,
+        )
+        application.state.socket_context = socket_context
+
+        logger.info('Emby Watch Party v%s - "%s"', __version__, __codename__)
+        logger.info("Emby Server: %s", config.EMBY_SERVER_URL)
+        if application.state.session_ephemeral:
+            logger.warning(
+                "SESSION_SECRET is empty; using an ephemeral key. "
+                "Sessions expire on restart."
+            )
+        if application.state.enable_update_check:
+            await check_for_updates(http_client, logger)
+
+        try:
+            yield
+        finally:
+            logger.info("Shutting down")
+            await socket_context["party_lifecycle"].dissolve_all(reason="shutdown")
 
 
 def _install_api_and_socket_routes(application: FastAPI, prefix: str) -> None:
