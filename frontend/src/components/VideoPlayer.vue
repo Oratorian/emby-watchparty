@@ -54,7 +54,15 @@ function attachStream(url: string) {
   // and create feedback loops across clients.
   isSyncing.value = true
 
-  if (Hls.isSupported()) {
+  // iOS always has a native HLS stack. Some WebKit environments also
+  // expose enough MediaSource APIs for Hls.isSupported() to return true,
+  // despite Hls.js never completing media attachment. Prefer native HLS
+  // for Apple mobile user agents even when canPlayType() under-reports it.
+  const prefersNativeHls =
+    video.canPlayType('application/vnd.apple.mpegurl') !== ''
+    || /iPad|iPhone|iPod/.test(navigator.userAgent)
+
+  if (!prefersNativeHls && Hls.isSupported()) {
     const hlsConfig: Partial<Hls['config']> = {
       enableWorker: true,
       lowLatencyMode: false,
@@ -126,9 +134,9 @@ function attachStream(url: string) {
       }
     })
   } else {
-    // Native HLS path (Safari/iOS). Capability probing is not reliable
-    // in all WebKit shells, so an unavailable MSE/Hls.js path must still
-    // attach the playlist instead of leaving the video without a source.
+    // Native HLS path (Safari/iOS), plus the final fallback when neither
+    // native capability probing nor Hls.js reports support. Attaching the
+    // playlist is safer than leaving the player without a source.
     video.src = url
     video.addEventListener(
       'loadedmetadata',
