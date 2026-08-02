@@ -547,6 +547,37 @@ def register(ctx):
                     logger.info(f"Evicted stale session {stale_sid} for {username}")
                     break
 
+        pending_replay = await party_manager.refresh_join_applicant(
+            party_id,
+            client_id=client_id,
+            sid=sid,
+        )
+        if pending_replay:
+            old_pending_sid, pending = pending_replay
+            if old_pending_sid != sid:
+                await sio.leave_room(old_pending_sid, party_id)
+            await sio.enter_room(sid, party_id)
+            configured_timeout = getattr(
+                config, "LATE_JOIN_VOTE_TIMEOUT_SECONDS", 20
+            )
+            try:
+                elapsed = (
+                    datetime.now() - datetime.fromisoformat(pending.requested_at)
+                ).total_seconds()
+            except ValueError:
+                elapsed = 0
+            vote_seconds_remaining = max(1, int(configured_timeout - elapsed))
+            await sio.emit("join_vote_pending", {
+                "timeout_seconds": vote_seconds_remaining,
+                "eligible_voters": _vote_usernames(
+                    party, pending.eligible_voters
+                ),
+                "required_majority": (
+                    len(pending.eligible_voters) // 2
+                ) + 1,
+            }, to=sid)
+            return
+
         # Check max users (count includes any pending late joiner)
         current_count = party.member_count
         if party.pending_join:

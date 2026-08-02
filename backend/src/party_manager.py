@@ -427,6 +427,26 @@ class PartyManager:
             party.pending_join = vote
             return True
 
+    async def refresh_join_applicant(
+        self,
+        party_id: str,
+        *,
+        client_id: str | None,
+        sid: str,
+    ) -> tuple[str, JoinVote] | None:
+        """Move an idempotent pending applicant onto its current socket."""
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            vote = party.pending_join if party else None
+            if vote is None or not client_id or vote.client_id != client_id:
+                return None
+            old_sid = vote.sid
+            vote.sid = sid
+            return old_sid, vote
+
     async def clear_join_vote(
         self,
         party_id: str,
