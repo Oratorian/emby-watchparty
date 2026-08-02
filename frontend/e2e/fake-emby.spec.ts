@@ -117,9 +117,11 @@ test('admin modal traps focus and Escape restores its trigger', async ({ page })
   await trigger.click()
   const dialog = page.getByRole('dialog', { name: 'Admin Panel' })
   await expect(dialog).toBeFocused()
+  const save = page.getByRole('button', { name: 'Save Settings' })
+  await expect(save).toBeVisible()
 
   await page.keyboard.press('Shift+Tab')
-  await expect(page.getByRole('button', { name: 'Save Settings' })).toBeFocused()
+  await expect(save).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: 'Close admin panel' })).toBeFocused()
 

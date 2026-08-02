@@ -80,7 +80,12 @@ const {
   insertEmoji,
   addSystemMessage,
 } = usePartyChat(socket, party)
-const { showAdminModal, adminTriggerBtn, adminModalShellRef } = usePartyAdmin(party)
+const {
+  showAdminModal,
+  adminTriggerBtn,
+  adminModalShellRef,
+  handleAdminModalKeydown,
+} = usePartyAdmin(party)
 const { attach: attachReconnect } = usePartyReconnect(socket, party, avatar, getClientId)
 const { attach: attachVoting } = usePartyVoting(socket, party)
 const { reloading: myStreamReloading, signalReady: onStreamReady } = usePartyStream(
@@ -1668,6 +1673,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
       aria-modal="true"
       aria-label="Admin Panel"
       tabindex="-1"
+      @keydown.capture="handleAdminModalKeydown"
     >
       <div class="admin-modal-header">
         <h2>Admin Panel</h2>

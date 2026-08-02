@@ -9,7 +9,34 @@ export function usePartyAdmin(party: PartyStore) {
   const adminModalShellRef = ref<HTMLElement | null>(null)
 
   const onEscape = (event: KeyboardEvent) => {
-    if (event.key === 'Escape' && showAdminModal.value) showAdminModal.value = false
+    if (!showAdminModal.value) return
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      showAdminModal.value = false
+      return
+    }
+    if (event.key !== 'Tab' || !adminModalShellRef.value) return
+    const focusable = Array.from(
+      adminModalShellRef.value.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), select:not(:disabled), '
+        + 'textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+      ),
+    )
+    if (!focusable.length) {
+      event.preventDefault()
+      adminModalShellRef.value.focus()
+      return
+    }
+    const first = focusable[0]!
+    const last = focusable[focusable.length - 1]!
+    const active = document.activeElement
+    if (event.shiftKey && (active === first || active === adminModalShellRef.value)) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault()
+      first.focus()
+    }
   }
 
   const stopModalWatch = watch(showAdminModal, (open, wasOpen) => {
@@ -35,5 +62,10 @@ export function usePartyAdmin(party: PartyStore) {
     stopReadyWatch()
   })
 
-  return { showAdminModal, adminTriggerBtn, adminModalShellRef }
+  return {
+    showAdminModal,
+    adminTriggerBtn,
+    adminModalShellRef,
+    handleAdminModalKeydown: onEscape,
+  }
 }
