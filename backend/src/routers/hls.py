@@ -1,9 +1,9 @@
 """
 HLS Router - Proxy HLS playlists and segments from Emby.
 
-Auth model: the URL-embedded HLS token (HLSTokenManager) proves the
-caller is a member of the party. The party's host_access_token is then
-used to sign every upstream Emby request. When the host fully leaves
+Auth model: the signed cookie resolves the caller's active party. With
+validation enabled, the URL token must be valid for that same party.
+The party's host_access_token signs every upstream Emby request. When the host fully leaves
 (token cleared) the route returns 423 -- but during PLAYING-ONLY the
 stored token keeps the current video alive until it ends naturally.
 """
@@ -16,12 +16,15 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response, StreamingResponse
 
 from backend.src.dependencies import (
+    PARTY_HOST_TOKEN_RESPONSES,
+    PartySession,
     get_config,
     get_emby_client,
     get_emby_gateway,
     get_logger,
     get_party_manager,
     get_token_manager,
+    require_host_token,
 )
 
 router = APIRouter(prefix="/hls", tags=["hls"])
@@ -102,7 +105,15 @@ def _safe_hls_subpath(subpath: str) -> bool:
     return not any(part in {".", ".."} for part in normalized.split("/"))
 
 
-def _resolve_host_creds(request: Request, config, token_manager, party_manager, logger):
+def _resolve_host_creds(
+    request: Request,
+    config,
+    token_manager,
+    party_manager,
+    logger,
+    *,
+    session_party_id: str,
+):
     """Authorize through token or dev session; return host credentials and party ID.
 
     Returns (None, None, None) when validation or host lookup fails so
@@ -119,6 +130,14 @@ def _resolve_host_creds(request: Request, config, token_manager, party_manager, 
             logger.debug("HLS denied: token unknown or expired")
             return None, None, None
 
+        if party_id.upper() != session_party_id.upper():
+            logger.warning(
+                "HLS denied: token party %s does not match session party %s",
+                party_id,
+                session_party_id,
+            )
+            return None, None, None
+
         valid = token_manager.validate(
             token,
             party_exists_fn=party_manager.exists,
@@ -130,10 +149,7 @@ def _resolve_host_creds(request: Request, config, token_manager, party_manager, 
             logger.debug(f"HLS denied: token failed validation for party {party_id}")
             return None, None, None
     else:
-        party_id = request.session.get("party_id")
-        if not party_id:
-            logger.debug("HLS denied: validation disabled but no party session")
-            return None, None, None
+        party_id = session_party_id
 
     party = party_manager.get(party_id)
     if not party or not party.host_access_token:
@@ -141,6 +157,31 @@ def _resolve_host_creds(request: Request, config, token_manager, party_manager, 
         return None, None, None
 
     return party.host_access_token, party.host_user_id, party_id
+
+
+def _safe_upstream_playlist_uri(uri: str, item_id: str, emby_url: str) -> bool:
+    if any(ord(character) < 32 or ord(character) == 127 for character in uri):
+        return False
+
+    parsed = urlsplit(uri)
+    emby = urlsplit(emby_url)
+    upstream_path = f"{emby.path.rstrip('/')}/emby/Videos/{item_id}/"
+    root_path = f"/emby/Videos/{item_id}/"
+
+    if parsed.scheme or parsed.netloc:
+        if parsed.scheme != emby.scheme or parsed.netloc != emby.netloc:
+            return False
+        if not parsed.path.startswith(upstream_path):
+            return False
+        subpath = parsed.path[len(upstream_path) :]
+    elif uri.startswith(("/", "\\")):
+        if not parsed.path.startswith(root_path):
+            return False
+        subpath = parsed.path[len(root_path) :]
+    else:
+        subpath = parsed.path
+
+    return _safe_hls_subpath(subpath)
 
 
 def _rewrite_playlist(
@@ -152,6 +193,14 @@ def _rewrite_playlist(
 ) -> str:
     """Rewrite Emby URLs in HLS playlists to proxy URLs"""
     escaped_id = re.escape(item_id)
+
+    raw_lines = content.splitlines(keepends=True)
+    for line in raw_lines:
+        if line.strip().startswith("#") or not line.strip():
+            continue
+        uri = line.rstrip("\r\n")
+        if not _safe_upstream_playlist_uri(uri, item_id, emby_url):
+            raise ValueError("playlist contains an unsafe URI")
 
     content = re.sub(
         rf"{re.escape(emby_url)}/emby/Videos/{escaped_id}/",
@@ -175,15 +224,6 @@ def _rewrite_playlist(
                 continue
             uri = line.rstrip("\r\n")
             terminator = line[len(uri) :]
-            parsed = urlsplit(uri)
-            if (
-                parsed.scheme
-                or parsed.netloc
-                or uri.startswith(("/", "\\"))
-                or any(ord(character) < 32 or ord(character) == 127 for character in uri)
-                or not _safe_hls_subpath(parsed.path)
-            ):
-                raise ValueError("playlist contains an unsafe URI")
             if (".m3u8" in uri or ".ts" in uri) and "token=" not in uri:
                 sep = "&" if "?" in uri else "?"
                 lines[i] = uri + f"{sep}token={token}" + terminator
@@ -199,7 +239,7 @@ def _rewrite_playlist(
             "content": {"application/vnd.apple.mpegurl": {}},
             "description": "HLS master playlist (rewritten to proxy URLs)",
         },
-        401: {"description": "HLS token missing, invalid, or party has no host"},
+        **PARTY_HOST_TOKEN_RESPONSES,
         500: {"description": "Internal proxy error"},
         502: {"description": "Upstream Emby request failed"},
     },
@@ -207,6 +247,7 @@ def _rewrite_playlist(
 async def proxy_hls_master(
     item_id: str,
     request: Request,
+    party_session: PartySession = Depends(require_host_token),
     config=Depends(get_config),
     emby_client=Depends(get_emby_client),
     emby_gateway=Depends(get_emby_gateway),
@@ -216,7 +257,12 @@ async def proxy_hls_master(
 ):
     try:
         access_token, user_id, _ = _resolve_host_creds(
-            request, config, token_manager, party_manager, logger
+            request,
+            config,
+            token_manager,
+            party_manager,
+            logger,
+            session_party_id=party_session.party_id,
         )
         if not access_token:
             return Response(
@@ -290,7 +336,7 @@ async def proxy_hls_master(
             },
             "description": "HLS variant playlist or .ts segment",
         },
-        401: {"description": "HLS token missing, invalid, or party has no host"},
+        **PARTY_HOST_TOKEN_RESPONSES,
         500: {"description": "Internal proxy error"},
         502: {"description": "Upstream Emby request failed"},
     },
@@ -299,6 +345,7 @@ async def proxy_hls_segment(
     item_id: str,
     subpath: str,
     request: Request,
+    party_session: PartySession = Depends(require_host_token),
     config=Depends(get_config),
     emby_client=Depends(get_emby_client),
     emby_gateway=Depends(get_emby_gateway),
@@ -314,7 +361,12 @@ async def proxy_hls_segment(
                 media_type="application/json",
             )
         access_token, user_id, _ = _resolve_host_creds(
-            request, config, token_manager, party_manager, logger
+            request,
+            config,
+            token_manager,
+            party_manager,
+            logger,
+            session_party_id=party_session.party_id,
         )
         if not access_token:
             return Response(

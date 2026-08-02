@@ -35,7 +35,7 @@ def resolve_client_ip(
         parsed = ip_address(candidate)
         if not any(parsed in network for network in networks):
             return candidate
-    return forwarded[0]
+    return peer_ip
 
 
 def request_client_ip(request: Request, trusted_proxy_cidrs: Iterable[str]) -> str:

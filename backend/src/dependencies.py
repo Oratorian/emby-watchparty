@@ -7,6 +7,7 @@ touches Emby on behalf of a watch party.
 """
 
 import secrets
+from collections.abc import MutableMapping
 from dataclasses import dataclass
 
 import httpx
@@ -21,6 +22,18 @@ from backend.src.emby_gateway import EmbyGateway
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.party_manager import PartyManager
 from backend.src.stream_builder import StreamBuilder
+
+LEGACY_ADMIN_SESSION_KEYS = (
+    "admin_emby_token",
+    "admin_emby_user_id",
+    "admin_emby_is_admin",
+)
+
+
+def scrub_legacy_admin_session(session: MutableMapping[str, object]) -> None:
+    """Remove credentials written into signed cookies by pre-3.0 releases."""
+    for key in LEGACY_ADMIN_SESSION_KEYS:
+        session.pop(key, None)
 
 
 def get_config(request: Request) -> Config:

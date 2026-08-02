@@ -1,12 +1,14 @@
 import asyncio
 import base64
+import json
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
+from backend.src.domain import Participant
 from tests.support.asgi import asgi_client
 
 
@@ -181,5 +183,90 @@ def test_join_cannot_claim_existing_admin_host_identity(tmp_path: Path) -> None:
                 json={"client_id": "host-client", "display_name": "Mallory"},
             )
             assert claimed.json()["success"] is False
+
+    asyncio.run(exercise())
+
+
+def test_disconnected_participant_can_reclaim_identity(tmp_path: Path) -> None:
+    async def exercise() -> None:
+        app = _application(tmp_path)
+        async with asgi_client(app) as creator:
+            party_id = (await creator.post("/api/party/create", json={})).json()["party_id"]
+            party = app.state.party_manager.get(party_id)
+            party.participants["returning-client"] = Participant(
+                client_id="returning-client",
+                username="Returning",
+            )
+
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as returning:
+                joined = await returning.post(
+                    f"/api/party/{party_id}/join",
+                    json={"client_id": "returning-client", "display_name": "Returning"},
+                )
+
+            assert joined.json()["success"] is True
+
+    asyncio.run(exercise())
+
+
+def test_admin_login_and_logout_scrub_legacy_cookie_credentials(tmp_path: Path) -> None:
+    async def exercise() -> None:
+        app = _application(tmp_path)
+
+        async def seed_legacy(request: Request):
+            request.session.update(
+                {
+                    "admin_emby_token": "legacy-secret",
+                    "admin_emby_user_id": "legacy-user",
+                    "admin_emby_is_admin": True,
+                }
+            )
+            return {"success": True}
+
+        async def seed_invalid_stashed_admin(request: Request):
+            await seed_legacy(request)
+            request.session["admin_session_id"] = request.app.state.admin_session_store.create(
+                username="Legacy",
+                access_token="revoked-token",
+                user_id="legacy-user",
+                is_admin=True,
+            )
+            return {"success": True}
+
+        app.add_api_route("/_test/seed-legacy", seed_legacy, methods=["POST"])
+        app.add_api_route(
+            "/_test/seed-invalid-stashed-admin",
+            seed_invalid_stashed_admin,
+            methods=["POST"],
+        )
+
+        def cookie_keys(client: httpx.AsyncClient) -> set[str]:
+            cookie = client.cookies.get("ewp_session")
+            if cookie is None:
+                return set()
+            payload = base64.b64decode(cookie.split(".", 1)[0])
+            return set(json.loads(payload))
+
+        async with asgi_client(app) as client:
+            await client.post("/_test/seed-legacy")
+            assert (await _login(client)).json()["success"] is True
+            keys = cookie_keys(client)
+            assert not {"admin_emby_token", "admin_emby_user_id", "admin_emby_is_admin"} & set(keys)
+
+            await client.post("/_test/seed-invalid-stashed-admin")
+            created = await client.post(
+                "/api/party/create",
+                json={"client_id": "new-client", "display_name": "Alice"},
+            )
+            assert created.status_code == 200
+            keys = cookie_keys(client)
+            assert not {"admin_emby_token", "admin_emby_user_id", "admin_emby_is_admin"} & set(keys)
+
+            await client.post("/_test/seed-legacy")
+            await client.post("/api/admin/logout")
+            keys = cookie_keys(client)
+            assert not {"admin_emby_token", "admin_emby_user_id", "admin_emby_is_admin"} & set(keys)
 
     asyncio.run(exercise())
