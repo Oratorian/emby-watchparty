@@ -57,3 +57,45 @@ test('two browsers receive selection and synchronized controls', async ({ browse
 
   await guestContext.close()
 })
+
+test('guest reload restores membership and a fresh HLS stream', async ({ browser, page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await expect(page).toHaveURL(/\/party\/[A-Z0-9]+$/)
+  const partyUrl = page.url()
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+
+  const guestContext = await browser.newContext()
+  const guest = await guestContext.newPage()
+  await guest.goto(partyUrl)
+  await guest.getByPlaceholder('Your name (optional)').fill('Bob')
+  await guest.getByRole('button', { name: 'Join', exact: true }).click()
+
+  await page.getByRole('main').getByRole(
+    'button', { name: 'Login to Become Host', exact: true },
+  ).click()
+  await page.getByPlaceholder('Emby username').fill('Alice')
+  await page.getByPlaceholder('Emby password').fill('password')
+  await page.getByRole('button', { name: 'Become Host', exact: true }).click()
+  await page.getByText('Movies', { exact: true }).click()
+  await page.getByText('Fake Movie', { exact: true }).click()
+  await expect(guest.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
+
+  const oldSource = await guest.locator('video#videoElement').getAttribute('src')
+  const restoredHlsRequests: string[] = []
+  guest.on('request', (request) => {
+    if (request.url().includes('/hls/movie-1/')) restoredHlsRequests.push(request.url())
+  })
+  await guest.reload()
+
+  await expect(guest.getByText('2 watching')).toBeVisible()
+  const restoredVideo = guest.locator('video#videoElement')
+  await expect(restoredVideo).toHaveAttribute('title', 'Fake Movie')
+  await expect.poll(() => restoredVideo.getAttribute('src')).not.toBe(oldSource)
+  await expect.poll(() => restoredHlsRequests).toContainEqual(
+    expect.stringContaining('/hls/movie-1/master.m3u8'),
+  )
+
+  await guestContext.close()
+})
