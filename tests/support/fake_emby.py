@@ -155,14 +155,20 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
 
     @app.post("/emby/Users/AuthenticateByName")
     async def authenticate(request: Request):
+        credentials = await request.json()
         state.record(request)  # Never retain submitted credentials.
         if failure := await state.before(request):
             return failure
+        user_id = (
+            "user-large"
+            if credentials.get("Username") == "LargeLibrary"
+            else "user-1"
+        )
         return {
             "AccessToken": "fake-access-token",
             "User": {
-                "Id": "user-1",
-                "Name": "Alice",
+                "Id": user_id,
+                "Name": credentials.get("Username") or "Alice",
                 "Policy": {"IsAdministrator": True},
             },
         }
@@ -204,9 +210,30 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
 
     @app.get("/emby/Users/{user_id}/Items")
     async def user_items(request: Request, user_id: str):
-        del user_id
         state.record(request)
-        return {"Items": [MOVIE], "TotalRecordCount": 1}
+        if user_id != "user-large":
+            return {"Items": [MOVIE], "TotalRecordCount": 1}
+
+        catalog = [
+            {
+                **MOVIE,
+                "Id": f"large-{index:04d}",
+                "Name": f"Large Movie {index:04d}",
+            }
+            for index in range(500)
+        ]
+        search_term = request.query_params.get("SearchTerm", "").casefold()
+        if search_term:
+            catalog = [
+                item for item in catalog
+                if search_term in item["Name"].casefold()
+            ]
+        start = int(request.query_params.get("StartIndex", 0))
+        limit = int(request.query_params.get("Limit", len(catalog)))
+        return {
+            "Items": catalog[start : start + limit],
+            "TotalRecordCount": len(catalog),
+        }
 
     @app.get("/emby/Items")
     async def items(request: Request):

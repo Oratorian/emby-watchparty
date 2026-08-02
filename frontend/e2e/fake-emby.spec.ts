@@ -20,6 +20,31 @@ test('host authenticates and browses the fake Emby library', async ({ page }) =>
   await expect(page.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
 })
 
+test('large library stays bounded and search remains responsive', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+
+  await page.getByRole('main').getByRole(
+    'button', { name: 'Login to Become Host', exact: true },
+  ).click()
+  await page.getByPlaceholder('Emby username').fill('LargeLibrary')
+  await page.getByPlaceholder('Emby password').fill('password')
+  await page.getByRole('button', { name: 'Become Host', exact: true }).click()
+  await page.getByText('Movies', { exact: true }).click()
+  await expect(page.getByText('Large Movie 0000', { exact: true })).toBeVisible()
+
+  await page.waitForTimeout(500)
+  expect(await page.locator('.item-card').count()).toBeLessThanOrEqual(100)
+
+  await page.getByPlaceholder('Search...').fill('Large Movie 0420')
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Clear', exact: true })).toBeVisible()
+  await expect(page.locator('.item-card')).toHaveCount(1)
+  await expect(page.getByText('Large Movie 0420', { exact: true })).toBeVisible()
+})
+
 test('two browsers receive selection and synchronized controls', async ({ browser, page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Create Party', exact: true }).click()
