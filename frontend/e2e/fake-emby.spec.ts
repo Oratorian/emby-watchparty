@@ -74,16 +74,20 @@ test('two browsers receive selection and synchronized controls', async ({ browse
     const video = document.querySelector<HTMLVideoElement>('video#videoElement')
     return video && video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
   })
-  await page.locator('video#videoElement').evaluate((video: HTMLVideoElement) => video.play())
+  const hostVideo = page.locator('video#videoElement')
+  await hostVideo.focus()
+  await hostVideo.press('Space')
   await expect(guest.getByText('Alice started playback')).toBeVisible()
   await page.waitForTimeout(600)
-  await page.locator('video#videoElement').evaluate((video: HTMLVideoElement) => video.pause())
+  await hostVideo.press('Space')
   await expect(guest.getByText('Alice paused playback')).toBeVisible()
 
   const guestPosition = () => guest.locator('video#videoElement').evaluate(
     (video: HTMLVideoElement) => video.currentTime,
   )
-  await page.getByRole('button', { name: '+10s' }).click()
+  const seekForward = page.getByRole('button', { name: '+10s' })
+  await seekForward.focus()
+  await seekForward.press('Enter')
   await expect.poll(guestPosition).toBeGreaterThan(8)
   await expect(guest.getByText(/Alice seeked to/)).toBeVisible()
 
@@ -94,6 +98,11 @@ test('two browsers receive selection and synchronized controls', async ({ browse
     () => guest.locator('video#videoElement').getAttribute('src'),
   ).not.toBe(guestSource)
   await expect(page.locator('video#videoElement')).toHaveAttribute('src', hostSource ?? '')
+
+  const chatInput = page.getByPlaceholder('Type a message...')
+  await chatInput.fill('Keyboard chat')
+  await chatInput.press('Enter')
+  await expect(guest.getByText('Keyboard chat')).toBeVisible()
 
   await guestContext.close()
 })
