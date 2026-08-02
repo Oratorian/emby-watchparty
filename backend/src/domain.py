@@ -61,6 +61,14 @@ class AutoAdvance:
     task: Any = None
 
 
+@dataclass(frozen=True)
+class PlaybackReportSnapshot:
+    current_video: dict[str, Any] | None
+    user_stream: dict[str, Any] | None
+    host_access_token: str | None
+    host_user_id: str | None
+
+
 @dataclass
 class Party:
     """Typed party aggregate."""

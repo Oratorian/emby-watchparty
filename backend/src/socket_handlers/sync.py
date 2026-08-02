@@ -2,6 +2,8 @@
 
 from datetime import datetime
 
+from backend.src.domain import PlaybackReportSnapshot
+
 
 def register(ctx):
     sio = ctx['sio']
@@ -26,10 +28,10 @@ def register(ctx):
     def _client_id_for_sid(party, sid):
         return party.sid_client_ids.get(sid)
 
-    async def _report_emby_progress(party, sid, position, is_paused, event_name):
+    async def _report_emby_progress(snapshot, position, is_paused, event_name):
         """Report playback progress to Emby for a specific user's stream."""
-        current_video = party.current_video
-        user_stream = party.user_streams.get(sid)
+        current_video = snapshot.current_video
+        user_stream = snapshot.user_stream
         if not current_video or not user_stream or not user_stream.get("play_session_id"):
             return
         await emby_client.report_playback_progress(
@@ -40,20 +42,19 @@ def register(ctx):
             audio_index=user_stream.get("audio_index"),
             subtitle_index=user_stream.get("subtitle_index") if user_stream.get("subtitle_index") != -1 else None,
             run_time_seconds=current_video.get("run_time_seconds"),
-            access_token=party.host_access_token,
-            user_id=party.host_user_id,
+            access_token=snapshot.host_access_token,
+            user_id=snapshot.host_user_id,
         )
 
     def _progress_snapshot(party, sid):
         """Copy only Emby report fields before any network/socket await."""
         stream = party.user_streams.get(sid)
-        return {
-            "current_video": dict(party.current_video)
-            if party.current_video else None,
-            "user_streams": {sid: dict(stream)} if stream else {},
-            "host_access_token": party.host_access_token,
-            "host_user_id": party.host_user_id,
-        }
+        return PlaybackReportSnapshot(
+            current_video=dict(party.current_video) if party.current_video else None,
+            user_stream=dict(stream) if stream else None,
+            host_access_token=party.host_access_token,
+            host_user_id=party.host_user_id,
+        )
 
     def _authorized_controller(party, sid):
         """Democratic playback control: ANY joined party member may drive
@@ -124,7 +125,7 @@ def register(ctx):
         await sio.emit("play", {"time": current_time, "username": username},
                         room=party_id)
         await _report_emby_progress(
-            progress, sid, current_time, is_paused=False, event_name="Unpause"
+            progress, current_time, is_paused=False, event_name="Unpause"
         )
 
     @sio.on("pause")
@@ -160,7 +161,7 @@ def register(ctx):
         await sio.emit("pause", {"time": current_time, "username": username},
                         room=party_id)
         await _report_emby_progress(
-            progress, sid, current_time, is_paused=True, event_name="Pause"
+            progress, current_time, is_paused=True, event_name="Pause"
         )
 
     @sio.on("seek")
@@ -245,7 +246,7 @@ def register(ctx):
             }, room=party_id)
 
         await _report_emby_progress(
-            progress, sid, seek_time,
+            progress, seek_time,
             is_paused=not was_playing,
             event_name="TimeUpdate",
         )
