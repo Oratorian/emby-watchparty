@@ -4,7 +4,7 @@ import asyncio
 import time
 from datetime import datetime
 
-from backend.src.domain import Participant
+from backend.src.domain import JoinVote, Participant
 from backend.src.quality import DEFAULT_QUALITY_ID
 from backend.src.utils import generate_random_username
 
@@ -178,9 +178,9 @@ def register(ctx):
         pj = party.pending_join
         if not pj:
             return
-        remaining = len(pj["eligible_voters"]) - len(pj["votes"])
+        remaining = len(pj.eligible_voters) - len(pj.votes)
         await sio.emit("join_vote_update", {
-            "votes": _votes_by_username(party, pj["votes"]),
+            "votes": _votes_by_username(party, pj.votes),
             "remaining": remaining,
         }, room=party_id)
 
@@ -195,12 +195,12 @@ def register(ctx):
         if not pj:
             return
 
-        late_sid = pj["sid"]
-        late_username = pj["username"]
-        client_id = pj.get("client_id") or f"sid:{late_sid}"
+        late_sid = pj.sid
+        late_username = pj.username
+        client_id = pj.client_id or f"sid:{late_sid}"
 
         # Cancel the watchdog if still active (prevent it firing after resolution)
-        task = pj.get("timeout_task")
+        task = pj.timeout_task
         if task and not task.done():
             task.cancel()
 
@@ -264,10 +264,10 @@ def register(ctx):
         if not pj:
             return
 
-        late_sid = pj["sid"]
-        late_username = pj["username"]
+        late_sid = pj.sid
+        late_username = pj.username
 
-        task = pj.get("timeout_task")
+        task = pj.timeout_task
         if task and not task.done():
             task.cancel()
 
@@ -303,8 +303,8 @@ def register(ctx):
         if not pj:
             return
 
-        selector_sid = pj.get("selector_sid")
-        selector_vote = pj["votes"].get(selector_sid) if selector_sid else None
+        selector_sid = pj.selector_sid
+        selector_vote = pj.votes.get(selector_sid) if selector_sid else None
 
         if selector_vote == "yes":
             logger.info(f"Tiebreak in {party_id}: selector said yes -> pass")
@@ -330,10 +330,10 @@ def register(ctx):
         if not pj:
             return
 
-        yes_count = sum(1 for v in pj["votes"].values() if v == "yes")
-        no_count = sum(1 for v in pj["votes"].values() if v == "no")
+        yes_count = sum(1 for v in pj.votes.values() if v == "yes")
+        no_count = sum(1 for v in pj.votes.values() if v == "no")
         total_votes = yes_count + no_count
-        eligible = len(pj["eligible_voters"])
+        eligible = len(pj.eligible_voters)
         threshold = eligible // 2  # strict majority means > threshold
 
         if yes_count > threshold:
@@ -368,12 +368,12 @@ def register(ctx):
 
         logger.info(f"Vote timeout in party {party_id}")
         # Drop our own task handle before resolving. _resolve_vote_pass /
-        # _resolve_vote_fail cancel pj["timeout_task"] to stop a pending
+        # _resolve_vote_fail cancel pj.timeout_task to stop a pending
         # watchdog, but here the watchdog IS the caller. Cancelling the
         # running task would raise CancelledError at the next await (the
         # join_vote_resolved emit), so the resolution would never reach the
         # clients and the modal would hang forever.
-        pj["timeout_task"] = None
+        pj.timeout_task = None
         await _apply_tiebreak(party_id)
 
     async def _start_late_join_vote(party, party_id, late_sid, late_username, client_id=None):
@@ -399,16 +399,13 @@ def register(ctx):
 
         timeout_seconds = getattr(config, "LATE_JOIN_VOTE_TIMEOUT_SECONDS", 20)
 
-        party.pending_join = {
-            "sid": late_sid,
-            "username": late_username,
-            "client_id": client_id,
-            "requested_at": datetime.now().isoformat(),
-            "eligible_voters": eligible_voters,
-            "votes": {},
-            "selector_sid": selector_sid,
-            "timeout_task": None,
-        }
+        party.pending_join = JoinVote(
+            sid=late_sid,
+            username=late_username,
+            client_id=client_id,
+            eligible_voters=eligible_voters,
+            selector_sid=selector_sid,
+        )
 
         # Put the late joiner into the Socket.IO room so they receive
         # vote-progress broadcasts, but do NOT add them to party.users
@@ -435,7 +432,7 @@ def register(ctx):
 
         # Spawn the timeout watchdog
         task = asyncio.create_task(_vote_timeout_watchdog(party_id, timeout_seconds))
-        party.pending_join["timeout_task"] = task
+        party.pending_join.timeout_task = task
 
         logger.info(
             f"Started late join vote in party {party_id} for {late_username} "
@@ -454,10 +451,10 @@ def register(ctx):
             return
 
         # Case 1: the disconnecting user IS the late joiner
-        if pj["sid"] == sid:
-            logger.info(f"Late joiner {pj['username']} disconnected mid-vote in {party_id}")
+        if pj.sid == sid:
+            logger.info(f"Late joiner {pj.username} disconnected mid-vote in {party_id}")
             # Cancel the watchdog
-            task = pj.get("timeout_task")
+            task = pj.timeout_task
             if task and not task.done():
                 task.cancel()
             party.pending_join = None
@@ -472,15 +469,15 @@ def register(ctx):
             return
 
         # Case 2: the disconnecting user is an eligible voter
-        if sid in pj["eligible_voters"]:
-            pj["eligible_voters"].discard(sid)
-            pj["votes"].pop(sid, None)
+        if sid in pj.eligible_voters:
+            pj.eligible_voters.discard(sid)
+            pj.votes.pop(sid, None)
             # If the selector left mid-vote, clear the tiebreak authority
-            if pj.get("selector_sid") == sid:
-                pj["selector_sid"] = None
+            if pj.selector_sid == sid:
+                pj.selector_sid = None
 
             # If nobody is left to vote, fail the vote
-            if not pj["eligible_voters"]:
+            if not pj.eligible_voters:
                 await _resolve_vote_fail(party_id)
                 return
 
@@ -694,7 +691,7 @@ def register(ctx):
         pending_advance_payload = None
         pending = party.pending_auto_advance
         if pending:
-            deadline = pending.get("deadline")
+            deadline = pending.deadline
             countdown_seconds = None
             if deadline:
                 try:
@@ -705,9 +702,9 @@ def register(ctx):
                 except Exception:
                     countdown_seconds = None
             pending_advance_payload = {
-                "next_item_id": pending.get("next_item_id"),
-                "next_title": pending.get("next_title"),
-                "next_index_number": pending.get("next_index_number"),
+                "next_item_id": pending.next_item_id,
+                "next_title": pending.next_title,
+                "next_index_number": pending.next_index_number,
                 "total_episodes": max(
                     (ep.get("IndexNumber") or 0)
                     for ep in (party.episode_list or [])
@@ -750,12 +747,12 @@ def register(ctx):
             logger.debug(f"Vote from {sid} ignored: no active vote in {party_id}")
             return
 
-        if sid not in pj["eligible_voters"]:
+        if sid not in pj.eligible_voters:
             logger.debug(f"Vote from {sid} ignored: not an eligible voter in {party_id}")
             return
 
         # Record the vote (overwriting any previous vote from the same user)
-        pj["votes"][sid] = vote
+        pj.votes[sid] = vote
         logger.debug(f"Vote recorded in {party_id}: {party.users.get(sid, sid)} -> {vote}")
 
         # Broadcast the updated tally and check for early resolution

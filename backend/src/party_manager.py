@@ -419,7 +419,7 @@ class PartyManager:
             if not was_active and not pending:
                 continue
             if pending:
-                task = pending.get("task")
+                task = pending.task
                 if task and not task.done():
                     task.cancel()
                 party.pending_auto_advance = None

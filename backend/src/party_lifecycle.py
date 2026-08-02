@@ -44,11 +44,11 @@ class PartyLifecycle:
     async def _cleanup(self, party_id: str, party: Party) -> None:
         current = asyncio.current_task()
         tasks: list[asyncio.Task] = []
-        pending_join = party.pending_join or {}
-        pending_auto = party.pending_auto_advance or {}
+        pending_join = party.pending_join
+        pending_auto = party.pending_auto_advance
         for task in (
-            pending_join.get("timeout_task"),
-            pending_auto.get("task"),
+            pending_join.timeout_task if pending_join else None,
+            pending_auto.task if pending_auto else None,
             self._ctx.get("pending_host_clear", {}).pop(party_id, None),
         ):
             if isinstance(task, asyncio.Task) and task is not current and not task.done():

@@ -49,9 +49,12 @@ class UserStream:
 class JoinVote:
     sid: str
     username: str
+    client_id: str | None = None
+    requested_at: str = field(default_factory=_now)
     eligible_voters: set[str] = field(default_factory=set)
-    votes: dict[str, bool] = field(default_factory=dict)
-    task: Any = None
+    votes: dict[str, str] = field(default_factory=dict)
+    selector_sid: str | None = None
+    timeout_task: Any = None
 
 
 @dataclass
@@ -63,8 +66,11 @@ class ReadyCheck:
 
 @dataclass
 class AutoAdvance:
-    item_id: str
-    deadline: float
+    next_item_id: str
+    next_title: str
+    next_index_number: int | None
+    selector_client_id: str | None
+    deadline: str
     task: Any = None
 
 
@@ -97,7 +103,7 @@ class Party:
     user_streams: dict[str, dict[str, Any]] = field(default_factory=dict)
     playback_state: PlaybackState = field(default_factory=PlaybackState)
     ready_check: ReadyCheck | None = None
-    pending_join: dict[str, Any] | None = None
+    pending_join: JoinVote | None = None
     join_cooldown_until: float = 0.0
     host_client_id: str | None = None
     host_user_id: str | None = None
@@ -108,7 +114,7 @@ class Party:
     binge_watch_active: bool = False
     episode_list: list[dict[str, Any]] | None = None
     episode_list_season_id: str | None = None
-    pending_auto_advance: dict[str, Any] | None = None
+    pending_auto_advance: AutoAdvance | None = None
     generation: int = 0
     closing: bool = False
     operation_reservations: dict[str, str] = field(default_factory=dict)

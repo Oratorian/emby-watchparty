@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any
 
-from backend.src.domain import PlaybackState, ReadyCheck
+from backend.src.domain import AutoAdvance, PlaybackState, ReadyCheck
 from backend.src.quality import (
     DEFAULT_QUALITY_ID,
     normalise_quality_id,
@@ -950,14 +950,14 @@ def register(ctx):
         ) if party.episode_list else 0
 
         task = asyncio.create_task(_auto_advance_watchdog(party_id, countdown))
-        party.pending_auto_advance = {
-            "next_item_id": next_item_id,
-            "next_title": next_title,
-            "next_index_number": next_index_number,
-            "selector_client_id": prev_video.get("selected_by"),
-            "deadline": deadline.isoformat(),
-            "task": task,
-        }
+        party.pending_auto_advance = AutoAdvance(
+            next_item_id=next_item_id,
+            next_title=next_title,
+            next_index_number=next_index_number,
+            selector_client_id=prev_video.get("selected_by"),
+            deadline=deadline.isoformat(),
+            task=task,
+        )
         await sio.emit("auto_advance_pending", {
             "next_item_id": next_item_id,
             "next_title": next_title,
@@ -996,9 +996,9 @@ def register(ctx):
             await _cancel_pending_auto_advance(party_id, party, by_username=None)
             return
 
-        next_item_id = pending["next_item_id"]
-        next_title = pending["next_title"]
-        selector_client_id = pending["selector_client_id"]
+        next_item_id = pending.next_item_id
+        next_title = pending.next_title
+        selector_client_id = pending.selector_client_id
         party.pending_auto_advance = None
 
         await sio.emit("auto_advance_fired", {
@@ -1039,7 +1039,7 @@ def register(ctx):
         pending = party.pending_auto_advance
         if not pending:
             return False
-        task = pending.get("task")
+        task = pending.task
         if task and not task.done():
             task.cancel()
         party.pending_auto_advance = None

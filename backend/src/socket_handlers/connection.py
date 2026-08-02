@@ -270,7 +270,7 @@ def register(ctx):
             # changes the majority math).
             if party.pending_join and handle_disconnect_from_vote:
                 pj = party.pending_join
-                if pj["sid"] == sid or sid in pj.get("eligible_voters", set()):
+                if pj.sid == sid or sid in pj.eligible_voters:
                     await handle_disconnect_from_vote(party, party_id, sid)
 
             if sid in party.users:
