@@ -8,7 +8,7 @@ def test_fake_emby_auth_library_hls_and_recording(fake_emby_server) -> None:
             json={"Username": "Alice", "Pw": "password"},
         )
         libraries = client.get("/emby/Users/user-1/Views")
-        playlist = client.get("/emby/Videos/movie-1/master.m3u8")
+        playlist = client.get("/emby/Videos/movie-1/main.m3u8")
         recorded = client.get("/__test__/requests")
 
     assert auth.status_code == 200
