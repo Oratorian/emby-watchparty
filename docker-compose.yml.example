@@ -71,9 +71,10 @@ services:
       # fails to write its settings.
       - ./config.json:/app/config.json
 
-    # The Dockerfile already bakes a HEALTHCHECK that hits /api/health
-    # via the configured WATCH_PARTY_PORT, so an explicit healthcheck
-    # block here is not required. Uncomment to tighten the cadence:
+    # The baked /api/health probe is a liveness check. Setup mode returns
+    # HTTP 200 with status=setup_required so Compose does not restart-loop.
+    # Use /api/ready instead if dependants must wait for normal app service.
+    # Uncomment to tighten the liveness cadence:
     # healthcheck:
     #   test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/api/health"]
     #   interval: 30s

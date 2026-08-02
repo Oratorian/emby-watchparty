@@ -17,7 +17,7 @@ def test_boot_config_source_precedence_does_not_mutate_environment(
     data = tmp_path / "data"
     data.mkdir()
     (data / "bootstrap.json").write_text(
-        json.dumps({"EMBY_API_KEY": "persisted-key"}), encoding="utf-8"
+        json.dumps({"CONFIGURED": True, "EMBY_API_KEY": "persisted-key"}), encoding="utf-8"
     )
     (tmp_path / ".env").write_text("EMBY_API_KEY=dotenv-key\n", encoding="utf-8")
     monkeypatch.delenv("EMBY_API_KEY", raising=False)
@@ -50,8 +50,8 @@ def test_private_dev_host_credentials_use_dotenv_with_process_precedence(
         encoding="utf-8",
     )
 
-    async def promoted_username() -> str | None:
-        app = create_app(project_root=tmp_path, enable_update_check=False)
+    async def promoted_username(project_root: Path) -> str | None:
+        app = create_app(project_root=project_root, enable_update_check=False)
         async with asgi_client(app) as client:
             created = await client.post("/api/party/create", json={})
             party_id = created.json()["party_id"]
@@ -63,11 +63,14 @@ def test_private_dev_host_credentials_use_dotenv_with_process_precedence(
             status = await client.get("/api/auth/status")
             return status.json()["username"]
 
-    assert asyncio.run(promoted_username()) == "dotenv-user"
+    assert asyncio.run(promoted_username(tmp_path)) == "dotenv-user"
     assert all(name not in os.environ for name in names)
 
     monkeypatch.setenv("EMBY_WATCHPARTY_X_DEV_HOST", "process-user:process-pass")
-    assert asyncio.run(promoted_username()) == "process-user"
+    process_root = tmp_path / "process"
+    process_root.mkdir()
+    (process_root / ".env").write_text((tmp_path / ".env").read_text(encoding="utf-8"))
+    assert asyncio.run(promoted_username(process_root)) == "process-user"
 
 
 def test_bootstrap_field_list_covers_complete_effective_config() -> None:
@@ -102,6 +105,17 @@ def test_bootstrap_save_attempts_restrictive_permissions(tmp_path: Path, monkeyp
     assert (tmp_path / "data", 0o700) in chmod_calls
     assert (saved, 0o600) in chmod_calls
     assert len([path for path, mode in chmod_calls if mode == 0o600 and path != saved]) == 1
+
+
+def test_bootstrap_save_marks_configuration_and_excludes_explicit_fields(tmp_path: Path) -> None:
+    saved = save_bootstrap_config(
+        tmp_path,
+        {"EMBY_API_KEY": "env-secret", "APP_ENV": "production"},
+        excluded_fields={"EMBY_API_KEY"},
+    )
+
+    payload = json.loads(saved.read_text(encoding="utf-8"))
+    assert payload == {"APP_ENV": "production", "CONFIGURED": True}
 
 
 def test_setup_attempt_limiter_uses_fixed_peer_windows() -> None:

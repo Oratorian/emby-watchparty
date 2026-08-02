@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 
 from backend.app import _json_for_html_script, create_app
-from backend.src.bootstrap import BOOTSTRAP_FIELDS
 from backend.src.config import Config, EnvConfig, RuntimeConfig
 from tests.support.asgi import asgi_client
 
@@ -68,6 +67,7 @@ def test_config_loads_persisted_bootstrap_values(tmp_path: Path, monkeypatch) ->
     (data / "bootstrap.json").write_text(
         json.dumps(
             {
+                "CONFIGURED": True,
                 "APP_ENV": "production",
                 "EMBY_SERVER_URL": "https://emby.example",
                 "EMBY_API_KEY": "saved-key",
@@ -128,7 +128,9 @@ def test_setup_mode_exposes_only_setup_and_probe_routes(tmp_path: Path) -> None:
             root = await client.get("/", follow_redirects=False)
             assert root.status_code == 307
             assert root.headers["location"] == "/setup"
-            assert (await client.get("/api/health")).status_code == 200
+            health = await client.get("/api/health")
+            assert health.status_code == 200
+            assert health.json()["status"] == "setup_required"
             ready = await client.get("/api/ready")
             assert ready.status_code == 503
             assert ready.json() == {"status": "setup_required"}
@@ -327,7 +329,7 @@ def test_saved_configuration_enters_normal_mode_after_restart(
     assert hasattr(restarted.state, "sio")
 
 
-def test_setup_snapshots_complete_effective_environment_configuration(
+def test_setup_does_not_persist_environment_configuration(
     tmp_path: Path, capsys, monkeypatch
 ) -> None:
     (tmp_path / ".env").write_text(
@@ -351,17 +353,94 @@ def test_setup_snapshots_complete_effective_environment_configuration(
 
     asyncio.run(save())
     saved = json.loads((tmp_path / "data" / "bootstrap.json").read_text(encoding="utf-8"))
-    assert set(saved) == set(BOOTSTRAP_FIELDS)
-    assert saved["APP_ENV"] == "production"
-    assert saved["EMBY_SERVER_URL"] == "https://dotenv-emby.example"
-    assert saved["EMBY_API_KEY"] == "process-key"
+    assert saved["CONFIGURED"] is True
+    assert "APP_ENV" not in saved
+    assert "EMBY_SERVER_URL" not in saved
+    assert "EMBY_API_KEY" not in saved
 
-    monkeypatch.delenv("EMBY_API_KEY")
-    (tmp_path / ".env").unlink()
-    restarted = Config.from_env(tmp_path)
-    assert restarted.APP_ENV == "production"
-    assert restarted.EMBY_SERVER_URL == "https://dotenv-emby.example"
-    assert restarted.EMBY_API_KEY == "process-key"
+
+def test_missing_bootstrap_in_existing_data_directory_enters_setup(tmp_path: Path) -> None:
+    (tmp_path / "data").mkdir()
+
+    app = create_app(project_root=tmp_path, enable_update_check=False)
+
+    assert not hasattr(app.state, "sio")
+
+
+def test_first_valid_source_startup_persists_sentinel_before_runtime_data(
+    tmp_path: Path, monkeypatch
+) -> None:
+    for name in (
+        "APP_ENV",
+        "EMBY_SERVER_URL",
+        "EMBY_API_KEY",
+        "SESSION_SECRET",
+        "SESSION_COOKIE_SECURE",
+        "CORS_ALLOWED_ORIGINS",
+        "TRUSTED_PROXY_CIDRS",
+        "APP_PREFIX",
+        "ENABLE_HLS_TOKEN_VALIDATION",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    (tmp_path / ".env").write_text(
+        "EMBY_SERVER_URL=http://emby.test\n"
+        "EMBY_API_KEY=test-key\n"
+        "SESSION_SECRET=test-session-secret-with-at-least-32-characters\n",
+        encoding="utf-8",
+    )
+
+    first = create_app(project_root=tmp_path, enable_update_check=False)
+    assert hasattr(first.state, "sio")
+    persisted = json.loads((tmp_path / "data" / "bootstrap.json").read_text(encoding="utf-8"))
+    assert persisted == {"CONFIGURED": True}
+
+    restarted = create_app(project_root=tmp_path, enable_update_check=False)
+    assert hasattr(restarted.state, "sio")
+
+
+def test_setup_token_has_recovery_file_and_is_removed_after_save(tmp_path: Path, capsys) -> None:
+    app = create_app(
+        config=_invalid_production_config(),
+        project_root=tmp_path,
+        enable_update_check=False,
+    )
+    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
+    token_path = tmp_path / "data" / "setup-token"
+    assert token_path.read_text(encoding="utf-8").strip() == token
+
+    async def save() -> None:
+        async with asgi_client(app) as client:
+            response = await client.post(
+                "/api/setup",
+                headers={"X-Emby-Watchparty-Setup-Token": token},
+                json=_valid_setup_payload(),
+            )
+            assert response.status_code == 200
+
+    asyncio.run(save())
+    assert not token_path.exists()
+
+
+def test_failed_setup_token_is_logged(tmp_path: Path, capsys, caplog) -> None:
+    app = create_app(
+        config=_invalid_production_config(),
+        project_root=tmp_path,
+        enable_update_check=False,
+    )
+    capsys.readouterr()
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            assert (
+                await client.post(
+                    "/api/setup",
+                    headers={"X-Emby-Watchparty-Setup-Token": "wrong"},
+                    json={},
+                )
+            ).status_code == 403
+
+    asyncio.run(exercise())
+    assert "Failed bootstrap token" in caplog.text
 
 
 def test_invalid_setup_fields_return_safe_errors(tmp_path: Path, capsys, caplog) -> None:
@@ -456,6 +535,7 @@ def test_invalid_environment_override_cannot_be_masked_by_setup(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     persisted = _valid_setup_payload()
+    persisted["CONFIGURED"] = True
     (tmp_path / "data").mkdir()
     (tmp_path / "data" / "bootstrap.json").write_text(json.dumps(persisted), encoding="utf-8")
     monkeypatch.setenv("SESSION_SECRET", "invalid-env-secret")

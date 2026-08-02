@@ -269,15 +269,15 @@ Configuration is split into two tiers:
 
 ### First-run setup
 
-When boot configuration is invalid, the process remains reachable in restricted setup mode. Normal API, Socket.IO, HLS, admin, and application routes return `503`; liveness remains at `${APP_PREFIX}/api/health`, and readiness returns `503` with `setup_required`.
+When boot configuration is invalid, the process remains reachable in restricted setup mode. Normal API, Socket.IO, HLS, admin, and application routes return `503`; liveness returns HTTP `200` with `status: setup_required`, and readiness returns `503` with the same status.
 
-1. Read the one-time bootstrap token from the server console. **Treat this token like a password: never publish it, paste it into a URL, or include it in support logs.**
+1. Read the one-time bootstrap token from the server console or the mode-`0600` `data/setup-token` recovery file. **Treat this token like a password: never publish it, paste it into a URL, or include it in support logs.** The file is removed after setup succeeds.
 2. Open `http://localhost:5000/setup` (or `${APP_PREFIX}/setup`) and enter the token in the form.
 3. Choose **Local development** for plain local HTTP with a non-secure cookie, or **Production HTTPS** for a TLS-terminating reverse proxy with a secure cookie and explicit public CORS origin.
 4. Validate and save. The server writes `data/bootstrap.json` atomically, disables further setup writes in that process, and requests restart; it never restarts itself from the HTTP request.
 5. Restart the service. Valid saved settings start the normal application.
 
-`data/bootstrap.json` contains the Emby API key and session signing secret in plaintext with restrictive file permissions where supported. Protect the host directory and backups. Docker users must keep `./data:/app/data` mounted; otherwise container replacement loses first-run configuration.
+`data/bootstrap.json` contains secrets entered through setup in plaintext with restrictive file permissions where supported. Secrets injected through process environment or `.env` are deliberately not copied into it. Protect the host directory and backups. Docker users must keep `./data:/app/data` mounted; otherwise a missing bootstrap sentinel forces setup mode rather than silently falling back to development defaults.
 
 Boot precedence is exact: **process environment → `.env` → `data/bootstrap.json` → defaults**. Process environment and `.env` are one explicit-operator tier, with process values winning. Setup cannot override an invalid explicit environment value; remove or fix it, then restart. Reading `.env` does not mutate the running process environment.
 
@@ -308,7 +308,7 @@ ENABLE_HLS_TOKEN_VALIDATION=true
 TRUSTED_PROXY_CIDRS=172.16.0.0/12
 ```
 
-If saved configuration becomes invalid, restart to enter setup mode again and use the newly printed token. If `data/bootstrap.json` is unreadable or damaged, move it aside or remove it, restart, and reconfigure. If an environment override is invalid, repair that deployment setting first. Never send `bootstrap.json` or bootstrap tokens to untrusted parties.
+If saved configuration becomes invalid, missing, or damaged, restart to enter setup mode and use the new token. If an environment override is invalid, repair that deployment setting first. Never send `bootstrap.json` or bootstrap tokens to untrusted parties.
 
 ### .env
 
