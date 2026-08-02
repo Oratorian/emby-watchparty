@@ -14,5 +14,8 @@ test('host authenticates and browses the fake Emby library', async ({ page }) =>
   await page.getByRole('button', { name: 'Become Host', exact: true }).click()
 
   await page.getByText('Movies', { exact: true }).click()
-  await expect(page.getByText('Fake Movie', { exact: true })).toBeVisible()
+  const movie = page.getByText('Fake Movie', { exact: true })
+  await expect(movie).toBeVisible()
+  await movie.click()
+  await expect(page.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
 })

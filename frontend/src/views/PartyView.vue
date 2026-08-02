@@ -55,6 +55,7 @@ import { usePartyAdmin } from '@/composables/usePartyAdmin'
 import { usePartyReconnect } from '@/composables/usePartyReconnect'
 import { usePartyVoting } from '@/composables/usePartyVoting'
 import { usePartyStream } from '@/composables/usePartyStream'
+import { usePartyPlayback } from '@/composables/usePartyPlayback'
 // Brand mark asset. Vite resolves this to a hashed URL at build time
 // (and inlines small assets), so the WebP ships with cache-busting and
 // no runtime path drift. Sits on top of the cyan->magenta gradient
@@ -86,6 +87,7 @@ const { reloading: myStreamReloading, signalReady: onStreamReady } = usePartyStr
   socket,
   party,
 )
+const playbackEvents = usePartyPlayback(socket)
 
 const showBecomeHostModal = ref(false)
 const becomeHostBusy = ref(false)
@@ -167,8 +169,6 @@ onMounted(async () => {
   // forever. The two listeners coexist safely on the same socket; the store
   // re-offs these on every setupListeners() call, so they do not stack.
   const partyViewEvents = [
-    'play', 'pause', 'seek', 'force_pause_before_seek',
-    'ready_check_update', 'drift_correction', 'all_ready',
     'error', 'join_rejected', 'toggle_library',
   ] as const
   for (const e of partyViewEvents) socket.off(e)
@@ -177,7 +177,7 @@ onMounted(async () => {
   attachVoting()
 
   // Playback sync handlers -- matching v1.6.0 deduplication
-  socket.on('play', (data: ServerToClientPayloads['play']) => {
+  playbackEvents.on('play', (data: ServerToClientPayloads['play']) => {
     // Use nextTick to ensure the videoPlayer ref is bound. When the
     // store's play listener fires first and updates reactive state,
     // Vue may still be mid-render and the template ref is not yet
@@ -259,7 +259,7 @@ onMounted(async () => {
     }
   })
 
-  socket.on('pause', (data: ServerToClientPayloads['pause']) => {
+  playbackEvents.on('pause', (data: ServerToClientPayloads['pause']) => {
     const vp = videoPlayer.value
     if (!vp) return
     vp.isSyncing = true
@@ -273,7 +273,7 @@ onMounted(async () => {
     if (data.username) addSystemMessage(`${data.username} paused playback`)
   })
 
-  socket.on('seek', (data: ServerToClientPayloads['seek']) => {
+  playbackEvents.on('seek', (data: ServerToClientPayloads['seek']) => {
     const vp = videoPlayer.value
     if (!vp) return
     vp.isSyncing = true
@@ -323,7 +323,7 @@ onMounted(async () => {
     if (data.username) addSystemMessage(`${data.username} seeked to ${formatTime(data.time)}`)
   })
 
-  socket.on('force_pause_before_seek', () => {
+  playbackEvents.on('force_pause_before_seek', () => {
     const vp = videoPlayer.value
     if (!vp) return
     isForcePausing = true
@@ -355,7 +355,7 @@ onMounted(async () => {
     }
   })
 
-  socket.on('ready_check_update', () => {
+  playbackEvents.on('ready_check_update', () => {
     if (autoReadySignaled) return
     const vp = videoPlayer.value
     if (!vp) return
@@ -371,7 +371,7 @@ onMounted(async () => {
     }
   })
 
-  socket.on('drift_correction', (data: ServerToClientPayloads['drift_correction']) => {
+  playbackEvents.on('drift_correction', (data: ServerToClientPayloads['drift_correction']) => {
     const vp = videoPlayer.value
     if (!vp) return
     const ve = vp.videoEl
@@ -471,7 +471,7 @@ onMounted(async () => {
     }
     isForcePausing = false
   }
-  socket.on('all_ready', resumeAfterReadyCheck)
+  playbackEvents.on('all_ready', resumeAfterReadyCheck)
 
   // Safety net: if the ready check overlay is dismissed by the client
   // timeout (15s) instead of a server all_ready, still resume playback
@@ -483,7 +483,7 @@ onMounted(async () => {
 
   // Handle late joiner sync -- suppress emits during initial load
   // Drift correction will bring the late joiner to the right position
-  socket.on('sync_state', (data: ServerToClientPayloads['sync_state']) => {
+  playbackEvents.on('sync_state', (data: ServerToClientPayloads['sync_state']) => {
     if (data.current_video) {
       isInitialSync = true
       setTimeout(() => {
