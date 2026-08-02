@@ -1136,21 +1136,9 @@ def register(ctx):
     async def handle_report_progress(sid, data):
         party_id = data.get("party_id", "").strip().upper()
         current_time = data.get("time", 0)
-        party = party_manager.get(party_id)
-        if not party or not party.current_video:
+        commit = await party_manager.commit_progress(party_id, sid, current_time)
+        if commit is None:
             return
-
-        user_stream = party.user_streams.get(sid)
-        if not user_stream or not user_stream.play_session_id:
-            return
-
-        # Only the selector updates the authoritative party clock.
-        # Match by persistent client_id so a reload preserves the role.
-        current_video = party.current_video
-        caller_client_id = _client_id_for_sid(party, sid)
-        if current_video.selected_by == caller_client_id:
-            party.playback_state.time = current_time
-            party.playback_state.last_update = datetime.now().isoformat()
 
         # Throttle Emby-facing reports per sid.
         now = time.monotonic()
@@ -1159,18 +1147,21 @@ def register(ctx):
             return
         _last_report_progress[sid] = now
 
-        is_playing = party.playback_state.playing
-        access_token, user_id = _host_creds(party)
         await emby_client.report_playback_progress(
-            item_id=current_video.item_id,
-            media_source_id=user_stream.media_source_id,
-            play_session_id=user_stream.play_session_id,
-            position_seconds=current_time, is_paused=not is_playing, event_name="TimeUpdate",
-            audio_index=user_stream.audio_index,
-            subtitle_index=user_stream.subtitle_index if user_stream.subtitle_index != -1 else None,
-            run_time_seconds=current_video.run_time_seconds,
-            access_token=access_token,
-            user_id=user_id,
+            item_id=commit.video.item_id,
+            media_source_id=commit.stream.media_source_id,
+            play_session_id=commit.stream.play_session_id,
+            position_seconds=current_time,
+            is_paused=not commit.playing,
+            event_name="TimeUpdate",
+            audio_index=commit.stream.audio_index,
+            subtitle_index=(
+                commit.stream.subtitle_index
+                if commit.stream.subtitle_index != -1 else None
+            ),
+            run_time_seconds=commit.video.run_time_seconds,
+            access_token=commit.host_access_token,
+            user_id=commit.host_user_id,
         )
 
     @sio.on("stream_ready")

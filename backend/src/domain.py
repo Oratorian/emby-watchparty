@@ -136,6 +136,15 @@ class PlaybackControlCommit:
 
 
 @dataclass(frozen=True)
+class ProgressReportCommit:
+    video: SelectedMedia
+    stream: UserStream
+    host_access_token: str | None
+    host_user_id: str | None
+    playing: bool
+
+
+@dataclass(frozen=True)
 class DepartureCommit:
     username: str | None
     client_id: str | None

@@ -19,6 +19,7 @@ from backend.src.domain import (
     PlaybackControlCommit,
     PlaybackReportSnapshot,
     PlaybackState,
+    ProgressReportCommit,
     ReadyCheck,
     ReadyCommit,
     SelectedMedia,
@@ -223,6 +224,35 @@ class PartyManager:
                 username=party.username_for_sid(sid, "Someone"),
                 report=self._playback_report_snapshot(party, sid),
                 waiting_names=waiting_names,
+            )
+
+    async def commit_progress(
+        self,
+        party_id: str,
+        sid: str,
+        position: float,
+    ) -> ProgressReportCommit | None:
+        """Snapshot one progress report; selector alone advances party clock."""
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing or party.current_video is None:
+                return None
+            stream = party.user_streams.get(sid)
+            if stream is None or not stream.play_session_id:
+                return None
+            caller_client_id = party.client_id_for_sid(sid)
+            if party.current_video.selected_by == caller_client_id:
+                party.playback_state.time = position
+                party.playback_state.last_update = datetime.now().isoformat()
+            return ProgressReportCommit(
+                video=party.current_video,
+                stream=replace(stream),
+                host_access_token=party.host_access_token,
+                host_user_id=party.host_user_id,
+                playing=party.playback_state.playing,
             )
 
     async def commit_video_selection(
