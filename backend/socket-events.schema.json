@@ -1516,13 +1516,40 @@
       "type": "object"
     },
     "members_update": {
+      "$defs": {
+        "MemberOutbound": {
+          "additionalProperties": true,
+          "properties": {
+            "avatar_uuid": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Avatar Uuid"
+            },
+            "username": {
+              "title": "Username",
+              "type": "string"
+            }
+          },
+          "required": [
+            "username"
+          ],
+          "title": "MemberOutbound",
+          "type": "object"
+        }
+      },
       "additionalProperties": true,
       "properties": {
         "members": {
           "default": [],
           "items": {
-            "additionalProperties": true,
-            "type": "object"
+            "$ref": "#/$defs/MemberOutbound"
           },
           "title": "Members",
           "type": "array"
@@ -1708,6 +1735,188 @@
       "type": "object"
     },
     "streams_changed": {
+      "$defs": {
+        "VideoStateOutbound": {
+          "additionalProperties": true,
+          "properties": {
+            "audio_index": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Audio Index"
+            },
+            "episode_count": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Episode Count"
+            },
+            "episode_index": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Episode Index"
+            },
+            "item_id": {
+              "title": "Item Id",
+              "type": "string"
+            },
+            "item_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Item Type"
+            },
+            "media_source_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Media Source Id"
+            },
+            "next_item_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Next Item Id"
+            },
+            "next_item_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Next Item Title"
+            },
+            "overview": {
+              "default": "",
+              "title": "Overview",
+              "type": "string"
+            },
+            "quality": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Quality"
+            },
+            "season_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Season Id"
+            },
+            "selected_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Selected By"
+            },
+            "series_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Series Id"
+            },
+            "stream_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Stream Url"
+            },
+            "subtitle_index": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Subtitle Index"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "item_id",
+            "title"
+          ],
+          "title": "VideoStateOutbound",
+          "type": "object"
+        }
+      },
       "additionalProperties": true,
       "properties": {
         "current_time": {
@@ -1715,9 +1924,7 @@
           "type": "number"
         },
         "video": {
-          "additionalProperties": true,
-          "title": "Video",
-          "type": "object"
+          "$ref": "#/$defs/VideoStateOutbound"
         },
         "was_playing": {
           "title": "Was Playing",
@@ -1733,51 +1940,347 @@
       "type": "object"
     },
     "sync_state": {
+      "$defs": {
+        "BingeWatchStateOutbound": {
+          "additionalProperties": true,
+          "properties": {
+            "active": {
+              "title": "Active",
+              "type": "boolean"
+            },
+            "available": {
+              "title": "Available",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "available",
+            "active"
+          ],
+          "title": "BingeWatchStateOutbound",
+          "type": "object"
+        },
+        "PendingAutoAdvanceOutbound": {
+          "additionalProperties": true,
+          "properties": {
+            "countdown_seconds": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Countdown Seconds"
+            },
+            "deadline": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Deadline"
+            },
+            "next_index_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Next Index Number"
+            },
+            "next_item_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Next Item Id"
+            },
+            "next_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Next Title"
+            },
+            "total_episodes": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Total Episodes"
+            }
+          },
+          "title": "PendingAutoAdvanceOutbound",
+          "type": "object"
+        },
+        "PlaybackStateOutbound": {
+          "additionalProperties": true,
+          "properties": {
+            "last_update": {
+              "title": "Last Update",
+              "type": "string"
+            },
+            "playing": {
+              "title": "Playing",
+              "type": "boolean"
+            },
+            "time": {
+              "title": "Time",
+              "type": "number"
+            }
+          },
+          "required": [
+            "playing",
+            "time",
+            "last_update"
+          ],
+          "title": "PlaybackStateOutbound",
+          "type": "object"
+        },
+        "VideoStateOutbound": {
+          "additionalProperties": true,
+          "properties": {
+            "audio_index": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Audio Index"
+            },
+            "episode_count": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Episode Count"
+            },
+            "episode_index": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Episode Index"
+            },
+            "item_id": {
+              "title": "Item Id",
+              "type": "string"
+            },
+            "item_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Item Type"
+            },
+            "media_source_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Media Source Id"
+            },
+            "next_item_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Next Item Id"
+            },
+            "next_item_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Next Item Title"
+            },
+            "overview": {
+              "default": "",
+              "title": "Overview",
+              "type": "string"
+            },
+            "quality": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Quality"
+            },
+            "season_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Season Id"
+            },
+            "selected_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Selected By"
+            },
+            "series_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Series Id"
+            },
+            "stream_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Stream Url"
+            },
+            "subtitle_index": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Subtitle Index"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "item_id",
+            "title"
+          ],
+          "title": "VideoStateOutbound",
+          "type": "object"
+        }
+      },
       "additionalProperties": true,
       "properties": {
         "binge_watch": {
           "anyOf": [
             {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/$defs/BingeWatchStateOutbound"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Binge Watch"
+          "default": null
         },
         "current_video": {
           "anyOf": [
             {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/$defs/VideoStateOutbound"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Current Video"
+          "default": null
         },
         "pending_auto_advance": {
           "anyOf": [
             {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/$defs/PendingAutoAdvanceOutbound"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Pending Auto Advance"
+          "default": null
         },
         "playback_state": {
-          "additionalProperties": true,
-          "title": "Playback State",
-          "type": "object"
+          "$ref": "#/$defs/PlaybackStateOutbound"
         },
         "users": {
           "default": [],
@@ -1809,13 +2312,40 @@
       "type": "object"
     },
     "user_joined": {
+      "$defs": {
+        "MemberOutbound": {
+          "additionalProperties": true,
+          "properties": {
+            "avatar_uuid": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Avatar Uuid"
+            },
+            "username": {
+              "title": "Username",
+              "type": "string"
+            }
+          },
+          "required": [
+            "username"
+          ],
+          "title": "MemberOutbound",
+          "type": "object"
+        }
+      },
       "additionalProperties": true,
       "properties": {
         "members": {
           "default": [],
           "items": {
-            "additionalProperties": true,
-            "type": "object"
+            "$ref": "#/$defs/MemberOutbound"
           },
           "title": "Members",
           "type": "array"
@@ -1845,13 +2375,40 @@
       "type": "object"
     },
     "user_left": {
+      "$defs": {
+        "MemberOutbound": {
+          "additionalProperties": true,
+          "properties": {
+            "avatar_uuid": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Avatar Uuid"
+            },
+            "username": {
+              "title": "Username",
+              "type": "string"
+            }
+          },
+          "required": [
+            "username"
+          ],
+          "title": "MemberOutbound",
+          "type": "object"
+        }
+      },
       "additionalProperties": true,
       "properties": {
         "members": {
           "default": [],
           "items": {
-            "additionalProperties": true,
-            "type": "object"
+            "$ref": "#/$defs/MemberOutbound"
           },
           "title": "Members",
           "type": "array"
@@ -1887,12 +2444,192 @@
       "type": "object"
     },
     "video_selected": {
+      "$defs": {
+        "VideoStateOutbound": {
+          "additionalProperties": true,
+          "properties": {
+            "audio_index": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Audio Index"
+            },
+            "episode_count": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Episode Count"
+            },
+            "episode_index": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Episode Index"
+            },
+            "item_id": {
+              "title": "Item Id",
+              "type": "string"
+            },
+            "item_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Item Type"
+            },
+            "media_source_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Media Source Id"
+            },
+            "next_item_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Next Item Id"
+            },
+            "next_item_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Next Item Title"
+            },
+            "overview": {
+              "default": "",
+              "title": "Overview",
+              "type": "string"
+            },
+            "quality": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Quality"
+            },
+            "season_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Season Id"
+            },
+            "selected_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Selected By"
+            },
+            "series_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Series Id"
+            },
+            "stream_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Stream Url"
+            },
+            "subtitle_index": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Subtitle Index"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "item_id",
+            "title"
+          ],
+          "title": "VideoStateOutbound",
+          "type": "object"
+        }
+      },
       "additionalProperties": true,
       "properties": {
         "video": {
-          "additionalProperties": true,
-          "title": "Video",
-          "type": "object"
+          "$ref": "#/$defs/VideoStateOutbound"
         }
       },
       "required": [

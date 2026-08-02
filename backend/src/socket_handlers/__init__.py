@@ -9,7 +9,7 @@ from backend.src.socket_handlers.sync import register as register_sync
 from backend.src.socket_handlers.chat import register as register_chat
 from backend.src.socket_handlers.drift import register as register_drift
 from backend.src.party_lifecycle import PartyLifecycle
-from backend.src.socket_protocol import install_inbound_validation
+from backend.src.socket_protocol import install_inbound_validation, install_outbound_validation
 
 
 def register_all(sio, emby_client, party_manager, token_manager, stream_builder,
@@ -36,4 +36,5 @@ def register_all(sio, emby_client, party_manager, token_manager, stream_builder,
     register_chat(ctx)
     register_drift(ctx)
     install_inbound_validation(sio, logger)
+    install_outbound_validation(sio, logger)
     return ctx

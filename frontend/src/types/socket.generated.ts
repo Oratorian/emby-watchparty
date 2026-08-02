@@ -209,7 +209,7 @@ export interface ServerToClientPayloads {
   }
   "members_update": {
     "users"?: string[]
-    "members"?: Record<string, unknown>[]
+    "members"?: ({ "username": string; "avatar_uuid"?: string | null })[]
     "username"?: string | null
   }
   "party_dissolved": {
@@ -236,33 +236,33 @@ export interface ServerToClientPayloads {
     "playing"?: boolean | null
   }
   "streams_changed": {
-    "video": Record<string, unknown>
+    "video": { "item_id": string; "title": string; "overview"?: string; "stream_url"?: string | null; "audio_index"?: number | null; "subtitle_index"?: number | null; "media_source_id"?: string | null; "selected_by"?: string | null; "quality"?: string | null; "item_type"?: string | null; "series_id"?: string | null; "season_id"?: string | null; "episode_index"?: number | null; "episode_count"?: number | null; "next_item_id"?: string | null; "next_item_title"?: string | null }
     "current_time": number
     "was_playing": boolean
   }
   "sync_state": {
-    "current_video"?: Record<string, unknown> | null
-    "playback_state": Record<string, unknown>
+    "current_video"?: { "item_id": string; "title": string; "overview"?: string; "stream_url"?: string | null; "audio_index"?: number | null; "subtitle_index"?: number | null; "media_source_id"?: string | null; "selected_by"?: string | null; "quality"?: string | null; "item_type"?: string | null; "series_id"?: string | null; "season_id"?: string | null; "episode_index"?: number | null; "episode_count"?: number | null; "next_item_id"?: string | null; "next_item_title"?: string | null } | null
+    "playback_state": { "playing": boolean; "time": number; "last_update": string }
     "users"?: string[]
-    "binge_watch"?: Record<string, unknown> | null
-    "pending_auto_advance"?: Record<string, unknown> | null
+    "binge_watch"?: { "available": boolean; "active": boolean } | null
+    "pending_auto_advance"?: { "next_item_id"?: string | null; "next_title"?: string | null; "next_index_number"?: number | null; "total_episodes"?: number | null; "deadline"?: string | null; "countdown_seconds"?: number | null } | null
   }
   "toggle_library": {
     "show": boolean
   }
   "user_joined": {
     "users"?: string[]
-    "members"?: Record<string, unknown>[]
+    "members"?: ({ "username": string; "avatar_uuid"?: string | null })[]
     "username"?: string | null
   }
   "user_left": {
     "users"?: string[]
-    "members"?: Record<string, unknown>[]
+    "members"?: ({ "username": string; "avatar_uuid"?: string | null })[]
     "username"?: string | null
   }
   "video_ended": Record<string, never>
   "video_selected": {
-    "video": Record<string, unknown>
+    "video": { "item_id": string; "title": string; "overview"?: string; "stream_url"?: string | null; "audio_index"?: number | null; "subtitle_index"?: number | null; "media_source_id"?: string | null; "selected_by"?: string | null; "quality"?: string | null; "item_type"?: string | null; "series_id"?: string | null; "season_id"?: string | null; "episode_index"?: number | null; "episode_count"?: number | null; "next_item_id"?: string | null; "next_item_title"?: string | null }
   }
   "video_stopped": Record<string, never>
 }

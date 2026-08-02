@@ -14,9 +14,15 @@ sys.path.insert(0, str(ROOT))
 from backend.src.socket_protocol import INBOUND_MODELS, OUTBOUND_MODELS  # noqa: E402
 
 
-def _typescript_type(schema: dict[str, Any]) -> str:
+def _typescript_type(schema: dict[str, Any], root: dict[str, Any]) -> str:
+    if "$ref" in schema:
+        prefix = "#/$defs/"
+        reference = schema["$ref"]
+        if reference.startswith(prefix):
+            definition = root.get("$defs", {}).get(reference[len(prefix):], {})
+            return _typescript_type(definition, root)
     if "anyOf" in schema:
-        values = [_typescript_type(value) for value in schema["anyOf"]]
+        values = [_typescript_type(value, root) for value in schema["anyOf"]]
         return " | ".join(dict.fromkeys(values))
     if "enum" in schema:
         return " | ".join(json.dumps(value) for value in schema["enum"])
@@ -30,8 +36,24 @@ def _typescript_type(schema: dict[str, Any]) -> str:
     if kind == "null":
         return "null"
     if kind == "array":
-        return f"{_typescript_type(schema.get('items', {}))}[]"
+        item_type = _typescript_type(schema.get("items", {}), root)
+        if " | " in item_type:
+            item_type = f"({item_type})"
+        return f"{item_type}[]"
     if kind == "object":
+        properties = schema.get("properties", {})
+        if properties:
+            required = set(schema.get("required", []))
+            fields = []
+            for name, value in properties.items():
+                optional = "" if name in required else "?"
+                fields.append(
+                    f"{json.dumps(name)}{optional}: {_typescript_type(value, root)}"
+                )
+            return "{ " + "; ".join(fields) + " }"
+        additional = schema.get("additionalProperties")
+        if isinstance(additional, dict):
+            return f"Record<string, {_typescript_type(additional, root)}>"
         return "Record<string, unknown>"
     return "unknown"
 
@@ -47,7 +69,7 @@ def _render_interface(name: str, schemas: dict[str, dict[str, Any]]) -> list[str
         for field_name, field_schema in schema.get("properties", {}).items():
             optional = "" if field_name in required else "?"
             lines.append(
-                f"    {json.dumps(field_name)}{optional}: {_typescript_type(field_schema)}"
+                f"    {json.dumps(field_name)}{optional}: {_typescript_type(field_schema, schema)}"
             )
         lines.append("  }")
     lines.extend(["}", ""])

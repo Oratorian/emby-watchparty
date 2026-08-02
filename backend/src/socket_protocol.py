@@ -104,22 +104,66 @@ class ConnectedOutbound(OutboundPayload):
     sid: str
 
 
+class MemberOutbound(OutboundPayload):
+    username: str
+    avatar_uuid: str | None = None
+
+
+class PlaybackStateOutbound(OutboundPayload):
+    playing: bool
+    time: float
+    last_update: str
+
+
+class VideoStateOutbound(OutboundPayload):
+    item_id: str
+    title: str
+    overview: str = ""
+    stream_url: str | None = None
+    audio_index: int | None = None
+    subtitle_index: int | None = None
+    media_source_id: str | None = None
+    selected_by: str | None = None
+    quality: str | None = None
+    item_type: str | None = None
+    series_id: str | None = None
+    season_id: str | None = None
+    episode_index: int | None = None
+    episode_count: int | None = None
+    next_item_id: str | None = None
+    next_item_title: str | None = None
+
+
+class BingeWatchStateOutbound(OutboundPayload):
+    available: bool
+    active: bool
+
+
+class PendingAutoAdvanceOutbound(OutboundPayload):
+    next_item_id: str | None = None
+    next_title: str | None = None
+    next_index_number: int | None = None
+    total_episodes: int | None = None
+    deadline: str | None = None
+    countdown_seconds: int | None = None
+
+
 class MembersOutbound(OutboundPayload):
     users: list[str] = []
-    members: list[dict[str, Any]] = []
+    members: list[MemberOutbound] = []
     username: str | None = None
 
 
 class SyncStateOutbound(OutboundPayload):
-    current_video: dict[str, Any] | None = None
-    playback_state: dict[str, Any]
+    current_video: VideoStateOutbound | None = None
+    playback_state: PlaybackStateOutbound
     users: list[str] = []
-    binge_watch: dict[str, Any] | None = None
-    pending_auto_advance: dict[str, Any] | None = None
+    binge_watch: BingeWatchStateOutbound | None = None
+    pending_auto_advance: PendingAutoAdvanceOutbound | None = None
 
 
 class VideoOutbound(OutboundPayload):
-    video: dict[str, Any]
+    video: VideoStateOutbound
 
 
 class TimedOutbound(OutboundPayload):
@@ -220,6 +264,31 @@ OUTBOUND_MODELS: dict[str, type[OutboundPayload]] = {
     "party_dissolved": PartyDissolvedOutbound,
     "error": MessageOutbound,
 }
+
+
+def install_outbound_validation(sio: Any, logger: Any = None) -> None:
+    """Validate every known server event while preserving its wire payload."""
+    if getattr(sio, "_outbound_payload_validated", False):
+        return
+    original_emit = sio.emit
+
+    @wraps(original_emit)
+    async def validated_emit(event: str, data: Any = None, *args: Any, **kwargs: Any):
+        model = OUTBOUND_MODELS.get(event)
+        if model is not None:
+            try:
+                model.model_validate(data if data is not None else {})
+            except ValidationError as exc:
+                if logger:
+                    logger.error(
+                        "event event=%s party=- outcome=invalid_outbound",
+                        event,
+                    )
+                raise ValueError(f"Invalid outbound {event} payload") from exc
+        return await original_emit(event, data, *args, **kwargs)
+
+    sio.emit = validated_emit
+    sio._outbound_payload_validated = True
 
 
 def install_inbound_validation(sio: Any, logger: Any = None) -> None:
