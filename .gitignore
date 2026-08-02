@@ -55,3 +55,6 @@ backend/static
 # Runtime data (avatar SQLite + uploaded files)
 data/
 images/avatars
+
+# Local review scratch (PR analysis, automated findings)
+workflow-findings.md
