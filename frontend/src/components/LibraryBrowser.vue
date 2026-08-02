@@ -522,27 +522,7 @@ async function fetchItems(parentId: string, append = false): Promise<'ok' | 'sta
       loadingMore.value = false
     }
   }
-  // After the FIRST page returns, if the library is large enough to
-  // want the alphabet bar, cascade-load the remaining pages in the
-  // background so the bar's dim/active state reflects the whole
-  // library rather than just whichever 50 items happened to land
-  // first. The IntersectionObserver-driven scroll loader still wins
-  // races thanks to the loadingMore gate -- the background loop just
-  // makes sure pagination doesn't stall on a list the user never has
-  // a reason to scroll (search results, top-level libraries, etc.).
-  if (!append && hasMore.value && items.value.length >= ALPHABET_BAR_MIN_ITEMS) {
-    void cascadeLoadAll()
-  }
   return 'ok'
-}
-
-async function cascadeLoadAll() {
-  // Walk subsequent pages sequentially until Emby says we're done.
-  // Sequential (not parallel) so we don't dogpile a slow Emby with
-  // 20 concurrent /api/items hits on a fresh library mount.
-  while (hasMore.value && !loadingMore.value && currentParentId.value) {
-    await fetchItems(currentParentId.value, true)
-  }
 }
 
 function loadMore() {
@@ -558,6 +538,8 @@ async function doSearch() {
   isSearching.value = true
   breadcrumbs.value = []
   filteredLetter.value = null
+  hasMore.value = false
+  currentParentId.value = null
   try {
     const data = await api.search(q, navigationSignal())
     if (myToken !== navToken) {
