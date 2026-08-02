@@ -332,4 +332,6 @@ def register(ctx):
                 )
                 lifecycle = ctx.get("party_lifecycle")
                 if lifecycle:
-                    await lifecycle.dissolve_if_empty(party_id)
+                    lifecycle.schedule_empty_dissolution(
+                        party_id, delay=HOST_GRACE_SECONDS
+                    )

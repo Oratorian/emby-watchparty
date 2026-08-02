@@ -16,6 +16,31 @@ class PartyLifecycle:
         self._parties = ctx["party_manager"]
         self._tokens = ctx["token_manager"]
         self._logger = ctx["logger"]
+        self._pending_empty: dict[str, asyncio.Task] = {}
+
+    def cancel_empty_dissolution(self, party_id: str) -> None:
+        task = self._pending_empty.pop(party_id, None)
+        if task is not None and not task.done():
+            task.cancel()
+
+    def schedule_empty_dissolution(self, party_id: str, *, delay: float) -> None:
+        self.cancel_empty_dissolution(party_id)
+
+        async def dissolve_after_grace() -> None:
+            try:
+                await asyncio.sleep(delay)
+                await self.dissolve_if_empty(party_id)
+            except asyncio.CancelledError:
+                return
+            finally:
+                current = asyncio.current_task()
+                if self._pending_empty.get(party_id) is current:
+                    self._pending_empty.pop(party_id, None)
+
+        self._pending_empty[party_id] = asyncio.create_task(
+            dissolve_after_grace(),
+            name=f"empty-party-grace:{party_id}",
+        )
 
     async def dissolve_if_empty(self, party_id: str) -> bool:
         party = await self._parties.pop_if_empty(party_id)
@@ -38,6 +63,13 @@ class PartyLifecycle:
         return True
 
     async def dissolve_all(self, *, reason: str = "shutdown") -> None:
+        pending = list(self._pending_empty.values())
+        self._pending_empty.clear()
+        for task in pending:
+            if not task.done():
+                task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
         for party_id in list(self._parties.get_all()):
             await self.dissolve(party_id, reason=reason)
 
@@ -50,6 +82,7 @@ class PartyLifecycle:
             pending_join.timeout_task if pending_join else None,
             pending_auto.task if pending_auto else None,
             self._ctx.get("pending_host_clear", {}).pop(party_id, None),
+            self._pending_empty.pop(party_id, None),
         ):
             if isinstance(task, asyncio.Task) and task is not current and not task.done():
                 task.cancel()

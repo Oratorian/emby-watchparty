@@ -19,6 +19,7 @@ def register(ctx):
     restart_video_from_beginning = ctx['restart_video_from_beginning']
     create_user_stream = ctx.get('create_user_stream')
     session_secret = ctx.get('session_secret')
+    lifecycle = ctx['party_lifecycle']
 
     def _cookie_session(environ):
         """Read the party-bound session cookie off the raw ASGI environ.
@@ -599,6 +600,7 @@ def register(ctx):
         # Normal join path (no active video, vote disabled, or empty party
         # with a stale current_video from the static-session edge case)
         # -----------------------------------------------------------------
+        lifecycle.cancel_empty_dissolution(party_id)
         await sio.enter_room(sid, party_id)
         await _replace_sid(
             party,
