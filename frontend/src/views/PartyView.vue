@@ -71,7 +71,6 @@ const auth = useAuthStore()
 const avatar = useAvatarStore()
 const {
   messages: chatMessages,
-  announcement,
   input: chatInput,
   showParticipants,
   showMobileChat,
@@ -1348,9 +1347,6 @@ async function submitBecomeHost(payload: { username: string; password: string })
 
   <!-- Party room -->
   <div v-if="joined" class="party-container">
-    <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">
-      {{ announcement }}
-    </div>
     <!-- Reconnecting banner: shown when the socket has dropped and
          socket.io-client is attempting to reconnect. Without this, a
          mid-party disconnect looks identical to a healthy connection
@@ -1541,7 +1537,12 @@ async function submitBecomeHost(payload: { username: string; password: string })
             <span v-if="user === party.username" class="you-label">(you)</span>
           </div>
         </div>
-        <div class="chat-messages">
+        <div
+          class="chat-messages"
+          role="status"
+          aria-live="polite"
+          aria-relevant="additions text"
+        >
           <div
             v-for="(msg, i) in chatMessages"
             :key="i"
@@ -1696,17 +1697,6 @@ async function submitBecomeHost(payload: { username: string; password: string })
 </template>
 
 <style scoped>
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
 /* ─── Join Modal ─── */
 .modal-overlay {
   position: fixed;
