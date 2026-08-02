@@ -92,6 +92,22 @@ class PlaybackControlCommit:
     waiting_names: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class DepartureCommit:
+    username: str | None
+    client_id: str | None
+    stream: UserStream | None
+    all_ready: bool
+    auto_play: bool
+    playback_time: float
+    playback_playing: bool
+    ready_names: tuple[str, ...]
+    waiting_names: tuple[str, ...]
+    current_video: dict[str, Any] | None
+    host_access_token: str | None
+    host_user_id: str | None
+
+
 @dataclass
 class Party:
     """Typed party aggregate."""

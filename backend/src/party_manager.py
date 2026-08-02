@@ -10,6 +10,7 @@ from typing import Dict, Optional
 from backend.src.config import Config
 from backend.src.domain import (
     Party,
+    DepartureCommit,
     PlaybackControlCommit,
     PlaybackReportSnapshot,
     PlaybackState,
@@ -261,6 +262,77 @@ class PartyManager:
                 return False
             party.user_streams[sid] = stream
             return True
+
+    async def depart_socket(
+        self,
+        party_id: str,
+        sid: str,
+        *,
+        forget_participant: bool,
+    ) -> DepartureCommit | None:
+        """Atomically detach one socket and settle its ready-check membership."""
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing:
+                return None
+            username = party.users.pop(sid, None)
+            stream = party.user_streams.pop(sid, None)
+            client_id = party.sid_client_ids.pop(sid, None)
+            party.join_times.pop(sid, None)
+            party.drift_strikes.pop(sid, None)
+            if forget_participant and client_id:
+                party.participants.pop(client_id, None)
+
+            all_ready = False
+            auto_play = False
+            ready_names: tuple[str, ...] = ()
+            waiting_names: tuple[str, ...] = ()
+            ready_check = party.ready_check
+            if ready_check and ready_check.active:
+                ready_check.expected_sids.discard(sid)
+                ready_check.ready_sids.discard(sid)
+                if (
+                    ready_check.expected_sids
+                    and ready_check.ready_sids >= ready_check.expected_sids
+                ):
+                    all_ready = True
+                    party.ready_check = None
+                    auto_play = party.auto_play_after_ready
+                    party.auto_play_after_ready = False
+                    if auto_play:
+                        party.playback_state.playing = True
+                    if party.playback_state.playing:
+                        party.playback_state.last_update = datetime.now().isoformat()
+                elif not ready_check.expected_sids:
+                    party.ready_check = None
+                    party.auto_play_after_ready = False
+                else:
+                    ready_names = tuple(
+                        party.users.get(member, "?")
+                        for member in ready_check.ready_sids
+                    )
+                    waiting_names = tuple(
+                        party.users.get(member, "?")
+                        for member in ready_check.expected_sids
+                        - ready_check.ready_sids
+                    )
+            return DepartureCommit(
+                username=username,
+                client_id=client_id,
+                stream=stream,
+                all_ready=all_ready,
+                auto_play=auto_play,
+                playback_time=party.playback_state.time,
+                playback_playing=party.playback_state.playing,
+                ready_names=ready_names,
+                waiting_names=waiting_names,
+                current_video=dict(party.current_video) if party.current_video else None,
+                host_access_token=party.host_access_token,
+                host_user_id=party.host_user_id,
+            )
 
     def create_party(self) -> str:
         """Create a new party with a generated ID. Returns party_id."""

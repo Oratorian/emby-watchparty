@@ -813,59 +813,50 @@ def register(ctx):
                 }, room=party_id, skip_sid=sid)
 
         if sid in party.users:
-            username = party.users[sid]
+            departure = await party_manager.depart_socket(
+                party_id, sid, forget_participant=True
+            )
+            if departure is None:
+                return
+            username = departure.username or "Unknown"
 
-            # Stop this user's individual transcode
-            user_stream = party.user_streams.get(sid)
-            if user_stream and user_stream.play_session_id and party.current_video:
-                current_time = party.playback_state.time
-                host_token = party.host_access_token
-                host_user = party.host_user_id
+            # Stop this user's individual transcode outside the party lock.
+            user_stream = departure.stream
+            current_video = departure.current_video
+            if user_stream and user_stream.play_session_id and current_video:
                 await emby_client.report_playback_stopped(
-                    item_id=party.current_video["item_id"],
+                    item_id=current_video["item_id"],
                     media_source_id=user_stream.media_source_id,
                     play_session_id=user_stream.play_session_id,
-                    position_seconds=current_time,
-                    run_time_seconds=party.current_video.get("run_time_seconds"),
-                    access_token=host_token,
-                    user_id=host_user,
+                    position_seconds=departure.playback_time,
+                    run_time_seconds=current_video.get("run_time_seconds"),
+                    access_token=departure.host_access_token,
+                    user_id=departure.host_user_id,
                 )
                 await emby_client.stop_active_encodings(
                     play_session_id=user_stream.play_session_id,
-                    access_token=host_token,
+                    access_token=departure.host_access_token,
                 )
-            party.user_streams.pop(sid, None)
             token_manager.revoke_user(party_id, sid)
 
             await sio.leave_room(sid, party_id)
-            client_id = party.sid_client_ids.pop(sid, None)
-            if client_id:
-                party.participants.pop(client_id, None)
-            del party.users[sid]
-
-            # Remove from any active ready check so we don't wait forever
-            rc = party.ready_check
-            if rc and rc.active:
-                rc.expected_sids.discard(sid)
-                rc.ready_sids.discard(sid)
-                if rc.ready_sids >= rc.expected_sids and rc.expected_sids:
-                    party.ready_check = None
-                    playback_state = party.playback_state
-                    if playback_state.playing:
-                        playback_state.last_update = datetime.now().isoformat()
-                    logger.info(f"All users ready in party {party_id} (after leave)")
-                    await sio.emit("all_ready", {
-                        "time": playback_state.time,
-                        "playing": playback_state.playing,
+            if departure.all_ready:
+                logger.info(f"All users ready in party {party_id} (after leave)")
+                await sio.emit("all_ready", {
+                        "time": departure.playback_time,
+                        "playing": departure.playback_playing,
                     }, room=party_id)
-                elif not rc.expected_sids:
-                    party.ready_check = None
-                else:
-                    ready_names = [party.users.get(s, "?") for s in rc.ready_sids]
-                    waiting_names = [party.users.get(s, "?") for s in rc.expected_sids - rc.ready_sids]
-                    await sio.emit("ready_check_update", {
-                        "ready": ready_names, "waiting": waiting_names,
+                if departure.auto_play:
+                    await sio.emit("play", {
+                        "time": departure.playback_time,
+                        "username": None,
+                        "auto_binge": True,
                     }, room=party_id)
+            elif departure.ready_names or departure.waiting_names:
+                await sio.emit("ready_check_update", {
+                    "ready": list(departure.ready_names),
+                    "waiting": list(departure.waiting_names),
+                }, room=party_id)
 
             await sio.emit("user_left", {
                 "username": username,
