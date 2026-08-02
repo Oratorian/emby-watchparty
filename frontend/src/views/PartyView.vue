@@ -43,6 +43,8 @@ const AdminPanel = defineAsyncComponent(
   () => import('@/components/AdminPanel.vue'),
 )
 import { api } from '@/api/client'
+import type { LibraryItem } from '@/api/client'
+import type { ServerToClientPayloads } from '@/types/socket.generated'
 import { withPrefix } from '@/utils/appPrefix'
 import { avatarUrl as fallbackAvatarUrl } from '@/utils/avatar'
 import { copyToClipboard } from '@/utils/clipboard'
@@ -102,7 +104,13 @@ const joined = ref(false)
 // Without this flag, the modal flashes on every mount before the socket
 // confirms the auto-join, even when localStorage has a saved name.
 const awaitingAutoJoin = ref(!!localStorage.getItem(STORAGE_KEY))
-const chatMessages = ref<Array<{ username: string; message: string; timestamp: string; system?: boolean }>>([])
+const chatMessages = ref<Array<{
+  username: string
+  message: string
+  timestamp: string
+  avatar_uuid?: string | null
+  system?: boolean
+}>>([])
 const chatInput = ref('')
 const showLibrary = ref(false)
 const copyLabel = ref('Copy')
@@ -195,7 +203,7 @@ onMounted(async () => {
   ] as const
   for (const e of partyViewEvents) socket.off(e)
 
-  socket.on('chat_message', (data: any) => {
+  socket.on('chat_message', (data: ServerToClientPayloads['chat_message']) => {
     chatMessages.value.push(data)
     nextTick(() => {
       const el = document.querySelector('.chat-messages')
@@ -204,7 +212,7 @@ onMounted(async () => {
   })
 
   // Playback sync handlers -- matching v1.6.0 deduplication
-  socket.on('play', (data: any) => {
+  socket.on('play', (data: ServerToClientPayloads['play']) => {
     // Use nextTick to ensure the videoPlayer ref is bound. When the
     // store's play listener fires first and updates reactive state,
     // Vue may still be mid-render and the template ref is not yet
@@ -286,7 +294,7 @@ onMounted(async () => {
     }
   })
 
-  socket.on('pause', (data: any) => {
+  socket.on('pause', (data: ServerToClientPayloads['pause']) => {
     const vp = videoPlayer.value
     if (!vp) return
     vp.isSyncing = true
@@ -300,7 +308,7 @@ onMounted(async () => {
     if (data.username) addSystemMessage(`${data.username} paused playback`)
   })
 
-  socket.on('seek', (data: any) => {
+  socket.on('seek', (data: ServerToClientPayloads['seek']) => {
     const vp = videoPlayer.value
     if (!vp) return
     vp.isSyncing = true
@@ -398,7 +406,7 @@ onMounted(async () => {
     }
   })
 
-  socket.on('drift_correction', (data: any) => {
+  socket.on('drift_correction', (data: ServerToClientPayloads['drift_correction']) => {
     const vp = videoPlayer.value
     if (!vp) return
     const ve = vp.videoEl
@@ -473,7 +481,7 @@ onMounted(async () => {
   }, 5000)
 
   // All users buffered after a seek -- resume playback together
-  const resumeAfterReadyCheck = (data?: any) => {
+  const resumeAfterReadyCheck = (data?: ServerToClientPayloads['all_ready']) => {
     const vp = videoPlayer.value
     if (!vp) return
     const ve = vp.videoEl
@@ -510,7 +518,7 @@ onMounted(async () => {
 
   // Handle late joiner sync -- suppress emits during initial load
   // Drift correction will bring the late joiner to the right position
-  socket.on('sync_state', (data: any) => {
+  socket.on('sync_state', (data: ServerToClientPayloads['sync_state']) => {
     if (data.current_video) {
       isInitialSync = true
       setTimeout(() => {
@@ -520,7 +528,7 @@ onMounted(async () => {
   })
 
   // Error handler -- redirect on invalid party
-  socket.on('error', (data: any) => {
+  socket.on('error', (data: ServerToClientPayloads['error']) => {
     const msg = data?.message || 'Unknown error'
     if (msg.includes('not found')) {
       alert(`Party not found: ${route.params.id}`)
@@ -545,7 +553,7 @@ onMounted(async () => {
 
   // Cancel announcements -- the modal closes itself off the store
   // state, but a system message keeps the chat history coherent.
-  socket.on('auto_advance_cancelled', (data: any) => {
+  socket.on('auto_advance_cancelled', (data: ServerToClientPayloads['auto_advance_cancelled']) => {
     const by = data?.by_username
     if (by) {
       addSystemMessage(`${by} cancelled auto-advance`)
@@ -553,7 +561,7 @@ onMounted(async () => {
   })
 
   // Late-joiner rejection: redirect home with a message
-  socket.on('join_rejected', (data: any) => {
+  socket.on('join_rejected', (data: ServerToClientPayloads['join_rejected']) => {
     const msg = data?.message || 'The party declined your request to join.'
     alert(msg)
     router.push('/')
@@ -575,13 +583,13 @@ onMounted(async () => {
   // this restores the v1.x behaviour. Idempotent for the host: their
   // local toggleLibrary() already set showLibrary, and re-applying the
   // same boolean here is a no-op.
-  socket.on('toggle_library', (data: any) => {
+  socket.on('toggle_library', (data: ServerToClientPayloads['toggle_library']) => {
     showLibrary.value = !!data.show
   })
 
   // Vote resolved as fail while we were the late joiner: the store
   // already cleared the pending state; here we just redirect.
-  socket.on('join_vote_resolved', (data: any) => {
+  socket.on('join_vote_resolved', (data: ServerToClientPayloads['join_vote_resolved']) => {
     // The store's listener runs first and sets pendingVote=null. We
     // only handle the redirect case here (late joiner got rejected).
     if (data.result === 'fail' && !party.partyId) {
@@ -698,18 +706,18 @@ watch(
     try {
       const streams = await api.itemStreams(itemId)
       const textSubs = (streams.subtitles || []).filter(
-        (s: any) => !s.isPGS && s.isTextSubtitleStream,
+        (stream) => !stream.isPGS && stream.isTextSubtitleStream,
       )
       // Fresh item: auto-show the default text sub AND remember it as
       // the active selection so a later quality switch restores it.
       // Same item: keep whatever the user picked last.
       if (isNewItem) {
-        const defaultSub = textSubs.find((s: any) => s.isDefault)
+        const defaultSub = textSubs.find((stream) => stream.isDefault)
         if (defaultSub) selectedTextSubIndex.value = defaultSub.index
       }
       const targetIndex = selectedTextSubIndex.value
 
-      textSubs.forEach((sub: any) => {
+      textSubs.forEach((sub) => {
         const track = document.createElement('track')
         track.kind = 'subtitles'
         let label = sub.displayLanguage || sub.language || 'Unknown'
@@ -818,7 +826,7 @@ async function leaveParty() {
 // the host picks. `pendingSelection` holds the original item so we
 // can finish the emit once the modal resolves.
 interface PendingVersionPick {
-  item: any
+  item: LibraryItem
   startSeconds: number
   versions: Array<{
     id: string
@@ -835,12 +843,12 @@ const versionPickerState = ref<PendingVersionPick | null>(null)
 // (start_seconds = 0); either way we then fall through to the
 // multi-version picker (or directly to the emit if there's only one).
 const resumePromptState = ref<{
-  item: any
+  item: LibraryItem
   resumeSeconds: number
   runTimeSeconds: number | null
 } | null>(null)
 
-function emitSelectVideo(item: any, mediaSourceId?: string, startSeconds = 0) {
+function emitSelectVideo(item: LibraryItem, mediaSourceId?: string, startSeconds = 0) {
   if (!party.partyId) return
   hasStarted = false
   socket.emit('select_video', {
@@ -859,7 +867,7 @@ function emitSelectVideo(item: any, mediaSourceId?: string, startSeconds = 0) {
 // Same body as the second half of selectVideo: probe for alternate
 // versions, route through the version picker if needed, otherwise
 // emit directly.
-async function continueSelectAfterResume(item: any, startSeconds: number) {
+async function continueSelectAfterResume(item: LibraryItem, startSeconds: number) {
   let versions: PendingVersionPick['versions'] = []
   try {
     const streams = await api.itemStreams(item.Id)
@@ -878,7 +886,7 @@ async function continueSelectAfterResume(item: any, startSeconds: number) {
   emitSelectVideo(item, undefined, startSeconds)
 }
 
-async function selectVideo(item: any) {
+async function selectVideo(item: LibraryItem) {
   if (!party.partyId) return
 
   // Resume check first: if Emby reports a current resume position
@@ -1545,8 +1553,8 @@ async function submitBecomeHost(payload: { username: string; password: string })
             :stream-url="party.myStreamUrl || ''"
             :quality="party.currentVideo.quality || '1080p-high'"
             :current-time="currentTime"
-            :media-source-id="party.currentVideo.media_source_id"
-            :run-time-seconds="party.currentVideo.run_time_seconds"
+            :media-source-id="party.currentVideo.media_source_id ?? undefined"
+            :run-time-seconds="party.currentVideo.run_time_seconds ?? undefined"
             :binge-available="party.bingeWatch.available"
             :binge-active="party.bingeWatch.active"
             :binge-visible="auth.isHost && party.currentVideo.item_type === 'Episode'"

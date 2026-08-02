@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api/client'
 import { useSocketStore } from './socket'
+import type { ServerToClientPayloads } from '@/types/socket.generated'
 
 /**
  * Per-party auth state.
@@ -79,14 +80,14 @@ export const useAuthStore = defineStore('auth', () => {
     socket.off('host_left')
     socket.off('host_reclaimed')
 
-    socket.on('host_changed', (data: any) => {
+    socket.on('host_changed', (data: ServerToClientPayloads['host_changed']) => {
       hostUsername.value = data.host_username || null
       partyUnlocked.value = !!data.unlocked
       // is_host stays whatever it was -- the caller knows from /auth/status
       // whether they themselves were the one becoming host.
     })
 
-    socket.on('host_left', (data: any) => {
+    socket.on('host_left', (data: ServerToClientPayloads['host_left']) => {
       const wasPlayingOnly = !!data.playing_only
       partyUnlocked.value = false
       if (!wasPlayingOnly) {
@@ -98,7 +99,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
     })
 
-    socket.on('host_reclaimed', (data: any) => {
+    socket.on('host_reclaimed', (data: ServerToClientPayloads['host_reclaimed']) => {
       hostUsername.value = data.host_username || hostUsername.value
       partyUnlocked.value = true
     })

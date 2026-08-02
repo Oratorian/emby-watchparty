@@ -91,16 +91,14 @@ export const useSocketStore = defineStore('socket', () => {
     event: K,
     handler: ServerToClientEvents[K],
   ) {
-    const current = socket.value as Socket | null
-    current?.on(event as string, handler as (...args: any[]) => void)
+    socket.value?.on(event as never, handler as never)
   }
 
   function off<K extends keyof ServerToClientEvents>(
     event: K,
     handler?: ServerToClientEvents[K],
   ) {
-    const current = socket.value as Socket | null
-    current?.off(event as string, handler as ((...args: any[]) => void) | undefined)
+    socket.value?.off(event as never, handler as never)
   }
 
   return {

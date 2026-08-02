@@ -84,42 +84,28 @@ export interface ServerToClientPayloads {
     "time": number
     "username"?: string | null
     "playing"?: boolean | null
+    "auto_binge"?: boolean | null
+    "wait_for_ready"?: boolean | null
   }
   "auto_advance_cancelled": {
-    "next_item_id"?: string | null
-    "next_title"?: string | null
-    "next_index_number"?: number | null
-    "total_episodes"?: number | null
-    "deadline"?: string | null
-    "countdown_seconds"?: number | null
-    "reason"?: string | null
+    "by_username"?: string | null
   }
   "auto_advance_fired": {
-    "next_item_id"?: string | null
-    "next_title"?: string | null
-    "next_index_number"?: number | null
-    "total_episodes"?: number | null
-    "deadline"?: string | null
-    "countdown_seconds"?: number | null
-    "reason"?: string | null
+    "next_item_id": string
+    "next_title": string
   }
   "auto_advance_pending": {
-    "next_item_id"?: string | null
-    "next_title"?: string | null
+    "next_item_id": string
+    "next_title": string
     "next_index_number"?: number | null
-    "total_episodes"?: number | null
-    "deadline"?: string | null
-    "countdown_seconds"?: number | null
-    "reason"?: string | null
+    "total_episodes": number
+    "deadline": string
+    "countdown_seconds": number
   }
   "binge_finished": {
-    "next_item_id"?: string | null
-    "next_title"?: string | null
-    "next_index_number"?: number | null
-    "total_episodes"?: number | null
-    "deadline"?: string | null
-    "countdown_seconds"?: number | null
     "reason"?: string | null
+    "series_id"?: string | null
+    "season_id"?: string | null
   }
   "binge_watch_state_changed": {
     "available": boolean
@@ -129,6 +115,7 @@ export interface ServerToClientPayloads {
     "username": string
     "message": string
     "avatar_uuid"?: string | null
+    "timestamp": string
   }
   "connected": {
     "sid": string
@@ -137,6 +124,8 @@ export interface ServerToClientPayloads {
     "time": number
     "username"?: string | null
     "playing"?: boolean | null
+    "auto_binge"?: boolean | null
+    "wait_for_ready"?: boolean | null
   }
   "error": {
     "message": string
@@ -145,6 +134,8 @@ export interface ServerToClientPayloads {
     "time": number
     "username"?: string | null
     "playing"?: boolean | null
+    "auto_binge"?: boolean | null
+    "wait_for_ready"?: boolean | null
   }
   "host_changed": {
     "host_username"?: string | null
@@ -152,6 +143,7 @@ export interface ServerToClientPayloads {
     "is_admin"?: boolean
     "unlocked"?: boolean
     "reason"?: string | null
+    "playing_only"?: boolean | null
   }
   "host_left": {
     "host_username"?: string | null
@@ -159,6 +151,7 @@ export interface ServerToClientPayloads {
     "is_admin"?: boolean
     "unlocked"?: boolean
     "reason"?: string | null
+    "playing_only"?: boolean | null
   }
   "host_reclaimed": {
     "host_username"?: string | null
@@ -166,51 +159,35 @@ export interface ServerToClientPayloads {
     "is_admin"?: boolean
     "unlocked"?: boolean
     "reason"?: string | null
+    "playing_only"?: boolean | null
   }
   "join_rejected": {
-    "result"?: string | null
-    "username"?: string | null
-    "yes"?: number | null
-    "no"?: number | null
-    "required"?: number | null
-    "reason"?: string | null
+    "message": string
   }
   "join_vote_pending": {
-    "result"?: string | null
-    "username"?: string | null
-    "yes"?: number | null
-    "no"?: number | null
-    "required"?: number | null
-    "reason"?: string | null
+    "timeout_seconds": number
+    "eligible_voters": string[]
+    "required_majority": number
   }
   "join_vote_resolved": {
-    "result"?: string | null
-    "username"?: string | null
-    "yes"?: number | null
-    "no"?: number | null
-    "required"?: number | null
+    "result": "pass" | "fail" | "cancelled"
     "reason"?: string | null
   }
   "join_vote_started": {
-    "result"?: string | null
-    "username"?: string | null
-    "yes"?: number | null
-    "no"?: number | null
-    "required"?: number | null
-    "reason"?: string | null
+    "username": string
+    "timeout_seconds": number
+    "eligible_voters": string[]
+    "required_majority": number
   }
   "join_vote_update": {
-    "result"?: string | null
-    "username"?: string | null
-    "yes"?: number | null
-    "no"?: number | null
-    "required"?: number | null
-    "reason"?: string | null
+    "votes": Record<string, "yes" | "no">
+    "remaining": number
   }
   "members_update": {
     "users"?: string[]
     "members"?: ({ "username": string; "avatar_uuid"?: string | null })[]
     "username"?: string | null
+    "rejoin"?: boolean | null
   }
   "party_dissolved": {
     "party_id": string
@@ -220,11 +197,15 @@ export interface ServerToClientPayloads {
     "time": number
     "username"?: string | null
     "playing"?: boolean | null
+    "auto_binge"?: boolean | null
+    "wait_for_ready"?: boolean | null
   }
   "play": {
     "time": number
     "username"?: string | null
     "playing"?: boolean | null
+    "auto_binge"?: boolean | null
+    "wait_for_ready"?: boolean | null
   }
   "ready_check_update": {
     "ready"?: string[]
@@ -234,14 +215,16 @@ export interface ServerToClientPayloads {
     "time": number
     "username"?: string | null
     "playing"?: boolean | null
+    "auto_binge"?: boolean | null
+    "wait_for_ready"?: boolean | null
   }
   "streams_changed": {
-    "video": { "item_id": string; "title": string; "overview"?: string; "stream_url"?: string | null; "audio_index"?: number | null; "subtitle_index"?: number | null; "media_source_id"?: string | null; "selected_by"?: string | null; "quality"?: string | null; "item_type"?: string | null; "series_id"?: string | null; "season_id"?: string | null; "episode_index"?: number | null; "episode_count"?: number | null; "next_item_id"?: string | null; "next_item_title"?: string | null }
+    "video": { "item_id": string; "title": string; "overview"?: string; "stream_url"?: string | null; "audio_index"?: number | null; "subtitle_index"?: number | null; "media_source_id"?: string | null; "selected_by"?: string | null; "quality"?: string | null; "item_type"?: string | null; "series_id"?: string | null; "season_id"?: string | null; "episode_index"?: number | null; "episode_count"?: number | null; "next_item_id"?: string | null; "next_item_title"?: string | null; "run_time_seconds"?: number | null }
     "current_time": number
     "was_playing": boolean
   }
   "sync_state": {
-    "current_video"?: { "item_id": string; "title": string; "overview"?: string; "stream_url"?: string | null; "audio_index"?: number | null; "subtitle_index"?: number | null; "media_source_id"?: string | null; "selected_by"?: string | null; "quality"?: string | null; "item_type"?: string | null; "series_id"?: string | null; "season_id"?: string | null; "episode_index"?: number | null; "episode_count"?: number | null; "next_item_id"?: string | null; "next_item_title"?: string | null } | null
+    "current_video"?: { "item_id": string; "title": string; "overview"?: string; "stream_url"?: string | null; "audio_index"?: number | null; "subtitle_index"?: number | null; "media_source_id"?: string | null; "selected_by"?: string | null; "quality"?: string | null; "item_type"?: string | null; "series_id"?: string | null; "season_id"?: string | null; "episode_index"?: number | null; "episode_count"?: number | null; "next_item_id"?: string | null; "next_item_title"?: string | null; "run_time_seconds"?: number | null } | null
     "playback_state": { "playing": boolean; "time": number; "last_update": string }
     "users"?: string[]
     "binge_watch"?: { "available": boolean; "active": boolean } | null
@@ -254,15 +237,17 @@ export interface ServerToClientPayloads {
     "users"?: string[]
     "members"?: ({ "username": string; "avatar_uuid"?: string | null })[]
     "username"?: string | null
+    "rejoin"?: boolean | null
   }
   "user_left": {
     "users"?: string[]
     "members"?: ({ "username": string; "avatar_uuid"?: string | null })[]
     "username"?: string | null
+    "rejoin"?: boolean | null
   }
   "video_ended": Record<string, never>
   "video_selected": {
-    "video": { "item_id": string; "title": string; "overview"?: string; "stream_url"?: string | null; "audio_index"?: number | null; "subtitle_index"?: number | null; "media_source_id"?: string | null; "selected_by"?: string | null; "quality"?: string | null; "item_type"?: string | null; "series_id"?: string | null; "season_id"?: string | null; "episode_index"?: number | null; "episode_count"?: number | null; "next_item_id"?: string | null; "next_item_title"?: string | null }
+    "video": { "item_id": string; "title": string; "overview"?: string; "stream_url"?: string | null; "audio_index"?: number | null; "subtitle_index"?: number | null; "media_source_id"?: string | null; "selected_by"?: string | null; "quality"?: string | null; "item_type"?: string | null; "series_id"?: string | null; "season_id"?: string | null; "episode_index"?: number | null; "episode_count"?: number | null; "next_item_id"?: string | null; "next_item_title"?: string | null; "run_time_seconds"?: number | null }
   }
   "video_stopped": Record<string, never>
 }

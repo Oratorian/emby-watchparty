@@ -44,12 +44,18 @@ export interface LibraryItem {
   Id: string
   Name: string
   Type: string
-  [key: string]: unknown
+  Overview?: string
+  RunTimeTicks?: number
+  MediaSourceCount?: number
+  UserData?: {
+    PlaybackPositionTicks?: number
+    PlayedPercentage?: number
+    Played?: boolean
+  }
 }
 export interface LibraryResponse {
   Items: LibraryItem[]
   TotalRecordCount?: number
-  [key: string]: unknown
 }
 export interface PartyResponse extends SuccessResponse {
   party_id?: string
@@ -72,7 +78,7 @@ export interface PartyListResponse {
     locked: boolean
   }>
 }
-export interface AudioStream extends JsonRecord {
+export interface AudioStream {
   index: number
   language: string
   displayLanguage: string
@@ -81,7 +87,7 @@ export interface AudioStream extends JsonRecord {
   isDefault: boolean
   title: string
 }
-export interface SubtitleStream extends JsonRecord {
+export interface SubtitleStream {
   index: number
   language: string
   displayLanguage: string
@@ -90,9 +96,10 @@ export interface SubtitleStream extends JsonRecord {
   isForced: boolean
   isExternal: boolean
   isPGS: boolean
+  isTextSubtitleStream: boolean
   title: string
 }
-export interface MediaVersion extends JsonRecord {
+export interface MediaVersion {
   id: string
   name: string
   container: string | null
@@ -130,7 +137,7 @@ export interface ConfigUpdateResponse extends JsonRecord {
   error?: string
 }
 
-export async function apiFetch<T = any>(path: string, options: RequestInit = {}): Promise<T> {
+export async function apiFetch<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const resp = await fetch(withPrefix(path), {
     headers: { 'Content-Type': 'application/json', ...options.headers },
     credentials: 'same-origin',

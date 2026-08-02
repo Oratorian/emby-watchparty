@@ -55,7 +55,7 @@ function attachStream(url: string) {
   isSyncing.value = true
 
   if (Hls.isSupported()) {
-    const hlsConfig: any = {
+    const hlsConfig: Partial<Hls['config']> = {
       enableWorker: true,
       lowLatencyMode: false,
       backBufferLength: 90,
@@ -72,7 +72,6 @@ function attachStream(url: string) {
       // textTracks 'change' events and try to coordinate with our
       // externally-managed <track> elements -- that coordination caused
       // phantom seeks during playback whenever a sub was set to 'showing'.
-      subtitleDisplay: false,
       enableWebVTT: false,
       renderTextTracksNatively: false,
     }

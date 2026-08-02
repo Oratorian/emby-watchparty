@@ -5,11 +5,14 @@ import { useAvatarStore } from './avatar'
 import { useAuthStore } from './auth'
 import { api } from '@/api/client'
 import { hideParty } from '@/utils/hiddenParties'
+import type { ServerToClientPayloads } from '@/types/socket.generated'
 
 export interface MemberInfo {
   username: string
   avatar_uuid?: string | null
 }
+
+type VideoInfo = ServerToClientPayloads['video_selected']['video']
 
 const CLIENT_ID_STORAGE_KEY = 'emby-watchparty-client-id'
 
@@ -33,7 +36,7 @@ export const usePartyStore = defineStore('party', () => {
   // name (sufficient because the server enforces unique-ish names per
   // party). Falls back to null when the backend hasn't bound an avatar.
   const members = ref<Record<string, string | null>>({})
-  const currentVideo = ref<any>(null)
+  const currentVideo = ref<VideoInfo | null>(null)
   const playbackState = ref({ playing: false, time: 0, last_update: '' })
   const myStreamUrl = ref<string | null>(null)
   // Media time at which this user's stream begins. Backend sets
@@ -212,8 +215,8 @@ export const usePartyStore = defineStore('party', () => {
       })
     })
 
-    socket.on('user_joined', (data: any) => {
-      users.value = data.users
+    socket.on('user_joined', (data: ServerToClientPayloads['user_joined']) => {
+      users.value = data.users ?? []
       if (Array.isArray(data.members)) {
         const map: Record<string, string | null> = {}
         for (const m of data.members as MemberInfo[]) {
@@ -223,7 +226,7 @@ export const usePartyStore = defineStore('party', () => {
       }
     })
 
-    socket.on('user_left', (data: any) => {
+    socket.on('user_left', (data: ServerToClientPayloads['user_left']) => {
       users.value = data.users || []
       if (Array.isArray(data.members)) {
         const map: Record<string, string | null> = {}
@@ -236,7 +239,7 @@ export const usePartyStore = defineStore('party', () => {
 
     // Avatar updates from anyone in the room: refresh the members map
     // so chat + participant list re-render without a page reload.
-    socket.on('members_update', (data: any) => {
+    socket.on('members_update', (data: ServerToClientPayloads['members_update']) => {
       if (Array.isArray(data.members)) {
         const map: Record<string, string | null> = {}
         for (const m of data.members as MemberInfo[]) {
@@ -246,8 +249,8 @@ export const usePartyStore = defineStore('party', () => {
       }
     })
 
-    socket.on('sync_state', (data: any) => {
-      currentVideo.value = data.current_video
+    socket.on('sync_state', (data: ServerToClientPayloads['sync_state']) => {
+      currentVideo.value = data.current_video ?? null
       playbackState.value = data.playback_state
       // Per-user stream URL comes inside current_video for late joiners.
       // The backend offsets the transcode via StartTimeTicks to the current
@@ -273,8 +276,8 @@ export const usePartyStore = defineStore('party', () => {
       const pa = data.pending_auto_advance
       if (pa && pa.deadline) {
         pendingAutoAdvance.value = {
-          nextItemId: pa.next_item_id,
-          nextTitle: pa.next_title,
+          nextItemId: pa.next_item_id ?? '',
+          nextTitle: pa.next_title ?? 'Next episode',
           nextIndexNumber: pa.next_index_number ?? null,
           totalEpisodes: pa.total_episodes ?? 0,
           timeoutAt: new Date(pa.deadline).getTime(),
@@ -283,7 +286,7 @@ export const usePartyStore = defineStore('party', () => {
       }
     })
 
-    socket.on('video_selected', (data: any) => {
+    socket.on('video_selected', (data: ServerToClientPayloads['video_selected']) => {
       currentVideo.value = data.video
       // Initial video selection -- stream starts at 0
       streamOffset.value = 0
@@ -305,28 +308,28 @@ export const usePartyStore = defineStore('party', () => {
       readyCheckActive.value = false
     })
 
-    socket.on('play', (data: any) => {
+    socket.on('play', (data: ServerToClientPayloads['play']) => {
       playbackState.value.playing = true
       if (data.time !== undefined) {
         playbackState.value.time = data.time
       }
     })
 
-    socket.on('pause', (data: any) => {
+    socket.on('pause', (data: ServerToClientPayloads['pause']) => {
       playbackState.value.playing = false
       if (data.time !== undefined) {
         playbackState.value.time = data.time
       }
     })
 
-    socket.on('seek', (data: any) => {
+    socket.on('seek', (data: ServerToClientPayloads['seek']) => {
       playbackState.value.playing = !!data.playing
       if (data.time !== undefined) {
         playbackState.value.time = data.time
       }
     })
 
-    socket.on('binge_watch_state_changed', (data: any) => {
+    socket.on('binge_watch_state_changed', (data: ServerToClientPayloads['binge_watch_state_changed']) => {
       bingeWatch.value = {
         available: !!data.available,
         active: !!data.active,
@@ -338,7 +341,7 @@ export const usePartyStore = defineStore('party', () => {
       if (!data.available) pendingAutoAdvance.value = null
     })
 
-    socket.on('auto_advance_pending', (data: any) => {
+    socket.on('auto_advance_pending', (data: ServerToClientPayloads['auto_advance_pending']) => {
       const deadline = data.deadline ? Date.parse(data.deadline) : Date.now() + 4000
       pendingAutoAdvance.value = {
         nextItemId: data.next_item_id,
@@ -367,7 +370,7 @@ export const usePartyStore = defineStore('party', () => {
       pendingAutoAdvance.value = null
     })
 
-    socket.on('streams_changed', (data: any) => {
+    socket.on('streams_changed', (data: ServerToClientPayloads['streams_changed']) => {
       // Per-user: only this user receives their updated stream.
       // Backend restarts the transcode with StartTimeTicks=current_time,
       // so the new stream's time 0 maps to current_time media position.
@@ -402,7 +405,7 @@ export const usePartyStore = defineStore('party', () => {
       }
     }
 
-    socket.on('ready_check_update', (data: any) => {
+    socket.on('ready_check_update', (data: ServerToClientPayloads['ready_check_update']) => {
       readyCheckActive.value = true
       readyUsers.value = data.ready || []
       waitingUsers.value = data.waiting || []
@@ -419,7 +422,7 @@ export const usePartyStore = defineStore('party', () => {
       }, 15000)
     })
 
-    socket.on('all_ready', (data: any) => {
+    socket.on('all_ready', (data: ServerToClientPayloads['all_ready']) => {
       if (data?.time !== undefined) {
         playbackState.value.time = data.time
       }
@@ -434,7 +437,7 @@ export const usePartyStore = defineStore('party', () => {
     // ---------------------------------------------------------------------
 
     // Existing user receives the vote modal
-    socket.on('join_vote_started', (data: any) => {
+    socket.on('join_vote_started', (data: ServerToClientPayloads['join_vote_started']) => {
       const timeoutSeconds = data.timeout_seconds || 20
       pendingVote.value = {
         active: true,
@@ -449,7 +452,7 @@ export const usePartyStore = defineStore('party', () => {
     })
 
     // Late joiner receives the waiting room
-    socket.on('join_vote_pending', (data: any) => {
+    socket.on('join_vote_pending', (data: ServerToClientPayloads['join_vote_pending']) => {
       const timeoutSeconds = data.timeout_seconds || 20
       pendingVote.value = {
         active: true,
@@ -464,13 +467,13 @@ export const usePartyStore = defineStore('party', () => {
     })
 
     // Live vote updates -- everyone in the room receives these
-    socket.on('join_vote_update', (data: any) => {
+    socket.on('join_vote_update', (data: ServerToClientPayloads['join_vote_update']) => {
       if (!pendingVote.value) return
       pendingVote.value.votes = data.votes || {}
     })
 
     // Vote resolved: pass, fail, or cancelled
-    socket.on('join_vote_resolved', (data: any) => {
+    socket.on('join_vote_resolved', (data: ServerToClientPayloads['join_vote_resolved']) => {
       const wasPending = pendingVote.value?.isPending === true
       const result = data.result
       pendingVote.value = null
@@ -489,7 +492,7 @@ export const usePartyStore = defineStore('party', () => {
     })
 
     // Immediate rejection (e.g. another vote already in progress)
-    socket.on('join_rejected', (_data: any) => {
+    socket.on('join_rejected', () => {
       pendingVote.value = null
       // The caller (IndexView or PartyView) should observe this event
       // and show a toast. We just clear the local state here.

@@ -169,7 +169,7 @@ async function saveConfig() {
     }
     if (rejected.length) {
       parts.push(
-        `Not applied: ${rejected.map((r: any) => `${r.key} (${r.reason})`).join('; ')}`,
+        `Not applied: ${rejected.map((r) => `${r.key} (${r.reason})`).join('; ')}`,
       )
     }
     saveStatus.value = parts.join(' | ')

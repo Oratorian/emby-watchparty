@@ -132,6 +132,7 @@ class VideoStateOutbound(OutboundPayload):
     episode_count: int | None = None
     next_item_id: str | None = None
     next_item_title: str | None = None
+    run_time_seconds: float | None = None
 
 
 class BingeWatchStateOutbound(OutboundPayload):
@@ -152,6 +153,7 @@ class MembersOutbound(OutboundPayload):
     users: list[str] = []
     members: list[MemberOutbound] = []
     username: str | None = None
+    rejoin: bool | None = None
 
 
 class SyncStateOutbound(OutboundPayload):
@@ -170,6 +172,8 @@ class TimedOutbound(OutboundPayload):
     time: float
     username: str | None = None
     playing: bool | None = None
+    auto_binge: bool | None = None
+    wait_for_ready: bool | None = None
 
 
 class StreamChangedOutbound(VideoOutbound):
@@ -186,6 +190,7 @@ class ChatOutbound(OutboundPayload):
     username: str
     message: str
     avatar_uuid: str | None = None
+    timestamp: str
 
 
 class ToggleLibraryOutbound(OutboundPayload):
@@ -198,14 +203,29 @@ class HostOutbound(OutboundPayload):
     is_admin: bool = False
     unlocked: bool = False
     reason: str | None = None
+    playing_only: bool | None = None
 
 
-class VoteOutbound(OutboundPayload):
-    result: str | None = None
-    username: str | None = None
-    yes: int | None = None
-    no: int | None = None
-    required: int | None = None
+class VoteStartedOutbound(OutboundPayload):
+    username: str
+    timeout_seconds: int
+    eligible_voters: list[str]
+    required_majority: int
+
+
+class VotePendingOutbound(OutboundPayload):
+    timeout_seconds: int
+    eligible_voters: list[str]
+    required_majority: int
+
+
+class VoteUpdateOutbound(OutboundPayload):
+    votes: dict[str, Literal["yes", "no"]]
+    remaining: int
+
+
+class VoteResolvedOutbound(OutboundPayload):
+    result: Literal["pass", "fail", "cancelled"]
     reason: str | None = None
 
 
@@ -214,14 +234,28 @@ class BingeStateOutbound(OutboundPayload):
     active: bool
 
 
-class AutoAdvanceOutbound(OutboundPayload):
-    next_item_id: str | None = None
-    next_title: str | None = None
+class AutoAdvancePendingOutbound(OutboundPayload):
+    next_item_id: str
+    next_title: str
     next_index_number: int | None = None
-    total_episodes: int | None = None
-    deadline: str | None = None
-    countdown_seconds: int | None = None
+    total_episodes: int
+    deadline: str
+    countdown_seconds: int
+
+
+class AutoAdvanceFiredOutbound(OutboundPayload):
+    next_item_id: str
+    next_title: str
+
+
+class AutoAdvanceCancelledOutbound(OutboundPayload):
+    by_username: str | None = None
+
+
+class BingeFinishedOutbound(OutboundPayload):
     reason: str | None = None
+    series_id: str | None = None
+    season_id: str | None = None
 
 
 class PartyDissolvedOutbound(OutboundPayload):
@@ -251,16 +285,16 @@ OUTBOUND_MODELS: dict[str, type[OutboundPayload]] = {
     "host_changed": HostOutbound,
     "host_left": HostOutbound,
     "host_reclaimed": HostOutbound,
-    "join_vote_started": VoteOutbound,
-    "join_vote_pending": VoteOutbound,
-    "join_vote_update": VoteOutbound,
-    "join_vote_resolved": VoteOutbound,
-    "join_rejected": VoteOutbound,
+    "join_vote_started": VoteStartedOutbound,
+    "join_vote_pending": VotePendingOutbound,
+    "join_vote_update": VoteUpdateOutbound,
+    "join_vote_resolved": VoteResolvedOutbound,
+    "join_rejected": MessageOutbound,
     "binge_watch_state_changed": BingeStateOutbound,
-    "auto_advance_pending": AutoAdvanceOutbound,
-    "auto_advance_cancelled": AutoAdvanceOutbound,
-    "auto_advance_fired": AutoAdvanceOutbound,
-    "binge_finished": AutoAdvanceOutbound,
+    "auto_advance_pending": AutoAdvancePendingOutbound,
+    "auto_advance_cancelled": AutoAdvanceCancelledOutbound,
+    "auto_advance_fired": AutoAdvanceFiredOutbound,
+    "binge_finished": BingeFinishedOutbound,
     "party_dissolved": PartyDissolvedOutbound,
     "error": MessageOutbound,
 }

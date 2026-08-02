@@ -142,7 +142,7 @@ const playingItemId = computed<string | null>(() => party.currentVideo?.item_id 
 // point right now" regardless of how many times the item has been
 // finished historically.
 function resumePercent(item: EmbyItem): number {
-  const ud = (item as any).UserData
+  const ud = item.UserData
   if (!ud) return 0
   const positionTicks = Number(ud.PlaybackPositionTicks ?? 0)
   if (positionTicks <= 0) return 0
@@ -180,6 +180,11 @@ interface EmbyItem {
   ProductionYear?: number
   Overview?: string
   RunTimeTicks?: number
+  UserData?: {
+    PlaybackPositionTicks?: number
+    PlayedPercentage?: number
+    Played?: boolean
+  }
 }
 
 // Emby returns RunTimeTicks as 100-nanosecond units. Format as the
@@ -207,7 +212,7 @@ function ticksToShort(ticks: number): string {
 function playedLabel(item: EmbyItem): string | null {
   const pct = resumePercent(item)
   if (pct <= 0) return null
-  const ud = (item as any).UserData
+  const ud = item.UserData
   const playedTicks = Number(ud?.PlaybackPositionTicks ?? 0)
   const totalTicks = item.RunTimeTicks ?? 0
   if (!playedTicks || !totalTicks) return null

@@ -408,6 +408,18 @@
     "all_ready": {
       "additionalProperties": true,
       "properties": {
+        "auto_binge": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Auto Binge"
+        },
         "playing": {
           "anyOf": [
             {
@@ -435,6 +447,18 @@
           ],
           "default": null,
           "title": "Username"
+        },
+        "wait_for_ready": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wait For Ready"
         }
       },
       "required": [
@@ -446,19 +470,7 @@
     "auto_advance_cancelled": {
       "additionalProperties": true,
       "properties": {
-        "countdown_seconds": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Countdown Seconds"
-        },
-        "deadline": {
+        "by_username": {
           "anyOf": [
             {
               "type": "string"
@@ -468,189 +480,41 @@
             }
           ],
           "default": null,
-          "title": "Deadline"
-        },
-        "next_index_number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Next Index Number"
-        },
-        "next_item_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Next Item Id"
-        },
-        "next_title": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Next Title"
-        },
-        "reason": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Reason"
-        },
-        "total_episodes": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Total Episodes"
+          "title": "By Username"
         }
       },
-      "title": "AutoAdvanceOutbound",
+      "title": "AutoAdvanceCancelledOutbound",
       "type": "object"
     },
     "auto_advance_fired": {
       "additionalProperties": true,
       "properties": {
-        "countdown_seconds": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Countdown Seconds"
-        },
-        "deadline": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Deadline"
-        },
-        "next_index_number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Next Index Number"
-        },
         "next_item_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Next Item Id"
+          "title": "Next Item Id",
+          "type": "string"
         },
         "next_title": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Next Title"
-        },
-        "reason": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Reason"
-        },
-        "total_episodes": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Total Episodes"
+          "title": "Next Title",
+          "type": "string"
         }
       },
-      "title": "AutoAdvanceOutbound",
+      "required": [
+        "next_item_id",
+        "next_title"
+      ],
+      "title": "AutoAdvanceFiredOutbound",
       "type": "object"
     },
     "auto_advance_pending": {
       "additionalProperties": true,
       "properties": {
         "countdown_seconds": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Countdown Seconds"
+          "title": "Countdown Seconds",
+          "type": "integer"
         },
         "deadline": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Deadline"
+          "title": "Deadline",
+          "type": "string"
         },
         "next_index_number": {
           "anyOf": [
@@ -665,120 +529,31 @@
           "title": "Next Index Number"
         },
         "next_item_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Next Item Id"
+          "title": "Next Item Id",
+          "type": "string"
         },
         "next_title": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Next Title"
-        },
-        "reason": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Reason"
+          "title": "Next Title",
+          "type": "string"
         },
         "total_episodes": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Total Episodes"
+          "title": "Total Episodes",
+          "type": "integer"
         }
       },
-      "title": "AutoAdvanceOutbound",
+      "required": [
+        "next_item_id",
+        "next_title",
+        "total_episodes",
+        "deadline",
+        "countdown_seconds"
+      ],
+      "title": "AutoAdvancePendingOutbound",
       "type": "object"
     },
     "binge_finished": {
       "additionalProperties": true,
       "properties": {
-        "countdown_seconds": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Countdown Seconds"
-        },
-        "deadline": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Deadline"
-        },
-        "next_index_number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Next Index Number"
-        },
-        "next_item_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Next Item Id"
-        },
-        "next_title": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Next Title"
-        },
         "reason": {
           "anyOf": [
             {
@@ -791,20 +566,32 @@
           "default": null,
           "title": "Reason"
         },
-        "total_episodes": {
+        "season_id": {
           "anyOf": [
             {
-              "type": "integer"
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "title": "Total Episodes"
+          "title": "Season Id"
+        },
+        "series_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Series Id"
         }
       },
-      "title": "AutoAdvanceOutbound",
+      "title": "BingeFinishedOutbound",
       "type": "object"
     },
     "binge_watch_state_changed": {
@@ -845,6 +632,10 @@
           "title": "Message",
           "type": "string"
         },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "string"
+        },
         "username": {
           "title": "Username",
           "type": "string"
@@ -852,7 +643,8 @@
       },
       "required": [
         "username",
-        "message"
+        "message",
+        "timestamp"
       ],
       "title": "ChatOutbound",
       "type": "object"
@@ -874,6 +666,18 @@
     "drift_correction": {
       "additionalProperties": true,
       "properties": {
+        "auto_binge": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Auto Binge"
+        },
         "playing": {
           "anyOf": [
             {
@@ -901,6 +705,18 @@
           ],
           "default": null,
           "title": "Username"
+        },
+        "wait_for_ready": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wait For Ready"
         }
       },
       "required": [
@@ -926,6 +742,18 @@
     "force_pause_before_seek": {
       "additionalProperties": true,
       "properties": {
+        "auto_binge": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Auto Binge"
+        },
         "playing": {
           "anyOf": [
             {
@@ -953,6 +781,18 @@
           ],
           "default": null,
           "title": "Username"
+        },
+        "wait_for_ready": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wait For Ready"
         }
       },
       "required": [
@@ -992,6 +832,18 @@
           "default": false,
           "title": "Is Admin",
           "type": "boolean"
+        },
+        "playing_only": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Playing Only"
         },
         "reason": {
           "anyOf": [
@@ -1046,6 +898,18 @@
           "title": "Is Admin",
           "type": "boolean"
         },
+        "playing_only": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Playing Only"
+        },
         "reason": {
           "anyOf": [
             {
@@ -1099,6 +963,18 @@
           "title": "Is Admin",
           "type": "boolean"
         },
+        "playing_only": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Playing Only"
+        },
         "reason": {
           "anyOf": [
             {
@@ -1123,176 +999,47 @@
     "join_rejected": {
       "additionalProperties": true,
       "properties": {
-        "no": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "No"
-        },
-        "reason": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Reason"
-        },
-        "required": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Required"
-        },
-        "result": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Result"
-        },
-        "username": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Username"
-        },
-        "yes": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Yes"
+        "message": {
+          "title": "Message",
+          "type": "string"
         }
       },
-      "title": "VoteOutbound",
+      "required": [
+        "message"
+      ],
+      "title": "MessageOutbound",
       "type": "object"
     },
     "join_vote_pending": {
       "additionalProperties": true,
       "properties": {
-        "no": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "No"
+        "eligible_voters": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Eligible Voters",
+          "type": "array"
         },
-        "reason": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Reason"
+        "required_majority": {
+          "title": "Required Majority",
+          "type": "integer"
         },
-        "required": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Required"
-        },
-        "result": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Result"
-        },
-        "username": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Username"
-        },
-        "yes": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Yes"
+        "timeout_seconds": {
+          "title": "Timeout Seconds",
+          "type": "integer"
         }
       },
-      "title": "VoteOutbound",
+      "required": [
+        "timeout_seconds",
+        "eligible_voters",
+        "required_majority"
+      ],
+      "title": "VotePendingOutbound",
       "type": "object"
     },
     "join_vote_resolved": {
       "additionalProperties": true,
       "properties": {
-        "no": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "No"
-        },
         "reason": {
           "anyOf": [
             {
@@ -1305,214 +1052,78 @@
           "default": null,
           "title": "Reason"
         },
-        "required": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Required"
-        },
         "result": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
+          "enum": [
+            "pass",
+            "fail",
+            "cancelled"
           ],
-          "default": null,
-          "title": "Result"
-        },
-        "username": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Username"
-        },
-        "yes": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Yes"
+          "title": "Result",
+          "type": "string"
         }
       },
-      "title": "VoteOutbound",
+      "required": [
+        "result"
+      ],
+      "title": "VoteResolvedOutbound",
       "type": "object"
     },
     "join_vote_started": {
       "additionalProperties": true,
       "properties": {
-        "no": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "No"
+        "eligible_voters": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Eligible Voters",
+          "type": "array"
         },
-        "reason": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Reason"
+        "required_majority": {
+          "title": "Required Majority",
+          "type": "integer"
         },
-        "required": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Required"
-        },
-        "result": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Result"
+        "timeout_seconds": {
+          "title": "Timeout Seconds",
+          "type": "integer"
         },
         "username": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Username"
-        },
-        "yes": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Yes"
+          "title": "Username",
+          "type": "string"
         }
       },
-      "title": "VoteOutbound",
+      "required": [
+        "username",
+        "timeout_seconds",
+        "eligible_voters",
+        "required_majority"
+      ],
+      "title": "VoteStartedOutbound",
       "type": "object"
     },
     "join_vote_update": {
       "additionalProperties": true,
       "properties": {
-        "no": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "No"
+        "remaining": {
+          "title": "Remaining",
+          "type": "integer"
         },
-        "reason": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Reason"
-        },
-        "required": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Required"
-        },
-        "result": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Result"
-        },
-        "username": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Username"
-        },
-        "yes": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Yes"
+        "votes": {
+          "additionalProperties": {
+            "enum": [
+              "yes",
+              "no"
+            ],
+            "type": "string"
+          },
+          "title": "Votes",
+          "type": "object"
         }
       },
-      "title": "VoteOutbound",
+      "required": [
+        "votes",
+        "remaining"
+      ],
+      "title": "VoteUpdateOutbound",
       "type": "object"
     },
     "members_update": {
@@ -1553,6 +1164,18 @@
           },
           "title": "Members",
           "type": "array"
+        },
+        "rejoin": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rejoin"
         },
         "username": {
           "anyOf": [
@@ -1600,6 +1223,18 @@
     "pause": {
       "additionalProperties": true,
       "properties": {
+        "auto_binge": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Auto Binge"
+        },
         "playing": {
           "anyOf": [
             {
@@ -1627,6 +1262,18 @@
           ],
           "default": null,
           "title": "Username"
+        },
+        "wait_for_ready": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wait For Ready"
         }
       },
       "required": [
@@ -1638,6 +1285,18 @@
     "play": {
       "additionalProperties": true,
       "properties": {
+        "auto_binge": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Auto Binge"
+        },
         "playing": {
           "anyOf": [
             {
@@ -1665,6 +1324,18 @@
           ],
           "default": null,
           "title": "Username"
+        },
+        "wait_for_ready": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wait For Ready"
         }
       },
       "required": [
@@ -1699,6 +1370,18 @@
     "seek": {
       "additionalProperties": true,
       "properties": {
+        "auto_binge": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Auto Binge"
+        },
         "playing": {
           "anyOf": [
             {
@@ -1726,6 +1409,18 @@
           ],
           "default": null,
           "title": "Username"
+        },
+        "wait_for_ready": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wait For Ready"
         }
       },
       "required": [
@@ -1843,6 +1538,18 @@
               ],
               "default": null,
               "title": "Quality"
+            },
+            "run_time_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Run Time Seconds"
             },
             "season_id": {
               "anyOf": [
@@ -2171,6 +1878,18 @@
               "default": null,
               "title": "Quality"
             },
+            "run_time_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Run Time Seconds"
+            },
             "season_id": {
               "anyOf": [
                 {
@@ -2350,6 +2069,18 @@
           "title": "Members",
           "type": "array"
         },
+        "rejoin": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rejoin"
+        },
         "username": {
           "anyOf": [
             {
@@ -2412,6 +2143,18 @@
           },
           "title": "Members",
           "type": "array"
+        },
+        "rejoin": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rejoin"
         },
         "username": {
           "anyOf": [
@@ -2552,6 +2295,18 @@
               ],
               "default": null,
               "title": "Quality"
+            },
+            "run_time_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Run Time Seconds"
             },
             "season_id": {
               "anyOf": [
