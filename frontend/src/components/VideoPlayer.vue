@@ -134,7 +134,9 @@ function attachStream(url: string) {
       () => {
         isBuffering.value = false
         if (props.playing) {
-          video.play().catch(() => {})
+          video.play().catch(() => {
+            emit('autoplay-blocked')
+          })
         }
         emitReadyOnce()
         setTimeout(() => { isSyncing.value = false }, 500)
@@ -225,7 +227,13 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  isSyncing.value = true
   destroyHls()
+  const video = videoEl.value
+  if (video?.hasAttribute('src')) {
+    video.removeAttribute('src')
+    video.load()
+  }
 })
 
 defineExpose({ videoEl, isSyncing, isBuffering, getHls: () => hls })
