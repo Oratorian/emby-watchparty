@@ -101,6 +101,11 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         _require_loopback(request)
         return {"requests": state.requests}
 
+    @app.get("/__test__/state")
+    async def observable_state(request: Request):
+        _require_loopback(request)
+        return {"stream_closed": state.stream_closed.is_set()}
+
     @app.post("/__test__/reset")
     async def reset(request: Request):
         _require_loopback(request)
