@@ -83,6 +83,42 @@ test('two browsers receive selection and synchronized controls', async ({ browse
   await guestContext.close()
 })
 
+test('playback changes are announced to assistive technology', async ({ browser, page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await expect(page).toHaveURL(/\/party\/[A-Z0-9]+$/)
+  const partyUrl = page.url()
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+
+  const guestContext = await browser.newContext()
+  const guest = await guestContext.newPage()
+  await guest.goto(partyUrl)
+  await guest.getByPlaceholder('Your name (optional)').fill('Bob')
+  await guest.getByRole('button', { name: 'Join', exact: true }).click()
+
+  await page.getByRole('main').getByRole(
+    'button', { name: 'Login to Become Host', exact: true },
+  ).click()
+  await page.getByPlaceholder('Emby username').fill('Alice')
+  await page.getByPlaceholder('Emby password').fill('password')
+  await page.getByRole('button', { name: 'Become Host', exact: true }).click()
+  await page.getByText('Movies', { exact: true }).click()
+  await page.getByText('Fake Movie', { exact: true }).click()
+  await expect(guest.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
+
+  await page.waitForFunction(() => {
+    const video = document.querySelector<HTMLVideoElement>('video#videoElement')
+    return video && video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
+  })
+  await page.locator('video#videoElement').evaluate((video: HTMLVideoElement) => video.play())
+
+  await expect(
+    guest.getByRole('status').filter({ hasText: 'Alice started playback' }),
+  ).toBeVisible()
+  await guestContext.close()
+})
+
 test('guest reload restores membership and a fresh HLS stream', async ({ browser, page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Create Party', exact: true }).click()
