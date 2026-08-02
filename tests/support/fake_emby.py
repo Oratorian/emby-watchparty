@@ -55,6 +55,10 @@ class FakeEmbyBehavior:
         default_factory=lambda: [b"fake-segment-first", b"fake-segment-last"]
     )
     segment_delay_ms: int = 0
+    master_playlist: str = (
+        "#EXTM3U\r\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\r\nmain.m3u8\r\n"
+    )
+    variant_playlist: str = "#EXTM3U\r\n#EXTINF:1.0,\r\nsegment0.ts\r\n"
 
 
 @dataclass
@@ -122,6 +126,10 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         state.behavior.transient_failures = dict(data.get("transient_failures", {}))
         state.behavior.transient_status = int(data.get("transient_status", 503))
         state.behavior.segment_delay_ms = int(data.get("segment_delay_ms", 0))
+        if "master_playlist" in data:
+            state.behavior.master_playlist = str(data["master_playlist"])
+        if "variant_playlist" in data:
+            state.behavior.variant_playlist = str(data["variant_playlist"])
         return {"success": True}
 
     @app.get("/emby/System/Info/Public")
@@ -228,7 +236,7 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         if failure := await state.before(request):
             return failure
         return Response(
-            content="#EXTM3U\r\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\r\nmain.m3u8\r\n",
+            content=state.behavior.master_playlist,
             media_type="application/vnd.apple.mpegurl",
         )
 
@@ -237,7 +245,7 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         del item_id
         state.record(request)
         return Response(
-            content="#EXTM3U\r\n#EXTINF:1.0,\r\nsegment0.ts\r\n",
+            content=state.behavior.variant_playlist,
             media_type="application/vnd.apple.mpegurl",
         )
 
