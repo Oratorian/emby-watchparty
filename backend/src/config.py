@@ -73,7 +73,9 @@ class EnvConfig:
             except OSError:
                 if errors is not None:
                     errors["BOOTSTRAP_CONFIG"] = "Persisted bootstrap config cannot be read"
-        dot_env = {key: value for key, value in dotenv_values(root / ".env").items() if value is not None}
+        dot_env = {
+            key: value for key, value in dotenv_values(root / ".env").items() if value is not None
+        }
 
         defaults: dict[str, object] = {
             "WATCH_PARTY_BIND": "0.0.0.0",
@@ -632,7 +634,5 @@ class Config:
             if not self.EMBY_API_KEY:
                 errors.setdefault("EMBY_API_KEY", "is required in production")
             if not self.ENABLE_HLS_TOKEN_VALIDATION:
-                errors.setdefault(
-                    "ENABLE_HLS_TOKEN_VALIDATION", "must be enabled in production"
-                )
+                errors.setdefault("ENABLE_HLS_TOKEN_VALIDATION", "must be enabled in production")
         return errors

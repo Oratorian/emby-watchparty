@@ -183,9 +183,7 @@ def test_failed_bootstrap_token_attempts_are_rate_limited(tmp_path: Path, capsys
         project_root=tmp_path,
         enable_update_check=False,
     )
-    token = re.search(
-        r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out
-    ).group(1)
+    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
 
     async def exercise() -> None:
         async with asgi_client(app) as client:
@@ -221,9 +219,7 @@ def test_saved_configuration_enters_normal_mode_after_restart(
         project_root=tmp_path,
         enable_update_check=False,
     )
-    token = re.search(
-        r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out
-    ).group(1)
+    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
 
     async def save() -> None:
         async with asgi_client(app) as client:
@@ -259,9 +255,7 @@ def test_invalid_setup_fields_return_safe_errors(tmp_path: Path, capsys, caplog)
         project_root=tmp_path,
         enable_update_check=False,
     )
-    token = re.search(
-        r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out
-    ).group(1)
+    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
     payload = _valid_setup_payload()
     payload["SESSION_SECRET"] = "leaky-short-secret"
     payload["EMBY_API_KEY"] = "   "
@@ -287,9 +281,7 @@ def test_setup_page_contains_secure_configuration_form(tmp_path: Path, capsys) -
         project_root=tmp_path,
         enable_update_check=False,
     )
-    token = re.search(
-        r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out
-    ).group(1)
+    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
 
     async def exercise() -> None:
         async with asgi_client(app) as client:
@@ -307,9 +299,7 @@ def test_setup_page_contains_secure_configuration_form(tmp_path: Path, capsys) -
     asyncio.run(exercise())
 
 
-def test_setup_routes_honor_app_prefix_and_skip_normal_resources(
-    tmp_path: Path, capsys
-) -> None:
+def test_setup_routes_honor_app_prefix_and_skip_normal_resources(tmp_path: Path, capsys) -> None:
     app = create_app(
         config=_invalid_production_config(prefix="/watch"),
         project_root=tmp_path,
@@ -352,14 +342,10 @@ def test_invalid_environment_override_cannot_be_masked_by_setup(
 ) -> None:
     persisted = _valid_setup_payload()
     (tmp_path / "data").mkdir()
-    (tmp_path / "data" / "bootstrap.json").write_text(
-        json.dumps(persisted), encoding="utf-8"
-    )
+    (tmp_path / "data" / "bootstrap.json").write_text(json.dumps(persisted), encoding="utf-8")
     monkeypatch.setenv("SESSION_SECRET", "invalid-env-secret")
     app = create_app(project_root=tmp_path, enable_update_check=False)
-    token = re.search(
-        r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out
-    ).group(1)
+    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
 
     async def exercise() -> None:
         async with asgi_client(app) as client:
@@ -374,7 +360,9 @@ def test_invalid_environment_override_cannot_be_masked_by_setup(
             )
 
     asyncio.run(exercise())
-    assert json.loads((tmp_path / "data" / "bootstrap.json").read_text(encoding="utf-8")) == persisted
+    assert (
+        json.loads((tmp_path / "data" / "bootstrap.json").read_text(encoding="utf-8")) == persisted
+    )
 
 
 def test_corrupted_persisted_bootstrap_enters_setup_mode(tmp_path: Path) -> None:

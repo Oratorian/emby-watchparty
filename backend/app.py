@@ -56,16 +56,16 @@ def _setup_html(config: Config, prefix: str, *, saved: bool) -> str:
 <p class="notice">Boot-setting changes require restart. Token shown in server console is required to save. Never share it or place it in a URL.</p>
 <p>Local plain HTTP uses development mode and a non-secure cookie. Reverse-proxied HTTPS uses production mode, a secure cookie, and explicit public origin.</p>
 <form id="setup-form" autocomplete="off">
-<label>Deployment mode<select name="APP_ENV"><option value="development"{' selected' if mode == 'development' else ''}>Local development</option><option value="production"{' selected' if mode == 'production' else ''}>Production HTTPS</option></select></label>
+<label>Deployment mode<select name="APP_ENV"><option value="development"{" selected" if mode == "development" else ""}>Local development</option><option value="production"{" selected" if mode == "production" else ""}>Production HTTPS</option></select></label>
 <label>Emby server URL<input name="EMBY_SERVER_URL" type="url" value="{esc(config.EMBY_SERVER_URL, quote=True)}" required><small>HTTP(S) URL reachable by server.</small></label>
 <label>Emby API key<input name="EMBY_API_KEY" type="password" value="" autocomplete="new-password"><small>Leave blank only to retain an already configured key.</small></label>
 <label>Session secret<input name="SESSION_SECRET" type="password" value="" minlength="32" autocomplete="new-password"></label>
 <button type="button" class="secondary" id="generate-secret">Generate secure secret</button>
-<label><input name="SESSION_COOKIE_SECURE" type="checkbox"{' checked' if config.SESSION_COOKIE_SECURE else ''}>Secure session cookie</label>
+<label><input name="SESSION_COOKIE_SECURE" type="checkbox"{" checked" if config.SESSION_COOKIE_SECURE else ""}>Secure session cookie</label>
 <label>Allowed CORS origins<input name="CORS_ALLOWED_ORIGINS" value="{esc(cors, quote=True)}"><small>Comma-separated public origins; wildcard forbidden in production.</small></label>
 <label>Trusted proxy CIDRs (optional)<input name="TRUSTED_PROXY_CIDRS" value="{esc(proxies, quote=True)}"></label>
 <label>Application prefix (optional)<input name="APP_PREFIX" value="{esc(config.APP_PREFIX, quote=True)}" placeholder="/watchparty"></label>
-<label><input name="ENABLE_HLS_TOKEN_VALIDATION" type="checkbox"{' checked' if config.ENABLE_HLS_TOKEN_VALIDATION else ''}>Enable HLS token validation (required in production)</label>
+<label><input name="ENABLE_HLS_TOKEN_VALIDATION" type="checkbox"{" checked" if config.ENABLE_HLS_TOKEN_VALIDATION else ""}>Enable HLS token validation (required in production)</label>
 <label>Bootstrap token<input name="BOOTSTRAP_TOKEN" type="password" value="" autocomplete="off" required><small>Copy from server console. Token is sent only in request header.</small></label>
 <div id="errors" role="alert"></div><button type="submit">Validate and save</button></form>
 <script>
@@ -145,9 +145,7 @@ def _create_setup_app(config: Config, project_root: Path) -> FastAPI:
             )
         supplied = request.headers.get("X-Emby-Watchparty-Setup-Token", "")
         expected = str(setup_state["token"] or "disabled")
-        token_matches = len(supplied) <= 1024 and secrets.compare_digest(
-            supplied, expected
-        )
+        token_matches = len(supplied) <= 1024 and secrets.compare_digest(supplied, expected)
         if not token_matches:
             peer = request.client.host if request.client else "unknown"
             peer_decision = setup_attempts.check(f"setup-peer:{peer}", 5, 15 * 60)
@@ -180,9 +178,7 @@ def _create_setup_app(config: Config, project_root: Path) -> FastAPI:
                 status_code=400,
             )
         persisted = {
-            name: value
-            for name, value in values.items()
-            if name not in config.explicit_env_fields
+            name: value for name, value in values.items() if name not in config.explicit_env_fields
         }
         with setup_lock:
             if setup_state["saved"]:
