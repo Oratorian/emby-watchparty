@@ -54,13 +54,10 @@ function attachStream(url: string) {
   // and create feedback loops across clients.
   isSyncing.value = true
 
-  // iOS always has a native HLS stack. Some WebKit environments also
-  // expose enough MediaSource APIs for Hls.isSupported() to return true,
-  // despite Hls.js never completing media attachment. Prefer native HLS
-  // for Apple mobile user agents even when canPlayType() under-reports it.
-  const prefersNativeHls =
-    video.canPlayType('application/vnd.apple.mpegurl') !== ''
-    || /iPad|iPhone|iPod/.test(navigator.userAgent)
+  // iPhone and iPad always have a native HLS stack. Keep other browsers,
+  // including Android Chrome and desktop Safari, on Hls.js whenever their
+  // MediaSource support is usable; canPlayType() alone is too broad.
+  const prefersNativeHls = /iPad|iPhone/.test(navigator.userAgent)
 
   if (!prefersNativeHls && Hls.isSupported()) {
     const hlsConfig: Partial<Hls['config']> = {

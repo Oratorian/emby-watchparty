@@ -3,9 +3,7 @@ name: Validate
 on:
   pull_request:
   push:
-    # 3.0-dev is the integration branch for the 3.0 rework. Without it
-    # here, nothing validates that work: PR #45 is closed, so the
-    # pull_request trigger no longer fires for it either.
+    # Validate both the stable line and the 3.0 integration branch.
     branches: [main, 3.0-dev]
   workflow_call:
 
