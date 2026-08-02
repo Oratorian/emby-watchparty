@@ -19,7 +19,11 @@ from starlette.middleware.sessions import SessionMiddleware
 from backend.src import __codename__, __version__
 from backend.src.admin_session_store import AdminSessionStore
 from backend.src.avatar_store import AvatarStore
-from backend.src.bootstrap import save_bootstrap_config, validate_bootstrap_submission
+from backend.src.bootstrap import (
+    SetupAttemptLimiter,
+    save_bootstrap_config,
+    validate_bootstrap_submission,
+)
 from backend.src.config import Config
 from backend.src.emby_client import EmbyClient
 from backend.src.emby_gateway import EmbyGateway
@@ -35,6 +39,20 @@ from backend.src.update_checker import check_for_updates
 
 PROJECT_ROOT = Path(__file__).parent.parent
 STATIC_ROOT = Path(__file__).parent / "static"
+SETUP_BODY_LIMIT = 32 * 1024
+
+
+def _json_for_html_script(value: str) -> str:
+    return json.dumps(value).replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
+
+
+async def _read_setup_body(request: Request) -> bytes | None:
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > SETUP_BODY_LIMIT:
+            return None
+        body.extend(chunk)
+    return bytes(body)
 
 
 def _setup_html(config: Config, prefix: str, *, saved: bool) -> str:
@@ -47,7 +65,7 @@ def _setup_html(config: Config, prefix: str, *, saved: bool) -> str:
     mode = config.APP_ENV if config.APP_ENV in {"development", "production"} else "production"
     cors = ", ".join(config.CORS_ALLOWED_ORIGINS)
     proxies = ", ".join(config.TRUSTED_PROXY_CIDRS)
-    endpoint = json.dumps(f"{prefix}/api/setup")
+    endpoint = _json_for_html_script(f"{prefix}/api/setup")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Emby Watch Party setup</title><style>
@@ -98,7 +116,7 @@ def _create_setup_app(config: Config, project_root: Path) -> FastAPI:
     bootstrap_token = secrets.token_urlsafe(32)
     setup_state: dict[str, object] = {"token": bootstrap_token, "saved": False}
     setup_lock = threading.Lock()
-    setup_attempts = SlidingWindowRateLimiter(max_keys=1024)
+    setup_attempts = SetupAttemptLimiter()
     print(f"Emby Watch Party setup required. Bootstrap token: {bootstrap_token}", flush=True)
     prefix = "" if "APP_PREFIX" in config.startup_errors() else config.APP_PREFIX
 
@@ -148,21 +166,19 @@ def _create_setup_app(config: Config, project_root: Path) -> FastAPI:
         token_matches = len(supplied) <= 1024 and secrets.compare_digest(supplied, expected)
         if not token_matches:
             peer = request.client.host if request.client else "unknown"
-            peer_decision = setup_attempts.check(f"setup-peer:{peer}", 5, 15 * 60)
-            global_decision = setup_attempts.check("setup-global", 100, 15 * 60)
-            if not peer_decision.allowed or not global_decision.allowed:
-                retry_after = max(peer_decision.retry_after, global_decision.retry_after)
+            decision = setup_attempts.record_failure(peer)
+            if not decision.allowed:
                 return JSONResponse(
                     {"detail": "Too many failed bootstrap token attempts"},
                     status_code=429,
-                    headers={"Retry-After": str(retry_after)},
+                    headers={"Retry-After": str(decision.retry_after)},
                 )
             return JSONResponse({"detail": "Invalid bootstrap token"}, status_code=403)
         content_length = request.headers.get("content-length")
-        if content_length and content_length.isdigit() and int(content_length) > 32 * 1024:
+        if content_length and content_length.isdigit() and int(content_length) > SETUP_BODY_LIMIT:
             return JSONResponse({"detail": "Request body too large"}, status_code=413)
-        body = await request.body()
-        if len(body) > 32 * 1024:
+        body = await _read_setup_body(request)
+        if body is None:
             return JSONResponse({"detail": "Request body too large"}, status_code=413)
         try:
             payload = json.loads(body)
@@ -353,8 +369,9 @@ def _install_static_routes(application: FastAPI, prefix: str, static_root: Path)
     def rendered_index() -> str:
         html = index_path.read_text(encoding="utf-8")
         base_href = f"{prefix}/" if prefix else "/"
+        serialized_prefix = _json_for_html_script(prefix)
         injection = (
-            f'<base href="{base_href}"><script>window.APP_PREFIX = {json.dumps(prefix)};</script>'
+            f'<base href="{base_href}"><script>window.APP_PREFIX = {serialized_prefix};</script>'
         )
         return html.replace("<head>", "<head>" + injection, 1)
 

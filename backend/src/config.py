@@ -11,6 +11,7 @@ import contextlib
 import ipaddress
 import json
 import os
+import re
 import threading
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
@@ -29,6 +30,47 @@ def _bool(value: str) -> bool:
 
 CONFIG_JSON_PATH = Path(__file__).parent.parent.parent / "config.json"
 BOOTSTRAP_CONFIG_NAME = "bootstrap.json"
+_APP_PREFIX_RE = re.compile(r"(?:/[A-Za-z0-9][A-Za-z0-9._~-]*)+")
+_DNS_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+
+
+def _valid_url_host(hostname: str | None) -> bool:
+    if not hostname or "*" in hostname:
+        return False
+    try:
+        ipaddress.ip_address(hostname)
+        return True
+    except ValueError:
+        pass
+    try:
+        ascii_hostname = hostname.encode("ascii").decode("ascii")
+    except UnicodeError:
+        return False
+    return len(ascii_hostname) <= 253 and all(
+        _DNS_LABEL_RE.fullmatch(label) for label in ascii_hostname.split(".")
+    )
+
+
+def _valid_http_url(value: str, *, origin: bool) -> bool:
+    if not value or any(ord(char) <= 32 or char == "\\" for char in value):
+        return False
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return False
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not _valid_url_host(parsed.hostname)
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.netloc.endswith(":")
+        or (port is not None and port < 1)
+    ):
+        return False
+    return not origin or not parsed.path
 
 
 @dataclass(frozen=True)
@@ -598,21 +640,18 @@ class Config:
         if not (1 <= self.WATCH_PARTY_PORT <= 65535):
             errors.setdefault("WATCH_PARTY_PORT", "must be between 1 and 65535")
         prefix = self.APP_PREFIX
-        if prefix and (
-            not prefix.startswith("/")
-            or "//" in prefix
-            or any(char in prefix for char in "?#\\")
-            or any(part in {".", ".."} for part in prefix.split("/"))
-        ):
-            errors.setdefault("APP_PREFIX", "must be empty or a safe absolute URL path")
+        if prefix and (len(prefix) > 256 or _APP_PREFIX_RE.fullmatch(prefix) is None):
+            errors.setdefault(
+                "APP_PREFIX",
+                "must use slash-prefixed letters, numbers, dots, underscores, tildes, or hyphens",
+            )
         for cidr in self.TRUSTED_PROXY_CIDRS:
             try:
                 ipaddress.ip_network(cidr, strict=False)
             except ValueError:
                 errors.setdefault("TRUSTED_PROXY_CIDRS", "must contain valid IP networks")
                 break
-        emby_url = urlsplit(self.EMBY_SERVER_URL)
-        if emby_url.scheme not in {"http", "https"} or not emby_url.hostname:
+        if not _valid_http_url(self.EMBY_SERVER_URL, origin=False):
             errors.setdefault("EMBY_SERVER_URL", "must be a valid HTTP(S) URL")
         if self.APP_ENV == "production":
             if not self.SESSION_SECRET:
@@ -625,8 +664,7 @@ class Config:
                 errors.setdefault("CORS_ALLOWED_ORIGINS", "must be explicit in production")
             else:
                 for origin in self.CORS_ALLOWED_ORIGINS:
-                    parsed = urlsplit(origin)
-                    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                    if not _valid_http_url(origin, origin=True):
                         errors.setdefault(
                             "CORS_ALLOWED_ORIGINS", "must contain valid HTTP(S) origins"
                         )

@@ -281,6 +281,20 @@ When boot configuration is invalid, the process remains reachable in restricted 
 
 Boot precedence is exact: **process environment → `.env` → `data/bootstrap.json` → defaults**. Process environment and `.env` are one explicit-operator tier, with process values winning. Setup cannot override an invalid explicit environment value; remove or fix it, then restart. Reading `.env` does not mutate the running process environment.
 
+Local plain-HTTP example:
+
+```env
+APP_ENV=development
+SESSION_SECRET=generate-one-stable-64-character-random-hex-value
+SESSION_COOKIE_SECURE=false
+CORS_ALLOWED_ORIGINS=*
+EMBY_SERVER_URL=http://localhost:8096
+EMBY_API_KEY=your-dedicated-emby-api-key
+ENABLE_HLS_TOKEN_VALIDATION=true
+```
+
+Use this only for local development over plain HTTP. Do not expose this permissive configuration to untrusted networks.
+
 Production reverse-proxy example:
 
 ```env

@@ -6,9 +6,16 @@ import contextlib
 import json
 import os
 import tempfile
+import threading
+import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from backend.src.config import BOOTSTRAP_CONFIG_NAME, Config
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 BOOTSTRAP_FIELDS = (
     "APP_ENV",
@@ -23,6 +30,84 @@ BOOTSTRAP_FIELDS = (
 )
 _BOOLEAN_FIELDS = {"SESSION_COOKIE_SECURE", "ENABLE_HLS_TOKEN_VALIDATION"}
 _LIST_FIELDS = {"CORS_ALLOWED_ORIGINS", "TRUSTED_PROXY_CIDRS"}
+
+
+@dataclass
+class _AttemptWindow:
+    started_at: float
+    count: int = 0
+
+
+@dataclass(frozen=True)
+class SetupAttemptDecision:
+    allowed: bool
+    retry_after: int = 0
+
+
+class SetupAttemptLimiter:
+    """Fixed-window failed-token limiter with per-peer and process-wide caps."""
+
+    def __init__(
+        self,
+        *,
+        peer_limit: int = 5,
+        global_limit: int = 100,
+        window_seconds: int = 15 * 60,
+        max_peers: int = 1024,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._peer_limit = peer_limit
+        self._global_limit = global_limit
+        self._window_seconds = window_seconds
+        self._max_peers = max_peers
+        self._clock = clock
+        self._peer_windows: dict[str, _AttemptWindow] = {}
+        self._global_window: _AttemptWindow | None = None
+        self._lock = threading.Lock()
+
+    def record_failure(self, peer: str) -> SetupAttemptDecision:
+        now = self._clock()
+        with self._lock:
+            self._expire_peers(now)
+            if self._global_window is None or self._expired(self._global_window, now):
+                self._global_window = _AttemptWindow(now)
+            peer_window = self._peer_windows.get(peer)
+            if peer_window is None:
+                self._evict_peer_if_full()
+                peer_window = _AttemptWindow(now)
+                self._peer_windows[peer] = peer_window
+
+            peer_allowed = peer_window.count < self._peer_limit
+            global_allowed = self._global_window.count < self._global_limit
+            if peer_allowed:
+                peer_window.count += 1
+            if global_allowed:
+                self._global_window.count += 1
+            if peer_allowed and global_allowed:
+                return SetupAttemptDecision(True)
+            retry_after = max(
+                self._retry_after(peer_window, now) if not peer_allowed else 0,
+                self._retry_after(self._global_window, now) if not global_allowed else 0,
+            )
+            return SetupAttemptDecision(False, retry_after)
+
+    def _expired(self, window: _AttemptWindow, now: float) -> bool:
+        return now >= window.started_at + self._window_seconds
+
+    def _retry_after(self, window: _AttemptWindow, now: float) -> int:
+        return max(1, int(window.started_at + self._window_seconds - now + 0.999))
+
+    def _expire_peers(self, now: float) -> None:
+        expired = [
+            peer for peer, window in self._peer_windows.items() if self._expired(window, now)
+        ]
+        for peer in expired:
+            self._peer_windows.pop(peer, None)
+
+    def _evict_peer_if_full(self) -> None:
+        if len(self._peer_windows) >= self._max_peers:
+            oldest = min(self._peer_windows, key=lambda peer: self._peer_windows[peer].started_at)
+            self._peer_windows.pop(oldest, None)
 
 
 def validate_bootstrap_submission(

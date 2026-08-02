@@ -2,11 +2,12 @@ import asyncio
 import json
 import os
 import re
+import secrets
 import subprocess
 import sys
 from pathlib import Path
 
-from backend.app import create_app
+from backend.app import _json_for_html_script, create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
 from tests.support.asgi import asgi_client
 
@@ -175,6 +176,82 @@ def test_setup_write_requires_console_bootstrap_token(tmp_path: Path, capsys) ->
             assert token not in missing.text + wrong.text + correct.text
 
     asyncio.run(exercise())
+
+
+def test_setup_token_comparison_always_uses_compare_digest(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    app = create_app(
+        config=_invalid_production_config(),
+        project_root=tmp_path,
+        enable_update_check=False,
+    )
+    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
+    calls: list[tuple[str, str]] = []
+    original = secrets.compare_digest
+
+    def compare_digest(supplied: str, expected: str) -> bool:
+        calls.append((supplied, expected))
+        return original(supplied, expected)
+
+    monkeypatch.setattr("backend.app.secrets.compare_digest", compare_digest)
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            await client.post("/api/setup", json={})
+            await client.post(
+                "/api/setup",
+                headers={"X-Emby-Watchparty-Setup-Token": "wrong"},
+                json={},
+            )
+            await client.post(
+                "/api/setup",
+                headers={"X-Emby-Watchparty-Setup-Token": token},
+                json={},
+            )
+
+    asyncio.run(exercise())
+    assert calls == [("", token), ("wrong", token), (token, token)]
+
+
+def test_setup_body_limit_stops_chunked_request_without_content_length(
+    tmp_path: Path, capsys
+) -> None:
+    app = create_app(
+        config=_invalid_production_config(),
+        project_root=tmp_path,
+        enable_update_check=False,
+    )
+    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
+    chunks_yielded = 0
+
+    async def chunks():
+        nonlocal chunks_yielded
+        for _ in range(10):
+            chunks_yielded += 1
+            yield b"x" * 8192
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            response = await client.post(
+                "/api/setup",
+                headers={"X-Emby-Watchparty-Setup-Token": token},
+                content=chunks(),
+            )
+            assert response.status_code == 413
+
+    asyncio.run(exercise())
+    assert chunks_yielded == 5
+
+
+def test_inline_script_json_escapes_html_delimiters() -> None:
+    serialized = _json_for_html_script("/</script><script>&attack</script>")
+
+    assert "</script>" not in serialized
+    assert "<" not in serialized
+    assert ">" not in serialized
+    assert "&" not in serialized
+    assert "\\u003c/script\\u003e" in serialized
 
 
 def test_failed_bootstrap_token_attempts_are_rate_limited(tmp_path: Path, capsys) -> None:

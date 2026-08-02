@@ -85,6 +85,74 @@ class ProductionConfigTests(unittest.TestCase):
         ]
         assert config.ENABLE_HLS_TOKEN_VALIDATION is True
 
+    def test_rejects_script_capable_and_ambiguous_app_prefixes(self):
+        invalid = (
+            "/</script><script>alert(1)</script>",
+            "/watch%2fadmin",
+            "/watch//admin",
+            "/watch/../admin",
+            "/watch party",
+            "/watch?next=/admin",
+            "/" + "a" * 256,
+        )
+        for prefix in invalid:
+            with self.subTest(prefix=prefix):
+                errors = _config(SESSION_SECRET="s" * 32, APP_PREFIX=prefix).startup_errors()
+                assert "APP_PREFIX" in errors
+
+    def test_requires_exact_cors_origins(self):
+        invalid = (
+            "https://watch.example/",
+            "https://watch.example/path",
+            "https://*.example.com",
+            "https://user:password@watch.example",
+            "https://watch.example?query=yes",
+            "https://watch.example#fragment",
+            "https://watch.example:notaport",
+            "https://watch.example:99999",
+            "https://[invalid",
+            "https://not_a_host.example",
+        )
+        for origin in invalid:
+            with self.subTest(origin=origin):
+                errors = _config(
+                    SESSION_SECRET="s" * 32,
+                    CORS_ALLOWED_ORIGINS=(origin,),
+                ).startup_errors()
+                assert "CORS_ALLOWED_ORIGINS" in errors
+
+        for origin in ("https://watch.example", "http://localhost:4173"):
+            with self.subTest(valid_origin=origin):
+                _config(
+                    SESSION_SECRET="s" * 32,
+                    CORS_ALLOWED_ORIGINS=(origin,),
+                ).validate_for_startup()
+
+    def test_fully_validates_emby_url_while_allowing_base_paths(self):
+        invalid = (
+            "https://emby.example:notaport",
+            "https://emby.example:99999",
+            "https://user:password@emby.example",
+            "https://*.example.com",
+            "https://emby.example/path?query=yes",
+            "https://emby.example/path#fragment",
+            "https://[invalid",
+            "https://not_a_host.example",
+            "https://emby.example\\admin",
+        )
+        for url in invalid:
+            with self.subTest(url=url):
+                errors = _config(
+                    SESSION_SECRET="s" * 32,
+                    EMBY_SERVER_URL=url,
+                ).startup_errors()
+                assert "EMBY_SERVER_URL" in errors
+
+        _config(
+            SESSION_SECRET="s" * 32,
+            EMBY_SERVER_URL="https://emby.example/media/emby/",
+        ).validate_for_startup()
+
 
 if __name__ == "__main__":
     unittest.main()
