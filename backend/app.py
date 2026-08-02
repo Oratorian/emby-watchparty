@@ -497,19 +497,61 @@ def create_app(
     return application
 
 
-app = create_app()
-sio = getattr(app.state, "sio", None)
+# Construction is deliberately NOT performed at module scope.
+#
+# `create_app()` reads the ambient environment and, when boot config does
+# not validate, builds the setup app -- which mints a bootstrap token,
+# prints it to stdout and writes data/setup-token. As a module-level
+# statement that fired on *import*, so `import backend.app` (which
+# tests/conftest.py and every test module do) minted and leaked a fresh
+# admin credential each time, and rewrote the token file out from under
+# a running instance. It only stayed out of CI logs because pytest
+# captures stdout during collection, which is luck rather than a
+# control: one `-s` and the token lands in a public Actions log.
+#
+# It also undid the point of the factory. The app is meant to be built
+# by a call so tests get an isolated instance per case; a module-level
+# singleton reintroduced exactly the import-time construction the
+# factory exists to remove.
+#
+# `app` and `sio` remain reachable as module attributes via PEP 562, so
+# an ASGI target like `uvicorn backend.app:app` still resolves for
+# anyone running a custom unit file. The difference is that the work now
+# happens on first *attribute access* rather than on import, and the
+# instance is memoised so repeated access does not re-mint anything.
+_lazy_app: FastAPI | None = None
 
 
-if __name__ == "__main__":
+def _module_app() -> FastAPI:
+    global _lazy_app
+    if _lazy_app is None:
+        _lazy_app = create_app()
+    return _lazy_app
+
+
+def __getattr__(name: str) -> object:
+    if name == "app":
+        return _module_app()
+    if name == "sio":
+        return getattr(_module_app().state, "sio", None)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def main() -> None:
+    """Entry point for `python -m backend.app`, the documented way to run."""
     import uvicorn
 
-    cfg = app.state.bootstrap_config
+    application = create_app()
+    cfg = application.state.bootstrap_config
     startup_errors = cfg.startup_errors()
     port = 5000 if "WATCH_PARTY_PORT" in startup_errors else cfg.WATCH_PARTY_PORT
     uvicorn.run(
-        app,
+        application,
         host=cfg.WATCH_PARTY_BIND,
         port=port,
         proxy_headers=False,
     )
+
+
+if __name__ == "__main__":
+    main()

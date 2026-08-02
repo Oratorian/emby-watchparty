@@ -575,7 +575,8 @@ def test_corrupted_persisted_bootstrap_enters_setup_mode(tmp_path: Path) -> None
     asyncio.run(exercise())
 
 
-def test_module_import_survives_setup_mode() -> None:
+def _setup_mode_environment() -> dict[str, str]:
+    """An environment whose boot config does not validate."""
     environment = os.environ.copy()
     environment.update(
         {
@@ -586,14 +587,42 @@ def test_module_import_survives_setup_mode() -> None:
             "APP_PREFIX": "",
         }
     )
+    return environment
 
+
+def test_module_import_survives_setup_mode() -> None:
     result = subprocess.run(
         [sys.executable, "-c", "import backend.app; assert backend.app.sio is None"],
         capture_output=True,
         text=True,
-        env=environment,
+        env=_setup_mode_environment(),
         timeout=10,
         check=False,
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_importing_the_module_builds_nothing() -> None:
+    """`import backend.app` must not construct an app.
+
+    `create_app()` reads ambient config and, when it does not validate,
+    builds the setup app: that mints a bootstrap token, prints it to
+    stdout and writes data/setup-token. While construction happened at
+    module scope every import leaked a fresh admin credential and
+    rewrote the token file, including on each test run, since
+    tests/conftest.py imports this module. Accessing `backend.app.app`
+    may still build one (see test above); importing may not.
+    """
+    result = subprocess.run(
+        [sys.executable, "-c", "import backend.app"],
+        capture_output=True,
+        text=True,
+        env=_setup_mode_environment(),
+        timeout=10,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Bootstrap token" not in result.stdout
+    assert "Setup required" not in result.stderr
