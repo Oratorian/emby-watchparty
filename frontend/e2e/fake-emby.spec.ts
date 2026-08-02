@@ -87,6 +87,14 @@ test('two browsers receive selection and synchronized controls', async ({ browse
   await expect.poll(guestPosition).toBeGreaterThan(8)
   await expect(guest.getByText(/Alice seeked to/)).toBeVisible()
 
+  const hostSource = await page.locator('video#videoElement').getAttribute('src')
+  const guestSource = await guest.locator('video#videoElement').getAttribute('src')
+  await guest.getByLabel('Quality').selectOption({ label: '720p - 2 Mbps' })
+  await expect.poll(
+    () => guest.locator('video#videoElement').getAttribute('src'),
+  ).not.toBe(guestSource)
+  await expect(page.locator('video#videoElement')).toHaveAttribute('src', hostSource ?? '')
+
   await guestContext.close()
 })
 
