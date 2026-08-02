@@ -16,6 +16,7 @@ export interface ChatMessage {
 
 export function usePartyChat(socket: SocketStore, party: PartyStore) {
   const messages = ref<ChatMessage[]>([])
+  const announcement = ref('')
   const input = ref('')
   const showParticipants = ref(false)
   const showMobileChat = ref(false)
@@ -55,10 +56,12 @@ export function usePartyChat(socket: SocketStore, party: PartyStore) {
       timestamp: new Date().toISOString(),
       system: true,
     })
+    announcement.value = message
   }
 
   return {
     messages,
+    announcement,
     input,
     showParticipants,
     showMobileChat,
