@@ -80,6 +80,13 @@ test('two browsers receive selection and synchronized controls', async ({ browse
   await page.locator('video#videoElement').evaluate((video: HTMLVideoElement) => video.pause())
   await expect(guest.getByText('Alice paused playback')).toBeVisible()
 
+  const guestPosition = () => guest.locator('video#videoElement').evaluate(
+    (video: HTMLVideoElement) => video.currentTime,
+  )
+  await page.getByRole('button', { name: '+10s' }).click()
+  await expect.poll(guestPosition).toBeGreaterThan(8)
+  await expect(guest.getByText(/Alice seeked to/)).toBeVisible()
+
   await guestContext.close()
 })
 
