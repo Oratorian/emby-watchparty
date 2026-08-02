@@ -52,6 +52,16 @@ async def _exercise_independent_controls(live_watchparty) -> None:
         await realtime.emit("pause", {"party_id": party_id, "time": 1.1})
         await asyncio.wait_for(pause_received.wait(), timeout=0.25)
         assert perf_counter() - started < 0.25
+        for _ in range(30):
+            recorded = (await controls.get("/__test__/requests")).json()["requests"]
+            if any(
+                row["path"] == "/emby/Sessions/Playing/Progress"
+                for row in recorded
+            ):
+                break
+            await asyncio.sleep(0.05)
+        else:
+            raise AssertionError("playback progress was not reported to Emby")
     finally:
         await realtime.disconnect()
         await client.aclose()
