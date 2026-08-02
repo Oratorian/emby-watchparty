@@ -57,3 +57,7 @@ frontend/test-results/
 # Runtime data (avatar SQLite + uploaded files)
 data/
 images/avatars
+
+# Documentation
+TODO.md
+workflow-findings.md
