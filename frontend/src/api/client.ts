@@ -71,11 +71,33 @@ export interface PartyResponse extends SuccessResponse {
   is_host?: boolean
   party_unlocked?: boolean
 }
+export interface PartyVideo {
+  item_id: string
+  title: string
+  overview: string
+  stream_url_base?: string | null
+  audio_index?: number | null
+  subtitle_index?: number | null
+  media_source_id?: string | null
+  play_session_id?: string | null
+  run_time_seconds?: number | null
+  selected_by?: string | null
+  quality: string
+}
+export interface PartyInfoResponse {
+  id: string
+  users: string[]
+  current_video: PartyVideo | null
+  playback_state: {
+    playing: boolean
+    time: number
+    last_update: string
+  }
+}
 export interface AvatarResponse extends SuccessResponse {
   uuid?: string
   code?: string
 }
-export type JsonRecord = JsonObject
 export interface AdminConfig {
   BINGE_WATCH_COUNTDOWN_SECONDS: number
   BINGE_WATCH_ENABLED: boolean
@@ -272,7 +294,9 @@ export const api = {
   leaveParty: (signal?: AbortSignal) => apiFetch<SuccessResponse>('/api/party/leave', { method: 'POST', signal }),
   listParties: (signal?: AbortSignal) => apiFetch<PartyListResponse>('/api/party/list', { signal }),
   partyExists: (party_id: string, signal?: AbortSignal) => apiFetch<{ exists: boolean }>(`/api/party/${party_id}/exists`, { signal }),
-  partyInfo: (id: string, signal?: AbortSignal) => apiFetch<JsonRecord>(`/api/party/${id}/info`, { signal }),
+  partyInfo: (id: string, signal?: AbortSignal) => apiFetch<PartyInfoResponse>(
+    `/api/party/${id}/info`, { signal },
+  ),
 
   // Avatar
   avatarUpload: async (file: File, signal?: AbortSignal): Promise<AvatarResponse> => {
