@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import secrets
+from dataclasses import replace
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -144,7 +145,7 @@ class PartyManager:
         stream = party.user_streams.get(sid)
         return PlaybackReportSnapshot(
             current_video=dict(party.current_video) if party.current_video else None,
-            user_stream=dict(stream) if stream else None,
+            user_stream=replace(stream) if stream else None,
             host_access_token=party.host_access_token,
             host_user_id=party.host_user_id,
         )

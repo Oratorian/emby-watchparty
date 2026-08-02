@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any
 
-from backend.src.domain import AutoAdvance, PlaybackState, ReadyCheck
+from backend.src.domain import AutoAdvance, PlaybackState, ReadyCheck, UserStream
 from backend.src.quality import (
     DEFAULT_QUALITY_ID,
     normalise_quality_id,
@@ -243,15 +243,15 @@ def register(ctx):
             start_time_ticks=start_ticks,
         )
 
-        stream_info = {
-            "play_session_id": play_session_id,
-            "media_source_id": media_source_id,
-            "stream_url_base": stream_url_base,
-            "audio_index": audio_index,
-            "subtitle_index": subtitle_index,
-            "quality": normalised,
-            "ready": False,
-        }
+        stream_info = UserStream(
+            play_session_id=play_session_id,
+            media_source_id=media_source_id,
+            stream_url_base=stream_url_base,
+            audio_index=audio_index,
+            subtitle_index=subtitle_index,
+            quality=normalised,
+            start_offset=start_seconds,
+        )
 
         party.user_streams[sid] = stream_info
 
@@ -274,7 +274,7 @@ def register(ctx):
         """Stop a single user's Emby transcode and clean up."""
         user_streams = party.user_streams
         stream = user_streams.pop(sid, None)
-        if not stream or not stream.get("play_session_id"):
+        if not stream or not stream.play_session_id:
             return
 
         access_token, user_id = _host_creds(party)
@@ -282,15 +282,15 @@ def register(ctx):
         if current_video:
             await emby_client.report_playback_stopped(
                 item_id=current_video["item_id"],
-                media_source_id=stream["media_source_id"],
-                play_session_id=stream["play_session_id"],
+                media_source_id=stream.media_source_id,
+                play_session_id=stream.play_session_id,
                 position_seconds=position_seconds,
                 run_time_seconds=current_video.get("run_time_seconds"),
                 access_token=access_token,
                 user_id=user_id,
             )
         await emby_client.stop_active_encodings(
-            play_session_id=stream["play_session_id"],
+            play_session_id=stream.play_session_id,
             access_token=access_token,
         )
 
@@ -503,7 +503,7 @@ def register(ctx):
                 }, to=user_sid)
                 continue
 
-            stream_url = stream["stream_url_base"]
+            stream_url = stream.stream_url_base
             if config.ENABLE_HLS_TOKEN_VALIDATION:
                 user_token = token_manager.get_or_create(party_id, user_sid)
                 if user_token:
@@ -514,7 +514,7 @@ def register(ctx):
                     "item_id": item_id, "title": item_name, "overview": item_overview,
                     "stream_url": stream_url,
                     "audio_index": default_audio, "subtitle_index": None,
-                    "media_source_id": stream["media_source_id"],
+                    "media_source_id": stream.media_source_id,
                     "selected_by": selector_client_id, "quality": DEFAULT_QUALITY_ID,
                     "item_type": episode_ctx["item_type"],
                     "series_id": episode_ctx["series_id"],
@@ -706,17 +706,18 @@ def register(ctx):
         # transcode), fall back to either the previously-running stream
         # or the safe default.
         force_transcode = bool(config.FORCE_TRANSCODE)
-        candidate = quality or party.user_streams.get(sid, {}).get("quality")
+        existing_stream = party.user_streams.get(sid)
+        candidate = quality or (existing_stream.quality if existing_stream else None)
         quality = normalise_quality_id(candidate, force_transcode=force_transcode)
 
         # Snapshot the party clock using the same elapsed-time projection
         # the sync handlers use.
         ps = party.playback_state
-        was_playing = ps.get("playing", False)
-        snapshot_time = ps.get("time", 0)
-        if was_playing and ps.get("last_update"):
+        was_playing = ps.playing
+        snapshot_time = ps.time
+        if was_playing and ps.last_update:
             try:
-                last_update = datetime.fromisoformat(ps["last_update"])
+                last_update = datetime.fromisoformat(ps.last_update)
                 elapsed = (datetime.now() - last_update).total_seconds()
                 if 0 < elapsed < 30:
                     snapshot_time += elapsed
@@ -744,10 +745,10 @@ def register(ctx):
         media_source = playback_info["MediaSources"][0]
 
         # Recompute the current party time after the Emby round-trip.
-        current_time = ps.get("time", 0)
-        if was_playing and ps.get("last_update"):
+        current_time = ps.time
+        if was_playing and ps.last_update:
             try:
-                last_update = datetime.fromisoformat(ps["last_update"])
+                last_update = datetime.fromisoformat(ps.last_update)
                 elapsed = (datetime.now() - last_update).total_seconds()
                 if 0 < elapsed < 30:
                     current_time += elapsed
@@ -763,7 +764,7 @@ def register(ctx):
         if not stream:
             return
 
-        stream_url = stream["stream_url_base"]
+        stream_url = stream.stream_url_base
         if config.ENABLE_HLS_TOKEN_VALIDATION:
             user_token = token_manager.get_or_create(party_id, sid)
             if user_token:
@@ -774,7 +775,7 @@ def register(ctx):
                 "item_id": item_id, "title": current_video["title"],
                 "overview": current_video["overview"], "stream_url": stream_url,
                 "audio_index": audio_index, "subtitle_index": subtitle_index,
-                "media_source_id": stream["media_source_id"],
+                "media_source_id": stream.media_source_id,
                 "selected_by": current_video.get("selected_by"), "quality": quality,
             },
             "current_time": current_time,
@@ -1121,7 +1122,7 @@ def register(ctx):
             return
 
         user_stream = party.user_streams.get(sid)
-        if not user_stream or not user_stream.get("play_session_id"):
+        if not user_stream or not user_stream.play_session_id:
             return
 
         # Only the selector updates the authoritative party clock.
@@ -1143,11 +1144,11 @@ def register(ctx):
         access_token, user_id = _host_creds(party)
         await emby_client.report_playback_progress(
             item_id=current_video["item_id"],
-            media_source_id=user_stream["media_source_id"],
-            play_session_id=user_stream["play_session_id"],
+            media_source_id=user_stream.media_source_id,
+            play_session_id=user_stream.play_session_id,
             position_seconds=current_time, is_paused=not is_playing, event_name="TimeUpdate",
-            audio_index=user_stream.get("audio_index"),
-            subtitle_index=user_stream.get("subtitle_index") if user_stream.get("subtitle_index") != -1 else None,
+            audio_index=user_stream.audio_index,
+            subtitle_index=user_stream.subtitle_index if user_stream.subtitle_index != -1 else None,
             run_time_seconds=current_video.get("run_time_seconds"),
             access_token=access_token,
             user_id=user_id,
@@ -1163,7 +1164,7 @@ def register(ctx):
 
         user_stream = party.user_streams.get(sid)
         if user_stream:
-            user_stream["ready"] = True
+            user_stream.ready = True
 
         rc = party.ready_check
         if rc and rc.active:

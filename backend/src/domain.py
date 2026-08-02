@@ -38,11 +38,13 @@ class PlaybackState:
 @dataclass
 class UserStream:
     media_source_id: str
+    stream_url_base: str
     play_session_id: str | None = None
     audio_index: int | None = None
     subtitle_index: int | None = None
     quality: str = "Auto"
     ready: bool = False
+    start_offset: float = 0.0
 
 
 @dataclass
@@ -77,7 +79,7 @@ class AutoAdvance:
 @dataclass(frozen=True)
 class PlaybackReportSnapshot:
     current_video: dict[str, Any] | None
-    user_stream: dict[str, Any] | None
+    user_stream: UserStream | None
     host_access_token: str | None
     host_user_id: str | None
 
@@ -100,7 +102,7 @@ class Party:
     participants: dict[str, Participant] = field(default_factory=dict)
     sid_client_ids: dict[str, str] = field(default_factory=dict)
     current_video: dict[str, Any] | None = None
-    user_streams: dict[str, dict[str, Any]] = field(default_factory=dict)
+    user_streams: dict[str, UserStream] = field(default_factory=dict)
     playback_state: PlaybackState = field(default_factory=PlaybackState)
     ready_check: ReadyCheck | None = None
     pending_join: JoinVote | None = None

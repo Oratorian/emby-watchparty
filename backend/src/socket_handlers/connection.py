@@ -278,21 +278,21 @@ def register(ctx):
 
                 # Stop this user's individual transcode
                 user_stream = party.user_streams.get(sid)
-                if user_stream and user_stream.get("play_session_id") and party.current_video:
+                if user_stream and user_stream.play_session_id and party.current_video:
                     current_time = party.playback_state.time
                     access_token = party.host_access_token
                     user_id = party.host_user_id
                     await emby_client.report_playback_stopped(
                         item_id=party.current_video["item_id"],
-                        media_source_id=user_stream["media_source_id"],
-                        play_session_id=user_stream["play_session_id"],
+                        media_source_id=user_stream.media_source_id,
+                        play_session_id=user_stream.play_session_id,
                         position_seconds=current_time,
                         run_time_seconds=party.current_video.get("run_time_seconds"),
                         access_token=access_token,
                         user_id=user_id,
                     )
                     await emby_client.stop_active_encodings(
-                        play_session_id=user_stream["play_session_id"],
+                        play_session_id=user_stream.play_session_id,
                         access_token=access_token,
                     )
                 party.user_streams.pop(sid, None)

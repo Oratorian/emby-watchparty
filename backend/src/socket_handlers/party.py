@@ -74,21 +74,21 @@ def register(ctx):
             # so no remapping is needed when sid changes.
 
             old_stream = party.user_streams.pop(old_sid, None)
-            if old_stream and old_stream.get("play_session_id") and party.current_video:
+            if old_stream and old_stream.play_session_id and party.current_video:
                 current_time = party.playback_state.time
                 host_token = party.host_access_token
                 host_user = party.host_user_id
                 await emby_client.report_playback_stopped(
                     item_id=party.current_video["item_id"],
-                    media_source_id=old_stream["media_source_id"],
-                    play_session_id=old_stream["play_session_id"],
+                    media_source_id=old_stream.media_source_id,
+                    play_session_id=old_stream.play_session_id,
                     position_seconds=current_time,
                     run_time_seconds=party.current_video.get("run_time_seconds"),
                     access_token=host_token,
                     user_id=host_user,
                 )
                 await emby_client.stop_active_encodings(
-                    play_session_id=old_stream["play_session_id"],
+                    play_session_id=old_stream.play_session_id,
                     access_token=host_token,
                 )
 
@@ -142,7 +142,7 @@ def register(ctx):
         if not stream:
             return None
 
-        stream_url = stream["stream_url_base"]
+        stream_url = stream.stream_url_base
         if config.ENABLE_HLS_TOKEN_VALIDATION:
             user_token = token_manager.get_or_create(party_id, sid)
             if user_token:
@@ -153,9 +153,9 @@ def register(ctx):
             "title": current_video.get("title"),
             "overview": current_video.get("overview"),
             "stream_url": stream_url,
-            "audio_index": stream.get("audio_index"),
-            "subtitle_index": stream.get("subtitle_index"),
-            "media_source_id": stream.get("media_source_id"),
+            "audio_index": stream.audio_index,
+            "subtitle_index": stream.subtitle_index,
+            "media_source_id": stream.media_source_id,
             "selected_by": current_video.get("selected_by"),
             "quality": stream.get("quality", current_video.get("quality", DEFAULT_QUALITY_ID)),
             # Carry the binge-watching metadata so a late joiner sees
@@ -815,21 +815,21 @@ def register(ctx):
 
             # Stop this user's individual transcode
             user_stream = party.user_streams.get(sid)
-            if user_stream and user_stream.get("play_session_id") and party.current_video:
+            if user_stream and user_stream.play_session_id and party.current_video:
                 current_time = party.playback_state.time
                 host_token = party.host_access_token
                 host_user = party.host_user_id
                 await emby_client.report_playback_stopped(
                     item_id=party.current_video["item_id"],
-                    media_source_id=user_stream["media_source_id"],
-                    play_session_id=user_stream["play_session_id"],
+                    media_source_id=user_stream.media_source_id,
+                    play_session_id=user_stream.play_session_id,
                     position_seconds=current_time,
                     run_time_seconds=party.current_video.get("run_time_seconds"),
                     access_token=host_token,
                     user_id=host_user,
                 )
                 await emby_client.stop_active_encodings(
-                    play_session_id=user_stream["play_session_id"],
+                    play_session_id=user_stream.play_session_id,
                     access_token=host_token,
                 )
             party.user_streams.pop(sid, None)

@@ -62,14 +62,14 @@ class PartyLifecycle:
         user_id = party.host_user_id
         position = party.playback_state.time
         for stream in list((party.user_streams or {}).values()):
-            play_session_id = stream.get("play_session_id")
+            play_session_id = stream.play_session_id
             if not play_session_id:
                 continue
             if video.get("item_id"):
                 with suppress(Exception):
                     await self._emby.report_playback_stopped(
                         item_id=video["item_id"],
-                        media_source_id=stream.get("media_source_id"),
+                        media_source_id=stream.media_source_id,
                         play_session_id=play_session_id,
                         position_seconds=position,
                         run_time_seconds=video.get("run_time_seconds"),
