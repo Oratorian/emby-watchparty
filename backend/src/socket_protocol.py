@@ -367,5 +367,5 @@ def install_inbound_validation(sio: Any, logger: Any = None) -> None:
                         _event, party_id, (perf_counter() - started) * 1000, outcome,
                     )
 
-        validated._payload_validated = True
+        setattr(validated, "_payload_validated", True)
         namespace_handlers[event] = validated

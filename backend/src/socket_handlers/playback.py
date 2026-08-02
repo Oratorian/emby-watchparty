@@ -14,6 +14,7 @@ Identity model:
 import asyncio
 import time
 from datetime import datetime, timedelta
+from typing import Any
 from backend.src.quality import (
     DEFAULT_QUALITY_ID,
     normalise_quality_id,
@@ -68,7 +69,7 @@ def register(ctx):
         Episode list caching keys on season_id; switching to a different
         season's episode (or to a non-Episode item) clears the cache.
         """
-        result = {
+        result: dict[str, Any] = {
             "item_type": None, "series_id": None,
             "season_id": None, "episode_index": None,
             "index_number": None,

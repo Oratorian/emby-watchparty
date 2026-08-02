@@ -175,9 +175,12 @@ class RuntimeConfig:
                     data = json.load(f)
                 instance.update_from_dict(data)
             except json.JSONDecodeError as e:
-                backup = path.with_name(f"{path.name}.corrupt-{int(_t.time())}")
+                backup_path = path.with_name(
+                    f"{path.name}.corrupt-{int(_t.time())}"
+                )
+                backup: Path | None = backup_path
                 try:
-                    shutil.copy2(path, backup)
+                    shutil.copy2(path, backup_path)
                 except OSError:
                     backup = None
                 _logging.getLogger("emby-watchparty").warning(

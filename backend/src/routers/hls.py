@@ -116,7 +116,13 @@ def _resolve_host_creds(request: Request, token_manager, party_manager, logger):
     return party["host_access_token"], party.get("host_user_id"), party_id
 
 
-def _rewrite_playlist(content: str, item_id: str, app_prefix: str, emby_url: str, token: str = None):
+def _rewrite_playlist(
+    content: str,
+    item_id: str,
+    app_prefix: str,
+    emby_url: str,
+    token: str | None = None,
+) -> str:
     """Rewrite Emby URLs in HLS playlists to proxy URLs"""
     escaped_id = re.escape(item_id)
 

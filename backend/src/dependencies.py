@@ -15,6 +15,7 @@ from backend.src.config import Config
 from backend.src.emby_client import EmbyClient
 from backend.src.party_manager import PartyManager
 from backend.src.hls_token_manager import HLSTokenManager
+from backend.src.domain import Party
 from backend.src.stream_builder import StreamBuilder
 from backend.src.avatar_store import AvatarStore
 from backend.src.admin_session_store import AdminSessionStore
@@ -82,7 +83,7 @@ class PartySession:
     party_id: str
     client_id: str
     display_name: str
-    party: dict
+    party: Party
 
 
 def require_party_session(
