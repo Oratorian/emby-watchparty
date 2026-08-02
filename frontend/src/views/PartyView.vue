@@ -56,6 +56,7 @@ import { usePartyReconnect } from '@/composables/usePartyReconnect'
 import { usePartyVoting } from '@/composables/usePartyVoting'
 import { usePartyStream } from '@/composables/usePartyStream'
 import { usePartyPlayback } from '@/composables/usePartyPlayback'
+import { usePartyLifecycle } from '@/composables/usePartyLifecycle'
 // Brand mark asset. Vite resolves this to a hashed URL at build time
 // (and inlines small assets), so the WebP ships with cache-busting and
 // no runtime path drift. Sits on top of the cyan->magenta gradient
@@ -100,6 +101,7 @@ const {
   cancel: cancelPlaybackTimer,
   startInterval: startPlaybackInterval,
 } = usePartyPlayback(socket)
+const { on: onLifecycleEvent } = usePartyLifecycle(socket)
 
 const showBecomeHostModal = ref(false)
 const becomeHostBusy = ref(false)
@@ -165,25 +167,6 @@ onMounted(async () => {
     const v = await api.version()
     versionInfo.value = { version: v.current_version || v.version || '', codename: v.codename || '' }
   } catch { /* ignore */ }
-
-  // Defensive: clear any previously-registered handlers for the events
-  // PartyView listens to, so HMR reloads and Vue Router remounts cannot
-  // stack duplicate listeners. Without this, repeated mounts caused a
-  // single 'seek' broadcast to fire its addSystemMessage callback once
-  // per stacked listener, flooding the chat with phantom seek messages.
-  // NOTE: do NOT include 'sync_state' or 'join_vote_resolved' here. The
-  // party store owns both. sync_state populates currentVideo; off()ing it
-  // would strip the store handler and late joiners never receive the video.
-  // join_vote_resolved is the listener that clears pendingVote (dismisses
-  // the vote modal) -- our handler below only adds the late-joiner redirect
-  // and explicitly relies on the store's handler running. off()ing it here
-  // removed the store's dismissal, so a passed vote left the modal open
-  // forever. The two listeners coexist safely on the same socket; the store
-  // re-offs these on every setupListeners() call, so they do not stack.
-  const partyViewEvents = [
-    'error', 'join_rejected', 'toggle_library',
-  ] as const
-  for (const e of partyViewEvents) socket.off(e)
 
   attachChat()
   attachVoting()
@@ -505,7 +488,7 @@ onMounted(async () => {
   })
 
   // Error handler -- redirect on invalid party
-  socket.on('error', (data: ServerToClientPayloads['error']) => {
+  onLifecycleEvent('error', (data: ServerToClientPayloads['error']) => {
     const msg = data?.message || 'Unknown error'
     if (msg.includes('not found')) {
       alert(`Party not found: ${route.params.id}`)
@@ -523,14 +506,14 @@ onMounted(async () => {
   // library so the host can pick another season/series; everyone else
   // gets the system message so they understand why the player went
   // back to the lobby state.
-  socket.on('binge_finished', () => {
+  onLifecycleEvent('binge_finished', () => {
     addSystemMessage('Season finished -- pick another from the library.')
     if (auth.isHost) showLibrary.value = true
   })
 
   // Cancel announcements -- the modal closes itself off the store
   // state, but a system message keeps the chat history coherent.
-  socket.on('auto_advance_cancelled', (data: ServerToClientPayloads['auto_advance_cancelled']) => {
+  onLifecycleEvent('auto_advance_cancelled', (data: ServerToClientPayloads['auto_advance_cancelled']) => {
     const by = data?.by_username
     if (by) {
       addSystemMessage(`${by} cancelled auto-advance`)
@@ -538,7 +521,7 @@ onMounted(async () => {
   })
 
   // Late-joiner rejection: redirect home with a message
-  socket.on('join_rejected', (data: ServerToClientPayloads['join_rejected']) => {
+  onLifecycleEvent('join_rejected', (data: ServerToClientPayloads['join_rejected']) => {
     const msg = data?.message || 'The party declined your request to join.'
     alert(msg)
     router.push('/')
@@ -546,7 +529,7 @@ onMounted(async () => {
 
   // Party was dissolved server-side (e.g. an admin disabled static
   // sessions while we were inside one). Clean up and redirect home.
-  socket.on('party_dissolved', async () => {
+  onLifecycleEvent('party_dissolved', async () => {
     alert('This party has been closed by an administrator.')
     await party.leave()
     router.push('/')
@@ -560,13 +543,13 @@ onMounted(async () => {
   // this restores the v1.x behaviour. Idempotent for the host: their
   // local toggleLibrary() already set showLibrary, and re-applying the
   // same boolean here is a no-op.
-  socket.on('toggle_library', (data: ServerToClientPayloads['toggle_library']) => {
+  onLifecycleEvent('toggle_library', (data: ServerToClientPayloads['toggle_library']) => {
     showLibrary.value = !!data.show
   })
 
   // Vote resolved as fail while we were the late joiner: the store
   // already cleared the pending state; here we just redirect.
-  socket.on('join_vote_resolved', (data: ServerToClientPayloads['join_vote_resolved']) => {
+  onLifecycleEvent('join_vote_resolved', (data: ServerToClientPayloads['join_vote_resolved']) => {
     // The store's listener runs first and sets pendingVote=null. We
     // only handle the redirect case here (late joiner got rejected).
     if (data.result === 'fail' && !party.partyId) {
