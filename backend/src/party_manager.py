@@ -14,6 +14,7 @@ from backend.src.domain import (
     PlaybackReportSnapshot,
     PlaybackState,
     ReadyCheck,
+    UserStream,
 )
 from backend.src.utils import generate_party_code
 
@@ -213,6 +214,53 @@ class PartyManager:
                 report=self._playback_report_snapshot(party, sid),
                 waiting_names=waiting_names,
             )
+
+    async def commit_video_selection(
+        self,
+        party_id: str,
+        reservation: tuple[int, str],
+        *,
+        video: dict,
+        playback_state: PlaybackState,
+        episode_list: list[dict] | None,
+        episode_list_season_id: str | None,
+    ) -> Party | None:
+        """Install network-derived selection state iff its reservation is current."""
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing:
+                return None
+            generation, token = reservation
+            if (
+                party.generation != generation
+                or party.operation_reservations.get("select_video") != token
+            ):
+                return None
+            party.current_video = video
+            party.playback_state = playback_state
+            party.episode_list = episode_list
+            party.episode_list_season_id = episode_list_season_id
+            party.ready_check = ReadyCheck(expected_sids=set(party.users))
+            return party
+
+    async def commit_user_stream(
+        self,
+        party_id: str,
+        sid: str,
+        stream: UserStream,
+    ) -> bool:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing or sid not in party.users:
+                return False
+            party.user_streams[sid] = stream
+            return True
 
     def create_party(self) -> str:
         """Create a new party with a generated ID. Returns party_id."""

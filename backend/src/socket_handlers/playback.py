@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any
 
-from backend.src.domain import AutoAdvance, PlaybackState, ReadyCheck, UserStream
+from backend.src.domain import AutoAdvance, PlaybackState, UserStream
 from backend.src.quality import (
     DEFAULT_QUALITY_ID,
     normalise_quality_id,
@@ -82,10 +82,10 @@ def register(ctx):
             "next_item_id": None,
             "next_item_title": None,
         }
+        episode_list = None
+        episode_list_season_id = None
         if not user_id:
-            party.episode_list = None
-            party.episode_list_season_id = None
-            return result
+            return result, episode_list, episode_list_season_id
 
         details = await emby_client.get_item_details(
             item_id,
@@ -93,16 +93,12 @@ def register(ctx):
             user_id=user_id,
         )
         if not details:
-            party.episode_list = None
-            party.episode_list_season_id = None
-            return result
+            return result, episode_list, episode_list_season_id
 
         item_type = details.get("Type")
         result["item_type"] = item_type
         if item_type != "Episode":
-            party.episode_list = None
-            party.episode_list_season_id = None
-            return result
+            return result, episode_list, episode_list_season_id
 
         series_id = details.get("SeriesId")
         # Emby exposes the season as ParentId for episodes; SeasonId is
@@ -113,12 +109,12 @@ def register(ctx):
         result["season_id"] = season_id
 
         if not season_id:
-            party.episode_list = None
-            party.episode_list_season_id = None
-            return result
+            return result, episode_list, episode_list_season_id
 
         # Cache hit: same season as last selection, reuse the list.
-        if party.episode_list_season_id != season_id or not party.episode_list:
+        if party.episode_list_season_id == season_id and party.episode_list:
+            episode_list = [dict(episode) for episode in party.episode_list]
+        else:
             episodes = await emby_client.get_season_episodes(
                 season_id,
                 access_token=access_token,
@@ -127,7 +123,7 @@ def register(ctx):
             items = episodes.get("Items", []) if episodes else []
             # Trim to the fields binge-watching needs; we don't want to
             # store full Emby payloads on long-lived party state.
-            party.episode_list = [
+            episode_list = [
                 {
                     "Id": ep.get("Id"),
                     "Name": ep.get("Name"),
@@ -139,7 +135,7 @@ def register(ctx):
                 for ep in items
                 if ep.get("Id")
             ]
-            party.episode_list_season_id = season_id
+        episode_list_season_id = season_id
 
         # Capture both list position AND canonical IndexNumber. The list
         # position is informational (used for "Episode N of M" display);
@@ -148,12 +144,12 @@ def register(ctx):
         # mis-sort Ep1 to a non-zero position and make idx+1 jump past
         # the real next episode).
         result["index_number"] = details.get("IndexNumber")
-        for idx, ep in enumerate(party.episode_list):
+        for idx, ep in enumerate(episode_list):
             if ep.get("Id") == item_id:
                 result["episode_index"] = idx
                 break
 
-        next_ep = _find_next_episode(party.episode_list, result["index_number"])
+        next_ep = _find_next_episode(episode_list, result["index_number"])
         if next_ep:
             result["next_item_id"] = next_ep.get("Id")
             result["next_item_title"] = next_ep.get("Name")
@@ -162,7 +158,7 @@ def register(ctx):
         # behaviour can hand us a log line to diagnose. Includes the season's
         # IndexNumber distribution so we can spot specials / split-cour
         # numbering at a glance.
-        list_numbers = [ep.get("IndexNumber") for ep in party.episode_list]
+        list_numbers = [ep.get("IndexNumber") for ep in episode_list]
         logger.info(
             f"Binge ctx resolved: item={item_id} name={details.get('Name')!r} "
             f"IndexNumber={result['index_number']} "
@@ -171,7 +167,7 @@ def register(ctx):
             f"season_index_numbers={list_numbers}"
         )
 
-        return result
+        return result, episode_list, episode_list_season_id
 
     def _default_audio_index(media_source):
         """Find the default audio track index from a media source."""
@@ -253,7 +249,12 @@ def register(ctx):
             start_offset=start_seconds,
         )
 
-        party.user_streams[sid] = stream_info
+        if not await party_manager.commit_user_stream(party_id, sid, stream_info):
+            await emby_client.stop_active_encodings(
+                play_session_id=play_session_id,
+                access_token=access_token,
+            )
+            return None
 
         run_time_seconds = party.current_video.get("run_time_seconds")
         await emby_client.report_playback_start(
@@ -306,12 +307,6 @@ def register(ctx):
         if party.host_left_at is not None:
             party_manager.clear_host(party_id)
             logger.info(f"Party {party_id} -> LOCKED (host gone, playback ended)")
-
-    def _start_ready_check(party, party_id):
-        """Start a ready check for all users in the party."""
-        expected = set(party.users.keys())
-        party.ready_check = ReadyCheck(expected_sids=expected)
-        logger.debug(f"Ready check started for party {party_id}: expecting {len(expected)} users")
 
     async def _check_all_ready(party, party_id):
         """Check if all users are ready and emit all_ready if so."""
@@ -391,6 +386,12 @@ def register(ctx):
 
         Returns True on success, False on failure (caller should emit error).
         """
+        if reservation is None:
+            reservation = await party_manager.reserve_operation(
+                party_id, "select_video"
+            )
+            if reservation is None:
+                return False
         access_token, user_id = _host_creds(party)
         playback_info = await emby_client.get_playback_info(
             item_id,
@@ -435,13 +436,13 @@ def register(ctx):
         # the season's episode list cache so video_ended can decide
         # what "next" is without an extra Emby round-trip when the
         # episode finishes. Non-Episode items clear the cache.
-        episode_ctx = await _resolve_episode_context(
+        episode_ctx, episode_list, episode_list_season_id = await _resolve_episode_context(
             party, item_id, access_token, user_id
         )
 
-        # Store shared video info (no per-user fields). selected_by is the
+        # Build shared video info (no per-user fields). selected_by is the
         # persistent client_id, not the current sid.
-        party.current_video = {
+        video = {
             "item_id": item_id, "title": item_name, "overview": item_overview,
             "run_time_seconds": run_time_seconds,
             "media_source_id": resolved_media_source_id,
@@ -464,11 +465,26 @@ def register(ctx):
         if run_time_seconds:
             resume_offset = min(resume_offset, max(0.0, run_time_seconds - 5))
 
-        party.playback_state = PlaybackState(time=resume_offset)
+        committed_party = await party_manager.commit_video_selection(
+            party_id,
+            reservation,
+            video=video,
+            playback_state=PlaybackState(time=resume_offset),
+            episode_list=episode_list,
+            episode_list_season_id=episode_list_season_id,
+        )
+        if committed_party is None:
+            play_session_id = playback_info.get("PlaySessionId")
+            if play_session_id:
+                await emby_client.stop_active_encodings(
+                    play_session_id=play_session_id,
+                    access_token=access_token,
+                )
+            logger.info("Discarded stale video metadata commit for %s", party_id)
+            return False
+        party = committed_party
 
-        # Start a ready check so clients show the waiting overlay until
-        # every user has loaded their stream
-        _start_ready_check(party, party_id)
+        # The manager started a ready check in the same atomic commit.
         waiting_names = [party.users.get(s, "?") for s in party.ready_check.expected_sids]
 
         # Create per-user streams and emit individually. When a user's
