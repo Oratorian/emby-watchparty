@@ -157,7 +157,9 @@ def register(ctx):
             "subtitle_index": stream.subtitle_index,
             "media_source_id": stream.media_source_id,
             "selected_by": current_video.get("selected_by"),
-            "quality": stream.get("quality", current_video.get("quality", DEFAULT_QUALITY_ID)),
+            "quality": stream.quality or current_video.get(
+                "quality", DEFAULT_QUALITY_ID
+            ),
             # Carry the binge-watching metadata so a late joiner sees
             # the same control-strip button visibility and library
             # NEXT badge as the rest of the room.
