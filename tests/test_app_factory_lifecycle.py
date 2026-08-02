@@ -1,9 +1,9 @@
+import asyncio
 from pathlib import Path
-
-from fastapi.testclient import TestClient
 
 from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
+from tests.support.asgi import asgi_client
 
 
 def _test_config() -> Config:
@@ -25,22 +25,20 @@ def _test_config() -> Config:
     )
 
 
-def test_existing_user_can_create_and_join_party_through_public_http(
-    tmp_path: Path,
-) -> None:
+async def _exercise_existing_user_lifecycle(tmp_path: Path) -> None:
     application = create_app(
         config=_test_config(),
         project_root=tmp_path,
         enable_update_check=False,
     )
 
-    with TestClient(application) as client:
-        created = client.post("/api/party/create", json={})
+    async with asgi_client(application) as client:
+        created = await client.post("/api/party/create", json={})
         assert created.status_code == 200
         party_id = created.json()["party_id"]
         assert party_id
 
-        joined = client.post(
+        joined = await client.post(
             f"/api/party/{party_id}/join",
             json={"client_id": "client-1", "display_name": "Alice"},
         )
@@ -48,3 +46,9 @@ def test_existing_user_can_create_and_join_party_through_public_http(
         assert joined.json()["success"] is True
         assert joined.json()["party_id"] == party_id
         assert client.cookies.get("ewp_session")
+
+
+def test_existing_user_can_create_and_join_party_through_public_http(
+    tmp_path: Path,
+) -> None:
+    asyncio.run(_exercise_existing_user_lifecycle(tmp_path))

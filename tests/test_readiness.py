@@ -1,10 +1,11 @@
+import asyncio
 from pathlib import Path
 
 import httpx
-from fastapi.testclient import TestClient
 
 from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
+from tests.support.asgi import asgi_client
 
 
 def test_ready_reports_named_checks_through_running_app(live_watchparty) -> None:
@@ -39,8 +40,11 @@ def test_not_ready_when_emby_api_key_is_missing(
     )
     app = create_app(config=config, project_root=tmp_path, enable_update_check=False)
 
-    with TestClient(app) as client:
-        response = client.get("/api/ready")
+    async def exercise() -> httpx.Response:
+        async with asgi_client(app) as client:
+            return await client.get("/api/ready")
+
+    response = asyncio.run(exercise())
 
     assert response.status_code == 503
     assert response.json()["checks"]["config"] is False

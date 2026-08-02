@@ -1,9 +1,10 @@
+import asyncio
 import logging
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 from backend.src.avatar_store import AvatarStore
 from backend.src.config import Config, EnvConfig, RuntimeConfig
@@ -14,6 +15,7 @@ from backend.src.rate_limit import (
     parse_rate,
 )
 from backend.src.routers import avatar
+from tests.support.asgi import asgi_client
 
 
 def _config(*, prefix: str = "") -> Config:
@@ -62,10 +64,16 @@ def test_avatar_recovery_uses_shared_limiter_and_retry_after(tmp_path: Path):
         "test-rate-limit"
     )
 
-    client = TestClient(app)
-    for _ in range(10):
-        assert client.post("/api/avatar/recover", json={"code": "bad"}).status_code == 200
-    limited = client.post("/api/avatar/recover", json={"code": "bad"})
+    async def exercise() -> httpx.Response:
+        async with asgi_client(app) as client:
+            for _ in range(10):
+                response = await client.post(
+                    "/api/avatar/recover", json={"code": "bad"}
+                )
+                assert response.status_code == 200
+            return await client.post("/api/avatar/recover", json={"code": "bad"})
+
+    limited = asyncio.run(exercise())
     assert limited.status_code == 429
     assert int(limited.headers["retry-after"]) > 0
     assert app.state.rate_limiter.active_bucket_count == 1
@@ -95,10 +103,13 @@ def test_general_api_limit_returns_429_with_retry_after():
     def example():
         return {"ok": True}
 
-    client = TestClient(app)
-    assert client.get("/api/example").status_code == 200
-    assert client.get("/api/example").status_code == 200
-    limited = client.get("/api/example")
+    async def exercise() -> httpx.Response:
+        async with asgi_client(app) as client:
+            assert (await client.get("/api/example")).status_code == 200
+            assert (await client.get("/api/example")).status_code == 200
+            return await client.get("/api/example")
+
+    limited = asyncio.run(exercise())
     assert limited.status_code == 429
     assert int(limited.headers["retry-after"]) > 0
 
@@ -110,9 +121,12 @@ def test_party_creation_uses_stricter_limit():
     def create():
         return {"ok": True}
 
-    client = TestClient(app)
-    assert client.post("/api/party/create").status_code == 200
-    assert client.post("/api/party/create").status_code == 429
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            assert (await client.post("/api/party/create")).status_code == 200
+            assert (await client.post("/api/party/create")).status_code == 429
+
+    asyncio.run(exercise())
 
 
 def test_rate_limit_honors_application_prefix():
@@ -122,7 +136,10 @@ def test_rate_limit_honors_application_prefix():
     def example():
         return {"ok": True}
 
-    client = TestClient(app)
-    assert client.get("/watchparty/api/example").status_code == 200
-    assert client.get("/watchparty/api/example").status_code == 200
-    assert client.get("/watchparty/api/example").status_code == 429
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            assert (await client.get("/watchparty/api/example")).status_code == 200
+            assert (await client.get("/watchparty/api/example")).status_code == 200
+            assert (await client.get("/watchparty/api/example")).status_code == 429
+
+    asyncio.run(exercise())

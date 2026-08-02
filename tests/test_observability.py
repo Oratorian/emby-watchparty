@@ -1,9 +1,11 @@
+import asyncio
 import logging
 
+import httpx
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 from backend.src.observability import RequestLogMiddleware
+from tests.support.asgi import asgi_client
 
 
 def test_route_log_has_context_without_sensitive_query_values(caplog):
@@ -17,9 +19,13 @@ def test_route_log_has_context_without_sensitive_query_values(caplog):
         return {"ok": True}
 
     with caplog.at_level(logging.INFO, logger=logger.name):
-        response = TestClient(app).get(
-            "/api/example?token=complete-secret-token&recovery_code=secret-code"
-        )
+        async def exercise() -> httpx.Response:
+            async with asgi_client(app) as client:
+                return await client.get(
+                    "/api/example?token=complete-secret-token&recovery_code=secret-code"
+                )
+
+        response = asyncio.run(exercise())
 
     assert response.status_code == 200
     record = caplog.messages[-1]
