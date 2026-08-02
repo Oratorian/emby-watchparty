@@ -1,15 +1,30 @@
 import logging
 
+from backend.src.config import Config, EnvConfig, RuntimeConfig
 from backend.src.hls_token_manager import HLSTokenManager
 
 
-class _Config:
-    ENABLE_HLS_TOKEN_VALIDATION = True
-    HLS_TOKEN_EXPIRY = 3600
+def _config() -> Config:
+    return Config(
+        EnvConfig(
+            WATCH_PARTY_BIND="127.0.0.1",
+            WATCH_PARTY_PORT=5000,
+            APP_PREFIX="",
+            SESSION_EXPIRY=3600,
+            EMBY_SERVER_URL="http://emby.test",
+            EMBY_API_KEY="test-key",
+            APP_ENV="development",
+            SESSION_SECRET="test-session-secret-with-at-least-32-characters",
+            SESSION_COOKIE_SECURE=False,
+            CORS_ALLOWED_ORIGINS=("*",),
+            TRUSTED_PROXY_CIDRS=(),
+        ),
+        RuntimeConfig(ENABLE_HLS_TOKEN_VALIDATION=True, HLS_TOKEN_EXPIRY=3600),
+    )
 
 
 def test_tokens_are_bounded_and_revocable_per_user():
-    manager = HLSTokenManager(_Config(), logging.getLogger("test"), max_tokens=2)
+    manager = HLSTokenManager(_config(), logging.getLogger("test"), max_tokens=2)
     first = manager.generate("PARTY", "sid-1")
     second = manager.generate("PARTY", "sid-2")
     third = manager.generate("PARTY", "sid-3")

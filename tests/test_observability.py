@@ -1,20 +1,14 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.src.observability import RequestLogMiddleware
 
 
-class _Logger:
-    def __init__(self):
-        self.messages = []
-
-    def info(self, message, *args):
-        self.messages.append(message % args)
-
-
-def test_route_log_has_context_without_sensitive_query_values():
+def test_route_log_has_context_without_sensitive_query_values(caplog):
     app = FastAPI()
-    logger = _Logger()
+    logger = logging.getLogger("test-observability")
     app.state.logger = logger
     app.add_middleware(RequestLogMiddleware)
 
@@ -22,12 +16,13 @@ def test_route_log_has_context_without_sensitive_query_values():
     def example():
         return {"ok": True}
 
-    response = TestClient(app).get(
-        "/api/example?token=complete-secret-token&recovery_code=secret-code"
-    )
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        response = TestClient(app).get(
+            "/api/example?token=complete-secret-token&recovery_code=secret-code"
+        )
 
     assert response.status_code == 200
-    record = logger.messages[-1]
+    record = caplog.messages[-1]
     assert "route=/api/example" in record
     assert "latency_ms=" in record
     assert "outcome=200" in record
