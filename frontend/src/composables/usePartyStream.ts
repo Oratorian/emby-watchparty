@@ -1,8 +1,9 @@
-import { onUnmounted, ref, watch } from 'vue'
+import { nextTick, onUnmounted, ref, watch } from 'vue'
 import { api } from '@/api/client'
 import type { LibraryItem, StreamsResponse } from '@/api/client'
 import type { usePartyStore } from '@/stores/party'
 import type { useSocketStore } from '@/stores/socket'
+import { withPrefix } from '@/utils/appPrefix'
 
 type SocketStore = ReturnType<typeof useSocketStore>
 type PartyStore = ReturnType<typeof usePartyStore>
@@ -23,12 +24,15 @@ export function usePartyStream(
   socket: SocketStore,
   party: PartyStore,
   onSelectionEmitted: () => void,
+  videoElement: () => HTMLVideoElement | null,
 ) {
   const reloading = ref(false)
   const versionPickerState = ref<PendingVersionPick | null>(null)
   const resumePromptState = ref<ResumePromptState | null>(null)
   let subtitleController: AbortController | null = null
   let selectionController: AbortController | null = null
+  let lastSubtitlePreloadKey: string | null = null
+  const selectedTextSubIndex = ref<number | null>(null)
   const stopStreamWatch = watch(() => party.myStreamUrl, (url, previousUrl) => {
     if (url && url !== previousUrl) reloading.value = true
   })
@@ -133,8 +137,102 @@ export function usePartyStream(
     versionPickerState.value = null
   }
 
+  const stopSubtitleWatch = watch(
+    () => {
+      const video = party.currentVideo
+      return [video?.item_id, video?.media_source_id, party.myStreamUrl] as const
+    },
+    async ([itemId, mediaSourceId, streamUrl]) => {
+      if (!itemId || !mediaSourceId || !streamUrl) return
+      const key = `${itemId}:${mediaSourceId}:${streamUrl}`
+      if (key === lastSubtitlePreloadKey) return
+      const previousItem = lastSubtitlePreloadKey?.split(':')[0] ?? null
+      const isNewItem = previousItem !== itemId
+      lastSubtitlePreloadKey = key
+      if (isNewItem) selectedTextSubIndex.value = null
+
+      await nextTick()
+      const video = videoElement()
+      if (!video) return
+      video.querySelectorAll('track').forEach((track) => track.remove())
+
+      try {
+        const streams = await loadSubtitleStreams(itemId)
+        const textSubtitles = streams.subtitles.filter(
+          (stream) => !stream.isPGS && stream.isTextSubtitleStream,
+        )
+        if (isNewItem) {
+          const defaultSubtitle = textSubtitles.find((stream) => stream.isDefault)
+          if (defaultSubtitle) selectedTextSubIndex.value = defaultSubtitle.index
+        }
+        const targetIndex = selectedTextSubIndex.value
+        for (const subtitle of textSubtitles) {
+          const track = document.createElement('track')
+          track.kind = 'subtitles'
+          let label = subtitle.displayLanguage || subtitle.language || 'Unknown'
+          if (subtitle.title) label += ` (${subtitle.title})`
+          if (subtitle.isForced) label += ' [Forced]'
+          if (subtitle.isExternal) label += ' [External]'
+          track.label = label
+          track.srclang = subtitle.language || 'und'
+          track.src = withPrefix(
+            `/api/subtitles/${itemId}/${mediaSourceId}/${subtitle.index}`,
+          )
+          video.appendChild(track)
+          if (track.track) {
+            track.track.mode = subtitle.index === targetIndex ? 'showing' : 'hidden'
+          }
+        }
+        if (targetIndex !== null) {
+          video.addEventListener('loadeddata', () => {
+            for (const track of Array.from(video.querySelectorAll('track'))) {
+              const match = track.src.match(/\/api\/subtitles\/[^/]+\/[^/]+\/(\d+)/)
+              const index = match?.[1] ? parseInt(match[1], 10) : null
+              track.track.mode = index === targetIndex ? 'showing' : 'hidden'
+            }
+          }, { once: true })
+        }
+      } catch {
+        // A stale/failed subtitle request must not disturb video playback.
+      }
+    },
+  )
+
+  function changeTextSubtitle(payload: { index: number; url: string | null }) {
+    selectedTextSubIndex.value = payload.index >= 0 && payload.url ? payload.index : null
+    const video = videoElement()
+    if (!video) return
+    if (payload.index === -1 || !payload.url) {
+      for (const track of Array.from(video.textTracks)) track.mode = 'hidden'
+      return
+    }
+    const elements = Array.from(video.querySelectorAll('track'))
+    const target = elements.find((track) => track.src.endsWith(payload.url!))
+    if (target) {
+      for (const track of Array.from(video.textTracks)) {
+        track.mode = track === target.track ? 'showing' : 'hidden'
+      }
+      return
+    }
+    const track = document.createElement('track')
+    track.kind = 'subtitles'
+    track.label = 'Subtitles'
+    track.srclang = 'und'
+    track.src = payload.url
+    track.default = true
+    const showTrack = () => {
+      for (const textTrack of Array.from(video.textTracks)) {
+        textTrack.mode = textTrack === track.track ? 'showing' : 'disabled'
+      }
+    }
+    track.addEventListener('load', showTrack, { once: true })
+    video.appendChild(track)
+    showTrack()
+  }
+
   onUnmounted(() => {
     stopStreamWatch()
+    stopSubtitleWatch()
     subtitleController?.abort()
     selectionController?.abort()
   })
@@ -144,6 +242,7 @@ export function usePartyStream(
     resumePromptState,
     signalReady,
     loadSubtitleStreams,
+    changeTextSubtitle,
     selectVideo,
     resumeSelection,
     startSelectionOver,
