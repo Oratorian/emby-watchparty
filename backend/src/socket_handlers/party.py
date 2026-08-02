@@ -4,7 +4,7 @@ import asyncio
 import time
 from datetime import datetime
 
-from backend.src.domain import JoinVote, Participant
+from backend.src.domain import JoinVote
 from backend.src.quality import DEFAULT_QUALITY_ID
 from backend.src.utils import generate_random_username
 
@@ -65,62 +65,32 @@ def register(ctx):
     async def _replace_sid(party, old_sid, new_sid, username, client_id=None,
                      avatar_uuid=None):
         """Move all sid-keyed party state from an old socket to a new one."""
-        if old_sid and old_sid != new_sid:
-            party.users.pop(old_sid, None)
-            party.join_times.pop(old_sid, None)
-            party.sid_client_ids.pop(old_sid, None)
-
-            # selected_by is keyed on client_id (stable across reloads),
-            # so no remapping is needed when sid changes.
-
-            old_stream = party.user_streams.pop(old_sid, None)
-            if old_stream and old_stream.play_session_id and party.current_video:
-                current_time = party.playback_state.time
-                host_token = party.host_access_token
-                host_user = party.host_user_id
-                await emby_client.report_playback_stopped(
-                    item_id=party.current_video["item_id"],
-                    media_source_id=old_stream.media_source_id,
-                    play_session_id=old_stream.play_session_id,
-                    position_seconds=current_time,
-                    run_time_seconds=party.current_video.get("run_time_seconds"),
-                    access_token=host_token,
-                    user_id=host_user,
-                )
-                await emby_client.stop_active_encodings(
-                    play_session_id=old_stream.play_session_id,
-                    access_token=host_token,
-                )
-
-            drift_strikes = party.drift_strikes
-            if drift_strikes and old_sid in drift_strikes:
-                drift_strikes[new_sid] = drift_strikes.pop(old_sid)
-
-            rc = party.ready_check
-            if rc and rc.active:
-                if old_sid in rc.expected_sids:
-                    rc.expected_sids.discard(old_sid)
-                    rc.expected_sids.add(new_sid)
-                if old_sid in rc.ready_sids:
-                    rc.ready_sids.discard(old_sid)
-                    rc.ready_sids.add(new_sid)
-
-        party.users[new_sid] = username
-        party.join_times[new_sid] = datetime.now().isoformat()
-        if client_id:
-            participants = party.participants
-            # Preserve any previously-recorded avatar_uuid if the new
-            # call did not supply one, so a reconnect without
-            # avatar_uuid in the payload does not erase it.
-            existing = participants.get(client_id)
-            participants[client_id] = Participant(
-                client_id=client_id,
-                username=username,
-                sid=new_sid,
-                last_seen=datetime.now().isoformat(),
-                avatar_uuid=avatar_uuid or (existing.avatar_uuid if existing else None),
+        commit = await party_manager.replace_socket(
+            party.id,
+            old_sid=old_sid,
+            new_sid=new_sid,
+            username=username,
+            client_id=client_id,
+            avatar_uuid=avatar_uuid,
+        )
+        if commit is None:
+            return
+        old_stream = commit.stream
+        current_video = commit.current_video
+        if old_stream and old_stream.play_session_id and current_video:
+            await emby_client.report_playback_stopped(
+                item_id=current_video["item_id"],
+                media_source_id=old_stream.media_source_id,
+                play_session_id=old_stream.play_session_id,
+                position_seconds=commit.playback_time,
+                run_time_seconds=current_video.get("run_time_seconds"),
+                access_token=commit.host_access_token,
+                user_id=commit.host_user_id,
             )
-            party.sid_client_ids[new_sid] = client_id
+            await emby_client.stop_active_encodings(
+                play_session_id=old_stream.play_session_id,
+                access_token=commit.host_access_token,
+            )
 
     async def _build_rejoin_video(party, party_id, sid):
         """Create a fresh per-user stream for a known participant rejoining."""

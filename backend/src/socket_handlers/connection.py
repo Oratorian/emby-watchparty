@@ -97,7 +97,8 @@ def register(ctx):
 
         sid_client_ids = party.sid_client_ids
         if client_id in sid_client_ids.values():
-            party.host_left_at = None
+            if not await party_manager.restore_host_presence(party_id):
+                return
             pending_host_clear.pop(party_id, None)
             logger.info(
                 f"Host '{username}' rejoined party {party_id} within grace; "
@@ -182,7 +183,8 @@ def register(ctx):
         if task and not task.done():
             task.cancel()
 
-        party.host_left_at = None
+        if not await party_manager.restore_host_presence(party_id):
+            return False
         username = party.host_username or "?"
         logger.info(
             f"Host '{username}' reclaimed party {party_id} via fast rejoin"

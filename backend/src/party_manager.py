@@ -11,6 +11,7 @@ from backend.src.config import Config
 from backend.src.domain import (
     Party,
     DepartureCommit,
+    Participant,
     PlaybackControlCommit,
     PlaybackReportSnapshot,
     PlaybackState,
@@ -333,6 +334,80 @@ class PartyManager:
                 host_access_token=party.host_access_token,
                 host_user_id=party.host_user_id,
             )
+
+    async def replace_socket(
+        self,
+        party_id: str,
+        *,
+        old_sid: str | None,
+        new_sid: str,
+        username: str,
+        client_id: str | None,
+        avatar_uuid: str | None,
+    ) -> DepartureCommit | None:
+        """Atomically migrate a participant identity to a replacement socket."""
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing:
+                return None
+            old_stream = None
+            if old_sid and old_sid != new_sid:
+                party.users.pop(old_sid, None)
+                party.join_times.pop(old_sid, None)
+                party.sid_client_ids.pop(old_sid, None)
+                drift_strikes = party.drift_strikes.pop(old_sid, None)
+                if drift_strikes is not None:
+                    party.drift_strikes[new_sid] = drift_strikes
+                old_stream = party.user_streams.pop(old_sid, None)
+                ready_check = party.ready_check
+                if ready_check and ready_check.active:
+                    if old_sid in ready_check.expected_sids:
+                        ready_check.expected_sids.discard(old_sid)
+                        ready_check.expected_sids.add(new_sid)
+                    if old_sid in ready_check.ready_sids:
+                        ready_check.ready_sids.discard(old_sid)
+                        ready_check.ready_sids.add(new_sid)
+
+            party.users[new_sid] = username
+            party.join_times[new_sid] = datetime.now().isoformat()
+            if client_id:
+                existing = party.participants.get(client_id)
+                party.participants[client_id] = Participant(
+                    client_id=client_id,
+                    username=username,
+                    sid=new_sid,
+                    avatar_uuid=avatar_uuid
+                    or (existing.avatar_uuid if existing else None),
+                )
+                party.sid_client_ids[new_sid] = client_id
+            return DepartureCommit(
+                username=username,
+                client_id=client_id,
+                stream=old_stream,
+                all_ready=False,
+                auto_play=False,
+                playback_time=party.playback_state.time,
+                playback_playing=party.playback_state.playing,
+                ready_names=(),
+                waiting_names=(),
+                current_video=dict(party.current_video) if party.current_video else None,
+                host_access_token=party.host_access_token,
+                host_user_id=party.host_user_id,
+            )
+
+    async def restore_host_presence(self, party_id: str) -> bool:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing:
+                return False
+            party.host_left_at = None
+            return True
 
     def create_party(self) -> str:
         """Create a new party with a generated ID. Returns party_id."""
