@@ -146,3 +146,60 @@ async def _exercise_foreign_playlist_rejection(live_watchparty) -> None:
 
 def test_live_hls_rejects_foreign_playlist_urls(live_watchparty) -> None:
     asyncio.run(_exercise_foreign_playlist_rejection(live_watchparty))
+
+
+async def _exercise_select_leave_race(live_watchparty) -> None:
+    controls = httpx.AsyncClient(base_url=live_watchparty.fake.url)
+    await controls.post(
+        "/__test__/behavior",
+        json={"delays_ms": {"/emby/Items/movie-1/PlaybackInfo": 400}},
+    )
+    client = httpx.AsyncClient(base_url=live_watchparty.url)
+    created = await client.post("/api/party/create", json={})
+    party_id = created.json()["party_id"]
+    await client.post(
+        f"/api/party/{party_id}/join",
+        json={"client_id": "racing-client", "display_name": "Alice"},
+    )
+    await client.post(
+        "/api/auth/login", json={"username": "Alice", "password": "password"}
+    )
+    cookie = "; ".join(f"{name}={value}" for name, value in client.cookies.items())
+    realtime = socketio.AsyncClient()
+    await realtime.connect(live_watchparty.url, headers={"Cookie": cookie})
+    try:
+        await realtime.emit(
+            "join_party",
+            {"party_id": party_id, "username": "Alice", "client_id": "racing-client"},
+        )
+        await realtime.emit(
+            "select_video",
+            {"party_id": party_id, "item_id": "movie-1", "item_name": "Fake Movie"},
+        )
+        for _ in range(100):
+            recorded = (await controls.get("/__test__/requests")).json()["requests"]
+            if any(row["path"].endswith("/PlaybackInfo") for row in recorded):
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("selection never reached fake Emby")
+
+        await realtime.emit("leave_party", {"party_id": party_id})
+        await asyncio.sleep(0.7)
+
+        exists = await client.get(f"/api/party/{party_id}/exists")
+        assert exists.json() == {"exists": False}
+        recorded = (await controls.get("/__test__/requests")).json()["requests"]
+        assert any(
+            row["method"] == "DELETE" and row["path"] == "/emby/Videos/ActiveEncodings"
+            for row in recorded
+        ), "obsolete transcode from stale selection was not cancelled"
+    finally:
+        if realtime.connected:
+            await realtime.disconnect()
+        await client.aclose()
+        await controls.aclose()
+
+
+def test_concurrent_select_and_leave_cancels_stale_transcode(live_watchparty) -> None:
+    asyncio.run(_exercise_select_leave_race(live_watchparty))
