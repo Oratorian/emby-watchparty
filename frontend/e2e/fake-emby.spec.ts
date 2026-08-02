@@ -13,7 +13,6 @@ test('host authenticates and browses the fake Emby library', async ({ page }) =>
   await page.getByPlaceholder('Emby password').fill('password')
   await page.getByRole('button', { name: 'Become Host', exact: true }).click()
 
-  await expect(page.getByRole('button', { name: 'Browse Library', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Browse Library', exact: true }).click()
+  await page.getByText('Movies', { exact: true }).click()
   await expect(page.getByText('Fake Movie', { exact: true })).toBeVisible()
 })

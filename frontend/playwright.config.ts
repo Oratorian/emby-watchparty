@@ -21,13 +21,20 @@ export default defineConfig({
   ],
   webServer: [
     {
+      command: `${python} scripts/run_fake_emby.py`,
+      cwd: '..',
+      url: 'http://127.0.0.1:5012/emby/System/Info/Public',
+      reuseExistingServer: !process.env.CI,
+      env: { E2E_FAKE_EMBY_PORT: '5012' },
+    },
+    {
       command: `${python} scripts/run_e2e_app.py`,
       cwd: '..',
       url: 'http://127.0.0.1:5011/api/health',
       reuseExistingServer: !process.env.CI,
       env: {
         APP_ENV: 'development',
-        EMBY_SERVER_URL: 'http://127.0.0.1:59999',
+        EMBY_SERVER_URL: 'http://127.0.0.1:5012',
         EMBY_API_KEY: 'e2e-key',
         SESSION_SECRET: 'playwright-session-secret-at-least-32-characters',
         CORS_ALLOWED_ORIGINS: 'http://127.0.0.1:4173',
