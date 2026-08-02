@@ -50,6 +50,7 @@ import { avatarUrl as fallbackAvatarUrl } from '@/utils/avatar'
 import { copyToClipboard } from '@/utils/clipboard'
 import { useAuthStore } from '@/stores/auth'
 import { useAvatarStore } from '@/stores/avatar'
+import { usePartyChat } from '@/composables/usePartyChat'
 // Brand mark asset. Vite resolves this to a hashed URL at build time
 // (and inlines small assets), so the WebP ships with cache-busting and
 // no runtime path drift. Sits on top of the cyan->magenta gradient
@@ -63,6 +64,17 @@ const socket = useSocketStore()
 const party = usePartyStore()
 const auth = useAuthStore()
 const avatar = useAvatarStore()
+const {
+  messages: chatMessages,
+  input: chatInput,
+  showParticipants,
+  showMobileChat,
+  attach: attachChat,
+  dispose: disposeChat,
+  send: sendChat,
+  insertEmoji,
+  addSystemMessage,
+} = usePartyChat(socket, party)
 
 const showBecomeHostModal = ref(false)
 const becomeHostBusy = ref(false)
@@ -104,19 +116,9 @@ const joined = ref(false)
 // Without this flag, the modal flashes on every mount before the socket
 // confirms the auto-join, even when localStorage has a saved name.
 const awaitingAutoJoin = ref(!!localStorage.getItem(STORAGE_KEY))
-const chatMessages = ref<Array<{
-  username: string
-  message: string
-  timestamp: string
-  avatar_uuid?: string | null
-  system?: boolean
-}>>([])
-const chatInput = ref('')
 const showLibrary = ref(false)
 const copyLabel = ref('Copy')
 const showVersionModal = ref(false)
-const showParticipants = ref(false)
-const showMobileChat = ref(false)
 const showAdminModal = ref(false)
 const adminTriggerBtn = ref<HTMLButtonElement | null>(null)
 const adminModalShellRef = ref<HTMLElement | null>(null)
@@ -197,19 +199,13 @@ onMounted(async () => {
   // forever. The two listeners coexist safely on the same socket; the store
   // re-offs these on every setupListeners() call, so they do not stack.
   const partyViewEvents = [
-    'chat_message', 'play', 'pause', 'seek', 'force_pause_before_seek',
+    'play', 'pause', 'seek', 'force_pause_before_seek',
     'ready_check_update', 'drift_correction', 'all_ready',
     'error', 'join_rejected', 'toggle_library',
   ] as const
   for (const e of partyViewEvents) socket.off(e)
 
-  socket.on('chat_message', (data: ServerToClientPayloads['chat_message']) => {
-    chatMessages.value.push(data)
-    nextTick(() => {
-      const el = document.querySelector('.chat-messages')
-      if (el) el.scrollTop = el.scrollHeight
-    })
-  })
+  attachChat()
 
   // Playback sync handlers -- matching v1.6.0 deduplication
   socket.on('play', (data: ServerToClientPayloads['play']) => {
@@ -624,6 +620,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  disposeChat()
   if (heartbeatInterval) {
     clearInterval(heartbeatInterval)
     heartbeatInterval = null
@@ -761,10 +758,6 @@ watch(
   },
 )
 
-function addSystemMessage(msg: string) {
-  chatMessages.value.push({ username: 'System', message: msg, timestamp: new Date().toISOString(), system: true })
-}
-
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
@@ -791,19 +784,6 @@ watch(() => party.users, (users) => {
 
 function submitJoin() {
   joinWithName(usernameInput.value.trim())
-}
-
-function sendChat() {
-  if (!chatInput.value.trim() || !party.partyId) return
-  socket.emit('chat_message', {
-    party_id: party.partyId!,
-    message: chatInput.value.trim(),
-  })
-  chatInput.value = ''
-}
-
-function insertEmoji(emoji: string) {
-  chatInput.value += emoji
 }
 
 async function copyPartyId() {
