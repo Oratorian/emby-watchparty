@@ -106,7 +106,10 @@ class EmbyClient:
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            self.logger.warning("Failed to register device capabilities: %s", exc)
+            self.logger.warning(
+                "Failed to register device capabilities: error=%s",
+                type(exc).__name__,
+            )
 
     async def verify_access_token(self, access_token: str, user_id: str) -> bool:
         if not access_token or not user_id:
@@ -119,7 +122,7 @@ class EmbyClient:
             )
             return response.status_code == 200
         except httpx.HTTPError as exc:
-            self.logger.warning("verify_access_token error: %s", exc)
+            self.logger.warning("verify_access_token error=%s", type(exc).__name__)
             return False
 
     async def get_libraries(self, access_token=None, user_id=None):
@@ -131,7 +134,7 @@ class EmbyClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as exc:
-            self.logger.error("Error fetching libraries: %s", exc)
+            self.logger.error("Error fetching libraries: error=%s", type(exc).__name__)
             return {"Items": []}
 
     async def _ensure_library_cache(self, access_token=None, user_id=None) -> None:
@@ -219,7 +222,9 @@ class EmbyClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as exc:
-            self.logger.error("Error fetching season episodes: %s", exc)
+            self.logger.error(
+                "Error fetching season episodes: error=%s", type(exc).__name__
+            )
             return {"Items": [], "TotalRecordCount": 0}
 
     async def get_item_details(self, item_id, access_token=None, user_id=None):
@@ -238,7 +243,9 @@ class EmbyClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as exc:
-            self.logger.error("Error fetching item details: %s", exc)
+            self.logger.error(
+                "Error fetching item details: error=%s", type(exc).__name__
+            )
             return None
 
     async def search_items(self, query, access_token=None, user_id=None):
@@ -264,7 +271,7 @@ class EmbyClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as exc:
-            self.logger.error("Error searching items: %s", exc)
+            self.logger.error("Error searching items: error=%s", type(exc).__name__)
             return {"Items": []}
 
     def get_image_url(
@@ -311,7 +318,9 @@ class EmbyClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as exc:
-            self.logger.error("Error fetching playback info: %s", exc)
+            self.logger.error(
+                "Error fetching playback info: error=%s", type(exc).__name__
+            )
             return await self.get_item_details(item_id, access_token, user_id)
 
     async def stop_active_encodings(self, play_session_id=None, access_token=None):
@@ -327,7 +336,9 @@ class EmbyClient:
             response.raise_for_status()
             return True
         except httpx.HTTPError as exc:
-            self.logger.warning("Failed to stop active encodings: %s", exc)
+            self.logger.warning(
+                "Failed to stop active encodings: error=%s", type(exc).__name__
+            )
             return False
 
     @staticmethod
@@ -366,7 +377,9 @@ class EmbyClient:
             response.raise_for_status()
             return True
         except httpx.HTTPError as exc:
-            self.logger.warning("Playback report failed: %s", exc)
+            self.logger.warning(
+                "Playback report failed: error=%s", type(exc).__name__
+            )
             return False
 
     async def report_playback_start(

@@ -60,7 +60,9 @@ async def get_intro_info(
                     return IntroResponse(hasIntro=True, start=start, end=end, duration=end - start)
         return IntroResponse(hasIntro=False)
     except Exception as e:
-        logger.warning(f"Intro fetch failed for {item_id}: {e}")
+        logger.warning(
+            "Intro fetch failed item=%s error=%s", item_id, type(e).__name__
+        )
         return IntroResponse(hasIntro=False)
 
 
@@ -115,7 +117,7 @@ async def api_image(
             )
         return Response(status_code=404)
     except Exception as e:
-        logger.error(f"Error fetching image: {e}")
+        logger.error("Error fetching image: error=%s", e.__class__.__name__)
         return Response(status_code=404)
 
 
@@ -161,5 +163,5 @@ async def api_subtitles(
             )
         return Response(status_code=404)
     except Exception as e:
-        logger.error(f"Error fetching subtitle: {e}")
+        logger.error("Error fetching subtitle: error=%s", type(e).__name__)
         return Response(status_code=404)

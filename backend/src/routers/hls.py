@@ -232,11 +232,11 @@ async def proxy_hls_master(item_id: str, request: Request,
         return Response(content='{"error": "Unsafe upstream playlist"}',
                         status_code=502, media_type="application/json")
     except httpx.HTTPError as e:
-        logger.error(f"Failed to fetch master playlist: {e}")
+        logger.error("Failed to fetch master playlist: error=%s", type(e).__name__)
         return Response(content='{"error": "Failed to fetch video from media server"}',
                         status_code=502, media_type="application/json")
     except Exception as e:
-        logger.error(f"Unexpected error in HLS master proxy: {e}")
+        logger.error("Unexpected HLS master proxy error=%s", type(e).__name__)
         return Response(content='{"error": "Internal server error"}',
                         status_code=500, media_type="application/json")
 
@@ -356,10 +356,14 @@ async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
         return Response(content='{"error": "Unsafe upstream playlist"}',
                         status_code=502, media_type="application/json")
     except httpx.HTTPError as e:
-        logger.error(f"Failed to fetch HLS segment {subpath}: {e}")
+        logger.error(
+            "Failed to fetch HLS segment path=%s error=%s",
+            subpath,
+            type(e).__name__,
+        )
         return Response(content='{"error": "Failed to fetch segment"}',
                         status_code=502, media_type="application/json")
     except Exception as e:
-        logger.error(f"Unexpected error in HLS segment proxy: {e}")
+        logger.error("Unexpected HLS segment proxy error=%s", type(e).__name__)
         return Response(content='{"error": "Internal server error"}',
                         status_code=500, media_type="application/json")
