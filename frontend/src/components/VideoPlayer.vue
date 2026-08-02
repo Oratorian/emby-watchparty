@@ -125,8 +125,10 @@ function attachStream(url: string) {
         }
       }
     })
-  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    // Native HLS support (Safari)
+  } else {
+    // Native HLS path (Safari/iOS). Capability probing is not reliable
+    // in all WebKit shells, so an unavailable MSE/Hls.js path must still
+    // attach the playlist instead of leaving the video without a source.
     video.src = url
     video.addEventListener(
       'loadedmetadata',
