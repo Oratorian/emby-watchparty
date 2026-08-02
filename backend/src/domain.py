@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+
+MediaValue = str | float | int | None
 
 
 def _now() -> str:
@@ -47,6 +49,78 @@ class UserStream:
     start_offset: float = 0.0
 
 
+@dataclass(frozen=True)
+class EpisodeRef(Mapping[str, MediaValue]):
+    item_id: str
+    name: str
+    index_number: int | None = None
+    parent_index_number: int | None = None
+    series_id: str | None = None
+    season_id: str | None = None
+
+    def to_emby(self) -> dict[str, MediaValue]:
+        return {
+            "Id": self.item_id,
+            "Name": self.name,
+            "IndexNumber": self.index_number,
+            "ParentIndexNumber": self.parent_index_number,
+            "SeriesId": self.series_id,
+            "SeasonId": self.season_id,
+        }
+
+    def __getitem__(self, key: str) -> MediaValue:
+        return self.to_emby()[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.to_emby())
+
+    def __len__(self) -> int:
+        return 6
+
+
+@dataclass(frozen=True)
+class SelectedMedia(Mapping[str, MediaValue]):
+    item_id: str
+    title: str
+    overview: str = ""
+    run_time_seconds: float | None = None
+    media_source_id: str | None = None
+    selected_by: str | None = None
+    item_type: str | None = None
+    series_id: str | None = None
+    season_id: str | None = None
+    episode_index: int | None = None
+    index_number: int | None = None
+    next_item_id: str | None = None
+    next_item_title: str | None = None
+
+    def to_wire(self) -> dict[str, MediaValue]:
+        return {
+            "item_id": self.item_id,
+            "title": self.title,
+            "overview": self.overview,
+            "run_time_seconds": self.run_time_seconds,
+            "media_source_id": self.media_source_id,
+            "selected_by": self.selected_by,
+            "item_type": self.item_type,
+            "series_id": self.series_id,
+            "season_id": self.season_id,
+            "episode_index": self.episode_index,
+            "index_number": self.index_number,
+            "next_item_id": self.next_item_id,
+            "next_item_title": self.next_item_title,
+        }
+
+    def __getitem__(self, key: str) -> MediaValue:
+        return self.to_wire()[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.to_wire())
+
+    def __len__(self) -> int:
+        return 13
+
+
 @dataclass
 class JoinVote:
     sid: str
@@ -78,7 +152,7 @@ class AutoAdvance:
 
 @dataclass(frozen=True)
 class PlaybackReportSnapshot:
-    current_video: dict[str, Any] | None
+    current_video: SelectedMedia | None
     user_stream: UserStream | None
     host_access_token: str | None
     host_user_id: str | None
@@ -103,7 +177,7 @@ class DepartureCommit:
     playback_playing: bool
     ready_names: tuple[str, ...]
     waiting_names: tuple[str, ...]
-    current_video: dict[str, Any] | None
+    current_video: SelectedMedia | None
     host_access_token: str | None
     host_user_id: str | None
 
@@ -127,7 +201,7 @@ class Party:
     users: dict[str, str] = field(default_factory=dict)
     participants: dict[str, Participant] = field(default_factory=dict)
     sid_client_ids: dict[str, str] = field(default_factory=dict)
-    current_video: dict[str, Any] | None = None
+    current_video: SelectedMedia | None = None
     user_streams: dict[str, UserStream] = field(default_factory=dict)
     playback_state: PlaybackState = field(default_factory=PlaybackState)
     ready_check: ReadyCheck | None = None
@@ -140,7 +214,7 @@ class Party:
     host_username: str | None = None
     host_left_at: str | None = None
     binge_watch_active: bool = False
-    episode_list: list[dict[str, Any]] | None = None
+    episode_list: list[EpisodeRef] | None = None
     episode_list_season_id: str | None = None
     pending_auto_advance: AutoAdvance | None = None
     generation: int = 0

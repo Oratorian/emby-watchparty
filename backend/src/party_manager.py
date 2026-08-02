@@ -11,6 +11,7 @@ from typing import Dict, Optional
 from backend.src.config import Config
 from backend.src.domain import (
     AutoAdvance,
+    EpisodeRef,
     Party,
     DepartureCommit,
     JoinVote,
@@ -20,6 +21,7 @@ from backend.src.domain import (
     PlaybackState,
     ReadyCheck,
     ReadyCommit,
+    SelectedMedia,
     UserStream,
 )
 from backend.src.utils import generate_party_code
@@ -151,7 +153,7 @@ class PartyManager:
     def _playback_report_snapshot(party: Party, sid: str) -> PlaybackReportSnapshot:
         stream = party.user_streams.get(sid)
         return PlaybackReportSnapshot(
-            current_video=dict(party.current_video) if party.current_video else None,
+            current_video=party.current_video,
             user_stream=replace(stream) if stream else None,
             host_access_token=party.host_access_token,
             host_user_id=party.host_user_id,
@@ -226,9 +228,9 @@ class PartyManager:
         party_id: str,
         reservation: tuple[int, str],
         *,
-        video: dict,
+        video: SelectedMedia,
         playback_state: PlaybackState,
-        episode_list: list[dict] | None,
+        episode_list: list[EpisodeRef] | None,
         episode_list_season_id: str | None,
     ) -> Party | None:
         """Install network-derived selection state iff its reservation is current."""
@@ -334,7 +336,7 @@ class PartyManager:
                 playback_playing=party.playback_state.playing,
                 ready_names=ready_names,
                 waiting_names=waiting_names,
-                current_video=dict(party.current_video) if party.current_video else None,
+                current_video=party.current_video,
                 host_access_token=party.host_access_token,
                 host_user_id=party.host_user_id,
             )
@@ -397,7 +399,7 @@ class PartyManager:
                 playback_playing=party.playback_state.playing,
                 ready_names=(),
                 waiting_names=(),
-                current_video=dict(party.current_video) if party.current_video else None,
+                current_video=party.current_video,
                 host_access_token=party.host_access_token,
                 host_user_id=party.host_user_id,
             )
@@ -675,70 +677,6 @@ class PartyManager:
 
         self._last_static_id = cfg_id
         return cfg_id, dissolved
-
-    def add_user(self, party_id: str, sid: str, username: str) -> bool:
-        """Add a user to a party. Returns False if party doesn't exist or is full."""
-        party = self.watch_parties.get(party_id)
-        if not party:
-            return False
-
-        max_users = self._config.MAX_USERS_PER_PARTY
-        if max_users > 0 and len(party.users) >= max_users:
-            return False
-
-        party.users[sid] = username
-        return True
-
-    def remove_user(self, party_id: str, sid: str) -> bool:
-        """Remove a user from a party. Returns True if the party was deleted."""
-        party = self.watch_parties.get(party_id)
-        if not party:
-            return False
-
-        party.users.pop(sid, None)
-        party.drift_strikes.pop(sid, None)
-        party.user_streams.pop(sid, None)
-
-        if len(party.users) == 0 and party_id != self.static_party_id:
-            del self.watch_parties[party_id]
-            self._logger.info(f"Party deleted (last user left): {party_id}")
-            return True
-
-        return False
-
-    def find_user_party(self, sid: str) -> Optional[str]:
-        """Find which party a user is in by their socket ID"""
-        for party_id, party in self.watch_parties.items():
-            if sid in party.users:
-                return party_id
-        return None
-
-    def get_users(self, party_id: str) -> list:
-        """Get list of usernames in party"""
-        party = self.watch_parties.get(party_id)
-        if party:
-            return list(party.users.values())
-        return []
-
-    def set_video(self, party_id: str, video_data: dict):
-        party = self.watch_parties.get(party_id)
-        if party:
-            party.current_video = video_data
-
-    def clear_video(self, party_id: str):
-        party = self.watch_parties.get(party_id)
-        if party:
-            party.current_video = None
-            party.playback_state = PlaybackState()
-
-    def update_playback_state(self, party_id: str, playing=None, time=None):
-        party = self.watch_parties.get(party_id)
-        if party:
-            if playing is not None:
-                party.playback_state.playing = playing
-            if time is not None:
-                party.playback_state.time = time
-            party.playback_state.last_update = datetime.now().isoformat()
 
     def count(self) -> int:
         return len(self.watch_parties)

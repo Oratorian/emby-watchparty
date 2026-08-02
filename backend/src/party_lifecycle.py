@@ -90,7 +90,7 @@ class PartyLifecycle:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-        video = party.current_video or {}
+        video = party.current_video
         access_token = party.host_access_token
         user_id = party.host_user_id
         position = party.playback_state.time
@@ -98,14 +98,14 @@ class PartyLifecycle:
             play_session_id = stream.play_session_id
             if not play_session_id:
                 continue
-            if video.get("item_id"):
+            if video:
                 with suppress(Exception):
                     await self._emby.report_playback_stopped(
-                        item_id=video["item_id"],
+                        item_id=video.item_id,
                         media_source_id=stream.media_source_id,
                         play_session_id=play_session_id,
                         position_seconds=position,
-                        run_time_seconds=video.get("run_time_seconds"),
+                        run_time_seconds=video.run_time_seconds,
                         access_token=access_token,
                         user_id=user_id,
                     )

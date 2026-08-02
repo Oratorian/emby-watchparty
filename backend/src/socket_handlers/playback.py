@@ -16,7 +16,13 @@ import time
 from datetime import datetime, timedelta
 from typing import Any
 
-from backend.src.domain import AutoAdvance, PlaybackState, UserStream
+from backend.src.domain import (
+    AutoAdvance,
+    EpisodeRef,
+    PlaybackState,
+    SelectedMedia,
+    UserStream,
+)
 from backend.src.quality import (
     DEFAULT_QUALITY_ID,
     normalise_quality_id,
@@ -113,7 +119,7 @@ def register(ctx):
 
         # Cache hit: same season as last selection, reuse the list.
         if party.episode_list_season_id == season_id and party.episode_list:
-            episode_list = [dict(episode) for episode in party.episode_list]
+            episode_list = list(party.episode_list)
         else:
             episodes = await emby_client.get_season_episodes(
                 season_id,
@@ -124,14 +130,14 @@ def register(ctx):
             # Trim to the fields binge-watching needs; we don't want to
             # store full Emby payloads on long-lived party state.
             episode_list = [
-                {
-                    "Id": ep.get("Id"),
-                    "Name": ep.get("Name"),
-                    "IndexNumber": ep.get("IndexNumber"),
-                    "ParentIndexNumber": ep.get("ParentIndexNumber"),
-                    "SeriesId": ep.get("SeriesId"),
-                    "SeasonId": ep.get("SeasonId"),
-                }
+                EpisodeRef(
+                    item_id=ep["Id"],
+                    name=ep.get("Name") or "",
+                    index_number=ep.get("IndexNumber"),
+                    parent_index_number=ep.get("ParentIndexNumber"),
+                    series_id=ep.get("SeriesId"),
+                    season_id=ep.get("SeasonId"),
+                )
                 for ep in items
                 if ep.get("Id")
             ]
@@ -426,19 +432,21 @@ def register(ctx):
 
         # Build shared video info (no per-user fields). selected_by is the
         # persistent client_id, not the current sid.
-        video = {
-            "item_id": item_id, "title": item_name, "overview": item_overview,
-            "run_time_seconds": run_time_seconds,
-            "media_source_id": resolved_media_source_id,
-            "selected_by": selector_client_id,
-            "item_type": episode_ctx["item_type"],
-            "series_id": episode_ctx["series_id"],
-            "season_id": episode_ctx["season_id"],
-            "episode_index": episode_ctx["episode_index"],
-            "index_number": episode_ctx["index_number"],
-            "next_item_id": episode_ctx["next_item_id"],
-            "next_item_title": episode_ctx["next_item_title"],
-        }
+        video = SelectedMedia(
+            item_id=item_id,
+            title=item_name,
+            overview=item_overview,
+            run_time_seconds=run_time_seconds,
+            media_source_id=resolved_media_source_id,
+            selected_by=selector_client_id,
+            item_type=episode_ctx["item_type"],
+            series_id=episode_ctx["series_id"],
+            season_id=episode_ctx["season_id"],
+            episode_index=episode_ctx["episode_index"],
+            index_number=episode_ctx["index_number"],
+            next_item_id=episode_ctx["next_item_id"],
+            next_item_title=episode_ctx["next_item_title"],
+        )
 
         # Clamp the requested resume offset to a safe window inside the
         # runtime so a stale UserData.PlaybackPositionTicks (e.g. from
