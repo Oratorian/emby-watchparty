@@ -4,7 +4,6 @@ import { useSocketStore } from './socket'
 import { useAvatarStore } from './avatar'
 import { useAuthStore } from './auth'
 import { api } from '@/api/client'
-import { hideParty } from '@/utils/hiddenParties'
 import type { ServerToClientPayloads } from '@/types/socket.generated'
 
 export interface MemberInfo {
@@ -171,8 +170,6 @@ export const usePartyStore = defineStore('party', () => {
       'user_joined', 'user_left', 'sync_state', 'video_selected',
       'video_stopped', 'video_ended', 'play', 'pause', 'seek',
       'streams_changed', 'ready_check_update', 'all_ready',
-      'join_vote_started', 'join_vote_pending', 'join_vote_update',
-      'join_vote_resolved', 'join_rejected',
       'binge_watch_state_changed', 'auto_advance_pending',
       'auto_advance_cancelled', 'auto_advance_fired', 'binge_finished',
     ] as const
@@ -394,72 +391,6 @@ export const usePartyStore = defineStore('party', () => {
       clearReadyCheck()
     })
 
-    // ---------------------------------------------------------------------
-    // Late-joiner vote listeners
-    // ---------------------------------------------------------------------
-
-    // Existing user receives the vote modal
-    socket.on('join_vote_started', (data: ServerToClientPayloads['join_vote_started']) => {
-      const timeoutSeconds = data.timeout_seconds || 20
-      pendingVote.value = {
-        active: true,
-        isPending: false,
-        lateJoinerUsername: data.username || null,
-        eligibleVoters: data.eligible_voters || [],
-        votes: {},
-        myVote: null,
-        timeoutAt: Date.now() + timeoutSeconds * 1000,
-        requiredMajority: data.required_majority || 1,
-      }
-    })
-
-    // Late joiner receives the waiting room
-    socket.on('join_vote_pending', (data: ServerToClientPayloads['join_vote_pending']) => {
-      const timeoutSeconds = data.timeout_seconds || 20
-      pendingVote.value = {
-        active: true,
-        isPending: true,
-        lateJoinerUsername: username.value,
-        eligibleVoters: data.eligible_voters || [],
-        votes: {},
-        myVote: null,
-        timeoutAt: Date.now() + timeoutSeconds * 1000,
-        requiredMajority: data.required_majority || 1,
-      }
-    })
-
-    // Live vote updates -- everyone in the room receives these
-    socket.on('join_vote_update', (data: ServerToClientPayloads['join_vote_update']) => {
-      if (!pendingVote.value) return
-      pendingVote.value.votes = data.votes || {}
-    })
-
-    // Vote resolved: pass, fail, or cancelled
-    socket.on('join_vote_resolved', (data: ServerToClientPayloads['join_vote_resolved']) => {
-      const wasPending = pendingVote.value?.isPending === true
-      const result = data.result
-      pendingVote.value = null
-
-      if (result === 'fail' && wasPending) {
-        // The late joiner was rejected. Hide this party on the index so
-        // they are not repeatedly tempted to re-request it (captured
-        // before leave() clears partyId), then clear local party state.
-        hideParty(partyId.value)
-        leave()
-        // Router redirect is handled by the component watching `partyId`
-      } else if (result === 'cancelled') {
-        // The vote was cancelled (e.g. late joiner left). No action
-        // needed for existing users beyond dismissing the modal.
-      }
-    })
-
-    // Immediate rejection (e.g. another vote already in progress)
-    socket.on('join_rejected', () => {
-      pendingVote.value = null
-      // The caller (IndexView or PartyView) should observe this event
-      // and show a toast. We just clear the local state here.
-      leave()
-    })
   }
 
   function setBingeWatchActive(active: boolean) {
