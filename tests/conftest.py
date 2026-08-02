@@ -135,9 +135,7 @@ def live_watchparty(tmp_path, fake_emby_server: RunningFakeEmby) -> RunningWatch
 
 
 @pytest.fixture
-def live_watchparty_hls_disabled(
-    tmp_path, fake_emby_server: RunningFakeEmby
-) -> RunningWatchParty:
+def live_watchparty_hls_disabled(tmp_path, fake_emby_server: RunningFakeEmby) -> RunningWatchParty:
     yield from _run_watchparty(
         tmp_path,
         fake_emby_server,

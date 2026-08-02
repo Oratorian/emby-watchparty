@@ -110,9 +110,7 @@ def test_invalid_runtime_rate_limit_is_rejected(field_name: str):
     changed, rejected = config.update_runtime({field_name: "ten/minute"})
 
     assert changed == []
-    assert rejected == [
-        {"key": field_name, "reason": "Invalid rate limit: 'ten/minute'"}
-    ]
+    assert rejected == [{"key": field_name, "reason": "Invalid rate limit: 'ten/minute'"}]
     assert getattr(config, field_name) == previous
 
 
