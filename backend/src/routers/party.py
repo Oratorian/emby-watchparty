@@ -74,7 +74,7 @@ def list_parties(
             cv = party.current_video
             items.append(PartyListItem(
                 code=code,
-                title=cv.get("title") if cv else None,
+                title=cv.title if cv else None,
                 user_count=len(users),
                 playing=cv is not None,
                 locked=not party.host_access_token,
@@ -363,6 +363,6 @@ def party_info(party_id: str, party_manager=Depends(get_party_manager)):
     return PartyInfoResponse(
         id=party.id,
         users=list(party.users.values()),
-        current_video=party.current_video,
+        current_video=party.current_video.to_wire() if party.current_video else None,
         playback_state=party.playback_state.to_wire(),
     )

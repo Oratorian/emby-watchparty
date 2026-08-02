@@ -14,13 +14,13 @@ def register(ctx):
         if not current_video or not user_stream or not user_stream.play_session_id:
             return
         await emby_client.report_playback_progress(
-            item_id=current_video["item_id"],
+            item_id=current_video.item_id,
             media_source_id=user_stream.media_source_id,
             play_session_id=user_stream.play_session_id,
             position_seconds=position, is_paused=is_paused, event_name=event_name,
             audio_index=user_stream.audio_index,
             subtitle_index=user_stream.subtitle_index if user_stream.subtitle_index != -1 else None,
-            run_time_seconds=current_video.get("run_time_seconds"),
+            run_time_seconds=current_video.run_time_seconds,
             access_token=snapshot.host_access_token,
             user_id=snapshot.host_user_id,
         )

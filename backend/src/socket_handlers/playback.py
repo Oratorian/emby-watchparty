@@ -59,10 +59,10 @@ def register(ctx):
             return None
         next_ep = None
         for ep in episode_list:
-            ep_num = ep.get("IndexNumber")
+            ep_num = ep.index_number
             if ep_num is None or ep_num <= current_index_number:
                 continue
-            if next_ep is None or ep_num < next_ep.get("IndexNumber"):
+            if next_ep is None or ep_num < next_ep.index_number:
                 next_ep = ep
         return next_ep
 
@@ -151,20 +151,20 @@ def register(ctx):
         # the real next episode).
         result["index_number"] = details.get("IndexNumber")
         for idx, ep in enumerate(episode_list):
-            if ep.get("Id") == item_id:
+            if ep.item_id == item_id:
                 result["episode_index"] = idx
                 break
 
         next_ep = _find_next_episode(episode_list, result["index_number"])
         if next_ep:
-            result["next_item_id"] = next_ep.get("Id")
-            result["next_item_title"] = next_ep.get("Name")
+            result["next_item_id"] = next_ep.item_id
+            result["next_item_title"] = next_ep.name
 
         # Debug-log the resolved metadata so users hitting weird auto-advance
         # behaviour can hand us a log line to diagnose. Includes the season's
         # IndexNumber distribution so we can spot specials / split-cour
         # numbering at a glance.
-        list_numbers = [ep.get("IndexNumber") for ep in episode_list]
+        list_numbers = [ep.index_number for ep in episode_list]
         logger.info(
             f"Binge ctx resolved: item={item_id} name={details.get('Name')!r} "
             f"IndexNumber={result['index_number']} "
@@ -262,7 +262,7 @@ def register(ctx):
             )
             return None
 
-        run_time_seconds = party.current_video.get("run_time_seconds")
+        run_time_seconds = party.current_video.run_time_seconds
         await emby_client.report_playback_start(
             item_id=item_id, media_source_id=media_source_id,
             play_session_id=play_session_id, position_seconds=start_seconds,
@@ -288,11 +288,11 @@ def register(ctx):
         current_video = party.current_video
         if current_video:
             await emby_client.report_playback_stopped(
-                item_id=current_video["item_id"],
+                item_id=current_video.item_id,
                 media_source_id=stream.media_source_id,
                 play_session_id=stream.play_session_id,
                 position_seconds=position_seconds,
-                run_time_seconds=current_video.get("run_time_seconds"),
+                run_time_seconds=current_video.run_time_seconds,
                 access_token=access_token,
                 user_id=user_id,
             )
@@ -639,11 +639,11 @@ def register(ctx):
             return
 
         caller_client_id = _client_id_for_sid(party, sid)
-        if party.current_video.get("selected_by") != caller_client_id:
+        if party.current_video.selected_by != caller_client_id:
             await sio.emit("error", {"message": "Only the selector can stop the video"}, to=sid)
             return
 
-        video_title = party.current_video.get("title", "Unknown")
+        video_title = party.current_video.title
         username = party.users.get(sid, "Unknown")
         current_time = party.playback_state.time
 
@@ -697,11 +697,11 @@ def register(ctx):
             return
 
         current_video = party.current_video
-        item_id = current_video["item_id"]
+        item_id = current_video.item_id
         # The version was locked at select_video time. Pull from the
         # party's current_video so every per-user stream stays on the
         # same Emby source for the whole playback.
-        media_source_id = current_video.get("media_source_id")
+        media_source_id = current_video.media_source_id
         access_token, user_id = _host_creds(party)
 
         # Resolve / sanitise the requested quality. A client can send the
@@ -778,11 +778,11 @@ def register(ctx):
 
         await sio.emit("streams_changed", {
             "video": {
-                "item_id": item_id, "title": current_video["title"],
-                "overview": current_video["overview"], "stream_url": stream_url,
+                "item_id": item_id, "title": current_video.title,
+                "overview": current_video.overview, "stream_url": stream_url,
                 "audio_index": audio_index, "subtitle_index": subtitle_index,
                 "media_source_id": stream.media_source_id,
-                "selected_by": current_video.get("selected_by"), "quality": quality,
+                "selected_by": current_video.selected_by, "quality": quality,
             },
             "current_time": current_time,
             "was_playing": was_playing,
@@ -810,8 +810,10 @@ def register(ctx):
         # fall back to the host so vote-pass / binge-fired states still
         # work.
         caller_client_id = party.sid_client_ids.get(sid)
-        current_video = party.current_video or {}
-        selected_by = current_video.get("selected_by")
+        current_video = party.current_video
+        if current_video is None:
+            return
+        selected_by = current_video.selected_by
         host_client_id = party.host_client_id
         allowed = (
             (selected_by and caller_client_id == selected_by)
@@ -829,11 +831,8 @@ def register(ctx):
         # and skips the destructive path. Previously duplicate emits
         # (HLS.js ENDED twice, retry loops) would silently re-arm
         # _queue_auto_advance and reset the countdown from full.
-        if not current_video.get("item_id"):
-            return
-
         logger.info(f"Video ended in party {party_id}")
-        final_pos = current_video.get("run_time_seconds", 0)
+        final_pos = current_video.run_time_seconds or 0
         prev_video = current_video
         await _stop_all_user_streams(party, final_pos)
 
@@ -881,11 +880,11 @@ def register(ctx):
             return
         if not party_manager.is_unlocked(party_id):
             return
-        if prev_video.get("item_type") != "Episode":
+        if prev_video.item_type != "Episode":
             return
 
         episode_list = party.episode_list or []
-        current_idx_number = prev_video.get("index_number")
+        current_idx_number = prev_video.index_number
         if current_idx_number is None or not episode_list:
             # Can't compute "next episode" without an IndexNumber (rare;
             # happens on freshly-added episodes before Emby's metadata
@@ -902,10 +901,10 @@ def register(ctx):
         # Skips specials (IndexNumber 0 / None) and survives gaps.
         next_episode = None
         for ep in episode_list:
-            ep_num = ep.get("IndexNumber")
+            ep_num = ep.index_number
             if ep_num is None or ep_num <= current_idx_number:
                 continue
-            if next_episode is None or ep_num < next_episode.get("IndexNumber"):
+            if next_episode is None or ep_num < next_episode.index_number:
                 next_episode = ep
 
         # End of season: nothing past the current IndexNumber. Tell the
@@ -913,15 +912,15 @@ def register(ctx):
         # finished" system message.
         if next_episode is None:
             await sio.emit("binge_finished", {
-                "series_id": prev_video.get("series_id"),
-                "season_id": prev_video.get("season_id"),
+                "series_id": prev_video.series_id,
+                "season_id": prev_video.season_id,
             }, room=party_id)
             return
 
         # Selector still in the party? If they've left we don't have
         # anyone to anchor the advance against, so skip silently. The
         # host (if still around) can pick the next episode manually.
-        selector_client_id = prev_video.get("selected_by")
+        selector_client_id = prev_video.selected_by
         if not _selector_still_present(party, selector_client_id):
             return
 
@@ -943,15 +942,15 @@ def register(ctx):
 
         countdown = max(1, int(config.BINGE_WATCH_COUNTDOWN_SECONDS))
         deadline = datetime.now() + timedelta(seconds=countdown)
-        next_item_id = next_episode.get("Id")
-        next_title = next_episode.get("Name") or "Next episode"
+        next_item_id = next_episode.item_id
+        next_title = next_episode.name or "Next episode"
         # Display label uses the next episode's canonical IndexNumber
         # (Emby's "this is Episode N") rather than its list position.
         # Total is the highest IndexNumber in the season -- not the
         # list length, which would include any specials Emby returns.
-        next_index_number = next_episode.get("IndexNumber")
+        next_index_number = next_episode.index_number
         total_episodes = max(
-            (ep.get("IndexNumber") or 0) for ep in (party.episode_list or [])
+            (ep.index_number or 0) for ep in (party.episode_list or [])
         ) if party.episode_list else 0
 
         task = asyncio.create_task(_auto_advance_watchdog(party_id, countdown))
@@ -959,7 +958,7 @@ def register(ctx):
             next_item_id=next_item_id,
             next_title=next_title,
             next_index_number=next_index_number,
-            selector_client_id=prev_video.get("selected_by"),
+            selector_client_id=prev_video.selected_by,
             deadline=deadline.isoformat(),
             task=task,
         )
@@ -1137,7 +1136,7 @@ def register(ctx):
         # Match by persistent client_id so a reload preserves the role.
         current_video = party.current_video
         caller_client_id = _client_id_for_sid(party, sid)
-        if current_video.get("selected_by") == caller_client_id:
+        if current_video.selected_by == caller_client_id:
             party.playback_state.time = current_time
             party.playback_state.last_update = datetime.now().isoformat()
 
@@ -1151,13 +1150,13 @@ def register(ctx):
         is_playing = party.playback_state.playing
         access_token, user_id = _host_creds(party)
         await emby_client.report_playback_progress(
-            item_id=current_video["item_id"],
+            item_id=current_video.item_id,
             media_source_id=user_stream.media_source_id,
             play_session_id=user_stream.play_session_id,
             position_seconds=current_time, is_paused=not is_playing, event_name="TimeUpdate",
             audio_index=user_stream.audio_index,
             subtitle_index=user_stream.subtitle_index if user_stream.subtitle_index != -1 else None,
-            run_time_seconds=current_video.get("run_time_seconds"),
+            run_time_seconds=current_video.run_time_seconds,
             access_token=access_token,
             user_id=user_id,
         )

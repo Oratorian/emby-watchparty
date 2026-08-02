@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -50,7 +49,7 @@ class UserStream:
 
 
 @dataclass(frozen=True)
-class EpisodeRef(Mapping[str, MediaValue]):
+class EpisodeRef:
     item_id: str
     name: str
     index_number: int | None = None
@@ -58,28 +57,8 @@ class EpisodeRef(Mapping[str, MediaValue]):
     series_id: str | None = None
     season_id: str | None = None
 
-    def to_emby(self) -> dict[str, MediaValue]:
-        return {
-            "Id": self.item_id,
-            "Name": self.name,
-            "IndexNumber": self.index_number,
-            "ParentIndexNumber": self.parent_index_number,
-            "SeriesId": self.series_id,
-            "SeasonId": self.season_id,
-        }
-
-    def __getitem__(self, key: str) -> MediaValue:
-        return self.to_emby()[key]
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.to_emby())
-
-    def __len__(self) -> int:
-        return 6
-
-
 @dataclass(frozen=True)
-class SelectedMedia(Mapping[str, MediaValue]):
+class SelectedMedia:
     item_id: str
     title: str
     overview: str = ""
@@ -110,16 +89,6 @@ class SelectedMedia(Mapping[str, MediaValue]):
             "next_item_id": self.next_item_id,
             "next_item_title": self.next_item_title,
         }
-
-    def __getitem__(self, key: str) -> MediaValue:
-        return self.to_wire()[key]
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.to_wire())
-
-    def __len__(self) -> int:
-        return 13
-
 
 @dataclass
 class JoinVote:

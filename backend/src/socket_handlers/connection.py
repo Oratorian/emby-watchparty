@@ -287,11 +287,11 @@ def register(ctx):
                 current_video = departure.current_video
                 if user_stream and user_stream.play_session_id and current_video:
                     await emby_client.report_playback_stopped(
-                        item_id=current_video["item_id"],
+                        item_id=current_video.item_id,
                         media_source_id=user_stream.media_source_id,
                         play_session_id=user_stream.play_session_id,
                         position_seconds=departure.playback_time,
-                        run_time_seconds=current_video.get("run_time_seconds"),
+                        run_time_seconds=current_video.run_time_seconds,
                         access_token=departure.host_access_token,
                         user_id=departure.host_user_id,
                     )

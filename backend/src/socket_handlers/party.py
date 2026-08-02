@@ -80,11 +80,11 @@ def register(ctx):
         current_video = commit.current_video
         if old_stream and old_stream.play_session_id and current_video:
             await emby_client.report_playback_stopped(
-                item_id=current_video["item_id"],
+                item_id=current_video.item_id,
                 media_source_id=old_stream.media_source_id,
                 play_session_id=old_stream.play_session_id,
                 position_seconds=commit.playback_time,
-                run_time_seconds=current_video.get("run_time_seconds"),
+                run_time_seconds=current_video.run_time_seconds,
                 access_token=commit.host_access_token,
                 user_id=commit.host_user_id,
             )
@@ -101,14 +101,14 @@ def register(ctx):
 
         current_time = _current_party_time(party)
         stream = await create_user_stream(
-            party, party_id, sid, current_video["item_id"], None,
+            party, party_id, sid, current_video.item_id, None,
             audio_index=None, subtitle_index=None,
-            quality=current_video.get("quality", DEFAULT_QUALITY_ID),
+            quality=DEFAULT_QUALITY_ID,
             start_seconds=current_time,
             # Lock the late-joiner to the same Emby version the rest of
             # the party is watching. Without this they'd silently get
             # Emby's default source (issue #43).
-            media_source_id=current_video.get("media_source_id"),
+            media_source_id=current_video.media_source_id,
         )
         if not stream:
             return None
@@ -120,26 +120,24 @@ def register(ctx):
                 stream_url += f"&token={user_token}"
 
         return {
-            "item_id": current_video.get("item_id"),
-            "title": current_video.get("title"),
-            "overview": current_video.get("overview"),
+            "item_id": current_video.item_id,
+            "title": current_video.title,
+            "overview": current_video.overview,
             "stream_url": stream_url,
             "audio_index": stream.audio_index,
             "subtitle_index": stream.subtitle_index,
             "media_source_id": stream.media_source_id,
-            "selected_by": current_video.get("selected_by"),
-            "quality": stream.quality or current_video.get(
-                "quality", DEFAULT_QUALITY_ID
-            ),
+            "selected_by": current_video.selected_by,
+            "quality": stream.quality or DEFAULT_QUALITY_ID,
             # Carry the binge-watching metadata so a late joiner sees
             # the same control-strip button visibility and library
             # NEXT badge as the rest of the room.
-            "item_type": current_video.get("item_type"),
-            "series_id": current_video.get("series_id"),
-            "season_id": current_video.get("season_id"),
-            "episode_index": current_video.get("episode_index"),
-            "next_item_id": current_video.get("next_item_id"),
-            "next_item_title": current_video.get("next_item_title"),
+            "item_type": current_video.item_type,
+            "series_id": current_video.series_id,
+            "season_id": current_video.season_id,
+            "episode_index": current_video.episode_index,
+            "next_item_id": current_video.next_item_id,
+            "next_item_title": current_video.next_item_title,
         }, current_time
 
     def _votes_by_username(party, votes_dict):
@@ -208,14 +206,14 @@ def register(ctx):
 
         success = await restart_video_from_beginning(
             party, party_id,
-            selector_client_id=cv.get("selected_by"),
-            item_id=cv["item_id"],
-            item_name=cv.get("title", "Unknown"),
-            item_overview=cv.get("overview", ""),
+            selector_client_id=cv.selected_by,
+            item_id=cv.item_id,
+            item_name=cv.title,
+            item_overview=cv.overview,
             # Preserve the chosen alternate version across the
             # vote-pass restart -- otherwise the post-vote re-pick
             # would silently drop back to Emby's default source.
-            media_source_id=cv.get("media_source_id"),
+            media_source_id=cv.media_source_id,
         )
         if not success:
             logger.error(f"Failed to restart video after vote pass in party {party_id}")
@@ -357,7 +355,7 @@ def register(ctx):
         selector_sid = None
         cv = party.current_video
         if cv:
-            selector_client_id = cv.get("selected_by")
+            selector_client_id = cv.selected_by
             if selector_client_id:
                 for s, cid in party.sid_client_ids.items():
                     if cid == selector_client_id:
@@ -638,16 +636,16 @@ def register(ctx):
             else:
                 cv = party.current_video
                 current_video = {
-                    "item_id": cv.get("item_id"),
-                    "title": cv.get("title"),
-                    "overview": cv.get("overview"),
-                    "selected_by": cv.get("selected_by"),
-                    "item_type": cv.get("item_type"),
-                    "series_id": cv.get("series_id"),
-                    "season_id": cv.get("season_id"),
-                    "episode_index": cv.get("episode_index"),
-                    "next_item_id": cv.get("next_item_id"),
-                    "next_item_title": cv.get("next_item_title"),
+                    "item_id": cv.item_id,
+                    "title": cv.title,
+                    "overview": cv.overview,
+                    "selected_by": cv.selected_by,
+                    "item_type": cv.item_type,
+                    "series_id": cv.series_id,
+                    "season_id": cv.season_id,
+                    "episode_index": cv.episode_index,
+                    "next_item_id": cv.next_item_id,
+                    "next_item_title": cv.next_item_title,
                 }
 
         # Pending auto-advance state. A user who refreshes / rejoins
@@ -676,7 +674,7 @@ def register(ctx):
                 "next_title": pending.next_title,
                 "next_index_number": pending.next_index_number,
                 "total_episodes": max(
-                    (ep.get("IndexNumber") or 0)
+                    (ep.index_number or 0)
                     for ep in (party.episode_list or [])
                 ) if party.episode_list else 0,
                 "deadline": deadline,
@@ -794,11 +792,11 @@ def register(ctx):
             current_video = departure.current_video
             if user_stream and user_stream.play_session_id and current_video:
                 await emby_client.report_playback_stopped(
-                    item_id=current_video["item_id"],
+                    item_id=current_video.item_id,
                     media_source_id=user_stream.media_source_id,
                     play_session_id=user_stream.play_session_id,
                     position_seconds=departure.playback_time,
-                    run_time_seconds=current_video.get("run_time_seconds"),
+                    run_time_seconds=current_video.run_time_seconds,
                     access_token=departure.host_access_token,
                     user_id=departure.host_user_id,
                 )
