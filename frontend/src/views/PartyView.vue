@@ -94,7 +94,12 @@ const {
   loadSubtitleStreams,
   loadSelectionStreams,
 } = usePartyStream(socket, party)
-const playbackEvents = usePartyPlayback(socket)
+const {
+  on: onPlaybackEvent,
+  schedule: schedulePlayback,
+  cancel: cancelPlaybackTimer,
+  startInterval: startPlaybackInterval,
+} = usePartyPlayback(socket)
 
 const showBecomeHostModal = ref(false)
 const becomeHostBusy = ref(false)
@@ -142,7 +147,7 @@ const showVersionModal = ref(false)
 const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const currentTime = ref(0)
 let pendingPauseTimer: ReturnType<typeof setTimeout> | null = null
-let heartbeatInterval: ReturnType<typeof setInterval> | null = null
+let seekSettleTimer: ReturnType<typeof setTimeout> | null = null
 
 const versionInfo = ref({ version: '', codename: '' })
 
@@ -184,7 +189,7 @@ onMounted(async () => {
   attachVoting()
 
   // Playback sync handlers -- matching v1.6.0 deduplication
-  playbackEvents.on('play', (data: ServerToClientPayloads['play']) => {
+  onPlaybackEvent('play', (data: ServerToClientPayloads['play']) => {
     // Use nextTick to ensure the videoPlayer ref is bound. When the
     // store's play listener fires first and updates reactive state,
     // Vue may still be mid-render and the template ref is not yet
@@ -225,7 +230,7 @@ onMounted(async () => {
         // progression. After 1s, verify that currentTime has advanced
         // and if not, nudge HLS.js by re-seeking.
         const checkTime = ve.currentTime
-        setTimeout(() => {
+        schedulePlayback(() => {
           if (!vp || !ve) return
           if (ve.paused) return  // user paused manually, don't touch
           if (ve.currentTime > checkTime + 0.1) return  // playing fine
@@ -246,10 +251,10 @@ onMounted(async () => {
             hls.startLoad(ve.currentTime)
           }
           ve.play().catch(() => {})
-          setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
+          schedulePlayback(() => { if (vp) vp.isSyncing = false }, 500)
         }, 1000)
       }
-      setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
+      schedulePlayback(() => { if (vp) vp.isSyncing = false }, 500)
     })
     if (data.username) {
       // Each client tracks its own hasStarted, reset on every new
@@ -266,7 +271,7 @@ onMounted(async () => {
     }
   })
 
-  playbackEvents.on('pause', (data: ServerToClientPayloads['pause']) => {
+  onPlaybackEvent('pause', (data: ServerToClientPayloads['pause']) => {
     const vp = videoPlayer.value
     if (!vp) return
     vp.isSyncing = true
@@ -276,11 +281,11 @@ onMounted(async () => {
       ve.pause()
       if (Math.abs(ve.currentTime - streamTime) > 0.3) ve.currentTime = streamTime
     }
-    setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
+    schedulePlayback(() => { if (vp) vp.isSyncing = false }, 500)
     if (data.username) addSystemMessage(`${data.username} paused playback`)
   })
 
-  playbackEvents.on('seek', (data: ServerToClientPayloads['seek']) => {
+  onPlaybackEvent('seek', (data: ServerToClientPayloads['seek']) => {
     const vp = videoPlayer.value
     if (!vp) return
     vp.isSyncing = true
@@ -314,7 +319,7 @@ onMounted(async () => {
           ve.addEventListener('canplay', signalReady, { once: true })
         }
       } else if (data.playing) {
-        setTimeout(() => {
+        schedulePlayback(() => {
           ve.play().then(() => {
             if (vp) vp.isSyncing = false
           }).catch(() => {
@@ -324,13 +329,13 @@ onMounted(async () => {
         }, 500)
       } else {
         ve.pause()
-        setTimeout(() => { if (vp) vp.isSyncing = false }, 300)
+        schedulePlayback(() => { if (vp) vp.isSyncing = false }, 300)
       }
     }
     if (data.username) addSystemMessage(`${data.username} seeked to ${formatTime(data.time)}`)
   })
 
-  playbackEvents.on('force_pause_before_seek', () => {
+  onPlaybackEvent('force_pause_before_seek', () => {
     const vp = videoPlayer.value
     if (!vp) return
     isForcePausing = true
@@ -338,7 +343,7 @@ onMounted(async () => {
     const ve = vp.videoEl
     if (ve) ve.pause()
     // Only reset isForcePausing; let the seek handler own isSyncing
-    setTimeout(() => { isForcePausing = false }, 2000)
+    schedulePlayback(() => { isForcePausing = false }, 2000)
   })
 
   // Auto-signal ready during a ready check if our video is already
@@ -362,7 +367,7 @@ onMounted(async () => {
     }
   })
 
-  playbackEvents.on('ready_check_update', () => {
+  onPlaybackEvent('ready_check_update', () => {
     if (autoReadySignaled) return
     const vp = videoPlayer.value
     if (!vp) return
@@ -378,7 +383,7 @@ onMounted(async () => {
     }
   })
 
-  playbackEvents.on('drift_correction', (data: ServerToClientPayloads['drift_correction']) => {
+  onPlaybackEvent('drift_correction', (data: ServerToClientPayloads['drift_correction']) => {
     const vp = videoPlayer.value
     if (!vp) return
     const ve = vp.videoEl
@@ -397,7 +402,7 @@ onMounted(async () => {
     if (party.playbackState.playing && ve.paused && !ve.ended) {
       ve.play().catch(() => {})
     }
-    setTimeout(() => { if (vp) vp.isSyncing = false }, 500)
+    schedulePlayback(() => { if (vp) vp.isSyncing = false }, 500)
   })
 
   // Heartbeat + local resync safety net. The party clock is
@@ -410,7 +415,7 @@ onMounted(async () => {
   // it. This tick re-asserts the authoritative play/pause state each
   // interval, wrapped in isSyncing so the corrective play()/pause()
   // never re-emits and flaps.
-  heartbeatInterval = setInterval(() => {
+  startPlaybackInterval(() => {
     const vp = videoPlayer.value
     const ve = vp?.videoEl
     if (!ve || !ve.src || ve.readyState < 2 || ve.ended) return
@@ -441,7 +446,7 @@ onMounted(async () => {
     if (shouldPlay && ve.paused) {
       vp.isSyncing = true
       ve.play().catch(() => {}).finally(() => {
-        setTimeout(() => { if (vp) vp.isSyncing = false }, 300)
+        schedulePlayback(() => { if (vp) vp.isSyncing = false }, 300)
       })
       return
     }
@@ -478,7 +483,7 @@ onMounted(async () => {
     }
     isForcePausing = false
   }
-  playbackEvents.on('all_ready', resumeAfterReadyCheck)
+  onPlaybackEvent('all_ready', resumeAfterReadyCheck)
 
   // Safety net: if the ready check overlay is dismissed by the client
   // timeout (15s) instead of a server all_ready, still resume playback
@@ -490,10 +495,10 @@ onMounted(async () => {
 
   // Handle late joiner sync -- suppress emits during initial load
   // Drift correction will bring the late joiner to the right position
-  playbackEvents.on('sync_state', (data: ServerToClientPayloads['sync_state']) => {
+  onPlaybackEvent('sync_state', (data: ServerToClientPayloads['sync_state']) => {
     if (data.current_video) {
       isInitialSync = true
-      setTimeout(() => {
+      schedulePlayback(() => {
         isInitialSync = false
       }, 3000)
     }
@@ -597,13 +602,13 @@ onMounted(async () => {
 
 onUnmounted(() => {
   disposeChat()
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval)
-    heartbeatInterval = null
-  }
   if (pendingPauseTimer) {
-    clearTimeout(pendingPauseTimer)
+    cancelPlaybackTimer(pendingPauseTimer)
     pendingPauseTimer = null
+  }
+  if (seekSettleTimer) {
+    cancelPlaybackTimer(seekSettleTimer)
+    seekSettleTimer = null
   }
   // Do NOT call party.leave() here. PartyView unmounts on every
   // navigation (e.g. clicking the Admin or Version links), and a full
@@ -931,7 +936,6 @@ let isInitialSync = false
 let lastPlayBroadcast = 0
 let lastPauseBroadcast = 0
 const PLAY_PAUSE_THROTTLE = 300
-let seekSettleTimer: ReturnType<typeof setTimeout> | null = null
 
 // Emby's HLS playlists already report segment times relative to the
 // full movie (even when StartTimeTicks is set, the playlist uses the
@@ -954,7 +958,7 @@ function onVideoPlay() {
   // chat spam at worst.
   if (!party.partyId || isForcePausing || isInitialSync || myStreamReloading.value) return
   if (pendingPauseTimer) {
-    clearTimeout(pendingPauseTimer)
+    cancelPlaybackTimer(pendingPauseTimer)
     pendingPauseTimer = null
   }
   const ve = videoPlayer.value?.videoEl
@@ -985,8 +989,8 @@ function onVideoPause() {
   if (!ve || ve.ended) return
   if (videoPlayer.value?.isSyncing) return
 
-  if (pendingPauseTimer) clearTimeout(pendingPauseTimer)
-  pendingPauseTimer = setTimeout(() => {
+  if (pendingPauseTimer) cancelPlaybackTimer(pendingPauseTimer)
+  pendingPauseTimer = schedulePlayback(() => {
     pendingPauseTimer = null
     if (!party.partyId || isForcePausing || isUserSeeking || isInitialSync || myStreamReloading.value) return
     if (videoPlayer.value?.isSyncing) return
@@ -1018,7 +1022,7 @@ function onVideoPause() {
 
 function onVideoSeeking() {
   if (pendingPauseTimer) {
-    clearTimeout(pendingPauseTimer)
+    cancelPlaybackTimer(pendingPauseTimer)
     pendingPauseTimer = null
   }
   // VideoPlayer's INTERNAL isSyncing gate already suppresses the
@@ -1047,8 +1051,8 @@ function onVideoSeeked(_time: number) {
     isUserSeeking = false
     seekSettleTimer = null
   }
-  if (seekSettleTimer) clearTimeout(seekSettleTimer)
-  seekSettleTimer = setTimeout(clearSeekingFlag, 500)
+  if (seekSettleTimer) cancelPlaybackTimer(seekSettleTimer)
+  seekSettleTimer = schedulePlayback(clearSeekingFlag, 500)
 
   if (!party.partyId || isInitialSync) return
 
@@ -1070,8 +1074,8 @@ function onVideoSeeked(_time: number) {
   // expires. clearSeekingFlag still runs at the end so the flag clears
   // either way. The setTimeout debounces rapid scrubs (drag the
   // timeline a few times in a row) into one broadcast per pause.
-  if (seekSettleTimer) clearTimeout(seekSettleTimer)
-  seekSettleTimer = setTimeout(() => {
+  if (seekSettleTimer) cancelPlaybackTimer(seekSettleTimer)
+  seekSettleTimer = schedulePlayback(() => {
     clearSeekingFlag()
     const ve = videoPlayer.value?.videoEl
     if (!ve) return
