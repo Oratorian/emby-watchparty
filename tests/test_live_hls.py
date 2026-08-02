@@ -121,3 +121,28 @@ async def _exercise_disconnect_closes_upstream(live_watchparty) -> None:
 
 def test_live_hls_disconnect_closes_upstream(live_watchparty) -> None:
     asyncio.run(_exercise_disconnect_closes_upstream(live_watchparty))
+
+
+async def _exercise_foreign_playlist_rejection(live_watchparty) -> None:
+    async with httpx.AsyncClient() as controls:
+        await controls.post(
+            f"{live_watchparty.fake.url}/__test__/behavior",
+            json={
+                "master_playlist": (
+                    "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\n"
+                    "https://foreign.invalid/steal.m3u8\n"
+                )
+            },
+        )
+    client, realtime, master_url = await _select_video(live_watchparty.url)
+    try:
+        response = await client.get(master_url)
+        assert response.status_code == 502
+        assert response.json() == {"error": "Unsafe upstream playlist"}
+    finally:
+        await realtime.disconnect()
+        await client.aclose()
+
+
+def test_live_hls_rejects_foreign_playlist_urls(live_watchparty) -> None:
+    asyncio.run(_exercise_foreign_playlist_rejection(live_watchparty))
