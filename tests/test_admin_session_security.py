@@ -10,7 +10,11 @@ from backend.src.config import Config, EnvConfig, RuntimeConfig
 from tests.support.asgi import asgi_client
 
 
-def _config(*, session_expiry: int = 3600) -> Config:
+def _config(
+    *,
+    session_expiry: int = 3600,
+    login_rate: str = "10 per 15 minutes",
+) -> Config:
     return Config(
         EnvConfig(
             WATCH_PARTY_BIND="127.0.0.1",
@@ -25,7 +29,7 @@ def _config(*, session_expiry: int = 3600) -> Config:
             CORS_ALLOWED_ORIGINS=("*",),
             TRUSTED_PROXY_CIDRS=(),
         ),
-        RuntimeConfig(LOG_TO_FILE=False),
+        RuntimeConfig(LOG_TO_FILE=False, RATE_LIMIT_LOGIN=login_rate),
     )
 
 
@@ -50,9 +54,14 @@ def _fake_emby() -> FastAPI:
     return app
 
 
-def _application(tmp_path: Path, *, session_expiry: int = 3600):
+def _application(
+    tmp_path: Path,
+    *,
+    session_expiry: int = 3600,
+    login_rate: str = "10 per 15 minutes",
+):
     return create_app(
-        config=_config(session_expiry=session_expiry),
+        config=_config(session_expiry=session_expiry, login_rate=login_rate),
         project_root=tmp_path,
         enable_update_check=False,
         http_transport=httpx.ASGITransport(app=_fake_emby()),
@@ -119,5 +128,19 @@ def test_process_restart_invalidates_admin_session(tmp_path: Path) -> None:
             assert (await restarted.get("/api/admin/config")).json() == {
                 "error": "Not authenticated"
             }
+
+    asyncio.run(exercise())
+
+
+def test_admin_login_limit_expires_and_returns_retry_after(tmp_path: Path) -> None:
+    async def exercise() -> None:
+        app = _application(tmp_path, login_rate="1 per second")
+        async with asgi_client(app) as client:
+            assert (await _login(client)).status_code == 200
+            limited = await _login(client)
+            assert limited.status_code == 429
+            assert int(limited.headers["retry-after"]) > 0
+            await asyncio.sleep(1.05)
+            assert (await _login(client)).status_code == 200
 
     asyncio.run(exercise())
