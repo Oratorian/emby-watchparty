@@ -9,6 +9,7 @@ API will be used once all handlers are converted to classes in Phase 3.
 
 import asyncio
 import logging
+import secrets
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Optional
@@ -137,6 +138,9 @@ class PartyManager:
             party = self.watch_parties.get(party_id)
             if not party or party.get("users"):
                 return None
+            party["closing"] = True
+            party["generation"] = int(party.get("generation", 0)) + 1
+            party.get("operation_reservations", {}).clear()
             removed = self.watch_parties.pop(party_id)
         self._party_locks.pop(party_id, None)
         return removed
@@ -144,9 +148,61 @@ class PartyManager:
     async def pop_party(self, party_id: str) -> Optional[dict]:
         lock = self.lock_for(party_id)
         async with lock:
-            removed = self.watch_parties.pop(party_id, None)
+            removed = self.watch_parties.get(party_id)
+            if removed is not None:
+                removed["closing"] = True
+                removed["generation"] = int(removed.get("generation", 0)) + 1
+                removed.get("operation_reservations", {}).clear()
+                self.watch_parties.pop(party_id, None)
         self._party_locks.pop(party_id, None)
         return removed
+
+    async def reserve_operation(self, party_id: str, kind: str) -> tuple[int, str] | None:
+        """Reserve a network-dependent operation without holding its party lock."""
+        lock = self.lock_for(party_id)
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if not party or party.get("closing"):
+                return None
+            token = secrets.token_urlsafe(18)
+            generation = int(party.get("generation", 0))
+            party.setdefault("operation_reservations", {})[kind] = token
+            return generation, token
+
+    async def reservation_is_current(
+        self,
+        party_id: str,
+        kind: str,
+        reservation: tuple[int, str],
+    ) -> bool:
+        lock = self.lock_for(party_id)
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if not party or party.get("closing"):
+                return False
+            generation, token = reservation
+            return (
+                int(party.get("generation", 0)) == generation
+                and party.get("operation_reservations", {}).get(kind) == token
+            )
+
+    async def release_operation(
+        self,
+        party_id: str,
+        kind: str,
+        reservation: tuple[int, str],
+    ) -> None:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if not party:
+                return
+            _, token = reservation
+            reservations = party.get("operation_reservations", {})
+            if reservations.get(kind) == token:
+                reservations.pop(kind, None)
 
     def create_party(self) -> str:
         """Create a new party with a generated ID. Returns party_id."""

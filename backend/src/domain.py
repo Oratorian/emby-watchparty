@@ -92,6 +92,9 @@ class Party(dict[str, Any]):
             "episode_list": None,
             "episode_list_season_id": None,
             "pending_auto_advance": None,
+            "generation": 0,
+            "closing": False,
+            "operation_reservations": {},
         })
 
     @property

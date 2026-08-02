@@ -361,7 +361,8 @@ def register(ctx):
     async def _restart_video_from_beginning(party, party_id, selector_client_id,
                                               item_id, item_name, item_overview,
                                               media_source_id=None,
-                                              start_seconds=0):
+                                              start_seconds=0,
+                                              reservation=None):
         """Fetch fresh media info, stop existing streams, create per-user
         streams starting at `start_seconds`, broadcast video_selected +
         ready_check.
@@ -397,6 +398,22 @@ def register(ctx):
             access_token=access_token, user_id=user_id,
         )
         if not playback_info or "MediaSources" not in playback_info:
+            return False
+
+        if reservation is not None and not await party_manager.reservation_is_current(
+            party_id, "select_video", reservation
+        ):
+            play_session_id = playback_info.get("PlaySessionId")
+            if play_session_id:
+                await emby_client.stop_active_encodings(
+                    play_session_id=play_session_id,
+                    access_token=access_token,
+                )
+            logger.info(
+                "Discarded stale select reservation for party %s; transcode cleanup=%s",
+                party_id,
+                bool(play_session_id),
+            )
             return False
 
         media_source = playback_info["MediaSources"][0]
@@ -528,7 +545,7 @@ def register(ctx):
         # _check_all_ready. Run it once here to complete the check and
         # consume auto_play_after_ready cleanly.
         if not live_expected:
-            await _check_all_ready(party_id, party)
+            await _check_all_ready(party, party_id)
 
         return True
 
@@ -590,11 +607,20 @@ def register(ctx):
         await _cancel_pending_auto_advance(party_id, party, silent=True)
         party.pop("auto_play_after_ready", None)
 
-        success = await _restart_video_from_beginning(
-            party, party_id, selector_client_id, item_id, item_name, item_overview,
-            media_source_id=media_source_id,
-            start_seconds=start_seconds,
-        )
+        reservation = await party_manager.reserve_operation(party_id, "select_video")
+        if reservation is None:
+            return
+        try:
+            success = await _restart_video_from_beginning(
+                party, party_id, selector_client_id, item_id, item_name, item_overview,
+                media_source_id=media_source_id,
+                start_seconds=start_seconds,
+                reservation=reservation,
+            )
+        finally:
+            await party_manager.release_operation(
+                party_id, "select_video", reservation
+            )
         if not success:
             await sio.emit("error", {"message": "Failed to load video"}, to=sid)
             return

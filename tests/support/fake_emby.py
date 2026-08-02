@@ -213,6 +213,8 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     @app.post("/emby/Items/{item_id}/PlaybackInfo")
     async def playback_info(request: Request, item_id: str):
         state.record(request, body=await request.json())
+        if failure := await state.before(request):
+            return failure
         return {
             "PlaySessionId": "play-session-1",
             "MediaSources": [{**MOVIE["MediaSources"][0], "ItemId": item_id}],
