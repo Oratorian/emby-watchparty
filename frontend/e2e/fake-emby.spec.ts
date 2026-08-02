@@ -99,3 +99,31 @@ test('guest reload restores membership and a fresh HLS stream', async ({ browser
 
   await guestContext.close()
 })
+
+test('admin modal traps focus and Escape restores its trigger', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await expect(page).toHaveURL(/\/party\/[A-Z0-9]+$/)
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+  await page.getByRole('main').getByRole(
+    'button', { name: 'Login to Become Host', exact: true },
+  ).click()
+  await page.getByPlaceholder('Emby username').fill('Alice')
+  await page.getByPlaceholder('Emby password').fill('password')
+  await page.getByRole('button', { name: 'Become Host', exact: true }).click()
+
+  const trigger = page.getByRole('button', { name: 'Admin', exact: true })
+  await trigger.click()
+  const dialog = page.getByRole('dialog', { name: 'Admin Panel' })
+  await expect(dialog).toBeFocused()
+
+  await page.keyboard.press('Shift+Tab')
+  await expect(page.getByRole('button', { name: 'Save Settings' })).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: 'Close admin panel' })).toBeFocused()
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(trigger).toBeFocused()
+})
