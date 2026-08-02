@@ -1,42 +1,69 @@
 import asyncio
-from unittest.mock import AsyncMock
 
+import httpx
 import socketio
 
-from backend.src.socket_protocol import install_inbound_validation
+
+async def _connected_member(base_url: str):
+    client = httpx.AsyncClient(base_url=base_url)
+    created = await client.post("/api/party/create", json={})
+    party_id = created.json()["party_id"]
+    await client.post(
+        f"/api/party/{party_id}/join",
+        json={"client_id": "client-1", "display_name": "Alice"},
+    )
+    cookie = "; ".join(f"{key}={value}" for key, value in client.cookies.items())
+    realtime = socketio.AsyncClient()
+    await realtime.connect(base_url, headers={"Cookie": cookie})
+    await realtime.emit(
+        "join_party",
+        {"party_id": party_id, "username": "Alice", "client_id": "client-1"},
+    )
+    await asyncio.sleep(0.02)
+    return client, realtime, party_id
 
 
-def test_invalid_socket_payload_uses_existing_error_event():
-    sio = socketio.AsyncServer(async_mode="asgi")
-    called = []
+async def _exercise_invalid_payload(base_url: str) -> None:
+    client, realtime, party_id = await _connected_member(base_url)
+    error = asyncio.Event()
+    messages: list[str] = []
 
-    @sio.on("seek")
-    async def seek(_sid, data):
-        called.append(data)
+    @realtime.on("error")
+    async def on_error(data):
+        messages.append(data["message"])
+        error.set()
 
-    sio.emit = AsyncMock()
-    install_inbound_validation(sio)
-
-    asyncio.run(sio.handlers["/"]["seek"]("sid-1", {"party_id": "PARTY"}))
-
-    assert called == []
-    sio.emit.assert_awaited_once()
-    args, kwargs = sio.emit.await_args
-    assert args[0] == "error"
-    assert "Invalid seek payload" in args[1]["message"]
-    assert kwargs == {"to": "sid-1"}
+    try:
+        await realtime.emit("seek", {"party_id": party_id})
+        await asyncio.wait_for(error.wait(), timeout=2)
+        assert "Invalid seek payload" in messages[0]
+    finally:
+        await realtime.disconnect()
+        await client.aclose()
 
 
-def test_unknown_socket_fields_remain_compatible():
-    sio = socketio.AsyncServer(async_mode="asgi")
-    called = []
+def test_invalid_socket_payload_uses_existing_error_event(live_watchparty) -> None:
+    asyncio.run(_exercise_invalid_payload(live_watchparty.url))
 
-    @sio.on("seek")
-    async def seek(_sid, data):
-        called.append(data)
 
-    install_inbound_validation(sio)
-    payload = {"party_id": "PARTY", "time": 12.5, "future_field": True}
-    asyncio.run(sio.handlers["/"]["seek"]("sid-1", payload))
+async def _exercise_unknown_field(base_url: str) -> None:
+    client, realtime, party_id = await _connected_member(base_url)
+    received = asyncio.Event()
 
-    assert called == [payload]
+    @realtime.on("seek")
+    async def on_seek(_data):
+        received.set()
+
+    try:
+        await realtime.emit(
+            "seek",
+            {"party_id": party_id, "time": 12.5, "future_field": True},
+        )
+        await asyncio.wait_for(received.wait(), timeout=2)
+    finally:
+        await realtime.disconnect()
+        await client.aclose()
+
+
+def test_unknown_socket_fields_remain_compatible(live_watchparty) -> None:
+    asyncio.run(_exercise_unknown_field(live_watchparty.url))
