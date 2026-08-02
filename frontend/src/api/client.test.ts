@@ -36,4 +36,15 @@ describe('apiFetch', () => {
       new ApiError(423, 'Party has no host', { detail: 'Party has no host' }),
     )
   })
+
+  it('preserves readable multipart upload errors', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      'Upload too large',
+      { status: 413, statusText: 'Content Too Large' },
+    )))
+
+    await expect(api.avatarUpload(new File(['x'], 'avatar.png'))).rejects.toEqual(
+      new ApiError(413, 'Upload too large', 'Upload too large'),
+    )
+  })
 })
