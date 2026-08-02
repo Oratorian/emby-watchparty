@@ -67,6 +67,13 @@ class AdminSessionStore:
         with self._lock:
             self._entries.pop(handle, None)
 
+    def clear(self) -> int:
+        """Revoke every process-owned administrator session."""
+        with self._lock:
+            count = len(self._entries)
+            self._entries.clear()
+            return count
+
     def _prune_locked(self, now: float) -> None:
         expired = [key for key, value in self._entries.items() if value.expires_at <= now]
         for key in expired:

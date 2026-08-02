@@ -93,6 +93,15 @@ class SlidingWindowRateLimiter:
                 self._expires_at.pop(key, None)
             return len(keys)
 
+    def clear_all(self) -> int:
+        """Remove every process-owned limiter bucket during shutdown."""
+        with self._lock:
+            count = len(self._buckets)
+            self._buckets.clear()
+            self._last_seen.clear()
+            self._expires_at.clear()
+            return count
+
     def _expire_inactive_locked(self, now: float) -> None:
         expired = [key for key, expiry in self._expires_at.items() if expiry <= now]
         for key in expired:

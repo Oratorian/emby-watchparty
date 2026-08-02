@@ -148,6 +148,12 @@ class HLSTokenManager:
             del self._tokens[token]
         return len(victims)
 
+    def revoke_all(self) -> int:
+        """Revoke every process-owned HLS token during shutdown."""
+        count = len(self._tokens)
+        self._tokens.clear()
+        return count
+
     def _cleanup_expired(self):
         """Remove expired tokens"""
         now = time.time()

@@ -35,6 +35,27 @@ PROJECT_ROOT = Path(__file__).parent.parent
 STATIC_ROOT = Path(__file__).parent / "static"
 
 
+async def _shutdown_runtime(
+    application: FastAPI,
+    socket_context: dict,
+    admin_sessions: AdminSessionStore,
+    tokens: HLSTokenManager,
+    limiter: SlidingWindowRateLimiter,
+    logger,
+) -> None:
+    """Release runtime-owned resources, including partial startup state."""
+    logger.info("Shutting down")
+    await socket_context["party_lifecycle"].dissolve_all(reason="shutdown")
+    await application.state.sio.shutdown()
+    logger.info(
+        "cleanup operation=shutdown outcome=ok session_cleanup=%s "
+        "token_cleanup=%s limiter_cleanup=%s",
+        admin_sessions.clear(),
+        tokens.revoke_all(),
+        limiter.clear_all(),
+    )
+
+
 def _setup_logging(config: Config):
     from rsyslog_logger import setup_logger
 
@@ -106,6 +127,15 @@ async def lifespan(application: FastAPI):
             rate_limiter=rate_limiter,
         )
         application.state.socket_context = socket_context
+        resources.push_async_callback(
+            _shutdown_runtime,
+            application,
+            socket_context,
+            admin_session_store,
+            token_manager,
+            rate_limiter,
+            logger,
+        )
 
         logger.info('Emby Watch Party v%s - "%s"', __version__, __codename__)
         logger.info("Emby Server: %s", config.EMBY_SERVER_URL)
@@ -117,11 +147,7 @@ async def lifespan(application: FastAPI):
         if application.state.enable_update_check:
             await check_for_updates(http_client, logger)
 
-        try:
-            yield
-        finally:
-            logger.info("Shutting down")
-            await socket_context["party_lifecycle"].dissolve_all(reason="shutdown")
+        yield
 
 
 def _install_api_and_socket_routes(application: FastAPI, prefix: str) -> None:
