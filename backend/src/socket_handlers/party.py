@@ -666,7 +666,7 @@ def register(ctx):
             rejoin_video = await _build_rejoin_video(party, party_id, sid)
             if rejoin_video:
                 current_video, current_time = rejoin_video
-                playback_state.time = current_time
+                playback_state["time"] = current_time
             else:
                 cv = party.current_video
                 current_video = {
