@@ -15,6 +15,15 @@ type VideoInfo = ServerToClientPayloads['video_selected']['video']
 
 const CLIENT_ID_STORAGE_KEY = 'emby-watchparty-client-id'
 
+// The session cookie holds exactly one party id, and cookies are shared
+// across every tab in a browser profile. So a second tab joining a
+// *different* party silently repoints it, and the first tab's requests
+// start failing: 401 once its cookie's party stops matching the stream
+// token's, or 423 while the newly joined party has no host token yet.
+// The video simply stops with nothing on screen to explain it.
+// Announcing the binding lets the superseded tab say so instead.
+const PARTY_BINDING_CHANNEL = 'emby-watchparty-party-binding'
+
 function getClientId(): string {
   let clientId = localStorage.getItem(CLIENT_ID_STORAGE_KEY)
   if (clientId) return clientId
@@ -45,6 +54,47 @@ export const usePartyStore = defineStore('party', () => {
   const readyCheckActive = ref(false)
   const readyUsers = ref<string[]>([])
   const waitingUsers = ref<string[]>([])
+
+  // Non-null when the party-bound session cookie could not be minted.
+  // Every protected HTTP route depends on that cookie, /hls included, so
+  // without it playback 401s on every segment while chat and the
+  // participant list keep working over the socket -- i.e. the party
+  // looks healthy and only the video is dead. That used to be swallowed
+  // silently; surfacing it is the difference between a self-service
+  // retry and an unreproducible "video won't load for one person".
+  const sessionError = ref<string | null>(null)
+  const sessionRetrying = ref(false)
+
+  // Set to the other party's code when a different tab in this browser
+  // takes over the session cookie. See PARTY_BINDING_CHANNEL above.
+  const supersededBy = ref<string | null>(null)
+  let bindingChannel: BroadcastChannel | null = null
+
+  /**
+   * Announce which party this tab is bound to, and listen for others.
+   *
+   * A tab never receives its own postMessage, so hearing a party_id that
+   * differs from ours means another tab has just repointed the shared
+   * cookie and this tab's playback is about to start failing.
+   *
+   * Degrades silently where BroadcastChannel is unavailable: the tab
+   * behaves exactly as it did before this existed.
+   */
+  function announceBinding(id: string) {
+    if (typeof BroadcastChannel === 'undefined') return
+    if (!bindingChannel) {
+      bindingChannel = new BroadcastChannel(PARTY_BINDING_CHANNEL)
+      bindingChannel.onmessage = (event) => {
+        const other = event.data?.partyId
+        // Same party in two tabs is fine, both point the cookie at the
+        // same place. Only a different party is a takeover.
+        if (other && partyId.value && other !== partyId.value) {
+          supersededBy.value = other
+        }
+      }
+    }
+    bindingChannel.postMessage({ partyId: id })
+  }
 
   // Binge-watch state. `available` is the admin master toggle; when
   // false, the control-strip button is hidden entirely. `active` is
@@ -93,8 +143,8 @@ export const usePartyStore = defineStore('party', () => {
   async function join(id: string, name: string) {
     const socket = useSocketStore()
     const avatar = useAvatarStore()
-    const auth = useAuthStore()
-    partyId.value = id.toUpperCase()
+    const normalisedId = id.toUpperCase()
+    partyId.value = normalisedId
     username.value = name
     const clientId = getClientId()
     // Load the persisted avatar id (IndexedDB or localStorage) so it
@@ -103,21 +153,12 @@ export const usePartyStore = defineStore('party', () => {
       try { await avatar.load() } catch { /* ignore */ }
     }
     const avatarUuid = avatar.uuid
-    // Set the party-bound session cookie before the socket connects.
-    // The cookie is what every protected HTTP route and the socket
-    // handshake will use to authenticate this caller.
-    try {
-      await api.joinParty(partyId.value, clientId, name || 'Guest', avatarUuid)
-      // The cookie is now bound. Re-read auth state so partyUnlocked
-      // and hostUsername reflect this party, not the empty pre-join
-      // status. Otherwise late joiners briefly render "Party is
-      // locked" until the next host_changed event (which never fires
-      // for a party that was already unlocked when they joined).
-      try { await auth.refresh() } catch { /* ignore */ }
-    } catch {
-      // Best-effort: even if the cookie call fails, the socket join
-      // event below carries the same identity so we fall back to
-      // socket-only auth during the transition.
+    supersededBy.value = null
+    // Announce only once the cookie is actually bound. A tab that failed
+    // to bind never repointed anything, so it must not make a healthy
+    // tab believe it has been superseded.
+    if (await bindSession(clientId, name, avatarUuid)) {
+      announceBinding(normalisedId)
     }
     socket.emit('join_party', {
       party_id: partyId.value,
@@ -125,6 +166,70 @@ export const usePartyStore = defineStore('party', () => {
       client_id: clientId,
       avatar_uuid: avatarUuid,
     })
+  }
+
+  // Remembered so retrySession() can re-run the join without the caller
+  // having to thread the original arguments back through the UI.
+  let lastJoinArgs: { clientId: string; name: string; avatarUuid: string | null } | null = null
+
+  /**
+   * Mint the party-bound session cookie.
+   *
+   * The cookie authenticates every protected HTTP route and the socket
+   * handshake. One transient retry covers the common case (a blip while
+   * the tab is waking, a server still coming up); anything past that is
+   * surfaced rather than swallowed, because socket-only auth is no
+   * longer enough to play video.
+   */
+  async function bindSession(clientId: string, name: string, avatarUuid: string | null) {
+    lastJoinArgs = { clientId, name, avatarUuid }
+    const auth = useAuthStore()
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await api.joinParty(partyId.value!, clientId, name || 'Guest', avatarUuid)
+        // The cookie is now bound. Re-read auth state so partyUnlocked
+        // and hostUsername reflect this party, not the empty pre-join
+        // status. Otherwise late joiners briefly render "Party is
+        // locked" until the next host_changed event (which never fires
+        // for a party that was already unlocked when they joined).
+        try { await auth.refresh() } catch { /* ignore */ }
+        sessionError.value = null
+        return true
+      } catch (e: unknown) {
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 600))
+          continue
+        }
+        sessionError.value =
+          (e instanceof Error && e.message) || 'Could not authenticate with the server.'
+      }
+    }
+    return false
+  }
+
+  /** Re-attempt the session cookie after a visible failure. */
+  async function retrySession() {
+    if (!lastJoinArgs || !partyId.value || sessionRetrying.value) return false
+    sessionRetrying.value = true
+    try {
+      const { clientId, name, avatarUuid } = lastJoinArgs
+      const ok = await bindSession(clientId, name, avatarUuid)
+      if (ok) {
+        // The cookie now points here, so other tabs need to know.
+        announceBinding(partyId.value)
+        // Re-announce over the socket so the server re-binds this sid
+        // and re-issues a stream URL against the now-valid session.
+        useSocketStore().emit('join_party', {
+          party_id: partyId.value,
+          username: name,
+          client_id: clientId,
+          avatar_uuid: avatarUuid,
+        })
+      }
+      return ok
+    } finally {
+      sessionRetrying.value = false
+    }
   }
 
   async function leave() {
@@ -148,6 +253,8 @@ export const usePartyStore = defineStore('party', () => {
     readyUsers.value = []
     waitingUsers.value = []
     pendingVote.value = null
+    sessionError.value = null
+    supersededBy.value = null
   }
 
   function submitVote(vote: 'yes' | 'no') {
@@ -412,7 +519,8 @@ export const usePartyStore = defineStore('party', () => {
     myStreamUrl, streamOffset, readyCheckActive, readyUsers, waitingUsers,
     pendingVote,
     bingeWatch, pendingAutoAdvance,
-    join, leave, setupListeners, submitVote,
+    sessionError, sessionRetrying, supersededBy,
+    join, leave, setupListeners, submitVote, retrySession,
     setBingeWatchActive, cancelAutoAdvance,
   }
 })
