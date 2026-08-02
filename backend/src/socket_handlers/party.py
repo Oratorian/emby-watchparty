@@ -185,7 +185,7 @@ def register(ctx):
 
         # Clear pending_join BEFORE emitting resolution so a simultaneous join
         # attempt from another user sees no active vote.
-        party.pending_join = None
+        await party_manager.clear_join_vote(party_id)
 
         # Tell everyone the vote resolved (they dismiss the modal / waiting room)
         await sio.emit("join_vote_resolved", {"result": "pass"}, room=party_id)
@@ -219,14 +219,6 @@ def register(ctx):
         if not success:
             logger.error(f"Failed to restart video after vote pass in party {party_id}")
 
-    def _set_cooldown(party):
-        """Apply the post-vote cooldown to block new join attempts for a
-        short window. Used after failed/cancelled votes to prevent spam
-        attacks where a malicious user keeps hitting /party/<id>."""
-        cooldown = getattr(config, "LATE_JOIN_VOTE_COOLDOWN_SECONDS", 30)
-        if cooldown > 0:
-            party.join_cooldown_until = time.time() + cooldown
-
     async def _resolve_vote_fail(party_id):
         """Vote failed: reject the late joiner and leave existing users undisturbed."""
         party = party_manager.get(party_id)
@@ -245,8 +237,10 @@ def register(ctx):
 
         logger.info(f"Vote failed in party {party_id}: rejecting late joiner {late_username}")
 
-        party.pending_join = None
-        _set_cooldown(party)
+        await party_manager.clear_join_vote(
+            party_id,
+            cooldown_seconds=config.LATE_JOIN_VOTE_COOLDOWN_SECONDS,
+        )
 
         # Tell the room the vote failed (closes the modal)
         await sio.emit("join_vote_resolved", {"result": "fail"}, room=party_id)
@@ -345,7 +339,7 @@ def register(ctx):
         # running task would raise CancelledError at the next await (the
         # join_vote_resolved emit), so the resolution would never reach the
         # clients and the modal would hang forever.
-        pj.timeout_task = None
+        await party_manager.set_join_vote_task(party_id, None)
         await _apply_tiebreak(party_id)
 
     async def _start_late_join_vote(party, party_id, late_sid, late_username, client_id=None):
@@ -371,13 +365,15 @@ def register(ctx):
 
         timeout_seconds = getattr(config, "LATE_JOIN_VOTE_TIMEOUT_SECONDS", 20)
 
-        party.pending_join = JoinVote(
+        vote = JoinVote(
             sid=late_sid,
             username=late_username,
             client_id=client_id,
             eligible_voters=eligible_voters,
             selector_sid=selector_sid,
         )
+        if not await party_manager.begin_join_vote(party_id, vote):
+            return False
 
         # Put the late joiner into the Socket.IO room so they receive
         # vote-progress broadcasts, but do NOT add them to party.users
@@ -404,7 +400,9 @@ def register(ctx):
 
         # Spawn the timeout watchdog
         task = asyncio.create_task(_vote_timeout_watchdog(party_id, timeout_seconds))
-        party.pending_join.timeout_task = task
+        if not await party_manager.set_join_vote_task(party_id, task):
+            task.cancel()
+            return False
 
         logger.info(
             f"Started late join vote in party {party_id} for {late_username} "
@@ -429,10 +427,12 @@ def register(ctx):
             task = pj.timeout_task
             if task and not task.done():
                 task.cancel()
-            party.pending_join = None
+            await party_manager.clear_join_vote(
+                party_id,
+                cooldown_seconds=config.LATE_JOIN_VOTE_COOLDOWN_SECONDS,
+            )
             # Apply cooldown to prevent spam (same user immediately rejoining
             # and spawning another vote, e.g. after a force-reload)
-            _set_cooldown(party)
             # Tell existing users the vote was cancelled because the joiner left
             await sio.emit("join_vote_resolved", {
                 "result": "cancelled",
@@ -442,11 +442,7 @@ def register(ctx):
 
         # Case 2: the disconnecting user is an eligible voter
         if sid in pj.eligible_voters:
-            pj.eligible_voters.discard(sid)
-            pj.votes.pop(sid, None)
-            # If the selector left mid-vote, clear the tiebreak authority
-            if pj.selector_sid == sid:
-                pj.selector_sid = None
+            await party_manager.remove_join_voter(party_id, sid)
 
             # If nobody is left to vote, fail the vote
             if not pj.eligible_voters:
@@ -724,7 +720,8 @@ def register(ctx):
             return
 
         # Record the vote (overwriting any previous vote from the same user)
-        pj.votes[sid] = vote
+        if not await party_manager.record_join_vote(party_id, sid, vote):
+            return
         logger.debug(f"Vote recorded in {party_id}: {party.users.get(sid, sid)} -> {vote}")
 
         # Broadcast the updated tally and check for early resolution

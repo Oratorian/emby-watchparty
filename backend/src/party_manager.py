@@ -3,19 +3,23 @@
 import asyncio
 import logging
 import secrets
+import time
 from dataclasses import replace
 from datetime import datetime
 from typing import Dict, Optional
 
 from backend.src.config import Config
 from backend.src.domain import (
+    AutoAdvance,
     Party,
     DepartureCommit,
+    JoinVote,
     Participant,
     PlaybackControlCommit,
     PlaybackReportSnapshot,
     PlaybackState,
     ReadyCheck,
+    ReadyCommit,
     UserStream,
 )
 from backend.src.utils import generate_party_code
@@ -407,6 +411,208 @@ class PartyManager:
             if party is None or party.closing:
                 return False
             party.host_left_at = None
+            return True
+
+    async def begin_join_vote(self, party_id: str, vote: JoinVote) -> bool:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing or party.pending_join is not None:
+                return False
+            party.pending_join = vote
+            return True
+
+    async def clear_join_vote(
+        self,
+        party_id: str,
+        *,
+        cooldown_seconds: float = 0,
+    ) -> JoinVote | None:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None:
+                return None
+            vote = party.pending_join
+            party.pending_join = None
+            if cooldown_seconds > 0:
+                party.join_cooldown_until = time.time() + cooldown_seconds
+            return vote
+
+    async def set_join_vote_task(
+        self,
+        party_id: str,
+        task: asyncio.Task | None,
+    ) -> bool:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.pending_join is None:
+                return False
+            party.pending_join.timeout_task = task
+            return True
+
+    async def record_join_vote(
+        self,
+        party_id: str,
+        sid: str,
+        choice: str,
+    ) -> bool:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            vote = party.pending_join if party else None
+            if vote is None or sid not in vote.eligible_voters:
+                return False
+            vote.votes[sid] = choice
+            return True
+
+    async def remove_join_voter(self, party_id: str, sid: str) -> bool:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            vote = party.pending_join if party else None
+            if vote is None or sid not in vote.eligible_voters:
+                return False
+            vote.eligible_voters.discard(sid)
+            vote.votes.pop(sid, None)
+            if vote.selector_sid == sid:
+                vote.selector_sid = None
+            return True
+
+    async def drop_ready_member(self, party_id: str, sid: str) -> None:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party and party.ready_check:
+                party.ready_check.expected_sids.discard(sid)
+                party.ready_check.ready_sids.discard(sid)
+
+    async def mark_stream_ready(self, party_id: str, sid: str) -> str | None:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.ready_check is None:
+                return None
+            stream = party.user_streams.get(sid)
+            if stream:
+                stream.ready = True
+            party.ready_check.ready_sids.add(sid)
+            return party.users.get(sid, "Unknown")
+
+    async def settle_ready_check(self, party_id: str) -> ReadyCommit | None:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            ready = party.ready_check if party else None
+            if party is None or ready is None or not ready.active:
+                return None
+            complete = ready.ready_sids >= ready.expected_sids
+            auto_play = False
+            ready_names: tuple[str, ...] = ()
+            waiting_names: tuple[str, ...] = ()
+            if complete:
+                party.ready_check = None
+                auto_play = party.auto_play_after_ready
+                party.auto_play_after_ready = False
+                if auto_play:
+                    party.playback_state.playing = True
+                if party.playback_state.playing:
+                    party.playback_state.last_update = datetime.now().isoformat()
+            else:
+                ready_names = tuple(
+                    party.users.get(sid, "?") for sid in ready.ready_sids
+                )
+                waiting_names = tuple(
+                    party.users.get(sid, "?")
+                    for sid in ready.expected_sids - ready.ready_sids
+                )
+            return ReadyCommit(
+                complete=complete,
+                auto_play=auto_play,
+                playback_time=party.playback_state.time,
+                playback_playing=party.playback_state.playing,
+                ready_names=ready_names,
+                waiting_names=waiting_names,
+            )
+
+    async def clear_video_state(self, party_id: str) -> bool:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing:
+                return False
+            party.current_video = None
+            party.ready_check = None
+            party.playback_state = PlaybackState()
+            party.auto_play_after_ready = False
+            return True
+
+    async def set_auto_play_after_ready(self, party_id: str, active: bool) -> bool:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing:
+                return False
+            party.auto_play_after_ready = active
+            return True
+
+    async def queue_auto_advance(
+        self,
+        party_id: str,
+        pending: AutoAdvance,
+    ) -> bool:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing:
+                return False
+            party.pending_auto_advance = pending
+            return True
+
+    async def take_auto_advance(self, party_id: str) -> AutoAdvance | None:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None:
+                return None
+            pending = party.pending_auto_advance
+            party.pending_auto_advance = None
+            return pending
+
+    async def set_binge_watch(self, party_id: str, active: bool) -> bool:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing:
+                return False
+            party.binge_watch_active = active
             return True
 
     def create_party(self) -> str:

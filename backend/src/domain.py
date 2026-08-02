@@ -108,6 +108,16 @@ class DepartureCommit:
     host_user_id: str | None
 
 
+@dataclass(frozen=True)
+class ReadyCommit:
+    complete: bool
+    auto_play: bool
+    playback_time: float
+    playback_playing: bool
+    ready_names: tuple[str, ...]
+    waiting_names: tuple[str, ...]
+
+
 @dataclass
 class Party:
     """Typed party aggregate."""

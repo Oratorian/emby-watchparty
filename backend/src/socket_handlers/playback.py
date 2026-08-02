@@ -310,47 +310,31 @@ def register(ctx):
 
     async def _check_all_ready(party, party_id):
         """Check if all users are ready and emit all_ready if so."""
-        rc = party.ready_check
-        if not rc or not rc.active:
+        commit = await party_manager.settle_ready_check(party_id)
+        if commit is None:
             return
 
-        if rc.ready_sids >= rc.expected_sids:
-            party.ready_check = None
-            playback_state = party.playback_state
-            # Auto-play hand-off for binge-advance: when the previous
-            # video ended into auto-advance, the user expectation is
-            # "next episode just keeps playing" -- requiring the host
-            # to click play after every episode defeats the whole
-            # feature. The flag is set on the party when the watchdog
-            # fires the restart and cleared here so a subsequent
-            # manual select still pauses on ready as usual.
-            auto_play_pending = party.auto_play_after_ready
-            party.auto_play_after_ready = False
-            if auto_play_pending:
-                playback_state.playing = True
-            if playback_state.playing:
-                playback_state.last_update = datetime.now().isoformat()
+        if commit.complete:
             logger.info(f"All users ready in party {party_id}")
             await sio.emit("all_ready", {
-                "time": playback_state.time,
-                "playing": playback_state.playing,
+                "time": commit.playback_time,
+                "playing": commit.playback_playing,
             }, room=party_id)
-            if auto_play_pending:
+            if commit.auto_play:
                 # Mirror the normal "host clicked play" broadcast so
                 # every client's <video> resumes via the same code path
                 # the seek/play handlers already use. Username is None
                 # so the frontend doesn't render a "X resumed playback"
                 # system message for an auto-event.
                 await sio.emit("play", {
-                    "time": playback_state.time,
+                    "time": commit.playback_time,
                     "username": None,
                     "auto_binge": True,
                 }, room=party_id)
         else:
-            ready_names = [party.users.get(s, "?") for s in rc.ready_sids]
-            waiting_names = [party.users.get(s, "?") for s in rc.expected_sids - rc.ready_sids]
             await sio.emit("ready_check_update", {
-                "ready": ready_names, "waiting": waiting_names,
+                "ready": list(commit.ready_names),
+                "waiting": list(commit.waiting_names),
             }, room=party_id)
 
     async def _restart_video_from_beginning(party, party_id, selector_client_id,
@@ -510,7 +494,7 @@ def register(ctx):
                 )
                 rc = party.ready_check
                 if rc:
-                    rc.expected_sids.discard(user_sid)
+                    await party_manager.drop_ready_member(party_id, user_sid)
                 # Notify the failed client so they don't stare at a
                 # blank player waiting for a video_selected that will
                 # never come.
@@ -618,7 +602,7 @@ def register(ctx):
         # library doesn't unexpectedly start playing without the
         # selector having to hit play.
         await _cancel_pending_auto_advance(party_id, party, silent=True)
-        party.auto_play_after_ready = False
+        await party_manager.set_auto_play_after_ready(party_id, False)
 
         reservation = await party_manager.reserve_operation(party_id, "select_video")
         if reservation is None:
@@ -661,9 +645,7 @@ def register(ctx):
         # down. Loud cancel so any modal currently up snaps closed.
         await _cancel_pending_auto_advance(party_id, party, by_username=username)
 
-        party.current_video = None
-        party.ready_check = None
-        party.playback_state = PlaybackState()
+        await party_manager.clear_video_state(party_id)
 
         # PLAYING-ONLY -> LOCKED transition if the host was gone.
         _wipe_host_if_orphan(party_id, party)
@@ -847,13 +829,11 @@ def register(ctx):
         prev_video = current_video
         await _stop_all_user_streams(party, final_pos)
 
-        party.playback_state = PlaybackState()
-        party.ready_check = None
         # Clear current_video BEFORE the auto-advance check so a
         # duplicate video_ended emit bails at the idempotency guard
         # above. _maybe_start_auto_advance still has prev_video in its
         # closure so binge lookup still works.
-        party.current_video = None
+        await party_manager.clear_video_state(party_id)
 
         # If host already left, this is the moment we fully lock the party.
         # Do this BEFORE the binge-advance check; auto-advance can't start
@@ -967,7 +947,7 @@ def register(ctx):
         ) if party.episode_list else 0
 
         task = asyncio.create_task(_auto_advance_watchdog(party_id, countdown))
-        party.pending_auto_advance = AutoAdvance(
+        pending = AutoAdvance(
             next_item_id=next_item_id,
             next_title=next_title,
             next_index_number=next_index_number,
@@ -975,6 +955,9 @@ def register(ctx):
             deadline=deadline.isoformat(),
             task=task,
         )
+        if not await party_manager.queue_auto_advance(party_id, pending):
+            task.cancel()
+            return
         await sio.emit("auto_advance_pending", {
             "next_item_id": next_item_id,
             "next_title": next_title,
@@ -1013,10 +996,12 @@ def register(ctx):
             await _cancel_pending_auto_advance(party_id, party, by_username=None)
             return
 
+        pending = await party_manager.take_auto_advance(party_id)
+        if pending is None:
+            return
         next_item_id = pending.next_item_id
         next_title = pending.next_title
         selector_client_id = pending.selector_client_id
-        party.pending_auto_advance = None
 
         await sio.emit("auto_advance_fired", {
             "next_item_id": next_item_id,
@@ -1028,7 +1013,7 @@ def register(ctx):
         # the host would have to click play after every episode -- not
         # what anyone expects from "binge mode". Set BEFORE the
         # restart so the new ready-check phase sees it.
-        party.auto_play_after_ready = True
+        await party_manager.set_auto_play_after_ready(party_id, True)
 
         success = await _restart_video_from_beginning(
             party, party_id, selector_client_id, next_item_id, next_title, "",
@@ -1038,7 +1023,7 @@ def register(ctx):
             # above so a later restart (via vote-pass, or a manual
             # select-then-play) doesn't inherit it and auto-play a
             # different video without the host clicking play.
-            party.auto_play_after_ready = False
+            await party_manager.set_auto_play_after_ready(party_id, False)
             logger.warning(
                 f"Auto-advance failed to start next episode in party {party_id}: "
                 f"{next_item_id}"
@@ -1053,13 +1038,12 @@ def register(ctx):
         with another -- the new auto_advance_pending event is the
         authoritative signal and an intermediate 'cancelled' would just
         confuse the UI."""
-        pending = party.pending_auto_advance
+        pending = await party_manager.take_auto_advance(party_id)
         if not pending:
             return False
         task = pending.task
         if task and not task.done():
             task.cancel()
-        party.pending_auto_advance = None
         if not silent:
             await sio.emit("auto_advance_cancelled", {
                 "by_username": by_username,
@@ -1107,7 +1091,7 @@ def register(ctx):
             }, room=party_id)
             return
 
-        party.binge_watch_active = active
+        await party_manager.set_binge_watch(party_id, active)
         # Turning it off mid-countdown should kill the queued advance.
         if not active:
             await _cancel_pending_auto_advance(party_id, party, by_username=None)
@@ -1178,13 +1162,7 @@ def register(ctx):
         if not party:
             return
 
-        user_stream = party.user_streams.get(sid)
-        if user_stream:
-            user_stream.ready = True
-
-        rc = party.ready_check
-        if rc and rc.active:
-            rc.ready_sids.add(sid)
-            username = party.users.get(sid, "Unknown")
+        username = await party_manager.mark_stream_ready(party_id, sid)
+        if username is not None:
             logger.debug(f"{username} stream ready in party {party_id}")
             await _check_all_ready(party, party_id)
