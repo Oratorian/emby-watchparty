@@ -27,6 +27,16 @@ jobs:
   build-and-release:
     needs: validate
     runs-on: ubuntu-latest
+    # Gated on the `release` environment, which requires a reviewer.
+    # This job holds `packages: write`, and `workflow_dispatch` can be
+    # fired by anyone with write access on any ref, with `version` taken
+    # verbatim from the input. Without this gate a collaborator could
+    # republish an existing pinned tag (`2.1.0`, say) over the image
+    # users already have in their compose files. `latest` and the semver
+    # tags are already disabled on the dispatch path, but the raw
+    # version tag is not, so the approval is what actually closes it.
+    # Branch and tag rulesets do not help here: dispatch bypasses both.
+    environment: release
     permissions:
       contents: write
       packages: write
