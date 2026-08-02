@@ -20,9 +20,6 @@ on the table (any explicit `MaxStreamingBitrate` makes Emby transcode, same
 as their web client).
 """
 
-from typing import Optional
-
-
 # Resolution -> {width, height, bitrates_kbps}. Mirrors Emby's quality menu.
 # Bitrates are in kbps so the 720 / 420 kbps 480p options can be expressed
 # precisely without losing the sub-Mbps detail to integer division.
@@ -31,19 +28,31 @@ QUALITY_TIERS: dict[str, dict] = {
         "width": 1920,
         "height": 1080,
         "bitrates_kbps": [
-            60_000, 50_000, 40_000, 30_000, 25_000, 20_000,
-            15_000, 12_000, 10_000, 8_000, 6_000, 5_000, 4_000,
+            60_000,
+            50_000,
+            40_000,
+            30_000,
+            25_000,
+            20_000,
+            15_000,
+            12_000,
+            10_000,
+            8_000,
+            6_000,
+            5_000,
+            4_000,
         ],
     },
-    "720p":  {"width": 1280, "height":  720, "bitrates_kbps": [4_000, 3_000, 2_000, 1_500, 1_000]},
-    "480p":  {"width":  854, "height":  480, "bitrates_kbps": [1_000, 720, 420]},
-    "360p":  {"width":  640, "height":  360, "bitrates_kbps": []},
-    "240p":  {"width":  426, "height":  240, "bitrates_kbps": []},
-    "144p":  {"width":  256, "height":  144, "bitrates_kbps": []},
+    "720p": {"width": 1280, "height": 720, "bitrates_kbps": [4_000, 3_000, 2_000, 1_500, 1_000]},
+    "480p": {"width": 854, "height": 480, "bitrates_kbps": [1_000, 720, 420]},
+    "360p": {"width": 640, "height": 360, "bitrates_kbps": []},
+    "240p": {"width": 426, "height": 240, "bitrates_kbps": []},
+    "144p": {"width": 256, "height": 144, "bitrates_kbps": []},
 }
 
 # Order the resolution tiers appear in the dropdown (highest first).
 RESOLUTION_ORDER = ("1080p", "720p", "480p", "360p", "240p", "144p")
+
 
 # Default: every resolution enabled, every bitrate exposed. Stored as a
 # function so callers always get a fresh copy (lists are mutable).
@@ -64,10 +73,10 @@ AUTO_QUALITY_ID = "auto"
 # read without a migration step.
 _LEGACY_PRESET_MAP = {
     "1080p-high": "1080p-10000",
-    "1080p":      "1080p-8000",
-    "720p":       "720p-4000",
-    "480p":       "480p-1000",
-    "360p":       "360p",
+    "1080p": "1080p-8000",
+    "720p": "720p-4000",
+    "480p": "480p-1000",
+    "360p": "360p",
 }
 
 
@@ -78,12 +87,11 @@ def _format_bitrate(kbps: int) -> str:
     if kbps >= 1000:
         # 1500 -> "1.5 Mbps"; trim trailing .0
         mbps = kbps / 1000
-        text = f"{mbps:g} Mbps"
-        return text
+        return f"{mbps:g} Mbps"
     return f"{kbps} kbps"
 
 
-def _option_id(resolution: str, kbps: Optional[int]) -> str:
+def _option_id(resolution: str, kbps: int | None) -> str:
     """Stable id used by the frontend and stored on the party video."""
     if kbps is None:
         return resolution
@@ -107,14 +115,16 @@ def build_quality_options(
     """
     options: list[dict] = []
     if not force_transcode:
-        options.append({
-            "id": AUTO_QUALITY_ID,
-            "label": "Auto",
-            "resolution": None,
-            "width": None,
-            "height": None,
-            "bitrate_kbps": None,
-        })
+        options.append(
+            {
+                "id": AUTO_QUALITY_ID,
+                "label": "Auto",
+                "resolution": None,
+                "width": None,
+                "height": None,
+                "bitrate_kbps": None,
+            }
+        )
     enabled = enabled_options or {}
     for resolution in RESOLUTION_ORDER:
         if resolution not in enabled:
@@ -125,31 +135,35 @@ def build_quality_options(
             # Resolution-only tier (360p / 240p / 144p). Always emit a
             # single entry; the admin's value list is ignored here since
             # there are no bitrates to subset.
-            options.append({
-                "id": _option_id(resolution, None),
-                "label": resolution,
-                "resolution": resolution,
-                "width": tier["width"],
-                "height": tier["height"],
-                "bitrate_kbps": None,
-            })
+            options.append(
+                {
+                    "id": _option_id(resolution, None),
+                    "label": resolution,
+                    "resolution": resolution,
+                    "width": tier["width"],
+                    "height": tier["height"],
+                    "bitrate_kbps": None,
+                }
+            )
             continue
         allowed = set(enabled[resolution] or ())
         for kbps in tier_bitrates:
             if kbps not in allowed:
                 continue
-            options.append({
-                "id": _option_id(resolution, kbps),
-                "label": f"{resolution} - {_format_bitrate(kbps)}",
-                "resolution": resolution,
-                "width": tier["width"],
-                "height": tier["height"],
-                "bitrate_kbps": kbps,
-            })
+            options.append(
+                {
+                    "id": _option_id(resolution, kbps),
+                    "label": f"{resolution} - {_format_bitrate(kbps)}",
+                    "resolution": resolution,
+                    "width": tier["width"],
+                    "height": tier["height"],
+                    "bitrate_kbps": kbps,
+                }
+            )
     return options
 
 
-def resolve_quality(quality_id: Optional[str]) -> tuple[Optional[int], Optional[int], Optional[int]]:
+def resolve_quality(quality_id: str | None) -> tuple[int | None, int | None, int | None]:
     """Map a quality id to (max_width, max_height, bitrate_kbps).
 
     Returns `(None, None, None)` for `Auto`, unknown ids, or a bare
@@ -167,7 +181,7 @@ def resolve_quality(quality_id: Optional[str]) -> tuple[Optional[int], Optional[
     if "-" in quality_id:
         resolution, _, kbps_str = quality_id.partition("-")
         try:
-            kbps: Optional[int] = int(kbps_str)
+            kbps: int | None = int(kbps_str)
         except ValueError:
             return (None, None, None)
     else:
@@ -181,7 +195,7 @@ def resolve_quality(quality_id: Optional[str]) -> tuple[Optional[int], Optional[
 
 
 def normalise_quality_id(
-    quality_id: Optional[str],
+    quality_id: str | None,
     force_transcode: bool = False,
 ) -> str:
     """Canonicalise a stored or incoming quality id.

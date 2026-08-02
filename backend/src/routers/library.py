@@ -6,10 +6,8 @@ a party-bound session cookie AND the party must have a current host
 whose Emby access_token signs the upstream call.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from typing import Optional
-
 import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from backend.src.dependencies import (
     PARTY_UNLOCKED_RESPONSES,
@@ -19,8 +17,8 @@ from backend.src.dependencies import (
     require_party_unlocked,
 )
 from backend.src.schemas import (
-    LibraryItemsResponse,
     ItemDetailsResponse,
+    LibraryItemsResponse,
     StreamsResponse,
 )
 
@@ -60,11 +58,11 @@ async def api_libraries(
 )
 async def api_items(
     response: Response,
-    parentId: Optional[str] = None,
-    type: Optional[str] = None,
+    parent_id: str | None = Query(None, alias="parentId"),
+    type: str | None = None,
     recursive: bool = False,
-    startIndex: Optional[int] = None,
-    limit: Optional[int] = None,
+    start_index: int | None = Query(None, alias="startIndex"),
+    limit: int | None = None,
     party_session: PartySession = Depends(require_party_unlocked),
     emby_client=Depends(get_emby_client),
 ):
@@ -72,16 +70,19 @@ async def api_items(
     response.headers["Cache-Control"] = "no-store"
     try:
         return await emby_client.get_items(
-            parent_id=parentId,
+            parent_id=parent_id,
             item_type=type,
             recursive=recursive,
-            start_index=startIndex,
+            start_index=start_index,
             limit=limit,
             access_token=access_token,
             user_id=user_id,
         )
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="Emby upstream unavailable")
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Emby upstream unavailable",
+        ) from exc
 
 
 @router.get(
@@ -97,9 +98,7 @@ async def api_search(
     if not q.strip():
         return {"Items": []}
     access_token, user_id = _host_creds(party_session)
-    return await emby_client.search_items(
-        q.strip(), access_token=access_token, user_id=user_id
-    )
+    return await emby_client.search_items(q.strip(), access_token=access_token, user_id=user_id)
 
 
 @router.get(
@@ -137,7 +136,7 @@ async def api_item_details(
 )
 async def api_item_streams(
     item_id: str,
-    media_source_id: Optional[str] = None,
+    media_source_id: str | None = None,
     party_session: PartySession = Depends(require_party_unlocked),
     emby_client=Depends(get_emby_client),
     logger=Depends(get_logger),
@@ -188,9 +187,10 @@ async def api_item_streams(
     # enumerate alternates -- otherwise the dropdown would collapse to
     # one entry the moment the user picks anything.
     if media_source_id:
-        full_info = await emby_client.get_playback_info(
-            item_id, access_token=access_token, user_id=user_id
-        ) or scoped_info
+        full_info = (
+            await emby_client.get_playback_info(item_id, access_token=access_token, user_id=user_id)
+            or scoped_info
+        )
     else:
         full_info = scoped_info
 
@@ -199,19 +199,21 @@ async def api_item_streams(
         sid = source.get("Id")
         if not sid:
             continue
-        versions.append({
-            "id": sid,
-            "name": source.get("Name") or source.get("Container") or sid,
-            "container": source.get("Container"),
-            "run_time_ticks": source.get("RunTimeTicks"),
-        })
+        versions.append(
+            {
+                "id": sid,
+                "name": source.get("Name") or source.get("Container") or sid,
+                "container": source.get("Container"),
+                "run_time_ticks": source.get("RunTimeTicks"),
+            }
+        )
 
     audio_streams = []
     subtitle_streams = []
     resolved_media_source_id = None
     media_streams = []
 
-    if "MediaSources" in scoped_info and scoped_info["MediaSources"]:
+    if scoped_info.get("MediaSources"):
         # When media_source_id was provided, Emby returns just that source.
         # When it was omitted, Emby returns every source and [0] is the
         # default version -- which is what every existing call site already
@@ -229,15 +231,17 @@ async def api_item_streams(
             display_lang = stream.get("DisplayLanguage") or stream.get("DisplayTitle") or lang
             if lang == "und":
                 display_lang = "Unknown"
-            audio_streams.append({
-                "index": stream.get("Index"),
-                "language": lang,
-                "displayLanguage": display_lang,
-                "codec": stream.get("Codec", ""),
-                "channels": stream.get("Channels", 0),
-                "isDefault": stream.get("IsDefault", False),
-                "title": stream.get("Title", ""),
-            })
+            audio_streams.append(
+                {
+                    "index": stream.get("Index"),
+                    "language": lang,
+                    "displayLanguage": display_lang,
+                    "codec": stream.get("Codec", ""),
+                    "channels": stream.get("Channels", 0),
+                    "isDefault": stream.get("IsDefault", False),
+                    "title": stream.get("Title", ""),
+                }
+            )
         elif stream_type == "Subtitle":
             codec = stream.get("Codec", "").lower()
             is_image = codec in ["pgssub", "pgs", "dvd_subtitle", "dvdsub", "vobsub"]
@@ -245,18 +249,20 @@ async def api_item_streams(
             display_lang = stream.get("DisplayLanguage") or stream.get("DisplayTitle") or lang
             if lang == "und":
                 display_lang = "Unknown"
-            subtitle_streams.append({
-                "index": stream.get("Index"),
-                "language": lang,
-                "displayLanguage": display_lang,
-                "codec": stream.get("Codec", ""),
-                "isDefault": stream.get("IsDefault", False),
-                "isForced": stream.get("IsForced", False),
-                "isExternal": stream.get("IsExternal", False),
-                "isTextSubtitleStream": stream.get("IsTextSubtitleStream", False),
-                "isPGS": is_image,
-                "title": stream.get("Title", ""),
-            })
+            subtitle_streams.append(
+                {
+                    "index": stream.get("Index"),
+                    "language": lang,
+                    "displayLanguage": display_lang,
+                    "codec": stream.get("Codec", ""),
+                    "isDefault": stream.get("IsDefault", False),
+                    "isForced": stream.get("IsForced", False),
+                    "isExternal": stream.get("IsExternal", False),
+                    "isTextSubtitleStream": stream.get("IsTextSubtitleStream", False),
+                    "isPGS": is_image,
+                    "title": stream.get("Title", ""),
+                }
+            )
 
     return {
         "audio": audio_streams,

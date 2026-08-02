@@ -19,6 +19,7 @@ def test_route_log_has_context_without_sensitive_query_values(caplog):
         return {"ok": True}
 
     with caplog.at_level(logging.INFO, logger=logger.name):
+
         async def exercise() -> httpx.Response:
             async with asgi_client(app) as client:
                 return await client.get(

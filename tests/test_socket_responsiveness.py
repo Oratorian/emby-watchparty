@@ -14,9 +14,7 @@ async def _exercise_independent_controls(live_watchparty) -> None:
         f"/api/party/{party_id}/join",
         json={"client_id": "client-1", "display_name": "Alice"},
     )
-    await client.post(
-        "/api/auth/login", json={"username": "Alice", "password": "password"}
-    )
+    await client.post("/api/auth/login", json={"username": "Alice", "password": "password"})
     cookie = "; ".join(f"{name}={value}" for name, value in client.cookies.items())
     realtime = socketio.AsyncClient()
     selected = asyncio.Event()
@@ -54,10 +52,7 @@ async def _exercise_independent_controls(live_watchparty) -> None:
         assert perf_counter() - started < 0.25
         for _ in range(30):
             recorded = (await controls.get("/__test__/requests")).json()["requests"]
-            if any(
-                row["path"] == "/emby/Sessions/Playing/Progress"
-                for row in recorded
-            ):
+            if any(row["path"] == "/emby/Sessions/Playing/Progress" for row in recorded):
                 break
             await asyncio.sleep(0.05)
         else:

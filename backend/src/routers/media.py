@@ -34,10 +34,10 @@ router = APIRouter(prefix="/api", tags=["media"])
 async def get_intro_info(
     item_id: str,
     config=Depends(get_config),
-    emby_client=Depends(get_emby_client),
+    _emby_client=Depends(get_emby_client),
     emby_gateway=Depends(get_emby_gateway),
     logger=Depends(get_logger),
-    party_session: PartySession = Depends(require_party_unlocked),
+    _party_session: PartySession = Depends(require_party_unlocked),
 ):
     logger.debug(f"Fetching intro info for item ID: {item_id}")
     # /emby/Items/Intros is an admin-only endpoint and requires the
@@ -60,9 +60,7 @@ async def get_intro_info(
                     return IntroResponse(hasIntro=True, start=start, end=end, duration=end - start)
         return IntroResponse(hasIntro=False)
     except Exception as e:
-        logger.warning(
-            "Intro fetch failed item=%s error=%s", item_id, type(e).__name__
-        )
+        logger.warning("Intro fetch failed item=%s error=%s", item_id, type(e).__name__)
         return IntroResponse(hasIntro=False)
 
 
@@ -87,8 +85,8 @@ async def api_image(
     # (reported in beta12 by xyxxyxxy). With these params Emby
     # downscales + re-encodes server-side before sending, so each
     # card is 20-40 KB instead of hundreds.
-    maxWidth: int | None = Query(None, ge=1, le=4000),
-    maxHeight: int | None = Query(None, ge=1, le=4000),
+    max_width: int | None = Query(None, alias="maxWidth", ge=1, le=4000),
+    max_height: int | None = Query(None, alias="maxHeight", ge=1, le=4000),
     quality: int | None = Query(None, ge=1, le=100),
     emby_client=Depends(get_emby_client),
     emby_gateway=Depends(get_emby_gateway),
@@ -98,9 +96,12 @@ async def api_image(
     access_token = party_session.party.host_access_token
     user_id = party_session.party.host_user_id
     image_url = emby_client.get_image_url(
-        item_id, type,
+        item_id,
+        type,
         access_token=access_token,
-        max_width=maxWidth, max_height=maxHeight, quality=quality,
+        max_width=max_width,
+        max_height=max_height,
+        quality=quality,
     )
     try:
         emby_resp = await emby_gateway.get(

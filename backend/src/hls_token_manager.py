@@ -6,8 +6,7 @@ Generates and validates time-limited tokens for HLS stream access
 import logging
 import secrets
 import time
-from datetime import datetime
-from typing import Dict, Optional
+from datetime import UTC, datetime
 
 from backend.src.config import Config
 
@@ -16,7 +15,7 @@ class HLSTokenManager:
     """Manages HLS stream access tokens"""
 
     def __init__(self, config: Config, logger: logging.Logger, max_tokens: int = 10_000):
-        self._tokens: Dict[str, dict] = {}
+        self._tokens: dict[str, dict] = {}
         self._config = config
         self._logger = logger
         self._max_tokens = max_tokens
@@ -29,7 +28,7 @@ class HLSTokenManager:
     def enabled(self) -> bool:
         return self._config.ENABLE_HLS_TOKEN_VALIDATION
 
-    def generate(self, party_id: str, sid: str) -> Optional[str]:
+    def generate(self, party_id: str, sid: str) -> str | None:
         """Generate a new time-limited token for HLS access"""
         if not self.enabled:
             self._logger.debug("HLS token generation skipped - validation disabled")
@@ -38,15 +37,15 @@ class HLSTokenManager:
         self._cleanup_expired()
         token = secrets.token_urlsafe(32)
         expires = time.time() + self._config.HLS_TOKEN_EXPIRY
-        expires_dt = datetime.fromtimestamp(expires).isoformat()
+        expires_dt = datetime.fromtimestamp(expires, UTC).isoformat()
 
         self._tokens[token] = {
-            'party_id': party_id,
-            'sid': sid,
-            'expires': expires,
+            "party_id": party_id,
+            "sid": sid,
+            "expires": expires,
         }
         while len(self._tokens) > self._max_tokens:
-            oldest = min(self._tokens, key=lambda value: self._tokens[value]['expires'])
+            oldest = min(self._tokens, key=lambda value: self._tokens[value]["expires"])
             del self._tokens[oldest]
 
         self._logger.debug(
@@ -81,48 +80,51 @@ class HLSTokenManager:
 
         data = self._tokens[token]
 
-        if time.time() > data['expires']:
+        if time.time() > data["expires"]:
             self._logger.debug("Token validation failed: Token expired")
             del self._tokens[token]
             return False
 
-        party_id = data['party_id']
-        sid = data['sid']
+        party_id = data["party_id"]
+        sid = data["sid"]
 
         if not party_exists_fn(party_id):
             self._logger.debug(f"Token validation failed: Party {party_id} not found")
             return False
 
         if not user_in_party_fn(party_id, sid):
-            self._logger.debug(
-                f"Token validation failed: User sid {sid} not in party {party_id}"
-            )
+            self._logger.debug(f"Token validation failed: User sid {sid} not in party {party_id}")
             return False
 
         self._logger.debug(f"Token validation successful for party {party_id}, user {sid}")
         return True
 
-    def get_or_create(self, party_id: str, sid: str) -> Optional[str]:
+    def get_or_create(self, party_id: str, sid: str) -> str | None:
         """Get existing valid token for user or generate a new one"""
         for token, data in self._tokens.items():
-            if data['party_id'] == party_id and data['sid'] == sid:
-                if time.time() <= data['expires']:
-                    self._logger.debug(f"Reusing existing token for party {party_id}, sid {sid}")
-                    return token
+            if (
+                data["party_id"] == party_id
+                and data["sid"] == sid
+                and time.time() <= data["expires"]
+            ):
+                self._logger.debug(f"Reusing existing token for party {party_id}, sid {sid}")
+                return token
 
         new_token = self.generate(party_id, sid)
         if new_token:
-            self._logger.debug(f"Generated new token for party {party_id}, sid {sid}: {new_token[:16]}...")
+            self._logger.debug(
+                f"Generated new token for party {party_id}, sid {sid}: {new_token[:16]}..."
+            )
         return new_token
 
-    def get_party_id(self, token: str) -> Optional[str]:
+    def get_party_id(self, token: str) -> str | None:
         """Return the party_id this HLS token was minted for, or None."""
         data = self._tokens.get(token)
         if not data:
             return None
-        if time.time() > data['expires']:
+        if time.time() > data["expires"]:
             return None
-        return data['party_id']
+        return data["party_id"]
 
     def revoke_party(self, party_id: str) -> int:
         """Wipe every token issued for this party. Returns count removed.
@@ -131,7 +133,7 @@ class HLSTokenManager:
         deleted) so leftover tokens can't keep HLS streams alive past
         the party's lifetime.
         """
-        victims = [t for t, d in self._tokens.items() if d.get('party_id') == party_id]
+        victims = [t for t, d in self._tokens.items() if d.get("party_id") == party_id]
         for token in victims:
             del self._tokens[token]
         if victims:
@@ -141,8 +143,9 @@ class HLSTokenManager:
     def revoke_user(self, party_id: str, sid: str) -> int:
         """Revoke every token owned by one party participant."""
         victims = [
-            token for token, data in self._tokens.items()
-            if data.get('party_id') == party_id and data.get('sid') == sid
+            token
+            for token, data in self._tokens.items()
+            if data.get("party_id") == party_id and data.get("sid") == sid
         ]
         for token in victims:
             del self._tokens[token]
@@ -157,7 +160,7 @@ class HLSTokenManager:
     def _cleanup_expired(self):
         """Remove expired tokens"""
         now = time.time()
-        expired = [t for t, d in self._tokens.items() if now > d['expires']]
+        expired = [t for t, d in self._tokens.items() if now > d["expires"]]
         if expired:
             self._logger.debug(f"Cleaning up {len(expired)} expired HLS tokens")
             for token in expired:

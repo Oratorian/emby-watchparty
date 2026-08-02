@@ -7,20 +7,19 @@ touches Emby on behalf of a watch party.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
+import httpx
 from fastapi import Depends, HTTPException, Request
 
-from backend.src.config import Config
-from backend.src.emby_client import EmbyClient
-from backend.src.party_manager import PartyManager
-from backend.src.hls_token_manager import HLSTokenManager
-from backend.src.domain import Party
-from backend.src.stream_builder import StreamBuilder
-from backend.src.avatar_store import AvatarStore
 from backend.src.admin_session_store import AdminSessionStore
+from backend.src.avatar_store import AvatarStore
+from backend.src.config import Config
+from backend.src.domain import Party
+from backend.src.emby_client import EmbyClient
 from backend.src.emby_gateway import EmbyGateway
-import httpx
+from backend.src.hls_token_manager import HLSTokenManager
+from backend.src.party_manager import PartyManager
+from backend.src.stream_builder import StreamBuilder
 
 
 def get_config(request: Request) -> Config:
@@ -72,6 +71,7 @@ def get_emby_gateway(request: Request) -> EmbyGateway:
 # Party-bound session gates
 # =============================================================================
 
+
 @dataclass
 class PartySession:
     """A resolved party-bound caller for the current request.
@@ -80,6 +80,7 @@ class PartySession:
     live reference to the party dict so route handlers do not have to
     re-look it up.
     """
+
     party_id: str
     client_id: str
     display_name: str
@@ -168,7 +169,7 @@ def require_admin(
 def is_admin_authenticated(
     request: Request,
     party_manager: PartyManager,
-    admin_session_store: Optional[AdminSessionStore] = None,
+    admin_session_store: AdminSessionStore | None = None,
 ) -> bool:
     """True if the caller is allowed into /admin via either path.
 
@@ -190,17 +191,14 @@ def is_admin_authenticated(
     party = party_manager.get(party_id.upper())
     if not party:
         return False
-    return (
-        party.host_client_id == client_id
-        and bool(party.host_is_admin)
-    )
+    return party.host_client_id == client_id and bool(party.host_is_admin)
 
 
 def admin_display_name(
     request: Request,
     party_manager: PartyManager,
-    admin_session_store: Optional[AdminSessionStore] = None,
-) -> Optional[str]:
+    admin_session_store: AdminSessionStore | None = None,
+) -> str | None:
     """Return the name to log against an admin action, or None.
 
     Prefers the party-host identity when both paths are active; falls
@@ -211,11 +209,7 @@ def admin_display_name(
     client_id = session.get("client_id")
     if party_id and client_id:
         party = party_manager.get(party_id.upper())
-        if (
-            party
-            and party.host_client_id == client_id
-            and party.host_is_admin
-        ):
+        if party and party.host_client_id == client_id and party.host_is_admin:
             return party.host_username
     if admin_session_store:
         admin_session = admin_session_store.get(session.get("admin_session_id"))

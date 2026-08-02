@@ -12,7 +12,7 @@ class ClosingTransport(httpx.AsyncBaseTransport):
     def __init__(self) -> None:
         self.closed = False
 
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+    async def handle_async_request(self, _request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"ServerName": "Fake Emby"})
 
     async def aclose(self) -> None:
@@ -46,7 +46,7 @@ async def _start_with_invalid_storage(root_file: Path) -> ClosingTransport:
         enable_update_check=False,
         http_transport=transport,
     )
-    with pytest.raises(OSError):
+    with pytest.raises(OSError, match=r"not-a-directory|File exists|Invalid argument"):
         async with app.router.lifespan_context(app):
             pass
     return transport

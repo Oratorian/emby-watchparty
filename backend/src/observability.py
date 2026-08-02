@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 from time import perf_counter
+from typing import TYPE_CHECKING
 
-from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.responses import Response
+
+if TYPE_CHECKING:
+    from fastapi import Request
+    from starlette.responses import Response
 
 
 class RequestLogMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request,
-                       call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         started = perf_counter()
         outcome: int | str = "error"
         try:
@@ -25,8 +27,7 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
                 party_id = session.get("party_id", "-")
                 latency_ms = (perf_counter() - started) * 1000
                 logger.info(
-                    "request route=%s method=%s party=%s latency_ms=%.1f "
-                    "outcome=%s retry=0",
+                    "request route=%s method=%s party=%s latency_ms=%.1f outcome=%s retry=0",
                     request.url.path,
                     request.method,
                     party_id,

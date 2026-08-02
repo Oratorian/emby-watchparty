@@ -13,13 +13,14 @@ Serving:
 """
 
 import asyncio
+import contextlib
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+from backend.src.client_ip import request_client_ip
 from backend.src.dependencies import (
     get_avatar_store,
     get_config,
@@ -29,7 +30,6 @@ from backend.src.dependencies import (
     get_logger,
     get_party_manager,
 )
-from backend.src.client_ip import request_client_ip
 from backend.src.rate_limit import parse_rate
 
 router = APIRouter(prefix="/api/avatar", tags=["avatar"])
@@ -38,6 +38,7 @@ router = APIRouter(prefix="/api/avatar", tags=["avatar"])
 # =============================================================================
 # Schemas
 # =============================================================================
+
 
 class GravatarRequest(BaseModel):
     email: str
@@ -53,16 +54,17 @@ class AvatarCreatedResponse(BaseModel):
     `code` is the plaintext recovery code -- shown to the user once
     and never returned by any other endpoint.
     """
+
     success: bool
-    uuid: Optional[str] = None
-    code: Optional[str] = None
-    message: Optional[str] = None
+    uuid: str | None = None
+    code: str | None = None
+    message: str | None = None
 
 
 class RecoverResponse(BaseModel):
     success: bool
-    uuid: Optional[str] = None
-    message: Optional[str] = None
+    uuid: str | None = None
+    message: str | None = None
 
 
 # =============================================================================
@@ -90,9 +92,10 @@ _ALLOWED_MIME = {
 # Routes
 # =============================================================================
 
+
 @router.post("/upload", response_model=AvatarCreatedResponse)
 async def upload_avatar(
-    request: Request,
+    _request: Request,
     image: UploadFile = File(...),
     store=Depends(get_avatar_store),
     logger=Depends(get_logger),
@@ -158,12 +161,8 @@ def recover(
     """Trade a recovery code for the avatar uuid it unlocks."""
     config = request.app.state.config
     ip = request_client_ip(request, config.TRUSTED_PROXY_CIDRS)
-    limit, window = parse_rate(getattr(
-        config, "RATE_LIMIT_AVATAR_RECOVERY", "10 per hour"
-    ))
-    decision = request.app.state.rate_limiter.check(
-        f"avatar-recover:{ip}", limit, window
-    )
+    limit, window = parse_rate(getattr(config, "RATE_LIMIT_AVATAR_RECOVERY", "10 per hour"))
+    decision = request.app.state.rate_limiter.check(f"avatar-recover:{ip}", limit, window)
     if not decision.allowed:
         logger.warning(f"Avatar recover rate-limited for ip={ip}")
         raise HTTPException(
@@ -194,7 +193,7 @@ def recover(
 )
 async def host_avatar(
     party_id: str,
-    request: Request,
+    _request: Request,
     config=Depends(get_config),
     emby_client=Depends(get_emby_client),
     emby_gateway=Depends(get_emby_gateway),
@@ -246,8 +245,10 @@ async def host_avatar(
     responses={
         200: {
             "content": {
-                "image/jpeg": {}, "image/png": {},
-                "image/webp": {}, "image/gif": {},
+                "image/jpeg": {},
+                "image/png": {},
+                "image/webp": {},
+                "image/gif": {},
             },
             "description": "Avatar image bytes (local file or Gravatar proxy)",
         },
@@ -269,10 +270,8 @@ async def serve_avatar(
     if not row:
         return Response(status_code=404)
     # Best-effort: keep the entry alive on the cleanup clock.
-    try:
+    with contextlib.suppress(Exception):
         await asyncio.to_thread(store.touch, avatar_uuid)
-    except Exception:
-        pass
 
     if row["type"] == "uploaded":
         path = store.avatars_dir / Path(row["avatar_path"]).name
@@ -281,8 +280,11 @@ async def serve_avatar(
         data = path.read_bytes()
         ext = path.suffix.lstrip(".").lower()
         media_type = {
-            "jpg": "image/jpeg", "jpeg": "image/jpeg",
-            "png": "image/png", "webp": "image/webp", "gif": "image/gif",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "webp": "image/webp",
+            "gif": "image/gif",
         }.get(ext, "application/octet-stream")
         return Response(
             content=data,

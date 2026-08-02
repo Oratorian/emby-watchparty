@@ -12,9 +12,7 @@ async def _exercise_chat_limit(live_watchparty) -> None:
             f"/api/party/{party_id}/join",
             json={"client_id": "chat-client", "display_name": "Alice"},
         )
-        cookie = "; ".join(
-            f"{name}={value}" for name, value in client.cookies.items()
-        )
+        cookie = "; ".join(f"{name}={value}" for name, value in client.cookies.items())
 
         realtime = socketio.AsyncClient()
         messages: list[str] = []
@@ -24,26 +22,35 @@ async def _exercise_chat_limit(live_watchparty) -> None:
             messages.append(data["message"])
 
         await realtime.connect(live_watchparty.url, headers={"Cookie": cookie})
-        await realtime.emit("join_party", {
-            "party_id": party_id,
-            "username": "Alice",
-            "client_id": "chat-client",
-        })
+        await realtime.emit(
+            "join_party",
+            {
+                "party_id": party_id,
+                "username": "Alice",
+                "client_id": "chat-client",
+            },
+        )
         await asyncio.sleep(0.05)
 
         for index in range(6):
-            await realtime.emit("chat_message", {
-                "party_id": party_id,
-                "message": f"burst-{index}",
-            })
+            await realtime.emit(
+                "chat_message",
+                {
+                    "party_id": party_id,
+                    "message": f"burst-{index}",
+                },
+            )
         await asyncio.sleep(0.15)
         assert messages == [f"burst-{index}" for index in range(5)]
 
         await asyncio.sleep(3.05)
-        await realtime.emit("chat_message", {
-            "party_id": party_id,
-            "message": "after-expiry",
-        })
+        await realtime.emit(
+            "chat_message",
+            {
+                "party_id": party_id,
+                "message": "after-expiry",
+            },
+        )
         await asyncio.sleep(0.15)
         assert messages[-1] == "after-expiry"
         assert len(messages) == 6

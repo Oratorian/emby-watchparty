@@ -1,14 +1,13 @@
 """Run the backend for Playwright without external update traffic."""
 
-from pathlib import Path
 import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
-
 
 if __name__ == "__main__":
     import uvicorn

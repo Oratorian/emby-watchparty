@@ -9,12 +9,20 @@ import os
 
 from fastapi import APIRouter, Depends, Request
 
-from backend.src import __version__, __codename__
+from backend.src import __codename__, __version__
 from backend.src.dependencies import (
-    get_config, get_emby_client, get_http_client, get_logger, get_party_manager, get_sio,
+    get_config,
+    get_emby_client,
+    get_http_client,
+    get_logger,
+    get_party_manager,
+    get_sio,
 )
 from backend.src.schemas import (
-    LoginRequest, LoginResponse, AuthStatusResponse, VersionResponse,
+    AuthStatusResponse,
+    LoginRequest,
+    LoginResponse,
+    VersionResponse,
 )
 
 router = APIRouter(prefix="/api", tags=["auth"])
@@ -71,7 +79,7 @@ def _env_dev_host_creds() -> tuple[str | None, str | None]:
 async def api_login(
     body: LoginRequest,
     request: Request,
-    config=Depends(get_config),
+    _config=Depends(get_config),
     emby_client=Depends(get_emby_client),
     party_manager=Depends(get_party_manager),
     sio=Depends(get_sio),
@@ -188,8 +196,7 @@ async def api_logout(
     previous_username = party.host_username
     party_manager.clear_host(party_id)
     logger.info(
-        f"Party {party_id} host '{previous_username}' stepped down "
-        f"(client_id={client_id[:8]}...)"
+        f"Party {party_id} host '{previous_username}' stepped down (client_id={client_id[:8]}...)"
     )
 
     await sio.emit(

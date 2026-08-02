@@ -9,7 +9,6 @@ the rest of the static HLS parameter pack.
 """
 
 import logging
-from typing import Optional
 
 from backend.src.config import Config
 from backend.src.emby_client import EmbyClient
@@ -19,8 +18,9 @@ from backend.src.quality import resolve_quality
 class StreamBuilder:
     """Builds HLS stream URL parameters for Emby."""
 
-    def __init__(self, emby_client: EmbyClient, logger: logging.Logger,
-                 config: Optional[Config] = None):
+    def __init__(
+        self, emby_client: EmbyClient, logger: logging.Logger, config: Config | None = None
+    ):
         self._emby = emby_client
         self._logger = logger
         self._config = config
@@ -30,10 +30,10 @@ class StreamBuilder:
         media_source: dict,
         media_source_id: str,
         play_session_id: str,
-        audio_index: Optional[int],
-        subtitle_index: Optional[int],
+        audio_index: int | None,
+        subtitle_index: int | None,
         quality: str,
-        start_time_ticks: Optional[int] = None,
+        start_time_ticks: int | None = None,
     ) -> list:
         """Build HLS URL parameters for Emby.
 
@@ -48,9 +48,9 @@ class StreamBuilder:
         """
         max_width, max_height, bitrate_kbps = resolve_quality(quality)
 
-        source_video_codec: Optional[str] = None
-        source_video_bitrate: Optional[int] = None
-        source_width: Optional[int] = None
+        source_video_codec: str | None = None
+        source_video_bitrate: int | None = None
+        source_width: int | None = None
         for stream in media_source.get("MediaStreams", []):
             if stream.get("Type") == "Video":
                 source_video_codec = (stream.get("Codec") or "").lower()
@@ -117,7 +117,7 @@ class StreamBuilder:
         # Bitrate cap: only when an explicit kbps was selected. Clamp to
         # the source bitrate if it is lower (no benefit to a higher
         # target than what the source has).
-        target_bitrate: Optional[int] = None
+        target_bitrate: int | None = None
         if bitrate_kbps is not None:
             target_bitrate = bitrate_kbps * 1000
             if source_video_bitrate and source_video_bitrate < target_bitrate:
@@ -155,13 +155,10 @@ class StreamBuilder:
                 )
         elif max_width is not None:
             self._logger.info(
-                f"Source is h264, capping resolution at {max_width}x{max_height} "
-                f"(no bitrate cap)"
+                f"Source is h264, capping resolution at {max_width}x{max_height} (no bitrate cap)"
             )
         else:
-            self._logger.info(
-                "Source is h264, Auto quality -> Emby decides (stream-copy possible)"
-            )
+            self._logger.info("Source is h264, Auto quality -> Emby decides (stream-copy possible)")
 
         if audio_index is not None:
             params.append(f"AudioStreamIndex={audio_index}")
@@ -179,13 +176,14 @@ class StreamBuilder:
         if subtitle_index is not None and subtitle_index != -1:
             is_image_sub = False
             for stream in media_source.get("MediaStreams", []):
-                if (
-                    stream.get("Type") == "Subtitle"
-                    and stream.get("Index") == subtitle_index
-                ):
+                if stream.get("Type") == "Subtitle" and stream.get("Index") == subtitle_index:
                     codec = stream.get("Codec", "").lower()
                     is_image_sub = codec in [
-                        "pgssub", "pgs", "dvd_subtitle", "dvdsub", "vobsub",
+                        "pgssub",
+                        "pgs",
+                        "dvd_subtitle",
+                        "dvdsub",
+                        "vobsub",
                     ]
                     break
 
@@ -213,15 +211,20 @@ class StreamBuilder:
         media_source: dict,
         media_source_id: str,
         play_session_id: str,
-        audio_index: Optional[int],
-        subtitle_index: Optional[int],
+        audio_index: int | None,
+        subtitle_index: int | None,
         quality: str,
-        start_time_ticks: Optional[int] = None,
+        start_time_ticks: int | None = None,
     ) -> str:
         """Build the full relative HLS stream URL"""
         params = self.build_params(
-            media_source, media_source_id, play_session_id,
-            audio_index, subtitle_index, quality, start_time_ticks,
+            media_source,
+            media_source_id,
+            play_session_id,
+            audio_index,
+            subtitle_index,
+            quality,
+            start_time_ticks,
         )
         param_string = "&".join(params)
         prefix = app_prefix or ""

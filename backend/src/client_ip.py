@@ -1,13 +1,14 @@
 """Trust-aware client IP resolution for security controls."""
 
+from collections.abc import Iterable
 from ipaddress import ip_address, ip_network
-from typing import Iterable
 
 from fastapi import Request
 
 
-def resolve_client_ip(peer_ip: str, x_forwarded_for: str,
-                      trusted_proxy_cidrs: Iterable[str]) -> str:
+def resolve_client_ip(
+    peer_ip: str, x_forwarded_for: str, trusted_proxy_cidrs: Iterable[str]
+) -> str:
     """Return caller IP without trusting headers from an untrusted peer."""
     try:
         peer = ip_address(peer_ip)
@@ -19,7 +20,7 @@ def resolve_client_ip(peer_ip: str, x_forwarded_for: str,
         return peer_ip
 
     forwarded: list[str] = []
-    for raw in x_forwarded_for.split(','):
+    for raw in x_forwarded_for.split(","):
         candidate = raw.strip()
         try:
             ip_address(candidate)

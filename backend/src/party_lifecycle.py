@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from typing import TYPE_CHECKING
 
-from backend.src.domain import Party
+if TYPE_CHECKING:
+    from backend.src.domain import Party
 
 
 class PartyLifecycle:

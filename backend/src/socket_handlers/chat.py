@@ -1,9 +1,8 @@
 """Chat handlers: chat_message, toggle_library"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from backend.src.rate_limit import parse_rate
-
 
 # Chat spam guardrails. Previously any joined member could emit
 # arbitrary-size messages at any rate, and the handler fanned them out
@@ -15,11 +14,11 @@ _CHAT_MAX_LEN = 2048
 
 
 def register(ctx):
-    sio = ctx['sio']
-    logger = ctx['logger']
-    party_manager = ctx['party_manager']
-    rate_limiter = ctx.get('rate_limiter')
-    config = ctx.get('config')
+    sio = ctx["sio"]
+    logger = ctx["logger"]
+    party_manager = ctx["party_manager"]
+    rate_limiter = ctx.get("rate_limiter")
+    config = ctx.get("config")
 
     @sio.on("chat_message")
     async def handle_chat_message(sid, data):
@@ -47,12 +46,16 @@ def register(ctx):
             client_id = party.sid_client_ids.get(sid)
             participant = party.participants.get(client_id) if client_id else None
             avatar_uuid = participant.avatar_uuid if participant else None
-            await sio.emit("chat_message", {
-                "username": username,
-                "avatar_uuid": avatar_uuid,
-                "message": message,
-                "timestamp": datetime.now().isoformat(),
-            }, room=party_id)
+            await sio.emit(
+                "chat_message",
+                {
+                    "username": username,
+                    "avatar_uuid": avatar_uuid,
+                    "message": message,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+                room=party_id,
+            )
 
     @sio.on("toggle_library")
     async def handle_toggle_library(sid, data):
@@ -67,9 +70,7 @@ def register(ctx):
             return
         caller_client_id = party.sid_client_ids.get(sid)
         if caller_client_id != party.host_client_id:
-            logger.debug(
-                f"toggle_library REJECTED: sid={sid} is not host of {party_id}"
-            )
+            logger.debug(f"toggle_library REJECTED: sid={sid} is not host of {party_id}")
             return
 
         logger.info(f"Library toggled in party {party_id}: show={show}")

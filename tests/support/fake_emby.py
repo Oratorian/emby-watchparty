@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 _SEGMENT_BYTES = (Path(__file__).parent / "assets" / "fake_segment.ts").read_bytes()
 _SEGMENT_CHUNKS = [
@@ -59,9 +61,7 @@ class FakeEmbyBehavior:
     delays_ms: dict[str, int] = field(default_factory=dict)
     transient_failures: dict[str, int] = field(default_factory=dict)
     transient_status: int = 503
-    segment_chunks: list[bytes] = field(
-        default_factory=lambda: list(_SEGMENT_CHUNKS)
-    )
+    segment_chunks: list[bytes] = field(default_factory=lambda: list(_SEGMENT_CHUNKS))
     segment_delay_ms: int = 0
     master_playlist: str = (
         "#EXTM3U\r\n#EXT-X-VERSION:3\r\n"
@@ -159,11 +159,7 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         state.record(request)  # Never retain submitted credentials.
         if failure := await state.before(request):
             return failure
-        user_id = (
-            "user-large"
-            if credentials.get("Username") == "LargeLibrary"
-            else "user-1"
-        )
+        user_id = "user-large" if credentials.get("Username") == "LargeLibrary" else "user-1"
         return {
             "AccessToken": "fake-access-token",
             "User": {
@@ -202,11 +198,7 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     @app.get("/emby/Library/MediaFolders")
     async def media_folders(request: Request):
         state.record(request)
-        return {
-            "Items": [
-                {"Id": "library-1", "Name": "Movies", "CollectionType": "movies"}
-            ]
-        }
+        return {"Items": [{"Id": "library-1", "Name": "Movies", "CollectionType": "movies"}]}
 
     @app.get("/emby/Users/{user_id}/Items")
     async def user_items(request: Request, user_id: str):
@@ -224,10 +216,7 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         ]
         search_term = request.query_params.get("SearchTerm", "").casefold()
         if search_term:
-            catalog = [
-                item for item in catalog
-                if search_term in item["Name"].casefold()
-            ]
+            catalog = [item for item in catalog if search_term in item["Name"].casefold()]
         start = int(request.query_params.get("StartIndex", 0))
         limit = int(request.query_params.get("Limit", len(catalog)))
         return {
@@ -328,10 +317,10 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         status = 200
         if range_header:
             status = 206
-            headers["Content-Range"] = (
-                f"bytes {range_start}-{range_end}/{len(_SEGMENT_BYTES)}"
-            )
+            headers["Content-Range"] = f"bytes {range_start}-{range_end}/{len(_SEGMENT_BYTES)}"
             headers["Content-Length"] = str(range_end - range_start + 1)
-        return StreamingResponse(body(), status_code=status, media_type="video/MP2T", headers=headers)
+        return StreamingResponse(
+            body(), status_code=status, media_type="video/MP2T", headers=headers
+        )
 
     return app

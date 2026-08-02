@@ -4,10 +4,9 @@ Auto-generates OpenAPI documentation at /docs
 """
 
 from pydantic import BaseModel, ConfigDict
-from typing import Optional
-
 
 # ============== Auth ==============
+
 
 class LoginRequest(BaseModel):
     username: str
@@ -20,11 +19,12 @@ class LoginResponse(BaseModel):
     On a successful become-host, host_username carries the Emby account
     name the caller is now hosting under.
     """
+
     success: bool
     message: str
-    username: Optional[str] = None
+    username: str | None = None
     is_host: bool = False
-    host_username: Optional[str] = None
+    host_username: str | None = None
     is_admin: bool = False
 
 
@@ -35,17 +35,19 @@ class AuthStatusResponse(BaseModel):
     AND is currently the host of that party. `party_id` is the party
     the caller is bound to (cookie state), or None.
     """
+
     authenticated: bool
-    username: Optional[str] = None
+    username: str | None = None
     is_admin: bool = False
     require_login: bool = False
     is_host: bool = False
-    party_id: Optional[str] = None
-    host_username: Optional[str] = None
+    party_id: str | None = None
+    host_username: str | None = None
     party_unlocked: bool = False
 
 
 # ============== Party ==============
+
 
 class CreatePartyRequest(BaseModel):
     """Body for POST /api/party/create.
@@ -56,19 +58,20 @@ class CreatePartyRequest(BaseModel):
     (used to bind the session cookie when becoming host).
     `display_name` is shown in chat / user lists.
     """
-    client_id: Optional[str] = None
-    display_name: Optional[str] = None
-    username: Optional[str] = None
-    password: Optional[str] = None
+
+    client_id: str | None = None
+    display_name: str | None = None
+    username: str | None = None
+    password: str | None = None
 
 
 class CreatePartyResponse(BaseModel):
     party_id: str
     url: str
     is_host: bool = False
-    host_username: Optional[str] = None
+    host_username: str | None = None
     is_admin: bool = False
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class JoinPartyRequest(BaseModel):
@@ -81,15 +84,16 @@ class JoinPartyRequest(BaseModel):
     -- when present, members of the party see this caller's chosen
     avatar instead of the generated fallback.
     """
+
     client_id: str
     display_name: str
-    avatar_uuid: Optional[str] = None
+    avatar_uuid: str | None = None
 
 
 class JoinPartyResponse(BaseModel):
     success: bool
-    message: Optional[str] = None
-    party_id: Optional[str] = None
+    message: str | None = None
+    party_id: str | None = None
     is_host: bool = False
     party_unlocked: bool = False
 
@@ -104,57 +108,60 @@ class VideoInfoSchema(BaseModel):
     item_id: str
     title: str
     overview: str = ""
-    stream_url_base: Optional[str] = None
-    audio_index: Optional[int] = None
-    subtitle_index: Optional[int] = None
-    media_source_id: Optional[str] = None
-    play_session_id: Optional[str] = None
-    run_time_seconds: Optional[float] = None
-    selected_by: Optional[str] = None
+    stream_url_base: str | None = None
+    audio_index: int | None = None
+    subtitle_index: int | None = None
+    media_source_id: str | None = None
+    play_session_id: str | None = None
+    run_time_seconds: float | None = None
+    selected_by: str | None = None
     quality: str = "1080p-10000"
 
 
 class PartyInfoResponse(BaseModel):
     id: str
     users: list[str]
-    current_video: Optional[VideoInfoSchema] = None
+    current_video: VideoInfoSchema | None = None
     playback_state: PlaybackStateSchema
 
 
 # ============== Library ==============
 
+
 class LibraryItem(BaseModel):
     """A library item (movie, series, episode, season, folder, etc).
     Fields are a pragmatic subset of what Emby returns -- additional fields
     are allowed via the model config."""
+
     Id: str
     Name: str
-    Type: Optional[str] = None
-    ServerId: Optional[str] = None
-    ImageTags: Optional[dict] = None
-    BackdropImageTags: Optional[list[str]] = None
-    PrimaryImageAspectRatio: Optional[float] = None
-    ProductionYear: Optional[int] = None
-    Overview: Optional[str] = None
-    RunTimeTicks: Optional[int] = None
-    IsFolder: Optional[bool] = None
-    ParentId: Optional[str] = None
-    SeriesId: Optional[str] = None
-    SeriesName: Optional[str] = None
-    SeasonId: Optional[str] = None
-    SeasonName: Optional[str] = None
-    IndexNumber: Optional[int] = None
-    ParentIndexNumber: Optional[int] = None
-    CollectionType: Optional[str] = None
-    UserData: Optional[dict] = None
+    Type: str | None = None
+    ServerId: str | None = None
+    ImageTags: dict | None = None
+    BackdropImageTags: list[str] | None = None
+    PrimaryImageAspectRatio: float | None = None
+    ProductionYear: int | None = None
+    Overview: str | None = None
+    RunTimeTicks: int | None = None
+    IsFolder: bool | None = None
+    ParentId: str | None = None
+    SeriesId: str | None = None
+    SeriesName: str | None = None
+    SeasonId: str | None = None
+    SeasonName: str | None = None
+    IndexNumber: int | None = None
+    ParentIndexNumber: int | None = None
+    CollectionType: str | None = None
+    UserData: dict | None = None
 
     model_config = ConfigDict(extra="allow")
 
 
 class LibraryItemsResponse(BaseModel):
     """Emby item list response, used by /api/libraries, /api/items, /api/search."""
+
     Items: list[LibraryItem] = []
-    TotalRecordCount: Optional[int] = None
+    TotalRecordCount: int | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -162,35 +169,37 @@ class LibraryItemsResponse(BaseModel):
 class ItemDetailsResponse(BaseModel):
     """Single item with extended details. Wraps a LibraryItem plus any
     additional fields Emby returns for that item type."""
+
     Id: str
     Name: str
-    Type: Optional[str] = None
-    Overview: Optional[str] = None
-    ProductionYear: Optional[int] = None
-    RunTimeTicks: Optional[int] = None
-    People: Optional[list[dict]] = None
-    Genres: Optional[list[str]] = None
-    Studios: Optional[list[dict]] = None
-    MediaSources: Optional[list[dict]] = None
-    MediaStreams: Optional[list[dict]] = None
+    Type: str | None = None
+    Overview: str | None = None
+    ProductionYear: int | None = None
+    RunTimeTicks: int | None = None
+    People: list[dict] | None = None
+    Genres: list[str] | None = None
+    Studios: list[dict] | None = None
+    MediaSources: list[dict] | None = None
+    MediaStreams: list[dict] | None = None
     # UserData carries the host's per-item state -- specifically
     # PlaybackPositionTicks (in 10M-ticks-per-second units, same scale
     # as RunTimeTicks) and Played (bool). Used by the resume-from-
     # last-position feature: when an item has PlaybackPositionTicks > 0
     # and Played=false, the frontend offers "Resume at HH:MM:SS /
     # Start over" instead of jumping straight to time 0.
-    UserData: Optional[dict] = None
+    UserData: dict | None = None
 
     model_config = ConfigDict(extra="allow")
 
 
 # ============== Media ==============
 
+
 class IntroResponse(BaseModel):
     hasIntro: bool
-    start: Optional[float] = None
-    end: Optional[float] = None
-    duration: Optional[float] = None
+    start: float | None = None
+    end: float | None = None
+    duration: float | None = None
 
 
 class AudioStreamInfo(BaseModel):
@@ -228,28 +237,30 @@ class MediaVersionInfo(BaseModel):
     `id` is what we feed back into `MediaSourceId` to switch to that
     version. Closes [#43](https://github.com/Oratorian/emby-watchparty/issues/43).
     """
+
     id: str
     name: str
-    container: Optional[str] = None
-    run_time_ticks: Optional[int] = None
+    container: str | None = None
+    run_time_ticks: int | None = None
 
 
 class StreamsResponse(BaseModel):
     audio: list[AudioStreamInfo]
     subtitles: list[SubtitleStreamInfo]
-    media_source_id: Optional[str] = None
+    media_source_id: str | None = None
     # Always populated; UI shows a Version dropdown only when len > 1.
     versions: list[MediaVersionInfo] = []
 
 
 # ============== Version ==============
 
+
 class VersionResponse(BaseModel):
     current_version: str
     codename: str
-    latest_version: Optional[str] = None
+    latest_version: str | None = None
     update_available: bool = False
-    release_url: Optional[str] = None
+    release_url: str | None = None
 
 
 class HealthResponse(BaseModel):
@@ -260,12 +271,14 @@ class HealthResponse(BaseModel):
     else, so a transient upstream blip will not flap a container's
     healthcheck and trigger restart loops.
     """
+
     status: str = "ok"
     version: str
     codename: str
 
 
 # ============== Admin ==============
+
 
 class AdminLoginRequest(BaseModel):
     username: str
@@ -274,11 +287,12 @@ class AdminLoginRequest(BaseModel):
 
 class AdminLoginResponse(BaseModel):
     success: bool
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class SuccessResponse(BaseModel):
     """Generic success response used by logout endpoints."""
+
     success: bool
 
 
@@ -304,7 +318,7 @@ class ConfigUpdateRequest(BaseModel):
 class ConfigUpdateResponse(BaseModel):
     success: bool
     changed: list[str] = []
-    config: Optional[dict] = None
+    config: dict | None = None
     # Values dropped by update_from_dict because they failed type
     # coercion or the shape check (wrong type, null on non-nullable
     # field, unknown key). Frontend surfaces these as "Saved (but X
@@ -321,38 +335,44 @@ class RuntimeConfigResponse(BaseModel):
     """Runtime config values returned by GET /api/admin/config.
     Extra fields are allowed because the set of runtime keys is driven
     by the config module rather than a fixed schema."""
-    error: Optional[str] = None
+
+    error: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
 
 # ============== Party (extras) ==============
 
+
 class StaticSessionResponse(BaseModel):
     """Returned by GET /api/party/static-session.
     party_id is null when static session mode is disabled."""
-    party_id: Optional[str] = None
+
+    party_id: str | None = None
 
 
 class PartyExistsResponse(BaseModel):
     """Returned by GET /api/party/<id>/exists. Boolean probe used by
     the join screen to validate a party code before issuing the cookie."""
+
     exists: bool
 
 
 class PartyListItem(BaseModel):
     """One party in the public index listing (GET /api/party/list)."""
+
     code: str
-    title: Optional[str] = None   # what is being watched; None when no video
+    title: str | None = None  # what is being watched; None when no video
     user_count: int
-    playing: bool                 # True when a video is active (join -> vote)
-    locked: bool                  # True when the party has no host (library locked)
+    playing: bool  # True when a video is active (join -> vote)
+    locked: bool  # True when the party has no host (library locked)
 
 
 class PartyListResponse(BaseModel):
     """Returned by GET /api/party/list. `parties` is empty when
     REQUIRE_LOGIN is on -- open parties and what they are watching are
     not advertised in that mode."""
+
     require_login: bool
     parties: list[PartyListItem]
 
@@ -364,12 +384,13 @@ class QualityOption(BaseModel):
     are the per-resolution caps Emby honours, `bitrate_kbps` is null for
     the `Auto` option and the resolution-only tiers (360p / 240p / 144p).
     """
+
     id: str
     label: str
-    resolution: Optional[str] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
-    bitrate_kbps: Optional[int] = None
+    resolution: str | None = None
+    width: int | None = None
+    height: int | None = None
+    bitrate_kbps: int | None = None
 
 
 class QualityOptionsResponse(BaseModel):
@@ -378,5 +399,6 @@ class QualityOptionsResponse(BaseModel):
     bitrates); `Auto` is omitted when `FORCE_TRANSCODE` is on (it would
     conflict with always-transcode and let the bitrate balloon on h265
     sources)."""
+
     options: list[QualityOption]
     default_id: str

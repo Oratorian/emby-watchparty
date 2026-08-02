@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 MediaValue = str | float | int | None
 
 
 def _now() -> str:
-    return datetime.now().isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass
@@ -57,6 +57,7 @@ class EpisodeRef:
     series_id: str | None = None
     season_id: str | None = None
 
+
 @dataclass(frozen=True)
 class SelectedMedia:
     item_id: str
@@ -89,6 +90,7 @@ class SelectedMedia:
             "next_item_id": self.next_item_id,
             "next_item_title": self.next_item_title,
         }
+
 
 @dataclass
 class JoinVote:
@@ -203,7 +205,7 @@ class Party:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     @classmethod
-    def create(cls, party_id: str) -> "Party":
+    def create(cls, party_id: str) -> Party:
         return cls(id=party_id)
 
     @property
@@ -232,10 +234,7 @@ class Party:
         return tuple(self.sid_client_ids)
 
     def usernames(self) -> list[str]:
-        return [
-            self.username_for_sid(sid)
-            for sid in self.sid_client_ids
-        ]
+        return [self.username_for_sid(sid) for sid in self.sid_client_ids]
 
     @property
     def member_count(self) -> int:

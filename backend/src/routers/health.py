@@ -13,7 +13,7 @@ use liveness so an Emby outage cannot trigger a container restart loop.
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from backend.src import __version__, __codename__
+from backend.src import __codename__, __version__
 from backend.src.dependencies import get_avatar_store, get_config, get_emby_gateway
 from backend.src.schemas import HealthResponse
 

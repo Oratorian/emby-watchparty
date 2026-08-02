@@ -4,11 +4,10 @@ Starlette's session cookie is signed, not encrypted.  Only an opaque
 handle belongs in that cookie; Emby credentials stay in this process.
 """
 
-from dataclasses import dataclass
 import secrets
 import threading
 import time
-from typing import Optional
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -29,8 +28,7 @@ class AdminSessionStore:
         self._entries: dict[str, AdminSession] = {}
         self._lock = threading.Lock()
 
-    def create(self, username: str, access_token: str, user_id: str,
-               is_admin: bool = True) -> str:
+    def create(self, username: str, access_token: str, user_id: str, is_admin: bool = True) -> str:
         now = time.monotonic()
         handle = secrets.token_urlsafe(32)
         session = AdminSession(
@@ -48,7 +46,7 @@ class AdminSessionStore:
             self._entries[handle] = session
         return handle
 
-    def get(self, handle: Optional[str]) -> Optional[AdminSession]:
+    def get(self, handle: str | None) -> AdminSession | None:
         if not handle:
             return None
         now = time.monotonic()
@@ -61,7 +59,7 @@ class AdminSessionStore:
                 return None
             return session
 
-    def revoke(self, handle: Optional[str]) -> None:
+    def revoke(self, handle: str | None) -> None:
         if not handle:
             return
         with self._lock:

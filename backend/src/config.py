@@ -7,6 +7,7 @@ Two tiers:
 - Config: facade combining both, backward compatible with config.X access
 """
 
+import contextlib
 import json
 import os
 import threading
@@ -22,10 +23,10 @@ from backend.src.quality import DEFAULT_ENABLED_OPTIONS, QUALITY_TIERS, RESOLUTI
 
 def _bool(value: str) -> bool:
     """Convert env string to bool"""
-    return value.lower() in ('true', '1', 'yes')
+    return value.lower() in ("true", "1", "yes")
 
 
-CONFIG_JSON_PATH = Path(__file__).parent.parent.parent / 'config.json'
+CONFIG_JSON_PATH = Path(__file__).parent.parent.parent / "config.json"
 
 
 @dataclass(frozen=True)
@@ -45,27 +46,27 @@ class EnvConfig:
     TRUSTED_PROXY_CIDRS: tuple[str, ...]
 
     @classmethod
-    def from_env(cls) -> 'EnvConfig':
-        env_path = Path(__file__).parent.parent.parent / '.env'
+    def from_env(cls) -> "EnvConfig":
+        env_path = Path(__file__).parent.parent.parent / ".env"
         load_dotenv(env_path)
 
-        origins_raw = os.getenv('CORS_ALLOWED_ORIGINS', '*').strip()
-        proxy_cidrs_raw = os.getenv('TRUSTED_PROXY_CIDRS', '').strip()
+        origins_raw = os.getenv("CORS_ALLOWED_ORIGINS", "*").strip()
+        proxy_cidrs_raw = os.getenv("TRUSTED_PROXY_CIDRS", "").strip()
         return cls(
-            WATCH_PARTY_BIND=os.getenv('WATCH_PARTY_BIND', '0.0.0.0'),
-            WATCH_PARTY_PORT=int(os.getenv('WATCH_PARTY_PORT', '5000')),
-            APP_PREFIX=os.getenv('APP_PREFIX', '').rstrip('/'),
-            SESSION_EXPIRY=int(os.getenv('SESSION_EXPIRY', '86400')),
-            EMBY_SERVER_URL=os.getenv('EMBY_SERVER_URL', 'http://localhost:8096'),
-            EMBY_API_KEY=os.getenv('EMBY_API_KEY', ''),
-            APP_ENV=os.getenv('APP_ENV', 'development').strip().lower(),
-            SESSION_SECRET=os.getenv('SESSION_SECRET', '').strip(),
-            SESSION_COOKIE_SECURE=_bool(os.getenv('SESSION_COOKIE_SECURE', 'false')),
+            WATCH_PARTY_BIND=os.getenv("WATCH_PARTY_BIND", "0.0.0.0"),
+            WATCH_PARTY_PORT=int(os.getenv("WATCH_PARTY_PORT", "5000")),
+            APP_PREFIX=os.getenv("APP_PREFIX", "").rstrip("/"),
+            SESSION_EXPIRY=int(os.getenv("SESSION_EXPIRY", "86400")),
+            EMBY_SERVER_URL=os.getenv("EMBY_SERVER_URL", "http://localhost:8096"),
+            EMBY_API_KEY=os.getenv("EMBY_API_KEY", ""),
+            APP_ENV=os.getenv("APP_ENV", "development").strip().lower(),
+            SESSION_SECRET=os.getenv("SESSION_SECRET", "").strip(),
+            SESSION_COOKIE_SECURE=_bool(os.getenv("SESSION_COOKIE_SECURE", "false")),
             CORS_ALLOWED_ORIGINS=tuple(
-                value.strip() for value in origins_raw.split(',') if value.strip()
+                value.strip() for value in origins_raw.split(",") if value.strip()
             ),
             TRUSTED_PROXY_CIDRS=tuple(
-                value.strip() for value in proxy_cidrs_raw.split(',') if value.strip()
+                value.strip() for value in proxy_cidrs_raw.split(",") if value.strip()
             ),
         )
 
@@ -122,28 +123,28 @@ class RuntimeConfig:
     )
 
     # Logging
-    LOG_LEVEL: str = 'INFO'
+    LOG_LEVEL: str = "INFO"
     LOG_TO_FILE: bool = True
-    LOG_FILE: str = 'logs/emby-watchparty.log'
-    LOG_FORMAT: str = 'rsyslog'
+    LOG_FILE: str = "logs/emby-watchparty.log"
+    LOG_FORMAT: str = "rsyslog"
     LOG_MAX_SIZE: int = 10
-    CONSOLE_LOG_LEVEL: str = 'WARNING'
+    CONSOLE_LOG_LEVEL: str = "WARNING"
 
     # Security
     MAX_USERS_PER_PARTY: int = 0
     ENABLE_HLS_TOKEN_VALIDATION: bool = True
     HLS_TOKEN_EXPIRY: int = 86400
     ENABLE_RATE_LIMITING: bool = True
-    RATE_LIMIT_PARTY_CREATION: str = '5 per hour'
-    RATE_LIMIT_API_CALLS: str = '1000 per minute'
-    RATE_LIMIT_LOGIN: str = '10 per 15 minutes'
-    RATE_LIMIT_AVATAR_RECOVERY: str = '10 per hour'
-    RATE_LIMIT_CHAT: str = '5 per 3 seconds'
-    RATE_LIMIT_SOCKET_CONNECTIONS: str = '30 per minute'
+    RATE_LIMIT_PARTY_CREATION: str = "5 per hour"
+    RATE_LIMIT_API_CALLS: str = "1000 per minute"
+    RATE_LIMIT_LOGIN: str = "10 per 15 minutes"
+    RATE_LIMIT_AVATAR_RECOVERY: str = "10 per hour"
+    RATE_LIMIT_CHAT: str = "5 per 3 seconds"
+    RATE_LIMIT_SOCKET_CONNECTIONS: str = "30 per minute"
 
     # Session
     STATIC_SESSION_ENABLED: bool = False
-    STATIC_SESSION_ID: str = 'PARTY'
+    STATIC_SESSION_ID: str = "PARTY"
 
     # Late joiner vote
     LATE_JOIN_VOTE_ENABLED: bool = True
@@ -154,7 +155,7 @@ class RuntimeConfig:
     LATE_JOIN_VOTE_COOLDOWN_SECONDS: int = 30
 
     @classmethod
-    def from_file(cls, path: Path = CONFIG_JSON_PATH) -> 'RuntimeConfig':
+    def from_file(cls, path: Path = CONFIG_JSON_PATH) -> "RuntimeConfig":
         """Load from config.json, falling back to defaults for missing fields.
 
         If config.json is corrupted (truncated / not valid JSON) we still
@@ -165,19 +166,18 @@ class RuntimeConfig:
         overwrite config.json with defaults, permanently losing every
         prior admin tuning.
         """
-        import time as _t
-        import shutil
         import logging as _logging
+        import shutil
+        import time as _t
+
         instance = cls()
         if path.exists():
             try:
-                with open(path, 'r') as f:
+                with path.open() as f:
                     data = json.load(f)
                 instance.update_from_dict(data)
             except json.JSONDecodeError as e:
-                backup_path = path.with_name(
-                    f"{path.name}.corrupt-{int(_t.time())}"
-                )
+                backup_path = path.with_name(f"{path.name}.corrupt-{int(_t.time())}")
                 backup: Path | None = backup_path
                 try:
                     shutil.copy2(path, backup_path)
@@ -205,22 +205,25 @@ class RuntimeConfig:
         """
         import os
         import tempfile
+
         path.parent.mkdir(parents=True, exist_ok=True)
         # Same directory so os.replace() is atomic (rename across
         # filesystems can partial-succeed). NamedTemporaryFile with
         # delete=False so we control the final rename ourselves.
         with tempfile.NamedTemporaryFile(
-            mode='w', dir=path.parent, prefix=path.name + '.',
-            suffix='.tmp', delete=False, encoding='utf-8',
+            mode="w",
+            dir=path.parent,
+            prefix=path.name + ".",
+            suffix=".tmp",
+            delete=False,
+            encoding="utf-8",
         ) as tmp:
             json.dump(self.to_dict(), tmp, indent=2)
             tmp.flush()
-            try:
+            with contextlib.suppress(OSError):
                 os.fsync(tmp.fileno())
-            except OSError:
-                pass
             tmp_name = tmp.name
-        os.replace(tmp_name, path)
+        Path(tmp_name).replace(path)
 
     def to_dict(self) -> dict:
         return {f.name: getattr(self, f.name) for f in fields(self)}
@@ -250,9 +253,9 @@ class RuntimeConfig:
         # the payload every time. Silently drop them instead of listing
         # them in `rejected` where they'd show up as a scary "Not
         # applied: error (unknown field)" line after a plain no-op Save.
-        _RESPONSE_WRAPPER_KEYS = {"error"}
+        response_wrapper_keys = {"error"}
         for key, value in data.items():
-            if key in _RESPONSE_WRAPPER_KEYS:
+            if key in response_wrapper_keys:
                 continue
             if key not in valid_fields:
                 rejected.append({"key": key, "reason": "unknown field"})
@@ -263,22 +266,25 @@ class RuntimeConfig:
 
             # Type coercion
             ftype = field_obj.type
-            is_list = (ftype is list) or (isinstance(ftype, str) and ftype.startswith('list')) \
+            is_list = (
+                (ftype is list)
+                or (isinstance(ftype, str) and ftype.startswith("list"))
                 or (get_origin(ftype) is list)
-            is_dict = (ftype is dict) or (isinstance(ftype, str) and ftype.startswith('dict')) \
+            )
+            is_dict = (
+                (ftype is dict)
+                or (isinstance(ftype, str) and ftype.startswith("dict"))
                 or (get_origin(ftype) is dict)
+            )
             try:
-                if ftype == 'bool' or ftype is bool:
-                    if isinstance(value, str):
-                        value = _bool(value)
-                    else:
-                        value = bool(value)
-                elif ftype == 'int' or ftype is int:
+                if ftype == "bool" or ftype is bool:
+                    value = _bool(value) if isinstance(value, str) else bool(value)
+                elif ftype == "int" or ftype is int:
                     if value is None:
                         rejected.append({"key": key, "reason": "null not allowed for int"})
                         continue
                     value = int(value)
-                elif ftype == 'str' or ftype is str:
+                elif ftype == "str" or ftype is str:
                     if value is None:
                         rejected.append({"key": key, "reason": "null not allowed for str"})
                         continue
@@ -294,17 +300,17 @@ class RuntimeConfig:
                     # store [] -- their bitrate value is ignored on
                     # render but normalising here keeps config.json
                     # tidy.
-                    if key == 'ENABLED_QUALITY_OPTIONS':
+                    if key == "ENABLED_QUALITY_OPTIONS":
                         cleaned: dict[str, list[int]] = {}
                         for res, kbps_list in value.items():
                             if res not in RESOLUTION_ORDER:
                                 continue
-                            tier_bitrates = set(QUALITY_TIERS[res]['bitrates_kbps'])
+                            tier_bitrates = set(QUALITY_TIERS[res]["bitrates_kbps"])
                             if not tier_bitrates:
                                 cleaned[res] = []
                                 continue
                             allowed: list[int] = []
-                            for raw in (kbps_list or []):
+                            for raw in kbps_list or []:
                                 try:
                                     kbps = int(raw)
                                 except (ValueError, TypeError):
@@ -317,9 +323,11 @@ class RuntimeConfig:
                     if isinstance(value, list):
                         value = [str(x).strip() for x in value if str(x).strip()]
                     elif isinstance(value, str):
-                        value = [s.strip() for s in value.split(',') if s.strip()]
+                        value = [s.strip() for s in value.split(",") if s.strip()]
                     else:
-                        rejected.append({"key": key, "reason": "expected list or comma-separated string"})
+                        rejected.append(
+                            {"key": key, "reason": "expected list or comma-separated string"}
+                        )
                         continue
             except (ValueError, TypeError) as e:
                 rejected.append({"key": key, "reason": f"coercion failed: {e}"})
@@ -335,27 +343,45 @@ class RuntimeConfig:
     def field_metadata(cls) -> list:
         """Return field info for the admin UI"""
         sections = {
-            'Auth': ['REQUIRE_LOGIN'],
-            'Playback': ['FORCE_TRANSCODE', 'BINGE_WATCH_ENABLED', 'BINGE_WATCH_COUNTDOWN_SECONDS'],
-            'Quality': ['ENABLED_QUALITY_OPTIONS'],
-            'Logging': ['LOG_LEVEL', 'LOG_TO_FILE', 'LOG_FILE', 'LOG_FORMAT', 'LOG_MAX_SIZE', 'CONSOLE_LOG_LEVEL'],
-            'Security': ['MAX_USERS_PER_PARTY', 'ENABLE_HLS_TOKEN_VALIDATION', 'HLS_TOKEN_EXPIRY',
-                         'ENABLE_RATE_LIMITING', 'RATE_LIMIT_PARTY_CREATION', 'RATE_LIMIT_API_CALLS'],
-            'Session': ['STATIC_SESSION_ENABLED', 'STATIC_SESSION_ID'],
-            'Late Join Vote': ['LATE_JOIN_VOTE_ENABLED', 'LATE_JOIN_VOTE_TIMEOUT_SECONDS',
-                                'LATE_JOIN_VOTE_COOLDOWN_SECONDS'],
+            "Auth": ["REQUIRE_LOGIN"],
+            "Playback": ["FORCE_TRANSCODE", "BINGE_WATCH_ENABLED", "BINGE_WATCH_COUNTDOWN_SECONDS"],
+            "Quality": ["ENABLED_QUALITY_OPTIONS"],
+            "Logging": [
+                "LOG_LEVEL",
+                "LOG_TO_FILE",
+                "LOG_FILE",
+                "LOG_FORMAT",
+                "LOG_MAX_SIZE",
+                "CONSOLE_LOG_LEVEL",
+            ],
+            "Security": [
+                "MAX_USERS_PER_PARTY",
+                "ENABLE_HLS_TOKEN_VALIDATION",
+                "HLS_TOKEN_EXPIRY",
+                "ENABLE_RATE_LIMITING",
+                "RATE_LIMIT_PARTY_CREATION",
+                "RATE_LIMIT_API_CALLS",
+            ],
+            "Session": ["STATIC_SESSION_ENABLED", "STATIC_SESSION_ID"],
+            "Late Join Vote": [
+                "LATE_JOIN_VOTE_ENABLED",
+                "LATE_JOIN_VOTE_TIMEOUT_SECONDS",
+                "LATE_JOIN_VOTE_COOLDOWN_SECONDS",
+            ],
         }
         result = []
         for section, keys in sections.items():
             for key in keys:
                 f = next((fd for fd in fields(cls) if fd.name == key), None)
                 if f:
-                    result.append({
-                        'name': f.name,
-                        'type': f.type.__name__ if hasattr(f.type, '__name__') else str(f.type),
-                        'section': section,
-                        'default': f.default if f.default is not f.default_factory else None,
-                    })
+                    result.append(
+                        {
+                            "name": f.name,
+                            "type": f.type.__name__ if hasattr(f.type, "__name__") else str(f.type),
+                            "section": section,
+                            "default": f.default if f.default is not f.default_factory else None,
+                        }
+                    )
         return result
 
 
@@ -367,24 +393,24 @@ class Config:
 
     def __init__(self, env: EnvConfig, runtime: RuntimeConfig):
         # Use object.__setattr__ to avoid triggering __getattr__
-        object.__setattr__(self, '_env', env)
-        object.__setattr__(self, '_runtime', runtime)
-        object.__setattr__(self, '_lock', threading.Lock())
+        object.__setattr__(self, "_env", env)
+        object.__setattr__(self, "_runtime", runtime)
+        object.__setattr__(self, "_lock", threading.Lock())
 
     def __getattr__(self, name: str):
         # Check runtime first (mutable settings), then env (frozen)
-        runtime = object.__getattribute__(self, '_runtime')
+        runtime = object.__getattribute__(self, "_runtime")
         if hasattr(runtime, name):
             return getattr(runtime, name)
 
-        env = object.__getattribute__(self, '_env')
+        env = object.__getattribute__(self, "_env")
         if hasattr(env, name):
             return getattr(env, name)
 
         raise AttributeError(f"Config has no setting '{name}'")
 
     @classmethod
-    def from_env(cls) -> 'Config':
+    def from_env(cls) -> "Config":
         env = EnvConfig.from_env()
         runtime = RuntimeConfig.from_file()
         return cls(env, runtime)
@@ -399,8 +425,8 @@ class Config:
         not applied: expected int)" instead of silently pretending
         the change stuck.
         """
-        lock = object.__getattribute__(self, '_lock')
-        runtime = object.__getattribute__(self, '_runtime')
+        lock = object.__getattribute__(self, "_lock")
+        runtime = object.__getattribute__(self, "_runtime")
         with lock:
             changed, rejected = runtime.update_from_dict(data)
             if changed:
@@ -409,27 +435,27 @@ class Config:
 
     def get_runtime_dict(self) -> dict:
         """Get all runtime settings as a dict (for admin API)"""
-        runtime = object.__getattribute__(self, '_runtime')
+        runtime = object.__getattribute__(self, "_runtime")
         return runtime.to_dict()
 
     def validate_for_startup(self) -> None:
         """Reject unsafe boot configuration when production mode is explicit."""
-        if self.APP_ENV not in {'development', 'production'}:
+        if self.APP_ENV not in {"development", "production"}:
             raise ValueError("APP_ENV must be 'development' or 'production'")
-        if self.APP_ENV != 'production':
+        if self.APP_ENV != "production":
             return
         if not self.SESSION_SECRET:
-            raise ValueError('SESSION_SECRET is required in production')
+            raise ValueError("SESSION_SECRET is required in production")
         if len(self.SESSION_SECRET) < 32:
-            raise ValueError('SESSION_SECRET must be at least 32 characters in production')
+            raise ValueError("SESSION_SECRET must be at least 32 characters in production")
         if not self.SESSION_COOKIE_SECURE:
-            raise ValueError('SESSION_COOKIE_SECURE must be true in production')
-        if not self.CORS_ALLOWED_ORIGINS or '*' in self.CORS_ALLOWED_ORIGINS:
-            raise ValueError('CORS_ALLOWED_ORIGINS must be explicit in production')
+            raise ValueError("SESSION_COOKIE_SECURE must be true in production")
+        if not self.CORS_ALLOWED_ORIGINS or "*" in self.CORS_ALLOWED_ORIGINS:
+            raise ValueError("CORS_ALLOWED_ORIGINS must be explicit in production")
         if not self.EMBY_API_KEY:
-            raise ValueError('EMBY_API_KEY is required in production')
+            raise ValueError("EMBY_API_KEY is required in production")
         emby_url = urlsplit(self.EMBY_SERVER_URL)
-        if emby_url.scheme not in {'http', 'https'} or not emby_url.hostname:
-            raise ValueError('EMBY_SERVER_URL must be a valid HTTP(S) URL in production')
+        if emby_url.scheme not in {"http", "https"} or not emby_url.hostname:
+            raise ValueError("EMBY_SERVER_URL must be a valid HTTP(S) URL in production")
         if not self.ENABLE_HLS_TOKEN_VALIDATION:
-            raise ValueError('HLS token validation must be enabled in production')
+            raise ValueError("HLS token validation must be enabled in production")

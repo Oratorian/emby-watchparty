@@ -12,9 +12,7 @@ def test_readiness_retries_transient_emby_read_failures(live_watchparty) -> None
 
     assert response.status_code == 200
     assert response.json()["status"] == "ready"
-    recorded = httpx.get(
-        f"{live_watchparty.fake.url}/__test__/requests"
-    ).json()["requests"]
+    recorded = httpx.get(f"{live_watchparty.fake.url}/__test__/requests").json()["requests"]
     attempts = [r for r in recorded if r["path"] == "/emby/System/Info/Public"]
     assert len(attempts) == 3
 
@@ -37,11 +35,6 @@ def test_admin_authentication_write_is_not_retried(live_watchparty) -> None:
 
     assert response.status_code == 200
     assert response.json()["success"] is False
-    recorded = httpx.get(
-        f"{live_watchparty.fake.url}/__test__/requests"
-    ).json()["requests"]
-    attempts = [
-        r for r in recorded
-        if r["path"] == "/emby/Users/AuthenticateByName"
-    ]
+    recorded = httpx.get(f"{live_watchparty.fake.url}/__test__/requests").json()["requests"]
+    attempts = [r for r in recorded if r["path"] == "/emby/Users/AuthenticateByName"]
     assert len(attempts) == 1

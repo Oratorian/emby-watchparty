@@ -60,16 +60,12 @@ def test_avatar_recovery_uses_shared_limiter_and_retry_after(tmp_path: Path):
         logging.getLogger("test-rate-limit"),
     )
     app.dependency_overrides[get_avatar_store] = lambda: store
-    app.dependency_overrides[get_logger] = lambda: logging.getLogger(
-        "test-rate-limit"
-    )
+    app.dependency_overrides[get_logger] = lambda: logging.getLogger("test-rate-limit")
 
     async def exercise() -> httpx.Response:
         async with asgi_client(app) as client:
             for _ in range(10):
-                response = await client.post(
-                    "/api/avatar/recover", json={"code": "bad"}
-                )
+                response = await client.post("/api/avatar/recover", json={"code": "bad"})
                 assert response.status_code == 200
             return await client.post("/api/avatar/recover", json={"code": "bad"})
 

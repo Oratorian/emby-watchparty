@@ -2,10 +2,10 @@
 
 
 def register(ctx):
-    sio = ctx['sio']
-    emby_client = ctx['emby_client']
-    logger = ctx['logger']
-    party_manager = ctx['party_manager']
+    sio = ctx["sio"]
+    emby_client = ctx["emby_client"]
+    logger = ctx["logger"]
+    party_manager = ctx["party_manager"]
 
     async def _report_emby_progress(snapshot, position, is_paused, event_name):
         """Report playback progress to Emby for a specific user's stream."""
@@ -17,7 +17,9 @@ def register(ctx):
             item_id=current_video.item_id,
             media_source_id=user_stream.media_source_id,
             play_session_id=user_stream.play_session_id,
-            position_seconds=position, is_paused=is_paused, event_name=event_name,
+            position_seconds=position,
+            is_paused=is_paused,
+            event_name=event_name,
             audio_index=user_stream.audio_index,
             subtitle_index=user_stream.subtitle_index if user_stream.subtitle_index != -1 else None,
             run_time_seconds=current_video.run_time_seconds,
@@ -33,9 +35,7 @@ def register(ctx):
             party_id, sid, playing=True, position=current_time
         )
         if commit is None:
-            logger.info(
-                f"handle_play REJECTED: sid={sid} is not a member of {party_id}"
-            )
+            logger.info(f"handle_play REJECTED: sid={sid} is not a member of {party_id}")
             return
         logger.debug(
             f"PLAY accepted from {commit.username} (sid={sid}, "
@@ -51,8 +51,7 @@ def register(ctx):
         # broadcast-fire duplicate that used to show up whenever the
         # server broadcasted to the sender (e.g. seek during playback).
         # See the matching comment in handle_seek.
-        await sio.emit("play", {"time": current_time, "username": commit.username},
-                        room=party_id)
+        await sio.emit("play", {"time": current_time, "username": commit.username}, room=party_id)
         await _report_emby_progress(
             commit.report, current_time, is_paused=False, event_name="Unpause"
         )
@@ -65,9 +64,7 @@ def register(ctx):
             party_id, sid, playing=False, position=current_time
         )
         if commit is None:
-            logger.info(
-                f"handle_pause REJECTED: sid={sid} is not a member of {party_id}"
-            )
+            logger.info(f"handle_pause REJECTED: sid={sid} is not a member of {party_id}")
             return
         logger.debug(
             f"PAUSE accepted from {commit.username} (sid={sid}, "
@@ -77,11 +74,8 @@ def register(ctx):
 
         # Broadcast to everyone including the sender. See the matching
         # comment on handle_play / handle_seek for the rationale.
-        await sio.emit("pause", {"time": current_time, "username": commit.username},
-                        room=party_id)
-        await _report_emby_progress(
-            commit.report, current_time, is_paused=True, event_name="Pause"
-        )
+        await sio.emit("pause", {"time": current_time, "username": commit.username}, room=party_id)
+        await _report_emby_progress(commit.report, current_time, is_paused=True, event_name="Pause")
 
     @sio.on("seek")
     async def handle_seek(sid, data):
@@ -100,15 +94,25 @@ def register(ctx):
 
             # Start a ready check so everyone buffers before resuming
             # Pause everyone, show overlay, then seek
-            await sio.emit("force_pause_before_seek", {"time": seek_time},
-                            room=party_id)
-            await sio.emit("ready_check_update", {
-                "ready": [], "waiting": list(commit.waiting_names),
-            }, room=party_id)
-            await sio.emit("seek", {
-                "time": seek_time, "playing": True, "username": commit.username,
-                "wait_for_ready": True,
-            }, room=party_id)
+            await sio.emit("force_pause_before_seek", {"time": seek_time}, room=party_id)
+            await sio.emit(
+                "ready_check_update",
+                {
+                    "ready": [],
+                    "waiting": list(commit.waiting_names),
+                },
+                room=party_id,
+            )
+            await sio.emit(
+                "seek",
+                {
+                    "time": seek_time,
+                    "playing": True,
+                    "username": commit.username,
+                    "wait_for_ready": True,
+                },
+                room=party_id,
+            )
         else:
             # Broadcast to everyone including the seeker. The client-side
             # handler is idempotent on the seeker's own video (it only
@@ -121,12 +125,19 @@ def register(ctx):
             # during playback (which already broadcast to everyone for
             # the ready-check handshake) produced a duplicate "seeked
             # to" message in chat.
-            await sio.emit("seek", {
-                "time": seek_time, "playing": False, "username": commit.username,
-            }, room=party_id)
+            await sio.emit(
+                "seek",
+                {
+                    "time": seek_time,
+                    "playing": False,
+                    "username": commit.username,
+                },
+                room=party_id,
+            )
 
         await _report_emby_progress(
-            commit.report, seek_time,
+            commit.report,
+            seek_time,
             is_paused=not was_playing,
             event_name="TimeUpdate",
         )

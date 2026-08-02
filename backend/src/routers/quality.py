@@ -18,7 +18,6 @@ from backend.src.quality import (
 )
 from backend.src.schemas import QualityOption, QualityOptionsResponse
 
-
 router = APIRouter(prefix="/api", tags=["quality"])
 
 

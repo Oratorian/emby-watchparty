@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping, Sequence
-import logging
+from typing import TYPE_CHECKING, ClassVar
 
 import httpx
+
+if TYPE_CHECKING:
+    import logging
 
 QueryScalar = str | int | float | bool | None
 QueryParams = (
@@ -19,9 +22,9 @@ QueryParams = (
 
 
 class EmbyGateway:
-    RETRYABLE_STATUSES = {502, 503, 504}
+    RETRYABLE_STATUSES: ClassVar[frozenset[int]] = frozenset({502, 503, 504})
     RETRY_DELAYS = (0.1, 0.25)
-    SAFE_METHODS = {"GET", "HEAD"}
+    SAFE_METHODS: ClassVar[frozenset[str]] = frozenset({"GET", "HEAD"})
 
     def __init__(self, client: httpx.AsyncClient, server_url: str, logger: logging.Logger):
         self.client = client
@@ -86,9 +89,7 @@ class EmbyGateway:
         headers: dict[str, str] | None = None,
         params: QueryParams | None = None,
     ) -> httpx.Response:
-        return await self.request(
-            "GET", path, timeout=timeout, headers=headers, params=params
-        )
+        return await self.request("GET", path, timeout=timeout, headers=headers, params=params)
 
     async def post(
         self,
@@ -111,9 +112,7 @@ class EmbyGateway:
         headers: dict[str, str] | None = None,
         params: QueryParams | None = None,
     ) -> httpx.Response:
-        return await self.request(
-            "DELETE", path, timeout=timeout, headers=headers, params=params
-        )
+        return await self.request("DELETE", path, timeout=timeout, headers=headers, params=params)
 
     async def open_stream(
         self,

@@ -10,13 +10,18 @@ stored token keeps the current video alive until it ends naturally.
 
 import re
 from urllib.parse import unquote, urlsplit
+
+import httpx
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response, StreamingResponse
-import httpx
 
 from backend.src.dependencies import (
-    get_config, get_emby_client, get_emby_gateway, get_token_manager,
-    get_party_manager, get_logger,
+    get_config,
+    get_emby_client,
+    get_emby_gateway,
+    get_logger,
+    get_party_manager,
+    get_token_manager,
 )
 
 router = APIRouter(prefix="/hls", tags=["hls"])
@@ -38,18 +43,32 @@ _EMBY_HTTP_TIMEOUT = 30.0
 # configuration. This set is the concrete list of names StreamBuilder
 # and the frontend can emit.
 _ALLOWED_EMBY_PARAMS = {
-    "MediaSourceId", "PlaySessionId", "DeviceId",
-    "SegmentContainer", "TranscodingMaxAudioChannels", "AudioCodec",
-    "AudioBitrate", "BreakOnNonKeyFrames", "MaxAudioChannels",
-    "MinSegments", "h264-profile", "h264-level", "VideoCodec",
-    "MaxWidth", "MaxHeight", "TranscodeReasons",
-    "EnableAutoStreamCopy", "VideoBitrate",
-    "AudioStreamIndex", "SubtitleStreamIndex", "SubtitleMethod",
+    "MediaSourceId",
+    "PlaySessionId",
+    "DeviceId",
+    "SegmentContainer",
+    "TranscodingMaxAudioChannels",
+    "AudioCodec",
+    "AudioBitrate",
+    "BreakOnNonKeyFrames",
+    "MaxAudioChannels",
+    "MinSegments",
+    "h264-profile",
+    "h264-level",
+    "VideoCodec",
+    "MaxWidth",
+    "MaxHeight",
+    "TranscodeReasons",
+    "EnableAutoStreamCopy",
+    "VideoBitrate",
+    "AudioStreamIndex",
+    "SubtitleStreamIndex",
+    "SubtitleMethod",
     "StartTimeTicks",
 }
 
 
-class UnsafeHLSQuery(ValueError):
+class UnsafeHLSQueryError(ValueError):
     """A client supplied a parameter outside the HLS allowlist."""
 
 
@@ -60,7 +79,7 @@ def _sanitize_query(query_items):
         if key == "token":
             continue
         if key not in _ALLOWED_EMBY_PARAMS:
-            raise UnsafeHLSQuery(key)
+            raise UnsafeHLSQueryError(key)
         sanitized.append((key, value))
     return sanitized
 
@@ -75,17 +94,12 @@ def _safe_hls_subpath(subpath: str) -> bool:
     else:
         return False
     parsed = urlsplit(decoded)
-    if (
-        not decoded
-        or parsed.scheme
-        or parsed.netloc
-        or decoded.startswith(('/', '\\'))
-    ):
+    if not decoded or parsed.scheme or parsed.netloc or decoded.startswith(("/", "\\")):
         return False
     if any(ord(character) < 32 or ord(character) == 127 for character in decoded):
         return False
-    normalized = decoded.replace('\\', '/')
-    return not any(part in {'.', '..'} for part in normalized.split('/'))
+    normalized = decoded.replace("\\", "/")
+    return not any(part in {".", ".."} for part in normalized.split("/"))
 
 
 def _resolve_host_creds(request: Request, token_manager, party_manager, logger):
@@ -108,8 +122,7 @@ def _resolve_host_creds(request: Request, token_manager, party_manager, logger):
         token,
         party_exists_fn=party_manager.exists,
         user_in_party_fn=lambda pid, sid: (
-            party_manager.get(pid) is not None
-            and party_manager.get(pid).has_sid(sid)
+            party_manager.get(pid) is not None and party_manager.get(pid).has_sid(sid)
         ),
     )
     if not valid:
@@ -155,7 +168,7 @@ def _rewrite_playlist(
             if line.strip().startswith("#") or not line.strip():
                 continue
             uri = line.rstrip("\r\n")
-            terminator = line[len(uri):]
+            terminator = line[len(uri) :]
             parsed = urlsplit(uri)
             if parsed.scheme or parsed.netloc or uri.startswith(("/", "\\")):
                 raise ValueError("playlist contains an unsafe absolute URI")
@@ -179,19 +192,24 @@ def _rewrite_playlist(
         502: {"description": "Upstream Emby request failed"},
     },
 )
-async def proxy_hls_master(item_id: str, request: Request,
-                     config=Depends(get_config), emby_client=Depends(get_emby_client),
-                     emby_gateway=Depends(get_emby_gateway),
-                     token_manager=Depends(get_token_manager),
-                     party_manager=Depends(get_party_manager),
-                     logger=Depends(get_logger)):
+async def proxy_hls_master(
+    item_id: str,
+    request: Request,
+    config=Depends(get_config),
+    emby_client=Depends(get_emby_client),
+    emby_gateway=Depends(get_emby_gateway),
+    token_manager=Depends(get_token_manager),
+    party_manager=Depends(get_party_manager),
+    logger=Depends(get_logger),
+):
     try:
         access_token, user_id, _ = _resolve_host_creds(
             request, token_manager, party_manager, logger
         )
         if not access_token:
             return Response(
-                content='{"error": "Unauthorized"}', status_code=401,
+                content='{"error": "Unauthorized"}',
+                status_code=401,
                 media_type="application/json",
             )
 
@@ -220,7 +238,7 @@ async def proxy_hls_master(item_id: str, request: Request,
                 "X-Content-Type-Options": "nosniff",
             },
         )
-    except UnsafeHLSQuery as e:
+    except UnsafeHLSQueryError as e:
         logger.warning("Rejected unapproved HLS query parameter: %s", e)
         return Response(
             content='{"error": "Invalid HLS query"}',
@@ -229,16 +247,25 @@ async def proxy_hls_master(item_id: str, request: Request,
         )
     except ValueError as e:
         logger.warning("Rejected unsafe master playlist: error=%s", type(e).__name__)
-        return Response(content='{"error": "Unsafe upstream playlist"}',
-                        status_code=502, media_type="application/json")
+        return Response(
+            content='{"error": "Unsafe upstream playlist"}',
+            status_code=502,
+            media_type="application/json",
+        )
     except httpx.HTTPError as e:
         logger.error("Failed to fetch master playlist: error=%s", type(e).__name__)
-        return Response(content='{"error": "Failed to fetch video from media server"}',
-                        status_code=502, media_type="application/json")
+        return Response(
+            content='{"error": "Failed to fetch video from media server"}',
+            status_code=502,
+            media_type="application/json",
+        )
     except Exception as e:
         logger.error("Unexpected HLS master proxy error=%s", type(e).__name__)
-        return Response(content='{"error": "Internal server error"}',
-                        status_code=500, media_type="application/json")
+        return Response(
+            content='{"error": "Internal server error"}',
+            status_code=500,
+            media_type="application/json",
+        )
 
 
 @router.get(
@@ -257,12 +284,17 @@ async def proxy_hls_master(item_id: str, request: Request,
         502: {"description": "Upstream Emby request failed"},
     },
 )
-async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
-                      config=Depends(get_config), emby_client=Depends(get_emby_client),
-                      emby_gateway=Depends(get_emby_gateway),
-                      token_manager=Depends(get_token_manager),
-                      party_manager=Depends(get_party_manager),
-                      logger=Depends(get_logger)):
+async def proxy_hls_segment(
+    item_id: str,
+    subpath: str,
+    request: Request,
+    config=Depends(get_config),
+    emby_client=Depends(get_emby_client),
+    emby_gateway=Depends(get_emby_gateway),
+    token_manager=Depends(get_token_manager),
+    party_manager=Depends(get_party_manager),
+    logger=Depends(get_logger),
+):
     try:
         if not _safe_hls_subpath(subpath):
             return Response(
@@ -275,7 +307,8 @@ async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
         )
         if not access_token:
             return Response(
-                content='{"error": "Unauthorized"}', status_code=401,
+                content='{"error": "Unauthorized"}',
+                status_code=401,
                 media_type="application/json",
             )
 
@@ -292,7 +325,9 @@ async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
                 timeout=_EMBY_HTTP_TIMEOUT,
             )
             emby_resp.raise_for_status()
-            token = request.query_params.get("token") if config.ENABLE_HLS_TOKEN_VALIDATION else None
+            token = (
+                request.query_params.get("token") if config.ENABLE_HLS_TOKEN_VALIDATION else None
+            )
             playlist = _rewrite_playlist(
                 emby_resp.text, item_id, config.APP_PREFIX, config.EMBY_SERVER_URL, token
             )
@@ -344,7 +379,7 @@ async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
             headers=response_headers,
         )
 
-    except UnsafeHLSQuery as e:
+    except UnsafeHLSQueryError as e:
         logger.warning("Rejected unapproved HLS query parameter: %s", e)
         return Response(
             content='{"error": "Invalid HLS query"}',
@@ -357,17 +392,26 @@ async def proxy_hls_segment(item_id: str, subpath: str, request: Request,
             subpath,
             type(e).__name__,
         )
-        return Response(content='{"error": "Unsafe upstream playlist"}',
-                        status_code=502, media_type="application/json")
+        return Response(
+            content='{"error": "Unsafe upstream playlist"}',
+            status_code=502,
+            media_type="application/json",
+        )
     except httpx.HTTPError as e:
         logger.error(
             "Failed to fetch HLS segment path=%s error=%s",
             subpath,
             type(e).__name__,
         )
-        return Response(content='{"error": "Failed to fetch segment"}',
-                        status_code=502, media_type="application/json")
+        return Response(
+            content='{"error": "Failed to fetch segment"}',
+            status_code=502,
+            media_type="application/json",
+        )
     except Exception as e:
         logger.error("Unexpected HLS segment proxy error=%s", type(e).__name__)
-        return Response(content='{"error": "Internal server error"}',
-                        status_code=500, media_type="application/json")
+        return Response(
+            content='{"error": "Internal server error"}',
+            status_code=500,
+            media_type="application/json",
+        )

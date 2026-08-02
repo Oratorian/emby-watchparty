@@ -162,9 +162,7 @@ async def _exercise_select_leave_race(live_watchparty) -> None:
         f"/api/party/{party_id}/join",
         json={"client_id": "racing-client", "display_name": "Alice"},
     )
-    await client.post(
-        "/api/auth/login", json={"username": "Alice", "password": "password"}
-    )
+    await client.post("/api/auth/login", json={"username": "Alice", "password": "password"})
     cookie = "; ".join(f"{name}={value}" for name, value in client.cookies.items())
     realtime = socketio.AsyncClient()
     await realtime.connect(live_watchparty.url, headers={"Cookie": cookie})
@@ -210,10 +208,7 @@ async def _exercise_playlist_fidelity_and_security(live_watchparty) -> None:
     client, realtime, master_url = await _select_video(live_watchparty.url)
     controls = httpx.AsyncClient(base_url=live_watchparty.fake.url)
     try:
-        crlf = (
-            "#EXTM3U\r\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\r\n"
-            "main.m3u8?PlaySessionId=one\r\n"
-        )
+        crlf = "#EXTM3U\r\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\r\nmain.m3u8?PlaySessionId=one\r\n"
         await controls.post("/__test__/behavior", json={"master_playlist": crlf})
         duplicate_url = f"{master_url}&AudioCodec=aac&AudioCodec=mp3"
         response = await client.get(duplicate_url)
@@ -227,12 +222,8 @@ async def _exercise_playlist_fidelity_and_security(live_watchparty) -> None:
         audio_codecs = [value for key, value in master_request["query"] if key == "AudioCodec"]
         assert audio_codecs[-2:] == ["aac", "mp3"]
 
-        lf_without_terminator = (
-            "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\nmain.m3u8"
-        )
-        await controls.post(
-            "/__test__/behavior", json={"master_playlist": lf_without_terminator}
-        )
+        lf_without_terminator = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\nmain.m3u8"
+        await controls.post("/__test__/behavior", json={"master_playlist": lf_without_terminator})
         response = await client.get(master_url)
         assert response.status_code == 200
         assert "\r\n" not in response.text

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import secrets
+from typing import TYPE_CHECKING
 
 import httpx
 
-from backend.src.emby_gateway import EmbyGateway
+if TYPE_CHECKING:
+    from backend.src.emby_gateway import EmbyGateway
 
 
 class EmbyClient:
@@ -81,14 +83,23 @@ class EmbyClient:
             "SupportsPersistentIdentifier": False,
             "DeviceProfile": {
                 "MaxStreamingBitrate": 10_000_000,
-                "TranscodingProfiles": [{
-                    "Container": "ts", "Type": "Video", "VideoCodec": "h264",
-                    "AudioCodec": "aac,mp3", "Protocol": "hls",
-                }],
-                "DirectPlayProfiles": [{
-                    "Container": "mp4,mkv", "Type": "Video", "VideoCodec": "h264",
-                    "AudioCodec": "aac,mp3",
-                }],
+                "TranscodingProfiles": [
+                    {
+                        "Container": "ts",
+                        "Type": "Video",
+                        "VideoCodec": "h264",
+                        "AudioCodec": "aac,mp3",
+                        "Protocol": "hls",
+                    }
+                ],
+                "DirectPlayProfiles": [
+                    {
+                        "Container": "mp4,mkv",
+                        "Type": "Video",
+                        "VideoCodec": "h264",
+                        "AudioCodec": "aac,mp3",
+                    }
+                ],
                 "SubtitleProfiles": [
                     {"Format": "vtt", "Method": "External"},
                     {"Format": "srt", "Method": "External"},
@@ -128,9 +139,7 @@ class EmbyClient:
     async def get_libraries(self, access_token=None, user_id=None):
         path = f"/emby/Users/{user_id}/Views" if user_id else "/emby/Library/MediaFolders"
         try:
-            response = await self.gateway.get(
-                path, headers=self._headers(access_token, user_id)
-            )
+            response = await self.gateway.get(path, headers=self._headers(access_token, user_id))
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as exc:
@@ -162,9 +171,9 @@ class EmbyClient:
         effective_recursive = recursive
         if parent_id and not item_type and not recursive:
             await self._ensure_library_cache(access_token, user_id)
-            collection_type = self._library_collection_types.get(
-                user_id or "_anon_", {}
-            ).get(parent_id)
+            collection_type = self._library_collection_types.get(user_id or "_anon_", {}).get(
+                parent_id
+            )
             mapping = {
                 "movies": "Movie",
                 "tvshows": "Series",
@@ -222,9 +231,7 @@ class EmbyClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as exc:
-            self.logger.error(
-                "Error fetching season episodes: error=%s", type(exc).__name__
-            )
+            self.logger.error("Error fetching season episodes: error=%s", type(exc).__name__)
             return {"Items": [], "TotalRecordCount": 0}
 
     async def get_item_details(self, item_id, access_token=None, user_id=None):
@@ -243,9 +250,7 @@ class EmbyClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as exc:
-            self.logger.error(
-                "Error fetching item details: error=%s", type(exc).__name__
-            )
+            self.logger.error("Error fetching item details: error=%s", type(exc).__name__)
             return None
 
     async def search_items(self, query, access_token=None, user_id=None):
@@ -275,8 +280,13 @@ class EmbyClient:
             return {"Items": []}
 
     def get_image_url(
-        self, item_id, image_type="Primary", access_token=None,
-        max_width=None, max_height=None, quality=None,
+        self,
+        item_id,
+        image_type="Primary",
+        access_token=None,
+        max_width=None,
+        max_height=None,
+        quality=None,
     ):
         params = [f"api_key={self._auth_param(access_token)}"]
         if max_width:
@@ -288,9 +298,15 @@ class EmbyClient:
         return f"{self.server_url}/emby/Items/{item_id}/Images/{image_type}?{'&'.join(params)}"
 
     async def get_playback_info(
-        self, item_id, audio_index=None, subtitle_index=None,
-        media_source_id=None, max_streaming_bitrate=None,
-        start_time_ticks=None, access_token=None, user_id=None,
+        self,
+        item_id,
+        audio_index=None,
+        subtitle_index=None,
+        media_source_id=None,
+        max_streaming_bitrate=None,
+        start_time_ticks=None,
+        access_token=None,
+        user_id=None,
     ):
         if not user_id:
             return None
@@ -318,9 +334,7 @@ class EmbyClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as exc:
-            self.logger.error(
-                "Error fetching playback info: error=%s", type(exc).__name__
-            )
+            self.logger.error("Error fetching playback info: error=%s", type(exc).__name__)
             return await self.get_item_details(item_id, access_token, user_id)
 
     async def stop_active_encodings(self, play_session_id=None, access_token=None):
@@ -336,9 +350,7 @@ class EmbyClient:
             response.raise_for_status()
             return True
         except httpx.HTTPError as exc:
-            self.logger.warning(
-                "Failed to stop active encodings: error=%s", type(exc).__name__
-            )
+            self.logger.warning("Failed to stop active encodings: error=%s", type(exc).__name__)
             return False
 
     @staticmethod
@@ -346,8 +358,15 @@ class EmbyClient:
         return int(seconds * 10_000_000)
 
     def _build_playback_payload(
-        self, item_id, media_source_id, play_session_id, position_seconds,
-        is_paused, audio_index=None, subtitle_index=None, run_time_seconds=None,
+        self,
+        item_id,
+        media_source_id,
+        play_session_id,
+        position_seconds,
+        is_paused,
+        audio_index=None,
+        subtitle_index=None,
+        run_time_seconds=None,
     ):
         payload = {
             "ItemId": item_id,
@@ -377,39 +396,69 @@ class EmbyClient:
             response.raise_for_status()
             return True
         except httpx.HTTPError as exc:
-            self.logger.warning(
-                "Playback report failed: error=%s", type(exc).__name__
-            )
+            self.logger.warning("Playback report failed: error=%s", type(exc).__name__)
             return False
 
     async def report_playback_start(
-        self, item_id, media_source_id, play_session_id, position_seconds=0,
-        audio_index=None, subtitle_index=None, run_time_seconds=None,
-        access_token=None, user_id=None,
+        self,
+        item_id,
+        media_source_id,
+        play_session_id,
+        position_seconds=0,
+        audio_index=None,
+        subtitle_index=None,
+        run_time_seconds=None,
+        access_token=None,
+        user_id=None,
     ):
         payload = self._build_playback_payload(
-            item_id, media_source_id, play_session_id, position_seconds, False,
-            audio_index, subtitle_index, run_time_seconds,
+            item_id,
+            media_source_id,
+            play_session_id,
+            position_seconds,
+            False,
+            audio_index,
+            subtitle_index,
+            run_time_seconds,
         )
         return await self._report("/emby/Sessions/Playing", payload, access_token, user_id)
 
     async def report_playback_progress(
-        self, item_id, media_source_id, play_session_id, position_seconds,
-        is_paused, event_name="TimeUpdate", audio_index=None,
-        subtitle_index=None, run_time_seconds=None, access_token=None, user_id=None,
+        self,
+        item_id,
+        media_source_id,
+        play_session_id,
+        position_seconds,
+        is_paused,
+        event_name="TimeUpdate",
+        audio_index=None,
+        subtitle_index=None,
+        run_time_seconds=None,
+        access_token=None,
+        user_id=None,
     ):
         payload = self._build_playback_payload(
-            item_id, media_source_id, play_session_id, position_seconds, is_paused,
-            audio_index, subtitle_index, run_time_seconds,
+            item_id,
+            media_source_id,
+            play_session_id,
+            position_seconds,
+            is_paused,
+            audio_index,
+            subtitle_index,
+            run_time_seconds,
         )
         payload["EventName"] = event_name
-        return await self._report(
-            "/emby/Sessions/Playing/Progress", payload, access_token, user_id
-        )
+        return await self._report("/emby/Sessions/Playing/Progress", payload, access_token, user_id)
 
     async def report_playback_stopped(
-        self, item_id, media_source_id, play_session_id, position_seconds,
-        run_time_seconds=None, access_token=None, user_id=None,
+        self,
+        item_id,
+        media_source_id,
+        play_session_id,
+        position_seconds,
+        run_time_seconds=None,
+        access_token=None,
+        user_id=None,
     ):
         payload = {
             "ItemId": item_id,
@@ -419,6 +468,4 @@ class EmbyClient:
         }
         if run_time_seconds is not None:
             payload["RunTimeTicks"] = self._seconds_to_ticks(run_time_seconds)
-        return await self._report(
-            "/emby/Sessions/Playing/Stopped", payload, access_token, user_id
-        )
+        return await self._report("/emby/Sessions/Playing/Stopped", payload, access_token, user_id)

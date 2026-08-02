@@ -98,9 +98,7 @@ def test_admin_logout_revokes_server_side_session(tmp_path: Path) -> None:
         async with asgi_client(_application(tmp_path)) as client:
             assert (await _login(client)).json()["success"] is True
             assert (await client.post("/api/admin/logout")).json()["success"] is True
-            assert (await client.get("/api/admin/config")).json() == {
-                "error": "Not authenticated"
-            }
+            assert (await client.get("/api/admin/config")).json() == {"error": "Not authenticated"}
 
     asyncio.run(exercise())
 
@@ -109,9 +107,7 @@ def test_expired_admin_session_no_longer_grants_access(tmp_path: Path) -> None:
     async def exercise() -> None:
         async with asgi_client(_application(tmp_path, session_expiry=0)) as client:
             assert (await _login(client)).json()["success"] is True
-            assert (await client.get("/api/admin/config")).json() == {
-                "error": "Not authenticated"
-            }
+            assert (await client.get("/api/admin/config")).json() == {"error": "Not authenticated"}
 
     asyncio.run(exercise())
 

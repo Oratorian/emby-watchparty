@@ -25,7 +25,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: python -m pip install -r requirements-dev.txt
       - name: Ruff
-        run: python -m ruff check backend scripts tests
+        run: |
+          python -m ruff check backend scripts tests
+          python -m ruff format --check backend scripts tests
       - name: mypy
         run: python -m mypy
       - name: pytest

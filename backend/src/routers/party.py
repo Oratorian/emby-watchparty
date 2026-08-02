@@ -10,9 +10,14 @@ party-bound session cookie used by every protected route.
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.src.dependencies import (
-    get_admin_session_store, get_config, get_party_manager, get_logger,
-    get_emby_client, get_sio,
+    get_admin_session_store,
+    get_config,
+    get_emby_client,
+    get_logger,
+    get_party_manager,
+    get_sio,
 )
+
 # Shared dev-host gate -- single source of truth lives in auth.py so the
 # env var name and value-parsing rules can never drift between modules.
 from backend.src.routers.auth import _env_dev_host_creds
@@ -71,13 +76,15 @@ def list_parties(
             continue
         try:
             cv = party.current_video
-            items.append(PartyListItem(
-                code=code,
-                title=cv.title if cv else None,
-                user_count=party.member_count,
-                playing=cv is not None,
-                locked=not party.host_access_token,
-            ))
+            items.append(
+                PartyListItem(
+                    code=code,
+                    title=cv.title if cv else None,
+                    user_count=party.member_count,
+                    playing=cv is not None,
+                    locked=not party.host_access_token,
+                )
+            )
         except Exception as e:
             # One bad party record should not break the whole index listing.
             logger.warning(
@@ -139,11 +146,7 @@ async def create_party(
     stashed_username = admin_session.username if admin_session else None
     stashed_is_admin = admin_session.is_admin if admin_session else False
 
-    if (
-        stashed_token
-        and stashed_user_id
-        and body.client_id
-    ):
+    if stashed_token and stashed_user_id and body.client_id:
         if not await emby_client.verify_access_token(stashed_token, stashed_user_id):
             logger.warning(
                 f"Stashed admin token failed revalidation for user "
@@ -214,8 +217,7 @@ async def create_party(
         request.session["client_id"] = body.client_id
         request.session["display_name"] = display_name
         logger.info(
-            f"Created party {party_id} with host '{auth['username']}' "
-            f"(admin={auth['is_admin']})"
+            f"Created party {party_id} with host '{auth['username']}' (admin={auth['is_admin']})"
         )
         return CreatePartyResponse(
             party_id=party_id,
@@ -255,9 +257,7 @@ async def join_party(
     if not party:
         return JoinPartyResponse(success=False, message="Party not found")
     if not body.client_id or not body.display_name:
-        return JoinPartyResponse(
-            success=False, message="client_id and display_name are required"
-        )
+        return JoinPartyResponse(success=False, message="client_id and display_name are required")
 
     request.session["party_id"] = party_id
     request.session["client_id"] = body.client_id

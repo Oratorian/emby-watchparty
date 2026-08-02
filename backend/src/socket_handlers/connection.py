@@ -10,12 +10,11 @@ import base64
 import json
 from http.cookies import SimpleCookie
 
-from itsdangerous import TimestampSigner, BadSignature
+from itsdangerous import BadSignature, TimestampSigner
 from socketio.exceptions import ConnectionRefusedError as SocketConnectionRefusedError
 
 from backend.src.client_ip import resolve_client_ip
 from backend.src.rate_limit import parse_rate
-
 
 # Must stay in sync with the `session_cookie` kwarg passed to
 # SessionMiddleware in backend/app.py; otherwise the socket handshake
@@ -50,20 +49,20 @@ def _decode_session(environ, secret):
 
 
 def register(ctx):
-    sio = ctx['sio']
-    emby_client = ctx['emby_client']
-    logger = ctx['logger']
-    party_manager = ctx['party_manager']
-    token_manager = ctx.get('token_manager')
-    session_secret = ctx.get('session_secret')
-    rate_limiter = ctx.get('rate_limiter')
-    config = ctx.get('config')
+    sio = ctx["sio"]
+    emby_client = ctx["emby_client"]
+    logger = ctx["logger"]
+    party_manager = ctx["party_manager"]
+    token_manager = ctx.get("token_manager")
+    session_secret = ctx.get("session_secret")
+    rate_limiter = ctx.get("rate_limiter")
+    config = ctx.get("config")
 
     # Keyed by party_id: the asyncio task that will fire host-cleanup
     # once the grace window expires. Surfaced via ctx so party.py can
     # cancel pending tasks on host rejoin.
     pending_host_clear: dict[str, asyncio.Task] = {}
-    ctx['pending_host_clear'] = pending_host_clear
+    ctx["pending_host_clear"] = pending_host_clear
 
     async def _clear_host_after_grace(party_id, client_id, username):
         """Fire HOST_GRACE_SECONDS after the host's sid drops.
@@ -101,29 +100,21 @@ def register(ctx):
                 return
             pending_host_clear.pop(party_id, None)
             logger.info(
-                f"Host '{username}' rejoined party {party_id} within grace; "
-                f"reclaimed UNLOCKED"
+                f"Host '{username}' rejoined party {party_id} within grace; reclaimed UNLOCKED"
             )
-            await sio.emit(
-                "host_reclaimed", {"host_username": username}, room=party_id
-            )
+            await sio.emit("host_reclaimed", {"host_username": username}, room=party_id)
             return
 
         if not party.current_video:
             party_manager.clear_host(party_id)
-            logger.info(
-                f"Host '{username}' left party {party_id} (no playback) -> LOCKED"
-            )
+            logger.info(f"Host '{username}' left party {party_id} (no playback) -> LOCKED")
             await sio.emit(
                 "host_left",
                 {"previous_host": username, "reason": "disconnect"},
                 room=party_id,
             )
         else:
-            logger.info(
-                f"Host '{username}' left party {party_id} during playback "
-                f"-> PLAYING-ONLY"
-            )
+            logger.info(f"Host '{username}' left party {party_id} during playback -> PLAYING-ONLY")
             await sio.emit(
                 "host_left",
                 {
@@ -186,20 +177,16 @@ def register(ctx):
         if not await party_manager.restore_host_presence(party_id):
             return False
         username = party.host_username or "?"
-        logger.info(
-            f"Host '{username}' reclaimed party {party_id} via fast rejoin"
-        )
-        await sio.emit(
-            "host_reclaimed", {"host_username": username}, room=party_id
-        )
+        logger.info(f"Host '{username}' reclaimed party {party_id} via fast rejoin")
+        await sio.emit("host_reclaimed", {"host_username": username}, room=party_id)
         return True
 
-    ctx['try_host_reclaim'] = _try_host_reclaim
+    ctx["try_host_reclaim"] = _try_host_reclaim
 
     @sio.event
-    async def connect(sid, environ, auth=None):
+    async def connect(sid, environ, _auth=None):
         if rate_limiter and config and config.ENABLE_RATE_LIMITING:
-            peer_ip = environ.get("REMOTE_ADDR", "0.0.0.0")
+            peer_ip = environ.get("REMOTE_ADDR", "127.0.0.1")
             client_ip = resolve_client_ip(
                 peer_ip,
                 environ.get("HTTP_X_FORWARDED_FOR", ""),
@@ -239,7 +226,7 @@ def register(ctx):
     @sio.event
     async def disconnect(sid):
         logger.info(f"Client disconnected: {sid}")
-        handle_disconnect_from_vote = ctx.get('handle_disconnect_from_vote')
+        handle_disconnect_from_vote = ctx.get("handle_disconnect_from_vote")
 
         for party_id, party in list(party_manager.get_all().items()):
             # Host-leave detection runs before the rest of the cleanup
@@ -306,21 +293,33 @@ def register(ctx):
 
                 if departure.all_ready:
                     logger.info(f"All users ready in party {party_id} (after disconnect)")
-                    await sio.emit("all_ready", {
-                        "time": departure.playback_time,
-                        "playing": departure.playback_playing,
-                    }, room=party_id)
+                    await sio.emit(
+                        "all_ready",
+                        {
+                            "time": departure.playback_time,
+                            "playing": departure.playback_playing,
+                        },
+                        room=party_id,
+                    )
                     if departure.auto_play:
-                        await sio.emit("play", {
+                        await sio.emit(
+                            "play",
+                            {
                                 "time": departure.playback_time,
                                 "username": None,
                                 "auto_binge": True,
-                        }, room=party_id)
+                            },
+                            room=party_id,
+                        )
                 elif departure.ready_names or departure.waiting_names:
-                    await sio.emit("ready_check_update", {
-                        "ready": list(departure.ready_names),
-                        "waiting": list(departure.waiting_names),
-                    }, room=party_id)
+                    await sio.emit(
+                        "ready_check_update",
+                        {
+                            "ready": list(departure.ready_names),
+                            "waiting": list(departure.waiting_names),
+                        },
+                        room=party_id,
+                    )
 
                 await sio.emit(
                     "user_left",
@@ -334,6 +333,4 @@ def register(ctx):
                 )
                 lifecycle = ctx.get("party_lifecycle")
                 if lifecycle:
-                    lifecycle.schedule_empty_dissolution(
-                        party_id, delay=HOST_GRACE_SECONDS
-                    )
+                    lifecycle.schedule_empty_dissolution(party_id, delay=HOST_GRACE_SECONDS)

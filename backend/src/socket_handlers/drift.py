@@ -1,15 +1,15 @@
 """Drift correction handler: heartbeat"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 DRIFT_THRESHOLD = 3.0
 CONSECUTIVE_REQUIRED = 2
 
 
 def register(ctx):
-    sio = ctx['sio']
-    logger = ctx['logger']
-    party_manager = ctx['party_manager']
+    sio = ctx["sio"]
+    logger = ctx["logger"]
+    party_manager = ctx["party_manager"]
 
     @sio.on("heartbeat")
     async def handle_heartbeat(sid, data):
@@ -30,7 +30,7 @@ def register(ctx):
 
         try:
             last_update_dt = datetime.fromisoformat(last_update)
-            elapsed = (datetime.now() - last_update_dt).total_seconds()
+            elapsed = (datetime.now(UTC) - last_update_dt).total_seconds()
             expected_time = playback_state.time + elapsed
         except (ValueError, KeyError):
             return

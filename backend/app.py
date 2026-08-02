@@ -30,7 +30,6 @@ from backend.src.socket_handlers import register_all as register_socket_handlers
 from backend.src.stream_builder import StreamBuilder
 from backend.src.update_checker import check_for_updates
 
-
 PROJECT_ROOT = Path(__file__).parent.parent
 STATIC_ROOT = Path(__file__).parent / "static"
 
@@ -83,11 +82,13 @@ async def lifespan(application: FastAPI):
     async with AsyncExitStack() as resources:
         # Acquire the process-wide HTTP client first so every later startup
         # failure still closes its transport through the exit stack.
-        http_client = await resources.enter_async_context(httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0, connect=5.0, pool=5.0),
-            follow_redirects=False,
-            transport=application.state.http_transport,
-        ))
+        http_client = await resources.enter_async_context(
+            httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, connect=5.0, pool=5.0),
+                follow_redirects=False,
+                transport=application.state.http_transport,
+            )
+        )
         party_manager = PartyManager(config, logger)
         token_manager = HLSTokenManager(config, logger)
         avatar_store = AvatarStore(
@@ -98,9 +99,7 @@ async def lifespan(application: FastAPI):
         admin_session_store = AdminSessionStore(ttl_seconds=config.SESSION_EXPIRY)
         rate_limiter = SlidingWindowRateLimiter()
         emby_gateway = EmbyGateway(http_client, config.EMBY_SERVER_URL, logger)
-        emby_client = EmbyClient(
-            config.EMBY_SERVER_URL, config.EMBY_API_KEY, logger, emby_gateway
-        )
+        emby_client = EmbyClient(config.EMBY_SERVER_URL, config.EMBY_API_KEY, logger, emby_gateway)
         stream_builder = StreamBuilder(emby_client, logger, config)
 
         application.state.config = config
@@ -141,8 +140,7 @@ async def lifespan(application: FastAPI):
         logger.info("Emby Server: %s", config.EMBY_SERVER_URL)
         if application.state.session_ephemeral:
             logger.warning(
-                "SESSION_SECRET is empty; using an ephemeral key. "
-                "Sessions expire on restart."
+                "SESSION_SECRET is empty; using an ephemeral key. Sessions expire on restart."
             )
         if application.state.enable_update_check:
             await check_for_updates(http_client, logger)
@@ -187,8 +185,7 @@ def _install_static_routes(application: FastAPI, prefix: str, static_root: Path)
         html = index_path.read_text(encoding="utf-8")
         base_href = f"{prefix}/" if prefix else "/"
         injection = (
-            f'<base href="{base_href}">'
-            f'<script>window.APP_PREFIX = {json.dumps(prefix)};</script>'
+            f'<base href="{base_href}"><script>window.APP_PREFIX = {json.dumps(prefix)};</script>'
         )
         return html.replace("<head>", "<head>" + injection, 1)
 
@@ -197,6 +194,7 @@ def _install_static_routes(application: FastAPI, prefix: str, static_root: Path)
         return HTMLResponse(rendered_index())
 
     if prefix:
+
         @application.get("/", include_in_schema=False)
         async def redirect_root_to_prefix():
             return RedirectResponse(url=f"{prefix}/")

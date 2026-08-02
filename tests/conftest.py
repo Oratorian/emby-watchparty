@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import socket
 import threading
 import time
+from dataclasses import dataclass
 
 import httpx
 import pytest

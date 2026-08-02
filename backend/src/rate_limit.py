@@ -1,18 +1,17 @@
 """Bounded in-memory rate limiting for single-process deployments."""
 
-from collections import deque
-from dataclasses import dataclass
 import re
 import threading
 import time
-from typing import Callable
+from collections import deque
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
 from backend.src.client_ip import request_client_ip
-
 
 _PERIOD_SECONDS = {
     "second": 1,
@@ -46,8 +45,7 @@ class RateLimitDecision:
 
 
 class SlidingWindowRateLimiter:
-    def __init__(self, max_keys: int = 10_000,
-                 clock: Callable[[], float] = time.monotonic):
+    def __init__(self, max_keys: int = 10_000, clock: Callable[[], float] = time.monotonic):
         self._max_keys = max_keys
         self._clock = clock
         self._buckets: dict[str, deque[float]] = {}
@@ -118,13 +116,13 @@ class SlidingWindowRateLimiter:
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request,
-        call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         path = request.url.path
         config = request.app.state.config
         api_root = f"{config.APP_PREFIX}/api"
         if not path.startswith(f"{api_root}/") or path in {
-            f"{api_root}/health", f"{api_root}/ready",
+            f"{api_root}/health",
+            f"{api_root}/ready",
         }:
             return await call_next(request)
 
@@ -132,11 +130,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         is_party_create = path == f"{api_root}/party/create" and request.method == "POST"
-        spec = (
-            config.RATE_LIMIT_PARTY_CREATION
-            if is_party_create
-            else config.RATE_LIMIT_API_CALLS
-        )
+        spec = config.RATE_LIMIT_PARTY_CREATION if is_party_create else config.RATE_LIMIT_API_CALLS
         try:
             limit, window = parse_rate(spec)
         except ValueError:
@@ -144,9 +138,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         client_ip = request_client_ip(request, config.TRUSTED_PROXY_CIDRS)
         scope = "party-create" if is_party_create else "api"
-        decision = request.app.state.rate_limiter.check(
-            f"{scope}:{client_ip}", limit, window
-        )
+        decision = request.app.state.rate_limiter.check(f"{scope}:{client_ip}", limit, window)
         if not decision.allowed:
             return JSONResponse(
                 {"detail": "Rate limit exceeded"},

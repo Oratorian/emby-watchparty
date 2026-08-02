@@ -15,9 +15,7 @@ Two paths in:
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
-from backend.src.log_levels import apply_log_levels
 from backend.src.client_ip import request_client_ip
-from backend.src.rate_limit import parse_rate
 from backend.src.dependencies import (
     admin_display_name,
     get_admin_session_store,
@@ -28,6 +26,8 @@ from backend.src.dependencies import (
     get_sio,
     is_admin_authenticated,
 )
+from backend.src.log_levels import apply_log_levels
+from backend.src.rate_limit import parse_rate
 from backend.src.schemas import (
     AdminLoginRequest,
     AdminLoginResponse,
@@ -42,14 +42,18 @@ def _client_ip(request: Request) -> str:
     config = request.app.state.config
     return request_client_ip(request, config.TRUSTED_PROXY_CIDRS)
 
+
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 @router.post("/login", response_model=AdminLoginResponse)
-async def admin_login(body: AdminLoginRequest, request: Request,
-                emby_client=Depends(get_emby_client),
-                admin_session_store=Depends(get_admin_session_store),
-                logger=Depends(get_logger)):
+async def admin_login(
+    body: AdminLoginRequest,
+    request: Request,
+    emby_client=Depends(get_emby_client),
+    admin_session_store=Depends(get_admin_session_store),
+    logger=Depends(get_logger),
+):
     """Standalone admin login. Useful when not currently in a party.
 
     Hosts who are already inside a party with admin policy do NOT need
@@ -62,23 +66,19 @@ async def admin_login(body: AdminLoginRequest, request: Request,
     all and the endpoint returned a clean success/failure signal.
     """
     ip = _client_ip(request)
-    limit, window = parse_rate(getattr(
-        request.app.state.config, "RATE_LIMIT_LOGIN", "10 per 15 minutes"
-    ))
+    limit, window = parse_rate(
+        getattr(request.app.state.config, "RATE_LIMIT_LOGIN", "10 per 15 minutes")
+    )
     decision = request.app.state.rate_limiter.check(
         f"admin-login:{ip}", limit=limit, window_seconds=window
     )
     if not decision.allowed:
-        logger.warning(
-            f"Admin login rate-limited for IP {ip} "
-            f"(retry in {decision.retry_after}s)"
-        )
+        logger.warning(f"Admin login rate-limited for IP {ip} (retry in {decision.retry_after}s)")
         return JSONResponse(
             {
                 "success": False,
                 "message": (
-                    "Too many login attempts. Try again in "
-                    f"{decision.retry_after} seconds."
+                    f"Too many login attempts. Try again in {decision.retry_after} seconds."
                 ),
             },
             status_code=429,
@@ -90,7 +90,10 @@ async def admin_login(body: AdminLoginRequest, request: Request,
     try:
         if not auth["is_admin"]:
             logger.warning(f"Admin login denied for '{body.username}' -- not administrator")
-            return {"success": False, "message": "This account does not have administrator privileges"}
+            return {
+                "success": False,
+                "message": "This account does not have administrator privileges",
+            }
 
         username = auth["username"]
         old_handle = request.session.pop("admin_session_id", None)
@@ -155,32 +158,37 @@ async def update_config(
     payload = body.model_dump(exclude_unset=True)
 
     env_only = {
-        'WATCH_PARTY_BIND', 'WATCH_PARTY_PORT', 'APP_PREFIX',
-        'SESSION_EXPIRY',
-        'EMBY_SERVER_URL', 'EMBY_API_KEY',
+        "WATCH_PARTY_BIND",
+        "WATCH_PARTY_PORT",
+        "APP_PREFIX",
+        "SESSION_EXPIRY",
+        "EMBY_SERVER_URL",
+        "EMBY_API_KEY",
     }
-    env_only_hit = [k for k in payload.keys() if k in env_only]
+    env_only_hit = [k for k in payload if k in env_only]
     if env_only_hit:
         return ConfigUpdateResponse(success=False)
 
     try:
         changed, rejected = config.update_runtime(payload)
 
-        if {'LOG_LEVEL', 'CONSOLE_LOG_LEVEL'} & set(changed):
+        if {"LOG_LEVEL", "CONSOLE_LOG_LEVEL"} & set(changed):
             apply_log_levels(config)
             logger.info(
-                f"Log levels reloaded: app={config.LOG_LEVEL}, "
-                f"console={config.CONSOLE_LOG_LEVEL}"
+                f"Log levels reloaded: app={config.LOG_LEVEL}, console={config.CONSOLE_LOG_LEVEL}"
             )
 
         # File-logging settings can be tuned via the admin panel but the
         # underlying handlers were only built once at boot. Flag these
         # so the UI can show a "restart required" banner instead of
         # silently pretending the change took effect.
-        _RESTART_REQUIRED = {'LOG_TO_FILE', 'LOG_FILE', 'LOG_FORMAT',
-                             'LOG_MAX_SIZE',
-                             }
-        restart_required = sorted(set(changed) & _RESTART_REQUIRED)
+        restart_required_keys = {
+            "LOG_TO_FILE",
+            "LOG_FILE",
+            "LOG_FORMAT",
+            "LOG_MAX_SIZE",
+        }
+        restart_required = sorted(set(changed) & restart_required_keys)
 
         # Static session toggles or id renames need an explicit sync
         # because the static party lives in PartyManager.watch_parties,
@@ -188,20 +196,18 @@ async def update_config(
         # also need to evict any lingering sockets and revoke HLS tokens
         # so users with active streams or stale cookies stop hitting
         # the now-defunct party.
-        if {'STATIC_SESSION_ENABLED', 'STATIC_SESSION_ID'} & set(changed):
+        if {"STATIC_SESSION_ENABLED", "STATIC_SESSION_ID"} & set(changed):
             _, dissolved = party_manager.sync_static_party()
             if dissolved:
                 lifecycle = request.app.state.socket_context["party_lifecycle"]
-                await lifecycle.dissolve(
-                    dissolved, reason="static_session_disabled"
-                )
+                await lifecycle.dissolve(dissolved, reason="static_session_disabled")
 
         # Binge-watch master toggle changed: propagate to every live
         # party so the control-strip button appears / disappears
         # without anyone needing to refresh. The frontend hides the
         # button on available=false and closes any open AutoAdvance
         # modal on the implicit cancel.
-        if 'BINGE_WATCH_ENABLED' in changed:
+        if "BINGE_WATCH_ENABLED" in changed:
             if not config.BINGE_WATCH_ENABLED:
                 # Off: cancel any countdown + force-clear the per-party
                 # active flag on parties that had it armed, THEN
@@ -212,15 +218,18 @@ async def update_config(
                 # (contradicting the admin-panel hint). Broadcasting to
                 # everyone is cheap and matches the "on" branch's shape.
                 party_manager.disable_binge_watch_globally()
-                for pid in party_manager.get_all().keys():
+                for pid in party_manager.get_all():
                     try:
-                        await sio.emit("binge_watch_state_changed", {
-                            "available": False, "active": False,
-                        }, room=pid)
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to emit binge_watch_state_changed to {pid}: {e}"
+                        await sio.emit(
+                            "binge_watch_state_changed",
+                            {
+                                "available": False,
+                                "active": False,
+                            },
+                            room=pid,
                         )
+                    except Exception as e:
+                        logger.warning(f"Failed to emit binge_watch_state_changed to {pid}: {e}")
             else:
                 # On: broadcast available=true to EVERY active party so
                 # the host's control-strip button materialises right
@@ -231,18 +240,20 @@ async def update_config(
                 # the admin off/on cycled while a host had it armed).
                 for active_id, active_party in party_manager.get_all().items():
                     try:
-                        await sio.emit("binge_watch_state_changed", {
-                            "available": True,
-                            "active": bool(active_party.binge_watch_active),
-                        }, room=active_id)
+                        await sio.emit(
+                            "binge_watch_state_changed",
+                            {
+                                "available": True,
+                                "active": bool(active_party.binge_watch_active),
+                            },
+                            room=active_id,
+                        )
                     except Exception as e:
                         logger.warning(
                             f"Failed to emit binge_watch_state_changed to {active_id}: {e}"
                         )
 
-        actor = admin_display_name(
-            request, party_manager, admin_session_store
-        ) or "(unknown admin)"
+        actor = admin_display_name(request, party_manager, admin_session_store) or "(unknown admin)"
         logger.info(
             f"Admin config updated by '{actor}': changed={changed} "
             f"rejected={rejected} restart_required={restart_required}"
@@ -257,5 +268,3 @@ async def update_config(
     except Exception as e:
         logger.error("Config update failed: error=%s", type(e).__name__)
         return ConfigUpdateResponse(success=False)
-
-

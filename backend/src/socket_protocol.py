@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from functools import wraps
-import logging
 from time import perf_counter
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-import socketio
 from pydantic import BaseModel, ConfigDict, ValidationError
+
+if TYPE_CHECKING:
+    import logging
+
+    import socketio
 
 
 class SocketPayload(BaseModel):
@@ -331,8 +334,8 @@ def install_outbound_validation(
                 raise ValueError(f"Invalid outbound {event} payload") from exc
         return await original_emit(event, data, *args, **kwargs)
 
-    setattr(sio, "emit", validated_emit)
-    setattr(sio, "_outbound_payload_validated", True)
+    setattr(sio, "emit", validated_emit)  # noqa: B010 - runtime Socket.IO decorator
+    setattr(sio, "_outbound_payload_validated", True)  # noqa: B010
 
 
 def install_inbound_validation(
@@ -362,7 +365,9 @@ def install_inbound_validation(
                 if logger:
                     logger.info(
                         "event event=%s party=%s latency_ms=%.1f outcome=invalid retry=0",
-                        _event, party_id, (perf_counter() - started) * 1000,
+                        _event,
+                        party_id,
+                        (perf_counter() - started) * 1000,
                     )
                 await sio.emit(
                     "error",
@@ -382,8 +387,11 @@ def install_inbound_validation(
                 if logger:
                     logger.info(
                         "event event=%s party=%s latency_ms=%.1f outcome=%s retry=0",
-                        _event, party_id, (perf_counter() - started) * 1000, outcome,
+                        _event,
+                        party_id,
+                        (perf_counter() - started) * 1000,
+                        outcome,
                     )
 
-        setattr(validated, "_payload_validated", True)
+        setattr(validated, "_payload_validated", True)  # noqa: B010
         namespace_handlers[event] = validated

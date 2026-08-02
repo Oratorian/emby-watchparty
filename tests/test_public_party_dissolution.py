@@ -69,9 +69,7 @@ async def _exercise_last_user_leave(tmp_path: Path) -> None:
             )
             assert joined.json()["success"] is True
 
-            cookie = "; ".join(
-                f"{name}={value}" for name, value in client.cookies.items()
-            )
+            cookie = "; ".join(f"{name}={value}" for name, value in client.cookies.items())
             realtime = socketio.AsyncClient()
             await realtime.connect(base_url, headers={"Cookie": cookie})
             await realtime.emit(

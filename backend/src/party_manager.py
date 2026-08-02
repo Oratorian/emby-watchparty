@@ -5,17 +5,16 @@ import logging
 import secrets
 import time
 from dataclasses import replace
-from datetime import datetime
-from typing import Dict, Optional
+from datetime import UTC, datetime
 
 from backend.src.config import Config
 from backend.src.domain import (
     AutoAdvance,
-    EpisodeRef,
-    Party,
     DepartureCommit,
+    EpisodeRef,
     JoinVote,
     Participant,
+    Party,
     PlaybackControlCommit,
     PlaybackReportSnapshot,
     PlaybackState,
@@ -27,23 +26,23 @@ from backend.src.domain import (
 )
 from backend.src.utils import generate_party_code
 
-
 # =============================================================================
 # Party Manager
 # =============================================================================
+
 
 class PartyManager:
     """Manages all watch parties and their state transitions."""
 
     def __init__(self, config: Config, logger: logging.Logger):
-        self.watch_parties: Dict[str, Party] = {}
+        self.watch_parties: dict[str, Party] = {}
         self._party_locks: dict[str, asyncio.Lock] = {}
         self._config = config
         self._logger = logger
         # Tracks the static party's id as last known to this manager, so
         # sync_static_party() can detect when STATIC_SESSION_ID changes
         # and clean up the old party.
-        self._last_static_id: Optional[str] = None
+        self._last_static_id: str | None = None
 
         # Create static party on startup if configured
         if config.STATIC_SESSION_ENABLED:
@@ -53,7 +52,7 @@ class PartyManager:
             self._logger.info(f"Static session mode: {pid}")
 
     @property
-    def static_party_id(self) -> Optional[str]:
+    def static_party_id(self) -> str | None:
         if self._config.STATIC_SESSION_ENABLED:
             return self._config.STATIC_SESSION_ID.upper()
         return None
@@ -72,7 +71,7 @@ class PartyManager:
     def lock_for(self, party_id: str) -> asyncio.Lock:
         return self._party_locks.setdefault(party_id, asyncio.Lock())
 
-    async def pop_if_empty(self, party_id: str) -> Optional[Party]:
+    async def pop_if_empty(self, party_id: str) -> Party | None:
         if party_id == self.static_party_id:
             return None
         lock = self.lock_for(party_id)
@@ -87,7 +86,7 @@ class PartyManager:
         self._party_locks.pop(party_id, None)
         return removed
 
-    async def pop_party(self, party_id: str) -> Optional[Party]:
+    async def pop_party(self, party_id: str) -> Party | None:
         lock = self.lock_for(party_id)
         async with lock:
             removed = self.watch_parties.get(party_id)
@@ -216,9 +215,7 @@ class PartyManager:
             if was_playing:
                 expected = set(party.sids())
                 party.ready_check = ReadyCheck(expected_sids=expected)
-                waiting_names = tuple(
-                    party.username_for_sid(member, "?") for member in expected
-                )
+                waiting_names = tuple(party.username_for_sid(member, "?") for member in expected)
             return PlaybackControlCommit(
                 client_id=client_id,
                 username=party.username_for_sid(sid, "Someone"),
@@ -246,7 +243,7 @@ class PartyManager:
             caller_client_id = party.client_id_for_sid(sid)
             if party.current_video.selected_by == caller_client_id:
                 party.playback_state.time = position
-                party.playback_state.last_update = datetime.now().isoformat()
+                party.playback_state.last_update = datetime.now(UTC).isoformat()
             return ProgressReportCommit(
                 video=party.current_video,
                 stream=replace(stream),
@@ -345,19 +342,17 @@ class PartyManager:
                     if auto_play:
                         party.playback_state.playing = True
                     if party.playback_state.playing:
-                        party.playback_state.last_update = datetime.now().isoformat()
+                        party.playback_state.last_update = datetime.now(UTC).isoformat()
                 elif not ready_check.expected_sids:
                     party.ready_check = None
                     party.auto_play_after_ready = False
                 else:
                     ready_names = tuple(
-                        party.username_for_sid(member, "?")
-                        for member in ready_check.ready_sids
+                        party.username_for_sid(member, "?") for member in ready_check.ready_sids
                     )
                     waiting_names = tuple(
                         party.username_for_sid(member, "?")
-                        for member in ready_check.expected_sids
-                        - ready_check.ready_sids
+                        for member in ready_check.expected_sids - ready_check.ready_sids
                     )
             return DepartureCommit(
                 username=username,
@@ -409,15 +404,14 @@ class PartyManager:
                         ready_check.ready_sids.discard(old_sid)
                         ready_check.ready_sids.add(new_sid)
 
-            party.join_times[new_sid] = datetime.now().isoformat()
+            party.join_times[new_sid] = datetime.now(UTC).isoformat()
             if client_id:
                 existing = party.participants.get(client_id)
                 party.participants[client_id] = Participant(
                     client_id=client_id,
                     username=username,
                     sid=new_sid,
-                    avatar_uuid=avatar_uuid
-                    or (existing.avatar_uuid if existing else None),
+                    avatar_uuid=avatar_uuid or (existing.avatar_uuid if existing else None),
                 )
                 party.sid_client_ids[new_sid] = client_id
             return DepartureCommit(
@@ -587,11 +581,9 @@ class PartyManager:
                 if auto_play:
                     party.playback_state.playing = True
                 if party.playback_state.playing:
-                    party.playback_state.last_update = datetime.now().isoformat()
+                    party.playback_state.last_update = datetime.now(UTC).isoformat()
             else:
-                ready_names = tuple(
-                    party.username_for_sid(sid, "?") for sid in ready.ready_sids
-                )
+                ready_names = tuple(party.username_for_sid(sid, "?") for sid in ready.ready_sids)
                 waiting_names = tuple(
                     party.username_for_sid(sid, "?")
                     for sid in ready.expected_sids - ready.ready_sids
@@ -674,18 +666,18 @@ class PartyManager:
         self._create_party_dict(party_id)
         return party_id
 
-    def get(self, party_id: str) -> Optional[Party]:
+    def get(self, party_id: str) -> Party | None:
         """Get a party by ID, or None."""
         return self.watch_parties.get(party_id)
 
     def exists(self, party_id: str) -> bool:
         return party_id in self.watch_parties
 
-    def get_all(self) -> Dict[str, Party]:
+    def get_all(self) -> dict[str, Party]:
         """Get all active parties."""
         return self.watch_parties
 
-    def ensure_static_party(self) -> Optional[str]:
+    def ensure_static_party(self) -> str | None:
         """Recreate the static party if it was deleted. Returns party_id or None."""
         if not self._config.STATIC_SESSION_ENABLED:
             return None
@@ -695,7 +687,7 @@ class PartyManager:
             self._logger.info(f"Recreated static party: {pid}")
         return pid
 
-    def sync_static_party(self) -> tuple[Optional[str], Optional[str]]:
+    def sync_static_party(self) -> tuple[str | None, str | None]:
         """Reconcile the static party with the current runtime config.
 
         Called when STATIC_SESSION_ENABLED or STATIC_SESSION_ID changes
@@ -715,7 +707,7 @@ class PartyManager:
         cfg_enabled = self._config.STATIC_SESSION_ENABLED
         cfg_id = self._config.STATIC_SESSION_ID.upper() if cfg_enabled else None
 
-        dissolved: Optional[str] = None
+        dissolved: str | None = None
         if self._last_static_id and self._last_static_id != cfg_id:
             old = self._last_static_id
             if old in self.watch_parties:
@@ -785,7 +777,7 @@ class PartyManager:
         party = self.watch_parties.get(party_id)
         if not party or not party.host_access_token:
             return False
-        party.host_left_at = datetime.now().isoformat()
+        party.host_left_at = datetime.now(UTC).isoformat()
         return True
 
     def has_host_token(self, party_id: str) -> bool:
@@ -836,14 +828,14 @@ class PartyManager:
             and party.current_video is not None
         )
 
-    def get_host_token(self, party_id: str) -> Optional[str]:
+    def get_host_token(self, party_id: str) -> str | None:
         """Return the host's Emby access token, or None when fully locked."""
         party = self.watch_parties.get(party_id)
         if not party:
             return None
         return party.host_access_token
 
-    def get_host_user_id(self, party_id: str) -> Optional[str]:
+    def get_host_user_id(self, party_id: str) -> str | None:
         """Return the host's Emby user id (used for Emby API calls)."""
         party = self.watch_parties.get(party_id)
         if not party:
@@ -861,8 +853,10 @@ class PartyManager:
         out = []
         for sid, cid in party.sid_client_ids.items():
             p = party.participants.get(cid)
-            out.append({
-                "username": p.username if p else party.username_for_sid(sid),
-                "avatar_uuid": p.avatar_uuid if p else None,
-            })
+            out.append(
+                {
+                    "username": p.username if p else party.username_for_sid(sid),
+                    "avatar_uuid": p.avatar_uuid if p else None,
+                }
+            )
         return out
