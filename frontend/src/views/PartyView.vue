@@ -88,10 +88,12 @@ const {
 } = usePartyAdmin(party)
 const { attach: attachReconnect } = usePartyReconnect(socket, party, avatar, getClientId)
 const { attach: attachVoting } = usePartyVoting(socket, party)
-const { reloading: myStreamReloading, signalReady: onStreamReady } = usePartyStream(
-  socket,
-  party,
-)
+const {
+  reloading: myStreamReloading,
+  signalReady: onStreamReady,
+  loadSubtitleStreams,
+  loadSelectionStreams,
+} = usePartyStream(socket, party)
 const playbackEvents = usePartyPlayback(socket)
 
 const showBecomeHostModal = ref(false)
@@ -674,7 +676,7 @@ watch(
     ve.querySelectorAll('track').forEach((t) => t.remove())
 
     try {
-      const streams = await api.itemStreams(itemId)
+      const streams = await loadSubtitleStreams(itemId)
       const textSubs = (streams.subtitles || []).filter(
         (stream) => !stream.isPGS && stream.isTextSubtitleStream,
       )
@@ -823,9 +825,10 @@ function emitSelectVideo(item: LibraryItem, mediaSourceId?: string, startSeconds
 async function continueSelectAfterResume(item: LibraryItem, startSeconds: number) {
   let versions: PendingVersionPick['versions'] = []
   try {
-    const streams = await api.itemStreams(item.Id)
+    const streams = await loadSelectionStreams(item.Id)
     versions = streams.versions || []
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return
     // If the lookup fails fall through to the legacy path -- backend
     // will pick Emby's default source on its own. Better to play
     // something than to block the host on a transient probe error.
