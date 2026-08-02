@@ -51,10 +51,10 @@ def register(ctx):
     def _current_party_time(party):
         """Return the server's current best estimate of playback position."""
         playback_state = party.playback_state
-        current_time = playback_state.get("time", 0)
-        if playback_state.get("playing") and playback_state.get("last_update"):
+        current_time = playback_state.time
+        if playback_state.playing and playback_state.last_update:
             try:
-                last_update = datetime.fromisoformat(playback_state["last_update"])
+                last_update = datetime.fromisoformat(playback_state.last_update)
                 elapsed = (datetime.now() - last_update).total_seconds()
                 if 0 < elapsed < 30:
                     current_time += elapsed
@@ -75,7 +75,7 @@ def register(ctx):
 
             old_stream = party.user_streams.pop(old_sid, None)
             if old_stream and old_stream.get("play_session_id") and party.current_video:
-                current_time = party.playback_state.get("time", 0)
+                current_time = party.playback_state.time
                 host_token = party.host_access_token
                 host_user = party.host_user_id
                 await emby_client.report_playback_stopped(
@@ -662,12 +662,12 @@ def register(ctx):
         # stream at the current party position so reload/rejoin can resume
         # without triggering the late-join vote or restarting everyone.
         current_video = None
-        playback_state = party.playback_state.copy()
+        playback_state = party.playback_state.to_wire()
         if party.current_video:
             rejoin_video = await _build_rejoin_video(party, party_id, sid)
             if rejoin_video:
                 current_video, current_time = rejoin_video
-                playback_state["time"] = current_time
+                playback_state.time = current_time
             else:
                 cv = party.current_video
                 current_video = {
@@ -819,7 +819,7 @@ def register(ctx):
             # Stop this user's individual transcode
             user_stream = party.user_streams.get(sid)
             if user_stream and user_stream.get("play_session_id") and party.current_video:
-                current_time = party.playback_state.get("time", 0)
+                current_time = party.playback_state.time
                 host_token = party.host_access_token
                 host_user = party.host_user_id
                 await emby_client.report_playback_stopped(
@@ -852,12 +852,12 @@ def register(ctx):
                 if rc["ready_sids"] >= rc["expected_sids"] and rc["expected_sids"]:
                     party.ready_check = None
                     playback_state = party.playback_state
-                    if playback_state.get("playing"):
-                        playback_state["last_update"] = datetime.now().isoformat()
+                    if playback_state.playing:
+                        playback_state.last_update = datetime.now().isoformat()
                     logger.info(f"All users ready in party {party_id} (after leave)")
                     await sio.emit("all_ready", {
-                        "time": playback_state.get("time", 0),
-                        "playing": playback_state.get("playing", False),
+                        "time": playback_state.time,
+                        "playing": playback_state.playing,
                     }, room=party_id)
                 elif not rc["expected_sids"]:
                     party.ready_check = None

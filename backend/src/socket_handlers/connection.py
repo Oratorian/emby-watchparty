@@ -279,7 +279,7 @@ def register(ctx):
                 # Stop this user's individual transcode
                 user_stream = party.user_streams.get(sid)
                 if user_stream and user_stream.get("play_session_id") and party.current_video:
-                    current_time = party.playback_state.get("time", 0)
+                    current_time = party.playback_state.time
                     access_token = party.host_access_token
                     user_id = party.host_user_id
                     await emby_client.report_playback_stopped(
@@ -325,17 +325,17 @@ def register(ctx):
                         auto_play_pending = party.auto_play_after_ready
                         party.auto_play_after_ready = False
                         if auto_play_pending:
-                            playback_state["playing"] = True
-                        if playback_state.get("playing"):
-                            playback_state["last_update"] = datetime.now().isoformat()
+                            playback_state.playing = True
+                        if playback_state.playing:
+                            playback_state.last_update = datetime.now().isoformat()
                         logger.info(f"All users ready in party {party_id} (after disconnect)")
                         await sio.emit("all_ready", {
-                            "time": playback_state.get("time", 0),
-                            "playing": playback_state.get("playing", False),
+                            "time": playback_state.time,
+                            "playing": playback_state.playing,
                         }, room=party_id)
                         if auto_play_pending:
                             await sio.emit("play", {
-                                "time": playback_state.get("time", 0),
+                                "time": playback_state.time,
                                 "username": None,
                                 "auto_binge": True,
                             }, room=party_id)

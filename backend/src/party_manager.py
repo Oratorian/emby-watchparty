@@ -7,7 +7,12 @@ from datetime import datetime
 from typing import Dict, Optional
 
 from backend.src.config import Config
-from backend.src.domain import Party, PlaybackControlCommit, PlaybackReportSnapshot
+from backend.src.domain import (
+    Party,
+    PlaybackControlCommit,
+    PlaybackReportSnapshot,
+    PlaybackState,
+)
 from backend.src.utils import generate_party_code
 
 
@@ -162,11 +167,7 @@ class PartyManager:
             client_id = party.sid_client_ids.get(sid)
             if client_id is None:
                 return None
-            party.playback_state = {
-                "playing": playing,
-                "time": position,
-                "last_update": datetime.now().isoformat(),
-            }
+            party.playback_state = PlaybackState(playing=playing, time=position)
             return PlaybackControlCommit(
                 client_id=client_id,
                 username=party.users.get(sid, "Someone"),
@@ -195,11 +196,10 @@ class PartyManager:
             ready_check = party.ready_check
             if ready_check and ready_check.get("active"):
                 return None
-            party.playback_state = {
-                "playing": was_playing,
-                "time": position,
-                "last_update": datetime.now().isoformat(),
-            }
+            party.playback_state = PlaybackState(
+                playing=was_playing,
+                time=position,
+            )
             waiting_names: tuple[str, ...] = ()
             if was_playing:
                 expected = set(party.users)
@@ -330,20 +330,16 @@ class PartyManager:
         party = self.watch_parties.get(party_id)
         if party:
             party.current_video = None
-            party.playback_state = {
-                "playing": False,
-                "time": 0,
-                "last_update": datetime.now().isoformat(),
-            }
+            party.playback_state = PlaybackState()
 
     def update_playback_state(self, party_id: str, playing=None, time=None):
         party = self.watch_parties.get(party_id)
         if party:
             if playing is not None:
-                party.playback_state["playing"] = playing
+                party.playback_state.playing = playing
             if time is not None:
-                party.playback_state["time"] = time
-            party.playback_state["last_update"] = datetime.now().isoformat()
+                party.playback_state.time = time
+            party.playback_state.last_update = datetime.now().isoformat()
 
     def count(self) -> int:
         return len(self.watch_parties)

@@ -21,17 +21,17 @@ def register(ctx):
             return
 
         playback_state = party.playback_state
-        if not playback_state.get("playing"):
+        if not playback_state.playing:
             return
 
-        last_update = playback_state.get("last_update")
+        last_update = playback_state.last_update
         if not last_update:
             return
 
         try:
             last_update_dt = datetime.fromisoformat(last_update)
             elapsed = (datetime.now() - last_update_dt).total_seconds()
-            expected_time = playback_state["time"] + elapsed
+            expected_time = playback_state.time + elapsed
         except (ValueError, KeyError):
             return
 

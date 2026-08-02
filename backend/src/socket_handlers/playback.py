@@ -15,6 +15,8 @@ import asyncio
 import time
 from datetime import datetime, timedelta
 from typing import Any
+
+from backend.src.domain import PlaybackState
 from backend.src.quality import (
     DEFAULT_QUALITY_ID,
     normalise_quality_id,
@@ -334,13 +336,13 @@ def register(ctx):
             auto_play_pending = party.auto_play_after_ready
             party.auto_play_after_ready = False
             if auto_play_pending:
-                playback_state["playing"] = True
-            if playback_state.get("playing"):
-                playback_state["last_update"] = datetime.now().isoformat()
+                playback_state.playing = True
+            if playback_state.playing:
+                playback_state.last_update = datetime.now().isoformat()
             logger.info(f"All users ready in party {party_id}")
             await sio.emit("all_ready", {
-                "time": playback_state.get("time", 0),
-                "playing": playback_state.get("playing", False),
+                "time": playback_state.time,
+                "playing": playback_state.playing,
             }, room=party_id)
             if auto_play_pending:
                 # Mirror the normal "host clicked play" broadcast so
@@ -349,7 +351,7 @@ def register(ctx):
                 # so the frontend doesn't render a "X resumed playback"
                 # system message for an auto-event.
                 await sio.emit("play", {
-                    "time": playback_state.get("time", 0),
+                    "time": playback_state.time,
                     "username": None,
                     "auto_binge": True,
                 }, room=party_id)
@@ -429,7 +431,7 @@ def register(ctx):
         run_time_seconds = run_time_ticks / 10_000_000 if run_time_ticks else None
 
         # Stop all previous user streams
-        prev_time = party.playback_state.get("time", 0)
+        prev_time = party.playback_state.time
         await _stop_all_user_streams(party, prev_time)
 
         # Resolve episode metadata (Type / SeriesId / SeasonId / IndexNumber)
@@ -466,10 +468,7 @@ def register(ctx):
         if run_time_seconds:
             resume_offset = min(resume_offset, max(0.0, run_time_seconds - 5))
 
-        party.playback_state = {
-            "playing": False, "time": resume_offset,
-            "last_update": datetime.now().isoformat(),
-        }
+        party.playback_state = PlaybackState(time=resume_offset)
 
         # Start a ready check so clients show the waiting overlay until
         # every user has loaded their stream
@@ -642,7 +641,7 @@ def register(ctx):
 
         video_title = party.current_video.get("title", "Unknown")
         username = party.users.get(sid, "Unknown")
-        current_time = party.playback_state.get("time", 0)
+        current_time = party.playback_state.time
 
         await _stop_all_user_streams(party, current_time)
 
@@ -652,9 +651,7 @@ def register(ctx):
 
         party.current_video = None
         party.ready_check = None
-        party.playback_state = {
-            "playing": False, "time": 0, "last_update": datetime.now().isoformat(),
-        }
+        party.playback_state = PlaybackState()
 
         # PLAYING-ONLY -> LOCKED transition if the host was gone.
         _wipe_host_if_orphan(party_id, party)
@@ -837,9 +834,7 @@ def register(ctx):
         prev_video = current_video
         await _stop_all_user_streams(party, final_pos)
 
-        party.playback_state = {
-            "playing": False, "time": 0, "last_update": datetime.now().isoformat(),
-        }
+        party.playback_state = PlaybackState()
         party.ready_check = None
         # Clear current_video BEFORE the auto-advance check so a
         # duplicate video_ended emit bails at the idempotency guard
@@ -1138,8 +1133,8 @@ def register(ctx):
         current_video = party.current_video
         caller_client_id = _client_id_for_sid(party, sid)
         if current_video.get("selected_by") == caller_client_id:
-            party.playback_state["time"] = current_time
-            party.playback_state["last_update"] = datetime.now().isoformat()
+            party.playback_state.time = current_time
+            party.playback_state.last_update = datetime.now().isoformat()
 
         # Throttle Emby-facing reports per sid.
         now = time.monotonic()
@@ -1148,7 +1143,7 @@ def register(ctx):
             return
         _last_report_progress[sid] = now
 
-        is_playing = party.playback_state.get("playing", False)
+        is_playing = party.playback_state.playing
         access_token, user_id = _host_creds(party)
         await emby_client.report_playback_progress(
             item_id=current_video["item_id"],

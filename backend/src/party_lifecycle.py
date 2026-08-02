@@ -60,7 +60,7 @@ class PartyLifecycle:
         video = party.current_video or {}
         access_token = party.host_access_token
         user_id = party.host_user_id
-        position = (party.playback_state or {}).get("time", 0)
+        position = party.playback_state.time
         for stream in list((party.user_streams or {}).values()):
             play_session_id = stream.get("play_session_id")
             if not play_session_id:

@@ -27,6 +27,13 @@ class PlaybackState:
     time: float = 0.0
     last_update: str = field(default_factory=_now)
 
+    def to_wire(self) -> dict[str, bool | float | str]:
+        return {
+            "playing": self.playing,
+            "time": self.time,
+            "last_update": self.last_update,
+        }
+
 
 @dataclass
 class UserStream:
@@ -88,13 +95,7 @@ class Party:
     sid_client_ids: dict[str, str] = field(default_factory=dict)
     current_video: dict[str, Any] | None = None
     user_streams: dict[str, dict[str, Any]] = field(default_factory=dict)
-    playback_state: dict[str, Any] = field(
-        default_factory=lambda: {
-            "playing": False,
-            "time": 0.0,
-            "last_update": _now(),
-        }
-    )
+    playback_state: PlaybackState = field(default_factory=PlaybackState)
     ready_check: dict[str, Any] | None = None
     pending_join: dict[str, Any] | None = None
     join_cooldown_until: float = 0.0
@@ -125,4 +126,8 @@ class Party:
         return self.id
 
     def playback_snapshot(self) -> PlaybackState:
-        return PlaybackState(**self.playback_state)
+        return PlaybackState(
+            playing=self.playback_state.playing,
+            time=self.playback_state.time,
+            last_update=self.playback_state.last_update,
+        )

@@ -364,5 +364,5 @@ def party_info(party_id: str, party_manager=Depends(get_party_manager)):
         id=party.id,
         users=list(party.users.values()),
         current_video=party.current_video,
-        playback_state=party.playback_state,
+        playback_state=party.playback_state.to_wire(),
     )
