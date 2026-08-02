@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test('iOS viewport supports safe areas and party controls remain usable', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/')
 
   const viewport = await page.locator('meta[name="viewport"]').getAttribute('content')
@@ -9,7 +10,9 @@ test('iOS viewport supports safe areas and party controls remain usable', async 
     await page.evaluate(() => document.documentElement.clientWidth),
   )
 
-  await page.getByRole('button', { name: 'Create Party', exact: true }).tap()
+  const createParty = page.getByRole('button', { name: 'Create Party', exact: true })
+  await expect(createParty).toHaveCSS('transition-duration', '0s')
+  await createParty.tap()
   await page.getByPlaceholder('Your name (optional)').fill('iPhone Guest')
   await page.getByRole('button', { name: 'Join', exact: true }).tap()
 
@@ -38,4 +41,26 @@ test('iPhone WebKit selects native HLS from fake Emby', async ({ page }) => {
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.src)).toContain(
     '/hls/movie-1/master.m3u8',
   )
+
+  await page.getByRole('button', { name: 'Jump/Seek' }).tap()
+  const seekInput = page.getByPlaceholder('1:04:07 or 10407')
+  await seekInput.fill('0:05')
+  await page.getByRole('button', { name: 'Go', exact: true }).tap()
+  await expect(seekInput).toBeHidden()
+
+  await page.getByRole('button', { name: 'Chat', exact: true }).tap()
+  const chat = page.getByPlaceholder('Type a message...')
+  await chat.fill('Hello from iPhone')
+  await page.getByRole('button', { name: 'Send message' }).tap()
+  await expect(page.getByText('Hello from iPhone')).toBeVisible()
+  await page.getByTitle('Close chat').tap()
+
+  const oldSource = await video.getAttribute('src')
+  await page.context().setOffline(true)
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')))
+  await expect(page.getByText('Reconnecting to party…')).toBeVisible()
+  await page.context().setOffline(false)
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await expect(page.getByText('Reconnecting to party…')).toBeHidden({ timeout: 15_000 })
+  await expect.poll(() => video.getAttribute('src')).not.toBe(oldSource)
 })
