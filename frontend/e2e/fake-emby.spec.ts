@@ -100,6 +100,22 @@ test('guest reload restores membership and a fresh HLS stream', async ({ browser
   await guestContext.close()
 })
 
+test('sole participant reload preserves the party during reconnect', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await expect(page).toHaveURL(/\/party\/[A-Z0-9]+$/)
+  const partyUrl = page.url()
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+  await expect(page.getByText('1 watching')).toBeVisible()
+
+  await page.reload()
+
+  await expect(page).toHaveURL(partyUrl)
+  await expect(page.getByText('1 watching')).toBeVisible()
+  await expect(page.getByText('Joining party…')).toBeHidden()
+})
+
 test('admin modal traps focus and Escape restores its trigger', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Create Party', exact: true }).click()
