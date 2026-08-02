@@ -42,11 +42,23 @@ test('iPhone WebKit selects native HLS from fake Emby', async ({ page }) => {
     '/hls/movie-1/master.m3u8',
   )
 
+  if (process.env.EXPECT_NATIVE_HLS === '1') {
+    await expect.poll(
+      () => video.evaluate((element: HTMLVideoElement) => element.readyState),
+      { timeout: 15_000 },
+    ).toBeGreaterThanOrEqual(1)
+  }
+
   await page.getByRole('button', { name: 'Jump/Seek' }).tap()
   const seekInput = page.getByPlaceholder('1:04:07 or 10407')
   await seekInput.fill('0:05')
   await page.getByRole('button', { name: 'Go', exact: true }).tap()
   await expect(seekInput).toBeHidden()
+  if (process.env.EXPECT_NATIVE_HLS === '1') {
+    await expect.poll(
+      () => video.evaluate((element: HTMLVideoElement) => element.currentTime),
+    ).toBeGreaterThan(4)
+  }
 
   await page.getByRole('button', { name: 'Chat', exact: true }).tap()
   const chat = page.getByPlaceholder('Type a message...')
