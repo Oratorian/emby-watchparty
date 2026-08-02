@@ -29,6 +29,26 @@ export class ApiError extends Error {
   }
 }
 
+async function readResponseBody(resp: Response): Promise<JsonValue | undefined> {
+  const text = await resp.text()
+  if (!text) return undefined
+  try {
+    return JSON.parse(text) as JsonValue
+  } catch {
+    return text
+  }
+}
+
+function responseError(resp: Response, body: JsonValue | undefined): ApiError {
+  const record = isJsonObject(body) ? body : undefined
+  const message = [record?.detail, record?.error, record?.message]
+    .find((value): value is string => typeof value === 'string')
+    || (typeof body === 'string' && body)
+    || resp.statusText
+    || `Request failed (${resp.status})`
+  return new ApiError(resp.status, message, body)
+}
+
 export interface SuccessResponse { success?: boolean; message?: string }
 export interface AuthResponse extends SuccessResponse {
   authenticated?: boolean
@@ -198,23 +218,10 @@ export async function apiFetch<T = JsonValue>(path: string, options: RequestInit
     credentials: 'same-origin',
     ...options,
   })
-  const text = await resp.text()
-  let body: JsonValue | undefined
-  if (text) {
-    try {
-      body = JSON.parse(text) as JsonValue
-    } catch {
-      body = text
-    }
-  }
+  const body = await readResponseBody(resp)
 
   if (!resp.ok) {
-    const record = isJsonObject(body) ? body : undefined
-    const message = [record?.detail, record?.error, record?.message]
-      .find((value): value is string => typeof value === 'string')
-      || resp.statusText
-      || `Request failed (${resp.status})`
-    throw new ApiError(resp.status, message, body)
+    throw responseError(resp, body)
   }
 
   return body as T
@@ -311,7 +318,17 @@ export const api = {
       credentials: 'same-origin',
       signal,
     })
-    return resp.json() as Promise<AvatarResponse>
+    const responseBody = await readResponseBody(resp)
+    if (!resp.ok) throw responseError(resp, responseBody)
+    if (!isJsonObject(responseBody)) {
+      throw new ApiError(resp.status, 'Invalid avatar response', responseBody)
+    }
+    return {
+      success: typeof responseBody.success === 'boolean' ? responseBody.success : undefined,
+      message: typeof responseBody.message === 'string' ? responseBody.message : undefined,
+      uuid: typeof responseBody.uuid === 'string' ? responseBody.uuid : undefined,
+      code: typeof responseBody.code === 'string' ? responseBody.code : undefined,
+    }
   },
   avatarGravatar: (email: string, signal?: AbortSignal) =>
     apiFetch<AvatarResponse>('/api/avatar/gravatar', {
