@@ -13,7 +13,7 @@ import json
 import os
 import re
 import threading
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import get_origin
 from urllib.parse import urlsplit
@@ -127,7 +127,6 @@ class EnvConfig:
         *,
         legacy_hls_validation: bool = True,
         errors: dict[str, str] | None = None,
-        explicit_fields: set[str] | None = None,
     ) -> "EnvConfig":
         root = Path(project_root or Path(__file__).parent.parent.parent)
         dot_env = {
@@ -152,12 +151,8 @@ class EnvConfig:
 
         def value(name: str) -> object:
             if name in os.environ:
-                if explicit_fields is not None:
-                    explicit_fields.add(name)
                 return os.environ[name]
             if name in dot_env:
-                if explicit_fields is not None:
-                    explicit_fields.add(name)
                 return dot_env[name]
             return defaults[name]
 
@@ -189,12 +184,7 @@ class EnvConfig:
             return fallback
 
         def declared(name: str) -> bool:
-            """True when a value was supplied, from any source.
-
-            Distinct from `explicit_fields`, which tracks env / .env only
-            so the setup form can disable those inputs. Declaring the
-            topology through the setup form counts here.
-            """
+            """True when a value was supplied rather than defaulted."""
             return name in os.environ or name in dot_env
 
         return cls(
@@ -554,7 +544,6 @@ class Config:
         runtime: RuntimeConfig,
         *,
         load_errors: dict[str, str] | None = None,
-        explicit_env_fields: set[str] | None = None,
         private_env: dict[str, str] | None = None,
     ):
         # Use object.__setattr__ to avoid triggering __getattr__
@@ -562,7 +551,6 @@ class Config:
         object.__setattr__(self, "_runtime", runtime)
         object.__setattr__(self, "_lock", threading.Lock())
         object.__setattr__(self, "_load_errors", dict(load_errors or {}))
-        object.__setattr__(self, "_explicit_env_fields", frozenset(explicit_env_fields or set()))
         object.__setattr__(self, "_private_env", dict(private_env or {}))
 
     def __getattr__(self, name: str):
@@ -590,18 +578,15 @@ class Config:
             if name in os.environ or dot_env.get(name) is not None
         }
         load_errors: dict[str, str] = {}
-        explicit_fields: set[str] = set()
         env = EnvConfig.from_env(
             root,
             legacy_hls_validation=runtime.ENABLE_HLS_TOKEN_VALIDATION,
             errors=load_errors,
-            explicit_fields=explicit_fields,
         )
         return cls(
             env,
             runtime,
             load_errors=load_errors,
-            explicit_env_fields=explicit_fields,
             private_env=private_env,
         )
 
@@ -641,38 +626,11 @@ class Config:
         values.pop("ENABLE_HLS_TOKEN_VALIDATION", None)
         return values
 
-    @property
-    def explicit_env_fields(self) -> frozenset[str]:
-        return object.__getattribute__(self, "_explicit_env_fields")
-
     def _private_env_value(self, name: str) -> str:
         """Return a boot-loaded private setting that must never reach admin APIs."""
         if name not in _PRIVATE_ENV_FIELDS:
             raise KeyError(name)
         return object.__getattribute__(self, "_private_env").get(name, "")
-
-    def boot_values(self) -> dict[str, object]:
-        """Return boot values for trusted server-side setup processing."""
-        env = object.__getattribute__(self, "_env")
-        return {field_info.name: getattr(env, field_info.name) for field_info in fields(env)}
-
-    def with_boot_values(self, values: dict[str, object]) -> "Config":
-        """Build an isolated validation candidate without mutating live config."""
-        env = object.__getattribute__(self, "_env")
-        runtime = object.__getattribute__(self, "_runtime")
-        candidate_env = replace(env, **values)
-        explicit_fields = set(self.explicit_env_fields)
-        load_errors = object.__getattribute__(self, "_load_errors")
-        explicit_errors = {
-            name: message for name, message in load_errors.items() if name in explicit_fields
-        }
-        return Config(
-            candidate_env,
-            runtime,
-            load_errors=explicit_errors,
-            explicit_env_fields=explicit_fields,
-            private_env=object.__getattribute__(self, "_private_env"),
-        )
 
     def validate_for_startup(self) -> None:
         """Reject unsafe boot configuration when production mode is explicit."""
