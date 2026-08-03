@@ -550,6 +550,16 @@ def main() -> None:
         host=cfg.WATCH_PARTY_BIND,
         port=port,
         proxy_headers=False,
+        # uvicorn's access logger writes the full request line, query
+        # string included, at INFO. Every HLS URL carries ?token=<hls
+        # token>, so leaving this on publishes a working stream
+        # credential to the log on every playlist and segment request.
+        # The redaction work only ever covered the `emby-watchparty`
+        # logger, so this second logger in the same process quietly
+        # undid it. RequestLogMiddleware already emits a structured line
+        # per request built from request.url.path, which carries no
+        # query string, so nothing observable is lost here.
+        access_log=False,
     )
 
 
