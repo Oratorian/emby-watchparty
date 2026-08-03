@@ -10,6 +10,22 @@
 
 FROM node:24-alpine AS frontend-build
 WORKDIR /app/frontend
+
+# node:24-alpine ships npm 11.16.0, whose bundled tar is 7.5.15. That
+# carries CVE-2026-59873 (9.2) and CVE-2026-59874 (8.7), fixed in tar
+# 7.5.19, plus highs in npm's bundled brace-expansion and undici. This
+# stage never reaches the published image, but `npm ci` does execute
+# the vulnerable code during the build: undici fetches from the
+# registry and tar extracts every package tarball, so a malicious
+# tarball is a build-time vector. npm 11.18.0 is the first release to
+# pull tar 7.5.19; 11.19.0 is the current 11.x and clears all five
+# without taking a package-manager major bump. Kept ahead of the COPY
+# so it caches independently of package.json.
+#
+# `node:24-alpine` floats, so this pin can be dropped once upstream
+# rebuilds with a newer npm. Keep it in step with the local toolchain.
+RUN npm i -g npm@11.19.0
+
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ .
