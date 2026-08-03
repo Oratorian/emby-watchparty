@@ -20,7 +20,7 @@ _SEGMENT_CHUNKS = [
 ]
 
 
-MOVIE = {
+MOVIE: dict[str, Any] = {
     "Id": "movie-1",
     "Name": "Fake Movie",
     "Type": "Movie",
