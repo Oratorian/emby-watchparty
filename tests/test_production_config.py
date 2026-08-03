@@ -19,9 +19,66 @@ def _config(runtime: RuntimeConfig | None = None, **overrides) -> Config:
         "CORS_ALLOWED_ORIGINS": ("https://watch.example",),
         "TRUSTED_PROXY_CIDRS": (),
         "ENABLE_HLS_TOKEN_VALIDATION": True,
+        # Directly exposed, which is the correct pairing with empty
+        # TRUSTED_PROXY_CIDRS. Production refuses to boot when the
+        # topology is left undeclared, so these cases have to state it
+        # even though none of them is about proxying.
+        "BEHIND_PROXY": False,
     }
     values.update(overrides)
     return Config(EnvConfig(**values), runtime or RuntimeConfig())
+
+
+class ProxyTopologyGateTests(unittest.TestCase):
+    """Rate limiting keys on the connecting address.
+
+    Behind a reverse proxy that is the proxy for every viewer, so without
+    TRUSTED_PROXY_CIDRS the whole deployment shares one bucket. An empty
+    CIDR list is nonetheless *correct* for a directly exposed server, so
+    emptiness alone cannot be an error. The operator has to state which
+    they are, and the contradiction is what gets caught.
+    """
+
+    def test_production_requires_the_topology_to_be_declared(self):
+        with pytest.raises(ValueError, match="BEHIND_PROXY"):
+            _config(SESSION_SECRET="s" * 32, BEHIND_PROXY=None).validate_for_startup()
+
+    def test_behind_a_proxy_without_trusted_cidrs_is_refused(self):
+        with pytest.raises(ValueError, match="TRUSTED_PROXY_CIDRS"):
+            _config(
+                SESSION_SECRET="s" * 32,
+                BEHIND_PROXY=True,
+                TRUSTED_PROXY_CIDRS=(),
+            ).validate_for_startup()
+
+    def test_behind_a_proxy_with_trusted_cidrs_boots(self):
+        _config(
+            SESSION_SECRET="s" * 32,
+            BEHIND_PROXY=True,
+            TRUSTED_PROXY_CIDRS=("172.16.0.0/12",),
+        ).validate_for_startup()
+
+    def test_direct_deployment_with_no_cidrs_boots(self):
+        # The configuration a naive "empty means misconfigured" rule
+        # would have broken: no proxy, so trusting nothing is right.
+        _config(
+            SESSION_SECRET="s" * 32,
+            BEHIND_PROXY=False,
+            TRUSTED_PROXY_CIDRS=(),
+        ).validate_for_startup()
+
+    def test_contradiction_is_refused_outside_production_too(self):
+        with pytest.raises(ValueError, match="TRUSTED_PROXY_CIDRS"):
+            _config(
+                APP_ENV="development",
+                BEHIND_PROXY=True,
+                TRUSTED_PROXY_CIDRS=(),
+            ).validate_for_startup()
+
+    def test_development_may_leave_the_topology_undeclared(self):
+        # Running it locally is a direct deployment; do not make every
+        # dev shell declare a topology it does not have.
+        _config(APP_ENV="development", BEHIND_PROXY=None).validate_for_startup()
 
 
 class ProductionConfigTests(unittest.TestCase):

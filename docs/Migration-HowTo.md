@@ -98,12 +98,33 @@ SESSION_SECRET=one-stable-random-secret-at-least-32-characters
 SESSION_COOKIE_SECURE=true
 CORS_ALLOWED_ORIGINS=https://watchparty.example.com
 ENABLE_HLS_TOKEN_VALIDATION=true
+BEHIND_PROXY=true
 TRUSTED_PROXY_CIDRS=172.16.0.0/12
 ```
 
-Set `TRUSTED_PROXY_CIDRS` only to networks that actually contain your reverse
-proxy. Direct clients outside those networks cannot influence forwarded-IP
-resolution.
+### `BEHIND_PROXY` is new in 3.0 and has no default
+
+Production refuses to boot until you state it. That is deliberate, because
+guessing wrong is silent and expensive.
+
+Rate limiting keys on the address a connection arrives from. Behind a reverse
+proxy that address is the **proxy**, identical for every viewer, so all of them
+share one bucket. With the shipped defaults that means 5 party creations per
+hour and 30 socket connects per minute for the entire deployment, and the person
+affected simply sees it not work, with nothing in the UI naming a limit. 2.x was
+unaffected because none of these limits were enforced.
+
+- **`BEHIND_PROXY=true`** makes `TRUSTED_PROXY_CIDRS` mandatory. Setting it true
+  with an empty CIDR list is refused at boot, in every environment, because it
+  is a self-contradiction.
+- **`BEHIND_PROXY=false`** is correct for a directly reachable server, and an
+  empty `TRUSTED_PROXY_CIDRS` is then the *safer* setting: with no proxy in
+  front, trusting a forwarded header would let any client forge its own bucket.
+
+Set `TRUSTED_PROXY_CIDRS` to the network your proxy connects **from**, not the
+client's address. `172.16.0.0/12` covers the default Docker bridge networks;
+use `127.0.0.1/32` for a proxy on the host. Direct clients outside those
+networks cannot influence forwarded-IP resolution.
 
 For local plain HTTP, use `APP_ENV=development`,
 `SESSION_COOKIE_SECURE=false`, and bind only to a trusted local interface.

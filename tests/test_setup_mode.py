@@ -40,6 +40,7 @@ def _valid_setup_payload() -> dict:
         "SESSION_COOKIE_SECURE": True,
         "CORS_ALLOWED_ORIGINS": ["https://watch.example"],
         "TRUSTED_PROXY_CIDRS": ["10.0.0.0/8"],
+        "BEHIND_PROXY": True,
         "APP_PREFIX": "",
         "ENABLE_HLS_TOKEN_VALIDATION": True,
     }
@@ -75,6 +76,7 @@ def test_config_loads_persisted_bootstrap_values(tmp_path: Path, monkeypatch) ->
                 "SESSION_COOKIE_SECURE": True,
                 "CORS_ALLOWED_ORIGINS": ["https://watch.example"],
                 "TRUSTED_PROXY_CIDRS": [],
+                "BEHIND_PROXY": False,
                 "APP_PREFIX": "/watch",
                 "ENABLE_HLS_TOKEN_VALIDATION": True,
             }
@@ -89,6 +91,7 @@ def test_config_loads_persisted_bootstrap_values(tmp_path: Path, monkeypatch) ->
         "SESSION_COOKIE_SECURE",
         "CORS_ALLOWED_ORIGINS",
         "TRUSTED_PROXY_CIDRS",
+        "BEHIND_PROXY",
         "APP_PREFIX",
         "ENABLE_HLS_TOKEN_VALIDATION",
     ):
@@ -378,6 +381,7 @@ def test_first_valid_source_startup_persists_sentinel_before_runtime_data(
         "SESSION_COOKIE_SECURE",
         "CORS_ALLOWED_ORIGINS",
         "TRUSTED_PROXY_CIDRS",
+        "BEHIND_PROXY",
         "APP_PREFIX",
         "ENABLE_HLS_TOKEN_VALIDATION",
     ):

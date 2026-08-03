@@ -105,6 +105,21 @@ class EnvConfig:
     CORS_ALLOWED_ORIGINS: tuple[str, ...]
     TRUSTED_PROXY_CIDRS: tuple[str, ...]
     ENABLE_HLS_TOKEN_VALIDATION: bool = True
+    # Tri-state deliberately. None means "never declared", which is a
+    # different thing from False, "declared as directly exposed".
+    #
+    # Rate limiting keys on the address the connection came from. Behind
+    # a reverse proxy that is the proxy for every viewer, so without
+    # TRUSTED_PROXY_CIDRS the whole deployment shares one bucket: 5 party
+    # creations per hour and 30 socket connects per minute, for everyone,
+    # silently. But an empty CIDR list is *correct* for a directly
+    # exposed deployment, where trusting a forwarded header would let
+    # anyone forge their own bucket. Emptiness alone therefore cannot be
+    # validated, and no code can infer the topology, since "every request
+    # arrives from 172.18.0.5" looks identical to a legitimate
+    # single-source deployment. Making the operator state it is what
+    # turns the ambiguity into a contradiction we can catch.
+    BEHIND_PROXY: bool | None = None
 
     @classmethod
     def from_env(
@@ -156,6 +171,7 @@ class EnvConfig:
             "CORS_ALLOWED_ORIGINS": "*",
             "TRUSTED_PROXY_CIDRS": "",
             "ENABLE_HLS_TOKEN_VALIDATION": legacy_hls_validation,
+            "BEHIND_PROXY": "false",
         }
 
         def value(name: str) -> object:
@@ -198,6 +214,15 @@ class EnvConfig:
                 errors[name] = "Must be true or false"
             return fallback
 
+        def declared(name: str) -> bool:
+            """True when a value was supplied, from any source.
+
+            Distinct from `explicit_fields`, which tracks env / .env only
+            so the setup form can disable those inputs. Declaring the
+            topology through the setup form counts here.
+            """
+            return name in os.environ or name in dot_env or name in persisted
+
         return cls(
             WATCH_PARTY_BIND=str(value("WATCH_PARTY_BIND")),
             WATCH_PARTY_PORT=integer("WATCH_PARTY_PORT", 5000),
@@ -213,6 +238,7 @@ class EnvConfig:
             ENABLE_HLS_TOKEN_VALIDATION=boolean(
                 "ENABLE_HLS_TOKEN_VALIDATION", legacy_hls_validation
             ),
+            BEHIND_PROXY=boolean("BEHIND_PROXY", False) if declared("BEHIND_PROXY") else None,
         )
 
 
@@ -702,7 +728,25 @@ class Config:
                 break
         if not _valid_http_url(self.EMBY_SERVER_URL, origin=False):
             errors.setdefault("EMBY_SERVER_URL", "must be a valid HTTP(S) URL")
+        # Unconditional: the operator has stated they sit behind a proxy
+        # and then not said which addresses those proxies are, so the
+        # forwarded header is discarded and every viewer keys onto the
+        # proxy's address. That is a self-contradiction in any
+        # environment, not just production.
+        if self.BEHIND_PROXY and not self.TRUSTED_PROXY_CIDRS:
+            errors.setdefault(
+                "TRUSTED_PROXY_CIDRS",
+                "is required when BEHIND_PROXY=true, or every client shares one rate-limit bucket",
+            )
         if self.APP_ENV == "production":
+            # Production only. Development defaults to a direct
+            # deployment, which is what running it locally is.
+            if self.BEHIND_PROXY is None:
+                errors.setdefault(
+                    "BEHIND_PROXY",
+                    "must be declared: true if a reverse proxy terminates client connections, "
+                    "false if this server is exposed directly",
+                )
             if not self.SESSION_SECRET:
                 errors.setdefault("SESSION_SECRET", "is required in production")
             elif len(self.SESSION_SECRET) < 32:
