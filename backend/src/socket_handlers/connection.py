@@ -13,7 +13,7 @@ from http.cookies import SimpleCookie
 from itsdangerous import BadSignature, TimestampSigner
 from socketio.exceptions import ConnectionRefusedError as SocketConnectionRefusedError
 
-from backend.src.client_ip import resolve_client_ip
+from backend.src.client_ip import environ_client_ip
 from backend.src.dependencies import party_host_session_matches
 from backend.src.rate_limit import parse_rate
 
@@ -191,12 +191,7 @@ def register(ctx):
     @sio.event
     async def connect(sid, environ, _auth=None):
         if rate_limiter and config and config.ENABLE_RATE_LIMITING:
-            peer_ip = environ.get("REMOTE_ADDR", "127.0.0.1")
-            client_ip = resolve_client_ip(
-                peer_ip,
-                environ.get("HTTP_X_FORWARDED_FOR", ""),
-                config.TRUSTED_PROXY_CIDRS,
-            )
+            client_ip = environ_client_ip(environ, config.TRUSTED_PROXY_CIDRS)
             limit, window = parse_rate(config.RATE_LIMIT_SOCKET_CONNECTIONS)
             decision = rate_limiter.check(f"socket-connect:{client_ip}", limit, window)
             if not decision.allowed:
