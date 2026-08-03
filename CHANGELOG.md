@@ -30,15 +30,26 @@ Three things drive the release:
 
 Alongside those: a guided first-run setup mode, so a fresh install no longer begins with hand-editing `.env`; a production readiness gate that refuses to boot an unsafe configuration instead of warning and continuing; redacted structured route logs, so an upstream failure cannot spill credentials into a log aggregator; hash-pinned Python dependencies; and `PartyView.vue` broken up into composables.
 
-The work is **[dnordel](https://github.com/dnordel)**'s, contributed as [#45](https://github.com/Oratorian/emby-watchparty/pull/45): 165 commits over 139 files, of which 57 are tests and 51 are refactors. Too large and too breaking to land as one merge, so it lives on `3.0-dev` and is being worked issue by issue against the [3.0 milestone](https://github.com/Oratorian/emby-watchparty/milestone/2).
+The work is **[dnordel](https://github.com/dnordel)**'s, contributed as [#45](https://github.com/Oratorian/emby-watchparty/pull/45): 165 commits over 139 files, of which 57 are tests and 51 are refactors. Too large and too breaking to land as one merge, so it went onto `3.0-dev` as the integration branch and was worked issue by issue against the [3.0 milestone](https://github.com/Oratorian/emby-watchparty/milestone/2), which is now empty.
+
+### Security
+
+`3.0-dev` forked from `2.0.2`, **before** the 2.1.0 security release, so none of that release's authorization work existed on the branch. All of it is back, and four findings the rework introduced are closed alongside it.
+
+- **The 2.1.0 authorization work is re-established.** `/hls` requires the party-bound session cookie again, and the cookie's party must match the stream token's party, so the two gates can no longer be satisfied independently by different parties. Upstream playlist URIs are validated *before* rewriting rather than after, which had made the guard reject its own output. Legacy `admin_emby_*` cookie keys are scrubbed again, now from the party-session gate as well as the admin routes, so an admin upgrading from 2.0.x is cleaned up on their first request rather than only if they revisit `/admin`.
+- **A departed host can get back into their own party.** `host_client_id` is deliberately retained after the host leaves so the in-flight stream survives, which keeps the identity reserved, while leaving discarded `host_session_grant`, the only proof of ownership. The result was unrecoverable rather than annoying: `/api/auth/login` needs a bound party, and `video_ended` / `stop_video` are gated to the selector, who is the locked-out host, so nobody remaining could end the video either. The grant now stands on its own and survives the unbind.
+- **Socket rate limiting keys on the real client.** python-engineio writes the literal `127.0.0.1` into the handshake environ rather than the peer address, so every viewer in a deployment shared one bucket. With the shipped defaults that is 30 socket connections per minute *in total*, with no proxy and no attacker involved; Socket.IO reconnects spend the same budget, so a few people on poor connections could stop anyone else joining. The peer now comes from the ASGI scope.
+- **HLS tokens no longer reach the logs.** uvicorn runs its own access logger, separate from the application's, and it writes the full request line at INFO. Every HLS URL carries `?token=`, so each playlist and segment request published a working stream credential to anything that ships logs onward. The redaction work had only ever covered the application logger.
+
+Every one of these was verified by removing the fix and confirming the tests fail, rather than by inspection.
 
 ### Expect a migration, not a drop-in
 
-Unlike every 2.x release, this one will need reading before you upgrade. Rate limiting becomes **enforced** using the values already in your `config.json`, and behind a reverse proxy without `TRUSTED_PROXY_CIDRS` set, your whole deployment shares one bucket; bare-metal installs must recreate their virtualenv, because the hash-locked requirements put pip into `--require-hashes` mode; `EMBY_SERVER_URL` values like `http://emby_server:8096` stop validating; and a misconfigured container currently reports healthy while serving nothing but a setup page. A `docs/Migration-HowTo-2x-to-3.md` ships with the release, and every one of these is being made to announce itself in a log line naming the field before then.
+Unlike every 2.x release, this one needs reading before you upgrade, and [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) now covers the 2.1.x → 3.0 path.
 
-### Before this can ship
+Rate limiting becomes **enforced**, using the values already sitting in your `config.json`, values nobody has tuned because they previously did nothing. Behind a reverse proxy without `TRUSTED_PROXY_CIDRS` set, every viewer still shares one bucket. Bare-metal installs must recreate their virtualenv, because the hash-locked requirements put pip into `--require-hashes` mode; `requires-python` is now declared, so a mismatched interpreter refuses the install instead of succeeding quietly. A misconfigured container now reports `setup_required` from `/api/health` and logs the failing field, instead of reporting healthy and writing nothing.
 
-`3.0-dev` forked from `2.0.2`, **before** the 2.1.0 security release, so none of the 2.1.0 authorization work is on the branch: `/hls` has no session gate, cookie and stream-token parties are not compared, and the legacy admin-token cookie keys are no longer scrubbed. Those, plus four findings the rework introduced, are filed as milestone blockers, six of the eight labelled `security`. 3.0 does not get a version number until every one is closed with a test that fails when the fix is removed.
+Two rough edges remain and are called out in the migration guide: `EMBY_SERVER_URL` values like `http://emby_server:8096` still fail validation because the hostname pattern rejects underscores, and completing setup still chmods the shared `data/` volume to `0700`.
 
 The full breakdown, breaking changes with their blast radius, the security analysis and the complete change log, lives in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
 
@@ -165,7 +176,7 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
-- **v3.0.0**  (TBA): Architecture release -- typed socket/REST contracts with runtime validation, application factory, first-run setup mode, production readiness gate, and a fake-Emby test suite. In development on `3.0-dev`.
+- **v3.0.0**  (TBA): Architecture release -- typed socket/REST contracts with runtime validation, application factory, first-run setup mode, production readiness gate, and a fake-Emby test suite. The 2.1.0 authorization work is re-established and four new findings closed. In development on `3.0-dev`.
 - **v2.1.0**  (2026-08-03): Security -- `/hls` now session-gated with a cookie/token party match, and the Emby admin token moved out of the session cookie.
 - **v2.0.2**  (2026-08-01): HLS token rewriting fixed for CRLF playlists (playback stuck buffering at 0:00) + first HLS proxy tests.
 - **v2.0.1**  (2026-07-14): Democratic playback control (any member can play/pause/seek) + sync-guard fixes.
