@@ -287,8 +287,17 @@ async def join_party(
         body.client_id,
         session.get("host_session_grant"),
     )
+    # A reserved identity may be claimed two ways, and the host grant has
+    # to stand on its own rather than be conditioned on `owns_identity`.
+    # `/api/party/leave` unbinds party_id and client_id, so a host who
+    # left and came back has no session identity to own, only the grant.
+    # Requiring both locked the genuine host out of their own party with
+    # no way back: /api/auth/login needs a bound party, which only a
+    # successful join provides, and video_ended / stop_video are gated to
+    # the selector, who is the locked-out host, so nobody left in the
+    # party could end the video either.
     if identity_reserved and not (
-        owns_identity and (party.host_client_id != body.client_id or owns_host_identity)
+        owns_host_identity or (owns_identity and party.host_client_id != body.client_id)
     ):
         logger.warning("Rejected attempt to claim reserved identity in party %s", party_id)
         return JoinPartyResponse(success=False, message="Participant identity is already in use")
@@ -375,7 +384,14 @@ def leave_party(request: Request, logger=Depends(get_logger)):
     session.pop("client_id", None)
     session.pop("display_name", None)
     session.pop("avatar_uuid", None)
-    session.pop("host_session_grant", None)
+    # `host_session_grant` deliberately survives the unbind. It is the
+    # only proof of host identity, and the party keeps reserving
+    # `host_client_id` after the host leaves (retained through
+    # PLAYING-ONLY so the in-flight stream finishes). Discarding the
+    # grant here left the genuine host unable to rejoin their own party.
+    # Retaining it is safe because it is party-scoped and `set_host`
+    # rotates it on every promotion, so it stops proving anything the
+    # moment anyone else takes over, and it never matches another party.
     if party_id:
         logger.info(f"Session unbound from party {party_id}")
     return SuccessResponse(success=True)

@@ -211,6 +211,110 @@ def test_disconnected_participant_can_reclaim_identity(tmp_path: Path) -> None:
     asyncio.run(exercise())
 
 
+def test_departed_host_can_rejoin_their_own_party(tmp_path: Path) -> None:
+    """A host who leaves during playback must not be locked out of their party.
+
+    `host_client_id` is deliberately retained through PLAYING-ONLY so the
+    in-flight stream survives, and `/api/party/leave` wipes the session
+    including `host_session_grant`. Together those made the join gate
+    refuse the genuine host on return: the identity reads as reserved and
+    the proof of ownership has just been discarded.
+
+    That is unrecoverable rather than merely annoying. `/api/auth/login`
+    requires a bound party, which only a successful join provides, and
+    `video_ended` / `stop_video` are both gated to the selector, who is
+    the locked-out host. Nobody left in the party can end the video, so
+    the party stays bricked until it dissolves.
+    """
+
+    async def exercise() -> None:
+        app = _application(tmp_path)
+        async with asgi_client(app) as host:
+            party_id = (await host.post("/api/party/create", json={})).json()["party_id"]
+            await host.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "host-client", "display_name": "Alice"},
+            )
+            assert (
+                await host.post(
+                    "/api/auth/login", json={"username": "Alice", "password": "password"}
+                )
+            ).json()["is_admin"] is True
+
+            party = app.state.party_manager.get(party_id)
+            assert party.host_client_id == "host-client"
+
+            # The host leaves. Playback is still running, so the party
+            # keeps host_client_id; the session, and with it the grant,
+            # is discarded.
+            assert (await host.post("/api/party/leave")).json()["success"] is True
+            assert party.host_client_id == "host-client"
+
+            # They click the party link again, from the same browser.
+            rejoined = await host.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "host-client", "display_name": "Alice"},
+            )
+            assert rejoined.json()["success"] is True, rejoined.json().get("message")
+
+    asyncio.run(exercise())
+
+
+def test_departed_host_identity_still_needs_the_grant(tmp_path: Path) -> None:
+    """Letting the host back in must not let anyone else in behind them.
+
+    The rejoin fix accepts `host_session_grant` on its own, without a
+    bound session. This pins the other half: after the host leaves, their
+    `client_id` is still reserved against everyone who cannot produce
+    that grant, including someone holding a perfectly valid session for
+    the same party.
+    """
+
+    async def exercise() -> None:
+        app = _application(tmp_path)
+        async with (
+            asgi_client(app) as host,
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as attacker,
+        ):
+            party_id = (await host.post("/api/party/create", json={})).json()["party_id"]
+            await host.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "host-client", "display_name": "Alice"},
+            )
+            await host.post("/api/auth/login", json={"username": "Alice", "password": "password"})
+            assert (await host.post("/api/party/leave")).json()["success"] is True
+
+            # A real member of the same party, with a real session.
+            assert (
+                await attacker.post(
+                    f"/api/party/{party_id}/join",
+                    json={"client_id": "mallory-client", "display_name": "Mallory"},
+                )
+            ).json()["success"] is True
+
+            # host_client_id is broadcast in host_changed, so treat it as public.
+            claimed = await attacker.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "host-client", "display_name": "Mallory"},
+            )
+            assert claimed.json()["success"] is False
+            assert (await attacker.get("/api/admin/config")).json() == {
+                "error": "Not authenticated"
+            }
+
+            # The genuine host, still holding the grant, gets back in.
+            assert (
+                await host.post(
+                    f"/api/party/{party_id}/join",
+                    json={"client_id": "host-client", "display_name": "Alice"},
+                )
+            ).json()["success"] is True
+
+    asyncio.run(exercise())
+
+
 def test_admin_login_and_logout_scrub_legacy_cookie_credentials(tmp_path: Path) -> None:
     async def exercise() -> None:
         app = _application(tmp_path)

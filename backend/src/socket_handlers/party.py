@@ -510,7 +510,14 @@ def register(ctx):
         party = party_manager.get(party_id)
         participants = party.participants
         sid_client_ids = party.sid_client_ids
+        # Reserve on live sockets, not on the participant record.
+        # `participants` retains members whose socket dropped, so keying
+        # the reserve on it refused a returning viewer their own
+        # identity. `sid_client_ids` holds only connected clients, which
+        # is what "already in use" is supposed to mean. Mirrors the same
+        # fix in routers/party.py; this gate was missed there.
         known_participant = client_id in participants
+        identity_in_use = client_id in sid_client_ids.values()
         rejoin = known_participant
         existing_participant = participants.get(client_id)
         old_sid = existing_participant.sid if existing_participant else None
@@ -520,14 +527,21 @@ def register(ctx):
         cookie_client_id = cookie_session.get("client_id") if cookie_session else None
         cookie_party_id = (cookie_session.get("party_id") or "").upper() if cookie_session else ""
         same_browser = cookie_client_id == client_id and cookie_party_id == party_id
-        identity_reserved = known_participant or party.host_client_id == client_id
+        identity_reserved = identity_in_use or party.host_client_id == client_id
         owns_host_identity = party_host_session_matches(
             party,
             client_id,
             cookie_session.get("host_session_grant") if cookie_session else None,
         )
+        # The grant stands alone here too. `sio.get_environ(sid)` returns
+        # the environ frozen at handshake, so a cookie minted by the HTTP
+        # join *after* the socket connected is invisible to this gate,
+        # and usePartyReconnect re-emits join_party on reconnect without
+        # binding a session at all. Conditioning the host path on
+        # `same_browser` therefore rejected the real host on exactly the
+        # loads meant to recover them.
         if identity_reserved and not (
-            same_browser and (party.host_client_id != client_id or owns_host_identity)
+            owns_host_identity or (same_browser and party.host_client_id != client_id)
         ):
             logger.warning(
                 "Join identity claim rejected in %s: sid=%s client_id=%s",
