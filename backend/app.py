@@ -296,6 +296,26 @@ def _setup_logging(config: Config):
         backup_count=5,
     )
     apply_log_levels(config)
+
+    # uvicorn runs a second access logger, independent of ours, and it
+    # writes the full request line at INFO with the query string
+    # included. Every HLS URL carries ?token=<hls token>, so leaving it
+    # enabled publishes a working stream credential on every playlist
+    # and segment request, into anything that ships logs onward.
+    #
+    # Suppressed here rather than through uvicorn.run(access_log=False)
+    # because that only covers `python -m backend.app`. Starting via the
+    # ASGI target instead, `uvicorn backend.app:app --reload`, bypasses
+    # main() completely and kept leaking.
+    #
+    # Disabled rather than filtered, deliberately. A filter would have to
+    # rewrite uvicorn's internal record.args, and if that shape changed
+    # on an upgrade the failure mode would be a silent re-leak. Nothing
+    # observable is lost: RequestLogMiddleware already emits a structured
+    # line per request built from request.url.path, which carries no
+    # query string.
+    logging.getLogger("uvicorn.access").disabled = True
+
     return logger
 
 
@@ -551,15 +571,10 @@ def main() -> None:
         host=cfg.WATCH_PARTY_BIND,
         port=port,
         proxy_headers=False,
-        # uvicorn's access logger writes the full request line, query
-        # string included, at INFO. Every HLS URL carries ?token=<hls
-        # token>, so leaving this on publishes a working stream
-        # credential to the log on every playlist and segment request.
-        # The redaction work only ever covered the `emby-watchparty`
-        # logger, so this second logger in the same process quietly
-        # undid it. RequestLogMiddleware already emits a structured line
-        # per request built from request.url.path, which carries no
-        # query string, so nothing observable is lost here.
+        # Belt to _setup_logging's braces. That disables the
+        # `uvicorn.access` logger for every entrypoint; this states the
+        # same intent natively for the one entrypoint that runs uvicorn
+        # itself, so nobody reading main() has to know about the other.
         access_log=False,
     )
 

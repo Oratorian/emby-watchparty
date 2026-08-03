@@ -69,3 +69,29 @@ def test_admin_login_logs_redact_upstream_credentials(
     assert "submitted-password" not in caplog.text
     assert "super-secret-api-key" not in caplog.text
     assert "ConnectError" in caplog.text
+
+
+def test_uvicorn_access_logger_is_silenced_for_every_entrypoint(tmp_path: Path) -> None:
+    """uvicorn's own access logger must never run.
+
+    It writes the full request line at INFO, query string included, and
+    every HLS URL carries `?token=<hls token>`, so an enabled access log
+    publishes a working stream credential on each playlist and segment
+    request.
+
+    Asserted on the logger rather than on `uvicorn.run(access_log=False)`
+    because that argument only covers `python -m backend.app`. Starting
+    through the ASGI target instead, `uvicorn backend.app:app --reload`,
+    never reaches main() and leaked until this moved into the shared
+    logging setup.
+    """
+    access = logging.getLogger("uvicorn.access")
+    access.disabled = False
+
+    app = create_app(config=_config(), project_root=tmp_path, enable_update_check=False)
+
+    async def exercise() -> None:
+        async with asgi_client(app):
+            assert access.disabled is True
+
+    asyncio.run(exercise())
