@@ -97,7 +97,7 @@ form.addEventListener('submit',async(event)=>{{event.preventDefault();errors.tex
 const payload={{APP_ENV:form.elements.APP_ENV.value,EMBY_SERVER_URL:form.elements.EMBY_SERVER_URL.value,EMBY_API_KEY:form.elements.EMBY_API_KEY.value,SESSION_SECRET:form.elements.SESSION_SECRET.value,SESSION_COOKIE_SECURE:form.elements.SESSION_COOKIE_SECURE.checked,CORS_ALLOWED_ORIGINS:form.elements.CORS_ALLOWED_ORIGINS.value,TRUSTED_PROXY_CIDRS:form.elements.TRUSTED_PROXY_CIDRS.value,BEHIND_PROXY:form.elements.BEHIND_PROXY.checked,APP_PREFIX:form.elements.APP_PREFIX.value,ENABLE_HLS_TOKEN_VALIDATION:form.elements.ENABLE_HLS_TOKEN_VALIDATION.checked}};
 try{{const response=await fetch({endpoint},{{method:'POST',headers:{{'Content-Type':'application/json','X-Emby-Watchparty-Setup-Token':token}},body:JSON.stringify(payload)}});const result=await response.json();
 if(response.ok){{form.elements.EMBY_API_KEY.value='';form.elements.SESSION_SECRET.value='';form.elements.BOOTSTRAP_TOKEN.value='';document.body.innerHTML='<main><h1>Configuration saved; restart required.</h1><p>Restart server to enter normal mode.</p></main>';return;}}
-errors.textContent=result.errors?Object.entries(result.errors).map(([field,message])=>field+': '+message).join('\n'):(result.detail||'Save failed');}}catch(_error){{errors.textContent='Save failed. Check server and try again.';}}}});
+errors.textContent=result.errors?Object.entries(result.errors).map(([field,message])=>field+': '+message).join('\\n'):(result.detail||'Save failed');}}catch(_error){{errors.textContent='Save failed. Check server and try again.';}}}});
 </script></main></body></html>"""
 
 

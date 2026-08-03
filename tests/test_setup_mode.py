@@ -630,3 +630,38 @@ def test_importing_the_module_builds_nothing() -> None:
     assert result.returncode == 0, result.stderr
     assert "Bootstrap token" not in result.stdout
     assert "Setup required" not in result.stderr
+
+
+def test_setup_page_script_has_no_unterminated_string_literals(tmp_path: Path) -> None:
+    r"""The inline setup script must actually parse.
+
+    One unterminated string literal aborts the entire `<script>`, and
+    nothing binds afterwards: not the generate-secret button, and not the
+    submit handler. That leaves first-run setup impossible to complete
+    while the page still looks perfectly fine.
+
+    The original defect was `.join('\n')` written inside a *non-raw*
+    f-string, so Python expanded it to a real newline before the browser
+    saw it, and the JS string spanned two lines. Checking quote balance
+    per line catches that whole class rather than the one instance.
+    """
+    app = create_app(
+        config=_invalid_production_config(),
+        project_root=tmp_path,
+        enable_update_check=False,
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            html = (await client.get("/setup")).text
+
+        script = re.search(r"<script>(.*?)</script>", html, re.S)
+        assert script is not None, "setup page served no inline script"
+
+        for number, line in enumerate(script.group(1).strip().splitlines(), 1):
+            assert line.count("'") % 2 == 0, (
+                f"line {number} of the setup script leaves a string literal open, "
+                f"which aborts the whole script: {line!r}"
+            )
+
+    asyncio.run(exercise())
