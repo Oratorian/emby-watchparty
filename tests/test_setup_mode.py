@@ -1,8 +1,13 @@
+"""Unconfigured mode: what happens when boot configuration is invalid.
+
+Configuration is environment-only. There is no setup form and no
+bootstrap token, so these tests cover the whole of what remains: name
+the bad fields loudly, answer probes so an orchestrator can diagnose
+rather than restart-loop, and serve nothing else.
+"""
+
 import asyncio
-import json
 import os
-import re
-import secrets
 import subprocess
 import sys
 from pathlib import Path
@@ -31,555 +36,7 @@ def _invalid_production_config(*, prefix: str = "") -> Config:
     )
 
 
-def _valid_setup_payload() -> dict:
-    return {
-        "APP_ENV": "production",
-        "EMBY_SERVER_URL": "https://emby.example",
-        "EMBY_API_KEY": "new-api-key",
-        "SESSION_SECRET": "n" * 64,
-        "SESSION_COOKIE_SECURE": True,
-        "CORS_ALLOWED_ORIGINS": ["https://watch.example"],
-        "TRUSTED_PROXY_CIDRS": ["10.0.0.0/8"],
-        "BEHIND_PROXY": True,
-        "APP_PREFIX": "",
-        "ENABLE_HLS_TOKEN_VALIDATION": True,
-    }
-
-
-def test_invalid_production_config_serves_setup_instead_of_raising(tmp_path: Path) -> None:
-    app = create_app(
-        config=_invalid_production_config(),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            response = await client.get("/setup")
-            assert response.status_code == 200
-            assert "First-run configuration" in response.text
-
-    asyncio.run(exercise())
-
-
-def test_config_loads_persisted_bootstrap_values(tmp_path: Path, monkeypatch) -> None:
-    data = tmp_path / "data"
-    data.mkdir()
-    (data / "bootstrap.json").write_text(
-        json.dumps(
-            {
-                "CONFIGURED": True,
-                "APP_ENV": "production",
-                "EMBY_SERVER_URL": "https://emby.example",
-                "EMBY_API_KEY": "saved-key",
-                "SESSION_SECRET": "s" * 64,
-                "SESSION_COOKIE_SECURE": True,
-                "CORS_ALLOWED_ORIGINS": ["https://watch.example"],
-                "TRUSTED_PROXY_CIDRS": [],
-                "BEHIND_PROXY": False,
-                "APP_PREFIX": "/watch",
-                "ENABLE_HLS_TOKEN_VALIDATION": True,
-            }
-        ),
-        encoding="utf-8",
-    )
-    for name in (
-        "APP_ENV",
-        "EMBY_SERVER_URL",
-        "EMBY_API_KEY",
-        "SESSION_SECRET",
-        "SESSION_COOKIE_SECURE",
-        "CORS_ALLOWED_ORIGINS",
-        "TRUSTED_PROXY_CIDRS",
-        "BEHIND_PROXY",
-        "APP_PREFIX",
-        "ENABLE_HLS_TOKEN_VALIDATION",
-    ):
-        monkeypatch.delenv(name, raising=False)
-
-    config = Config.from_env(project_root=tmp_path)
-
-    assert config.APP_ENV == "production"
-    assert config.EMBY_API_KEY == "saved-key"
-    assert config.APP_PREFIX == "/watch"
-    config.validate_for_startup()
-
-
-def test_malformed_boot_value_enters_setup_mode(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("WATCH_PARTY_PORT", "not-a-port")
-
-    app = create_app(project_root=tmp_path, enable_update_check=False)
-    assert not hasattr(app.state, "sio")
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            response = await client.get("/setup")
-            assert "First-run configuration" in response.text
-
-    asyncio.run(exercise())
-
-
-def test_setup_mode_exposes_only_setup_and_probe_routes(tmp_path: Path) -> None:
-    app = create_app(
-        config=_invalid_production_config(),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            root = await client.get("/", follow_redirects=False)
-            assert root.status_code == 307
-            assert root.headers["location"] == "/setup"
-            health = await client.get("/api/health")
-            assert health.status_code == 200
-            assert health.json()["status"] == "setup_required"
-            ready = await client.get("/api/ready")
-            assert ready.status_code == 503
-            assert ready.json() == {"status": "setup_required"}
-            for path in (
-                "/api/party/list",
-                "/hls/item/master.m3u8",
-                "/admin",
-                "/assets/app.js",
-                "/socket.io/?EIO=4&transport=polling",
-                "/docs",
-            ):
-                assert (await client.get(path)).status_code == 503
-
-    asyncio.run(exercise())
-
-
-def test_setup_write_requires_console_bootstrap_token(tmp_path: Path, capsys) -> None:
-    app = create_app(
-        config=_invalid_production_config(),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-    console = capsys.readouterr().out
-    match = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", console)
-    assert match is not None
-    token = match.group(1)
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            page = await client.get("/setup")
-            assert token not in page.text
-            missing = await client.post("/api/setup", json={})
-            wrong = await client.post(
-                "/api/setup",
-                headers={"X-Emby-Watchparty-Setup-Token": "wrong"},
-                json={},
-            )
-            correct = await client.post(
-                "/api/setup",
-                headers={"X-Emby-Watchparty-Setup-Token": token},
-                json={},
-            )
-            assert missing.status_code == 403
-            assert wrong.status_code == 403
-            assert correct.status_code == 400
-            assert token not in missing.text + wrong.text + correct.text
-
-    asyncio.run(exercise())
-
-
-def test_setup_token_comparison_always_uses_compare_digest(
-    tmp_path: Path, capsys, monkeypatch
-) -> None:
-    app = create_app(
-        config=_invalid_production_config(),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
-    calls: list[tuple[str, str]] = []
-    original = secrets.compare_digest
-
-    def compare_digest(supplied: str, expected: str) -> bool:
-        calls.append((supplied, expected))
-        return original(supplied, expected)
-
-    monkeypatch.setattr("backend.app.secrets.compare_digest", compare_digest)
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            await client.post("/api/setup", json={})
-            await client.post(
-                "/api/setup",
-                headers={"X-Emby-Watchparty-Setup-Token": "wrong"},
-                json={},
-            )
-            await client.post(
-                "/api/setup",
-                headers={"X-Emby-Watchparty-Setup-Token": token},
-                json={},
-            )
-
-    asyncio.run(exercise())
-    assert calls == [("", token), ("wrong", token), (token, token)]
-
-
-def test_setup_body_limit_stops_chunked_request_without_content_length(
-    tmp_path: Path, capsys
-) -> None:
-    app = create_app(
-        config=_invalid_production_config(),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
-    chunks_yielded = 0
-
-    async def chunks():
-        nonlocal chunks_yielded
-        for _ in range(10):
-            chunks_yielded += 1
-            yield b"x" * 8192
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            response = await client.post(
-                "/api/setup",
-                headers={"X-Emby-Watchparty-Setup-Token": token},
-                content=chunks(),
-            )
-            assert response.status_code == 413
-
-    asyncio.run(exercise())
-    assert chunks_yielded == 5
-
-
-def test_inline_script_json_escapes_html_delimiters() -> None:
-    serialized = _json_for_html_script("/</script><script>&attack</script>")
-
-    assert "</script>" not in serialized
-    assert "<" not in serialized
-    assert ">" not in serialized
-    assert "&" not in serialized
-    assert "\\u003c/script\\u003e" in serialized
-
-
-def test_failed_bootstrap_token_attempts_are_rate_limited(tmp_path: Path, capsys) -> None:
-    app = create_app(
-        config=_invalid_production_config(),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            for attempt in range(5):
-                response = await client.post(
-                    "/api/setup",
-                    headers={"X-Emby-Watchparty-Setup-Token": f"wrong-{attempt}"},
-                    json={},
-                )
-                assert response.status_code == 403
-            limited = await client.post(
-                "/api/setup",
-                headers={"X-Emby-Watchparty-Setup-Token": "wrong-again"},
-                json={},
-            )
-            assert limited.status_code == 429
-            assert int(limited.headers["Retry-After"]) > 0
-            correct = await client.post(
-                "/api/setup",
-                headers={"X-Emby-Watchparty-Setup-Token": token},
-                json={},
-            )
-            assert correct.status_code == 400
-
-    asyncio.run(exercise())
-
-
-def test_saved_configuration_enters_normal_mode_after_restart(
-    tmp_path: Path, capsys, monkeypatch
-) -> None:
-    app = create_app(
-        config=_invalid_production_config(),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
-
-    async def save() -> None:
-        async with asgi_client(app) as client:
-            response = await client.post(
-                "/api/setup",
-                headers={"X-Emby-Watchparty-Setup-Token": token},
-                json=_valid_setup_payload(),
-            )
-            assert response.status_code == 200
-            assert response.json() == {"status": "saved", "restart_required": True}
-            assert "new-api-key" not in response.text
-            assert "n" * 64 not in response.text
-            repeated = await client.post(
-                "/api/setup",
-                headers={"X-Emby-Watchparty-Setup-Token": token},
-                json=_valid_setup_payload(),
-            )
-            assert repeated.status_code == 409
-
-    asyncio.run(save())
-    for name in _valid_setup_payload():
-        monkeypatch.delenv(name, raising=False)
-    saved = json.loads((tmp_path / "data" / "bootstrap.json").read_text(encoding="utf-8"))
-    assert saved["EMBY_API_KEY"] == "new-api-key"
-
-    restarted = create_app(project_root=tmp_path, enable_update_check=False)
-    assert hasattr(restarted.state, "sio")
-
-
-def test_setup_does_not_persist_environment_configuration(
-    tmp_path: Path, capsys, monkeypatch
-) -> None:
-    (tmp_path / ".env").write_text(
-        "APP_ENV=production\n"
-        "EMBY_SERVER_URL=https://dotenv-emby.example\n"
-        "EMBY_API_KEY=dotenv-key\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("EMBY_API_KEY", "process-key")
-    app = create_app(project_root=tmp_path, enable_update_check=False)
-    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
-
-    async def save() -> None:
-        async with asgi_client(app) as client:
-            response = await client.post(
-                "/api/setup",
-                headers={"X-Emby-Watchparty-Setup-Token": token},
-                json=_valid_setup_payload(),
-            )
-            assert response.status_code == 200
-
-    asyncio.run(save())
-    saved = json.loads((tmp_path / "data" / "bootstrap.json").read_text(encoding="utf-8"))
-    assert saved["CONFIGURED"] is True
-    assert "APP_ENV" not in saved
-    assert "EMBY_SERVER_URL" not in saved
-    assert "EMBY_API_KEY" not in saved
-
-
-def test_missing_bootstrap_in_existing_data_directory_enters_setup(tmp_path: Path) -> None:
-    (tmp_path / "data").mkdir()
-
-    app = create_app(project_root=tmp_path, enable_update_check=False)
-
-    assert not hasattr(app.state, "sio")
-
-
-def test_first_valid_source_startup_persists_sentinel_before_runtime_data(
-    tmp_path: Path, monkeypatch
-) -> None:
-    for name in (
-        "APP_ENV",
-        "EMBY_SERVER_URL",
-        "EMBY_API_KEY",
-        "SESSION_SECRET",
-        "SESSION_COOKIE_SECURE",
-        "CORS_ALLOWED_ORIGINS",
-        "TRUSTED_PROXY_CIDRS",
-        "BEHIND_PROXY",
-        "APP_PREFIX",
-        "ENABLE_HLS_TOKEN_VALIDATION",
-    ):
-        monkeypatch.delenv(name, raising=False)
-    (tmp_path / ".env").write_text(
-        "EMBY_SERVER_URL=http://emby.test\n"
-        "EMBY_API_KEY=test-key\n"
-        "SESSION_SECRET=test-session-secret-with-at-least-32-characters\n",
-        encoding="utf-8",
-    )
-
-    first = create_app(project_root=tmp_path, enable_update_check=False)
-    assert hasattr(first.state, "sio")
-    persisted = json.loads((tmp_path / "data" / "bootstrap.json").read_text(encoding="utf-8"))
-    assert persisted == {"CONFIGURED": True}
-
-    restarted = create_app(project_root=tmp_path, enable_update_check=False)
-    assert hasattr(restarted.state, "sio")
-
-
-def test_setup_token_has_recovery_file_and_is_removed_after_save(tmp_path: Path, capsys) -> None:
-    app = create_app(
-        config=_invalid_production_config(),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
-    token_path = tmp_path / "data" / "setup-token"
-    assert token_path.read_text(encoding="utf-8").strip() == token
-
-    async def save() -> None:
-        async with asgi_client(app) as client:
-            response = await client.post(
-                "/api/setup",
-                headers={"X-Emby-Watchparty-Setup-Token": token},
-                json=_valid_setup_payload(),
-            )
-            assert response.status_code == 200
-
-    asyncio.run(save())
-    assert not token_path.exists()
-
-
-def test_failed_setup_token_is_logged(tmp_path: Path, capsys, caplog) -> None:
-    app = create_app(
-        config=_invalid_production_config(),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-    capsys.readouterr()
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            assert (
-                await client.post(
-                    "/api/setup",
-                    headers={"X-Emby-Watchparty-Setup-Token": "wrong"},
-                    json={},
-                )
-            ).status_code == 403
-
-    asyncio.run(exercise())
-    assert "Failed bootstrap token" in caplog.text
-
-
-def test_invalid_setup_fields_return_safe_errors(tmp_path: Path, capsys, caplog) -> None:
-    app = create_app(
-        config=_invalid_production_config(),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
-    payload = _valid_setup_payload()
-    payload["SESSION_SECRET"] = "leaky-short-secret"
-    payload["EMBY_API_KEY"] = "   "
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            response = await client.post(
-                "/api/setup",
-                headers={"X-Emby-Watchparty-Setup-Token": token},
-                json=payload,
-            )
-            assert response.status_code == 400
-            assert set(response.json()["errors"]) >= {"SESSION_SECRET", "EMBY_API_KEY"}
-            assert "leaky-short-secret" not in response.text
-
-    asyncio.run(exercise())
-    assert "leaky-short-secret" not in caplog.text
-
-
-def test_setup_page_contains_secure_configuration_form(tmp_path: Path, capsys) -> None:
-    app = create_app(
-        config=_invalid_production_config(),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            response = await client.get("/setup")
-            assert response.status_code == 200
-            for field in _valid_setup_payload():
-                assert f'name="{field}"' in response.text
-            assert 'name="BOOTSTRAP_TOKEN"' in response.text
-            assert "crypto.getRandomValues" in response.text
-            assert "Generate secure secret" in response.text
-            assert "localStorage" not in response.text
-            assert token not in response.text
-            assert "Boot-setting changes require restart" in response.text
-
-    asyncio.run(exercise())
-
-
-def test_setup_routes_honor_app_prefix_and_skip_normal_resources(tmp_path: Path, capsys) -> None:
-    app = create_app(
-        config=_invalid_production_config(prefix="/watch"),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-    capsys.readouterr()
-    assert not hasattr(app.state, "sio")
-    assert not hasattr(app.state, "party_manager")
-    assert not hasattr(app.state, "token_manager")
-    assert not hasattr(app.state, "admin_session_store")
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            root = await client.get("/", follow_redirects=False)
-            assert root.headers["location"] == "/watch/setup"
-            assert (await client.get("/watch/setup")).status_code == 200
-            assert (await client.get("/watch/api/health")).status_code == 200
-            assert (await client.get("/watch/api/ready")).status_code == 503
-            assert (await client.get("/api/health")).status_code == 503
-
-    asyncio.run(exercise())
-
-
-def test_invalid_app_prefix_falls_back_to_unprefixed_setup(tmp_path: Path) -> None:
-    app = create_app(
-        config=_invalid_production_config(prefix="not/absolute"),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            assert (await client.get("/setup")).status_code == 200
-
-    asyncio.run(exercise())
-
-
-def test_invalid_environment_override_cannot_be_masked_by_setup(
-    tmp_path: Path, monkeypatch, capsys
-) -> None:
-    persisted = _valid_setup_payload()
-    persisted["CONFIGURED"] = True
-    (tmp_path / "data").mkdir()
-    (tmp_path / "data" / "bootstrap.json").write_text(json.dumps(persisted), encoding="utf-8")
-    monkeypatch.setenv("SESSION_SECRET", "invalid-env-secret")
-    app = create_app(project_root=tmp_path, enable_update_check=False)
-    token = re.search(r"Bootstrap token: ([A-Za-z0-9_-]+)", capsys.readouterr().out).group(1)
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            response = await client.post(
-                "/api/setup",
-                headers={"X-Emby-Watchparty-Setup-Token": token},
-                json=_valid_setup_payload(),
-            )
-            assert response.status_code == 400
-            assert response.json()["errors"]["SESSION_SECRET"] == (
-                "Invalid environment override; change or remove it and restart"
-            )
-
-    asyncio.run(exercise())
-    assert (
-        json.loads((tmp_path / "data" / "bootstrap.json").read_text(encoding="utf-8")) == persisted
-    )
-
-
-def test_corrupted_persisted_bootstrap_enters_setup_mode(tmp_path: Path) -> None:
-    (tmp_path / "data").mkdir()
-    (tmp_path / "data" / "bootstrap.json").write_text("{broken", encoding="utf-8")
-
-    app = create_app(project_root=tmp_path, enable_update_check=False)
-    assert not hasattr(app.state, "sio")
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            response = await client.get("/setup")
-            assert "First-run configuration" in response.text
-
-    asyncio.run(exercise())
-
-
-def _setup_mode_environment() -> dict[str, str]:
+def _unconfigured_environment() -> dict[str, str]:
     """An environment whose boot config does not validate."""
     environment = os.environ.copy()
     environment.update(
@@ -594,12 +51,167 @@ def _setup_mode_environment() -> dict[str, str]:
     return environment
 
 
-def test_module_import_survives_setup_mode() -> None:
+def test_invalid_config_serves_a_diagnosis_instead_of_raising(tmp_path: Path) -> None:
+    """A misconfigured container must stay up and stay diagnosable.
+
+    Raising would restart-loop under `restart: unless-stopped`, which
+    buries the reason in a scrolling log.
+    """
+    app = create_app(
+        config=_invalid_production_config(),
+        project_root=tmp_path,
+        enable_update_check=False,
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            health = await client.get("/api/health")
+            assert health.status_code == 200
+            assert health.json()["status"] == "setup_required"
+
+            ready = await client.get("/api/ready")
+            assert ready.status_code == 503
+            assert ready.json() == {"status": "setup_required"}
+
+    asyncio.run(exercise())
+
+
+def test_unconfigured_mode_serves_nothing_else(tmp_path: Path) -> None:
+    app = create_app(
+        config=_invalid_production_config(),
+        project_root=tmp_path,
+        enable_update_check=False,
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            for path in (
+                "/",
+                "/setup",
+                "/api/setup",
+                "/api/party/list",
+                "/hls/item/master.m3u8",
+                "/admin",
+                "/assets/app.js",
+                "/socket.io/?EIO=4&transport=polling",
+                "/docs",
+            ):
+                assert (await client.get(path)).status_code == 503, path
+
+    asyncio.run(exercise())
+
+
+def test_the_failing_fields_are_named_on_stderr(tmp_path: Path, capsys) -> None:
+    """The banner is the only diagnosis an operator now gets.
+
+    On Unraid, CasaOS, Portainer and TrueNAS this is read through a web
+    log viewer, so it has to be findable among startup noise and it has
+    to say which fields are wrong, not merely that something is.
+    """
+    create_app(
+        config=_invalid_production_config(),
+        project_root=tmp_path,
+        enable_update_check=False,
+    )
+
+    printed = capsys.readouterr().err
+    assert "invalid boot configuration" in printed
+    for field in ("SESSION_SECRET", "SESSION_COOKIE_SECURE", "CORS_ALLOWED_ORIGINS"):
+        assert field in printed, f"{field} is invalid but was not named"
+    assert "environment" in printed, "operator is not told where to fix it"
+
+
+def test_malformed_boot_value_enters_unconfigured_mode(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("WATCH_PARTY_PORT", "not-a-port")
+
+    app = create_app(project_root=tmp_path, enable_update_check=False)
+    assert not hasattr(app.state, "sio")
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            assert (await client.get("/api/ready")).status_code == 503
+
+    asyncio.run(exercise())
+
+
+def test_invalid_app_prefix_falls_back_to_unprefixed_probes(tmp_path: Path) -> None:
+    """An invalid APP_PREFIX must not make the diagnosis unreachable."""
+    app = create_app(
+        config=_invalid_production_config(prefix="not a prefix"),
+        project_root=tmp_path,
+        enable_update_check=False,
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            assert (await client.get("/api/health")).json()["status"] == "setup_required"
+
+    asyncio.run(exercise())
+
+
+def test_probes_honour_a_valid_app_prefix(tmp_path: Path) -> None:
+    app = create_app(
+        config=_invalid_production_config(prefix="/watchparty"),
+        project_root=tmp_path,
+        enable_update_check=False,
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            prefixed = await client.get("/watchparty/api/health")
+            assert prefixed.json()["status"] == "setup_required"
+            assert (await client.get("/api/health")).status_code == 503
+
+    asyncio.run(exercise())
+
+
+def test_stale_bootstrap_artefacts_are_ignored_and_removed(tmp_path: Path, monkeypatch) -> None:
+    """Configuration is environment-only.
+
+    The interactive flow persisted `data/bootstrap.json` and a
+    `data/setup-token`. A leftover from a 3.0 development build must not
+    resurrect either mechanism, and the token in particular must not be
+    left lying on disk once the app boots normally.
+    """
+    for name in ("APP_ENV", "SESSION_SECRET", "SESSION_COOKIE_SECURE", "CORS_ALLOWED_ORIGINS"):
+        monkeypatch.delenv(name, raising=False)
+
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "bootstrap.json").write_text(
+        '{"CONFIGURED": true, "APP_ENV": "production", "EMBY_API_KEY": "from-stale-file"}',
+        encoding="utf-8",
+    )
+    (data / "setup-token").write_text("stale-token\n", encoding="utf-8")
+
+    config = Config.from_env(project_root=tmp_path)
+    assert config.EMBY_API_KEY != "from-stale-file", "persisted file was still being read"
+
+    create_app(project_root=tmp_path, enable_update_check=False)
+    assert not (data / "setup-token").exists(), "stale setup token left on disk"
+    assert not (data / "bootstrap.json").exists(), "stale bootstrap file left on disk"
+
+
+def test_inline_script_json_escapes_html_delimiters() -> None:
+    """`rendered_index` injects APP_PREFIX into a <script> block.
+
+    Still load-bearing after the setup page was removed, because the SPA
+    index injection uses the same helper.
+    """
+    serialized = _json_for_html_script("/</script><script>&attack</script>")
+
+    assert "</script>" not in serialized
+    assert "<" not in serialized
+    assert ">" not in serialized
+    assert "&" not in serialized
+
+
+def test_module_import_survives_unconfigured_mode() -> None:
     result = subprocess.run(
         [sys.executable, "-c", "import backend.app; assert backend.app.sio is None"],
         capture_output=True,
         text=True,
-        env=_setup_mode_environment(),
+        env=_unconfigured_environment(),
         timeout=10,
         check=False,
     )
@@ -610,58 +222,18 @@ def test_module_import_survives_setup_mode() -> None:
 def test_importing_the_module_builds_nothing() -> None:
     """`import backend.app` must not construct an app.
 
-    `create_app()` reads ambient config and, when it does not validate,
-    builds the setup app: that mints a bootstrap token, prints it to
-    stdout and writes data/setup-token. While construction happened at
-    module scope every import leaked a fresh admin credential and
-    rewrote the token file, including on each test run, since
-    tests/conftest.py imports this module. Accessing `backend.app.app`
-    may still build one (see test above); importing may not.
+    Nine test modules import this file. While construction happened at
+    module scope, every import built an app against ambient config, and
+    in the unconfigured case that printed a diagnosis nobody asked for.
     """
     result = subprocess.run(
         [sys.executable, "-c", "import backend.app"],
         capture_output=True,
         text=True,
-        env=_setup_mode_environment(),
+        env=_unconfigured_environment(),
         timeout=10,
         check=False,
     )
 
     assert result.returncode == 0, result.stderr
-    assert "Bootstrap token" not in result.stdout
-    assert "Setup required" not in result.stderr
-
-
-def test_setup_page_script_has_no_unterminated_string_literals(tmp_path: Path) -> None:
-    r"""The inline setup script must actually parse.
-
-    One unterminated string literal aborts the entire `<script>`, and
-    nothing binds afterwards: not the generate-secret button, and not the
-    submit handler. That leaves first-run setup impossible to complete
-    while the page still looks perfectly fine.
-
-    The original defect was `.join('\n')` written inside a *non-raw*
-    f-string, so Python expanded it to a real newline before the browser
-    saw it, and the JS string spanned two lines. Checking quote balance
-    per line catches that whole class rather than the one instance.
-    """
-    app = create_app(
-        config=_invalid_production_config(),
-        project_root=tmp_path,
-        enable_update_check=False,
-    )
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            html = (await client.get("/setup")).text
-
-        script = re.search(r"<script>(.*?)</script>", html, re.S)
-        assert script is not None, "setup page served no inline script"
-
-        for number, line in enumerate(script.group(1).strip().splitlines(), 1):
-            assert line.count("'") % 2 == 0, (
-                f"line {number} of the setup script leaves a string literal open, "
-                f"which aborts the whole script: {line!r}"
-            )
-
-    asyncio.run(exercise())
+    assert "invalid boot configuration" not in result.stderr

@@ -29,7 +29,6 @@ def _bool(value: str) -> bool:
 
 
 CONFIG_JSON_PATH = Path(__file__).parent.parent.parent / "config.json"
-BOOTSTRAP_CONFIG_NAME = "bootstrap.json"
 _APP_PREFIX_RE = re.compile(r"(?:/[A-Za-z0-9][A-Za-z0-9._~-]*)+")
 _DNS_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
 _PRIVATE_ENV_FIELDS = frozenset(
@@ -131,29 +130,6 @@ class EnvConfig:
         explicit_fields: set[str] | None = None,
     ) -> "EnvConfig":
         root = Path(project_root or Path(__file__).parent.parent.parent)
-        persisted: dict = {}
-        data_dir = root / "data"
-        bootstrap_path = root / "data" / BOOTSTRAP_CONFIG_NAME
-        if bootstrap_path.exists():
-            try:
-                raw = json.loads(bootstrap_path.read_text(encoding="utf-8"))
-                if isinstance(raw, dict):
-                    if raw.get("CONFIGURED") is True:
-                        persisted = {
-                            key: value for key, value in raw.items() if key != "CONFIGURED"
-                        }
-                    elif errors is not None:
-                        errors["BOOTSTRAP_CONFIG"] = "Persisted bootstrap config is not configured"
-                elif errors is not None:
-                    errors["BOOTSTRAP_CONFIG"] = "Persisted bootstrap config must be an object"
-            except json.JSONDecodeError:
-                if errors is not None:
-                    errors["BOOTSTRAP_CONFIG"] = "Persisted bootstrap config is invalid JSON"
-            except OSError:
-                if errors is not None:
-                    errors["BOOTSTRAP_CONFIG"] = "Persisted bootstrap config cannot be read"
-        elif data_dir.exists() and errors is not None:
-            errors["BOOTSTRAP_CONFIG"] = "Persistent data exists but bootstrap config is missing"
         dot_env = {
             key: value for key, value in dotenv_values(root / ".env").items() if value is not None
         }
@@ -183,8 +159,6 @@ class EnvConfig:
                 if explicit_fields is not None:
                     explicit_fields.add(name)
                 return dot_env[name]
-            if name in persisted:
-                return persisted[name]
             return defaults[name]
 
         def csv(name: str) -> tuple[str, ...]:
@@ -221,7 +195,7 @@ class EnvConfig:
             so the setup form can disable those inputs. Declaring the
             topology through the setup form counts here.
             """
-            return name in os.environ or name in dot_env or name in persisted
+            return name in os.environ or name in dot_env
 
         return cls(
             WATCH_PARTY_BIND=str(value("WATCH_PARTY_BIND")),

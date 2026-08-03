@@ -1,7 +1,7 @@
 # Emby Watch Party 2.0 -- docker-compose example
 #
 # Two volume mounts are required for bootstrap config and avatars to survive
-# container replacement: /app/data holds bootstrap.json and the SQLite avatar DB,
+# container replacement: /app/data holds the SQLite avatar DB,
 # /app/images/avatars holds the uploaded image files. Without them
 # every restart wipes every member's chosen avatar.
 #
@@ -71,7 +71,7 @@ services:
     volumes:
       # Required: persist bootstrap config and avatars. ./data and ./images
       # are created next to this compose file on first run.
-      - ./data:/app/data                     # bootstrap.json + avatar DB
+      - ./data:/app/data                     # avatar DB
       - ./images/avatars:/app/images/avatars # uploaded avatar images
       # Optional: persist application logs to the host (only useful if
       # LOG_TO_FILE is enabled via /admin; default is console only).

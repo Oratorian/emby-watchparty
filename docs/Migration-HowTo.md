@@ -16,9 +16,10 @@ the latest 2.1.x release, then return here.
   project CI and Docker builder use Node 24.
 - Run exactly one application worker. Party state, administrator sessions,
   HLS grants, and rate-limit buckets are process-local.
-- Production startup validation is strict. Invalid boot settings enter the
-  restricted setup application instead of starting the watch-party API.
-- Boot configuration can be saved in persistent `data/bootstrap.json`.
+- Production startup validation is strict. Invalid boot settings leave the
+  process up but serving nothing, with the failing fields named.
+- Configuration is environment-only. There is no setup page and no bootstrap
+  token; 3.0 development builds briefly had both and they are gone.
 - `ENABLE_HLS_TOKEN_VALIDATION` is a restart-required boot setting; its old
   runtime admin toggle is gone.
 - Docker/Linux is the primary deployment platform. Windows remains a
@@ -49,21 +50,44 @@ The baked `/api/health` probe is liveness only. Setup mode intentionally
 returns HTTP 200 with `status: setup_required` so Docker does not restart-loop.
 `/api/ready` returns 503 until the normal application is available.
 
-## First-run setup
+## When boot configuration is invalid
 
-Setup mode exposes only `/setup`, `/api/setup`, `/api/health`, and
-`/api/ready`; normal API, Socket.IO, HLS, admin, and SPA routes return 503.
+The process stays reachable and serves nothing. `/api/health` returns HTTP 200
+with `status: setup_required`, `/api/ready` returns 503, and every other route
+returns 503, so an orchestrator can distinguish "misconfigured" from "dead"
+without restart-looping the container.
 
-1. Read the one-time token from the console or `data/setup-token`. The file is
-   mode `0600` where supported and is removed after a successful save.
-2. Open `/setup` under the configured application prefix.
-3. Choose local development or production HTTPS and submit the form.
-4. Restart the process after setup reports that configuration was saved.
-5. Confirm `/api/health` returns `status: ok` and `/api/ready` succeeds.
+The failing fields are named on stderr in a framed banner and again through the
+application logger:
 
-Treat the setup token, `SESSION_SECRET`, Emby API key, and
-`data/bootstrap.json` as credentials. Never attach them to an issue or support
-log.
+```
+========================================================================
+  Emby Watch Party cannot start: invalid boot configuration.
+
+    CORS_ALLOWED_ORIGINS: must be explicit in production
+    SESSION_COOKIE_SECURE: must be true in production
+    SESSION_SECRET: must be at least 32 characters in production
+
+  Set these in the environment (container template, compose
+  environment:, or .env) and restart. Nothing else is served
+  until they are valid.
+========================================================================
+```
+
+Fix the named variables where your deployment defines them, then restart. On
+Unraid, CasaOS, Portainer or TrueNAS that is the container template; under
+Compose it is the `environment:` block or `.env`.
+
+Treat `SESSION_SECRET` and the Emby API key as credentials. Never attach them
+to an issue or support log.
+
+### Upgrading from a 3.0 development build
+
+If you completed the old interactive setup, you will have a
+`data/bootstrap.json` and possibly a `data/setup-token`. Both are now ignored
+and are removed on the next successful boot. **Copy any values you set only
+through that form into your environment before upgrading**, because they are no
+longer read from the file.
 
 ## Boot-setting precedence
 
@@ -71,20 +95,10 @@ Precedence is:
 
 1. Process environment
 2. Untracked `.env`
-3. `data/bootstrap.json`
-4. Code defaults
+3. Code defaults
 
-Process-environment and `.env` fields remain external: setup validates their
-effective values but does not copy them into `bootstrap.json`. This prevents
-secrets injected by Compose, an environment file, or a secrets manager from
-being duplicated into the persistent data mount.
-
-If an explicit environment value is invalid, setup cannot override it. Fix or
-remove that value and restart.
-
-The bootstrap file includes a configured sentinel. If persistent `data/`
-exists but the bootstrap file or sentinel disappears, 3.0 enters setup mode
-instead of silently falling back to development defaults.
+Process-environment and `.env` are one explicit-operator tier, with process
+values winning. Reading `.env` does not mutate the running process environment.
 
 ## Required production boot values
 

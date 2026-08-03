@@ -209,7 +209,7 @@ docker run -d \
 
 | Host path | Container path | Purpose |
 |-----------|----------------|---------|
-| `./data` | `/app/data` | First-run bootstrap config (`bootstrap.json`) and avatar DB (`avatars.db`) |
+| `./data` | `/app/data` | Avatar DB (`avatars.db`) |
 | `./images/avatars` | `/app/images/avatars` | Uploaded avatar image files |
 | `./config.json` | `/app/config.json` | Runtime admin settings (edited via `/admin`) |
 
@@ -221,7 +221,7 @@ docker run -d \
 
 `SESSION_SECRET` is the signing key for the party-bound session cookie. Set it once (`openssl rand -hex 32`) and keep it stable across restarts. When unset, an ephemeral key is generated at boot and every restart invalidates existing sessions. This application is explicitly single-process: do not run multiple Uvicorn workers because parties, sessions, limiters, tasks, and HLS tokens are process-local. Pair production mode with `SESSION_COOKIE_SECURE=true` and explicit `CORS_ALLOWED_ORIGINS`. Full block in [`.env.example`](.env.example).
 
-**Config split (2.0):** boot settings come from process environment, `.env`, or `data/bootstrap.json` and require restart. Runtime options such as `LOG_TO_FILE`, transcoding, and feature toggles remain in `config.json` and the admin panel.
+**Config split (2.0):** boot settings come from process environment or `.env` and require restart. Runtime options such as `LOG_TO_FILE`, transcoding, and feature toggles remain in `config.json` and the admin panel.
 
 ## Usage
 
@@ -264,22 +264,34 @@ If you join **before** a video has been selected, you land directly in the party
 
 Configuration is split into two tiers:
 
-1. **Boot-essential settings** come from environment variables, `.env`, or persistent `data/bootstrap.json` and require restart.
+1. **Boot-essential settings** come from environment variables or `.env` and require restart.
 2. **Runtime settings** are editable from the **admin panel** at `/admin` (Emby administrator credentials required) and are hot-reloadable -- no restart needed.
 
-### First-run setup
+Boot precedence is exact: **process environment -> `.env` -> defaults**. Process environment and `.env` are one explicit-operator tier, with process values winning. Reading `.env` does not mutate the running process environment.
 
-When boot configuration is invalid, the process remains reachable in restricted setup mode. Normal API, Socket.IO, HLS, admin, and application routes return `503`; liveness returns HTTP `200` with `status: setup_required`, and readiness returns `503` with the same status.
+### When boot configuration is invalid
 
-1. Read the one-time bootstrap token from the server console or the mode-`0600` `data/setup-token` recovery file. **Treat this token like a password: never publish it, paste it into a URL, or include it in support logs.** The file is removed after setup succeeds.
-2. Open `http://localhost:5000/setup` (or `${APP_PREFIX}/setup`) and enter the token in the form.
-3. Choose **Local development** for plain local HTTP with a non-secure cookie, or **Production HTTPS** for a TLS-terminating reverse proxy with a secure cookie and explicit public CORS origin.
-4. Validate and save. The server writes `data/bootstrap.json` atomically, disables further setup writes in that process, and requests restart; it never restarts itself from the HTTP request.
-5. Restart the service. Valid saved settings start the normal application.
+The process stays reachable but serves nothing. Normal API, Socket.IO, HLS, admin and application routes return `503`; liveness returns HTTP `200` with `status: setup_required`, and readiness returns `503` with the same status, so an orchestrator can tell "misconfigured" from "dead" without restart-looping the container.
 
-`data/bootstrap.json` contains secrets entered through setup in plaintext with restrictive file permissions where supported. Secrets injected through process environment or `.env` are deliberately not copied into it. Protect the host directory and backups. Docker users must keep `./data:/app/data` mounted; otherwise a missing bootstrap sentinel forces setup mode rather than silently falling back to development defaults.
+The failing fields are named on stderr in a framed banner, and again through the application logger:
 
-Boot precedence is exact: **process environment → `.env` → `data/bootstrap.json` → defaults**. Process environment and `.env` are one explicit-operator tier, with process values winning. Setup cannot override an invalid explicit environment value; remove or fix it, then restart. Reading `.env` does not mutate the running process environment.
+```
+========================================================================
+  Emby Watch Party cannot start: invalid boot configuration.
+
+    CORS_ALLOWED_ORIGINS: must be explicit in production
+    SESSION_COOKIE_SECURE: must be true in production
+    SESSION_SECRET: must be at least 32 characters in production
+
+  Set these in the environment (container template, compose
+  environment:, or .env) and restart. Nothing else is served
+  until they are valid.
+========================================================================
+```
+
+Fix the named variables where your deployment defines them and restart. On Unraid, CasaOS, Portainer or TrueNAS that is the container template; under Compose it is the `environment:` block or `.env`.
+
+> **3.0 development builds** briefly shipped an interactive setup page at `/setup`, gated by a bootstrap token, that wrote `data/bootstrap.json`. Both are gone. Configuration is environment-only, as it was in 2.x. The page could not work on the platforms this is deployed to: every setting arrives as an environment variable there, and env-provided fields were short-circuited back to their current value, so the form silently discarded edits. Any leftover `bootstrap.json` or `setup-token` is ignored and removed on the next successful boot.
 
 Local plain-HTTP example:
 
@@ -308,7 +320,7 @@ ENABLE_HLS_TOKEN_VALIDATION=true
 TRUSTED_PROXY_CIDRS=172.16.0.0/12
 ```
 
-If saved configuration becomes invalid, missing, or damaged, restart to enter setup mode and use the new token. If an environment override is invalid, repair that deployment setting first. Never send `bootstrap.json` or bootstrap tokens to untrusted parties.
+If boot configuration becomes invalid, the process stays up and names the failing fields on stderr and in the log. Repair those deployment settings and restart.
 
 ### .env
 
@@ -478,7 +490,7 @@ Quick checks before opening an issue:
 - **Session secret and process model.** `SESSION_SECRET` must remain stable across restarts. Run exactly one application process/worker; party state, admin sessions, limiters, background tasks, streams, and HLS tokens are intentionally in-memory and are not shared between workers.
 - **HLS URLs.** Since beta18, HLS playlist and segment URLs served to the browser no longer carry the admin `EMBY_API_KEY` as a query parameter. Access is gated by a per-stream HLS token bound to the session cookie; the API key stays server-side.
 - **Party codes** are generated with cryptographically secure random tokens.
-- **Built-in controls.** HLS token validation is on by default and is a restart-required boot setting configured through first-run setup or `ENABLE_HLS_TOKEN_VALIDATION` in `.env`. Bounded per-IP API/party-creation rate limiting and party size limits remain tunable in **/admin -> Security**. Configure `TRUSTED_PROXY_CIDRS` when a reverse proxy supplies client addresses.
+- **Built-in controls.** HLS token validation is on by default and is a restart-required boot setting, `ENABLE_HLS_TOKEN_VALIDATION`. Bounded per-IP API/party-creation rate limiting and party size limits remain tunable in **/admin -> Security**. Configure `TRUSTED_PROXY_CIDRS` when a reverse proxy supplies client addresses.
 - **For internet-facing deployments**, terminate TLS at a reverse proxy (nginx, Caddy, Traefik), set `SESSION_COOKIE_SECURE=true`, and pin `CORS_ALLOWED_ORIGINS` to your real origin(s) instead of `*`.
 
 ## License

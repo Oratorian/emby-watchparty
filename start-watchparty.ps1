@@ -27,12 +27,6 @@ $watchPartyPrefix = $env:APP_PREFIX
 if ([string]::IsNullOrWhiteSpace($watchPartyPrefix)) {
     $watchPartyPrefix = Get-WatchPartyDotEnvValue 'APP_PREFIX'
 }
-if ([string]::IsNullOrWhiteSpace($watchPartyPrefix)) {
-    $bootstrapPath = Join-Path $watchPartyRoot 'data\bootstrap.json'
-    if (Test-Path -LiteralPath $bootstrapPath) {
-        try { $watchPartyPrefix = (Get-Content -Raw -LiteralPath $bootstrapPath | ConvertFrom-Json).APP_PREFIX } catch { }
-    }
-}
 if ($null -eq $watchPartyPrefix) { $watchPartyPrefix = '' }
 $watchPartyPrefix = $watchPartyPrefix.TrimEnd('/')
 $watchPartyBaseUrl = "http://localhost:$watchPartyPort$watchPartyPrefix"
@@ -50,6 +44,5 @@ try {
 
 Set-Location -LiteralPath $watchPartyRoot
 Write-Host "Web UI: $watchPartyBaseUrl/"
-Write-Host "If setup is required, open $watchPartyBaseUrl/setup and use token printed below."
 & $watchPartyPython -m backend.app
 exit $LASTEXITCODE
