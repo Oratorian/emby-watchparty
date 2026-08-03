@@ -11,6 +11,7 @@ import uvicorn
 
 from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
+from tests.support.credentials import TEST_SESSION_SECRET
 from tests.support.fake_emby import FakeEmbyState, create_fake_emby_app
 
 
@@ -81,7 +82,7 @@ def _run_watchparty(
             EMBY_SERVER_URL=fake_emby_server.url,
             EMBY_API_KEY="test-key",
             APP_ENV="development",
-            SESSION_SECRET="test-session-secret-with-at-least-32-characters",
+            SESSION_SECRET=TEST_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
             CORS_ALLOWED_ORIGINS=("*",),
             TRUSTED_PROXY_CIDRS=(),

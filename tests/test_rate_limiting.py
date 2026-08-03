@@ -16,6 +16,7 @@ from backend.src.rate_limit import (
 )
 from backend.src.routers import avatar
 from tests.support.asgi import asgi_client
+from tests.support.credentials import TEST_SESSION_SECRET
 
 
 def _config(*, prefix: str = "") -> Config:
@@ -28,7 +29,7 @@ def _config(*, prefix: str = "") -> Config:
             EMBY_SERVER_URL="http://emby.test",
             EMBY_API_KEY="test-key",
             APP_ENV="development",
-            SESSION_SECRET="test-session-secret-with-at-least-32-characters",
+            SESSION_SECRET=TEST_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
             CORS_ALLOWED_ORIGINS=("*",),
             TRUSTED_PROXY_CIDRS=(),

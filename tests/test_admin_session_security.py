@@ -10,6 +10,7 @@ from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
 from backend.src.domain import Participant
 from tests.support.asgi import asgi_client
+from tests.support.credentials import REVOKED_ACCESS_TOKEN, TEST_SESSION_SECRET
 
 
 def _config(
@@ -26,7 +27,7 @@ def _config(
             EMBY_SERVER_URL="http://emby.test",
             EMBY_API_KEY="test-key",
             APP_ENV="development",
-            SESSION_SECRET="test-session-secret-with-at-least-32-characters",
+            SESSION_SECRET=TEST_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
             CORS_ALLOWED_ORIGINS=("*",),
             TRUSTED_PROXY_CIDRS=(),
@@ -344,7 +345,7 @@ def test_admin_login_and_logout_scrub_legacy_cookie_credentials(tmp_path: Path) 
             await seed_legacy(request)
             request.session["admin_session_id"] = request.app.state.admin_session_store.create(
                 username="Legacy",
-                access_token="revoked-token",
+                access_token=REVOKED_ACCESS_TOKEN,
                 user_id="legacy-user",
                 is_admin=True,
             )

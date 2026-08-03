@@ -52,18 +52,13 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"backend/app.py" = ["S608"] # Inline setup HTML is not a SQL query.
 "backend/src/client_ip.py" = ["S104"] # Explicit wildcard-address detection.
 "backend/src/config.py" = ["S104"] # Supported bind-all deployment default.
 "backend/src/routers/*.py" = ["BLE001"] # Route boundaries produce stable HTTP errors.
 "backend/src/update_checker.py" = ["BLE001"] # Best-effort external check.
-"scripts/*.py" = ["S104"] # Loopback/public bind is selected by each script.
-"tests/*.py" = ["S101", "S104", "S105", "S106", "S311"]
 "tests/**/*.py" = [
     "S101", # Assertions are pytest's public interface.
-    "S105", # Test-only credential fixtures.
-    "S106", # Test-only credential fixtures.
-    "S311", # Deterministic/non-cryptographic test data.
+    "S104", # Bind-all fixtures for client-IP and config tests.
 ]
 
 [tool.mypy]

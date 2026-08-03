@@ -15,6 +15,7 @@ from pathlib import Path
 from backend.app import _json_for_html_script, create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
 from tests.support.asgi import asgi_client
+from tests.support.credentials import REJECTED_SESSION_SECRET
 
 
 def _invalid_production_config(*, prefix: str = "") -> Config:
@@ -27,7 +28,7 @@ def _invalid_production_config(*, prefix: str = "") -> Config:
             EMBY_SERVER_URL="http://emby.test",
             EMBY_API_KEY="test-key",
             APP_ENV="production",
-            SESSION_SECRET="short",
+            SESSION_SECRET=REJECTED_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
             CORS_ALLOWED_ORIGINS=("*",),
             TRUSTED_PROXY_CIDRS=(),
@@ -42,7 +43,7 @@ def _unconfigured_environment() -> dict[str, str]:
     environment.update(
         {
             "APP_ENV": "production",
-            "SESSION_SECRET": "short",
+            "SESSION_SECRET": REJECTED_SESSION_SECRET,
             "SESSION_COOKIE_SECURE": "false",
             "CORS_ALLOWED_ORIGINS": "*",
             "APP_PREFIX": "",

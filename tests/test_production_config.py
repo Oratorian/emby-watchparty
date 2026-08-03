@@ -3,6 +3,7 @@ import unittest
 import pytest
 
 from backend.src.config import Config, EnvConfig, RuntimeConfig
+from tests.support.credentials import REJECTED_SESSION_SECRET
 
 
 def _config(runtime: RuntimeConfig | None = None, **overrides) -> Config:
@@ -88,7 +89,7 @@ class ProductionConfigTests(unittest.TestCase):
 
     def test_production_rejects_short_session_secret(self):
         with pytest.raises(ValueError, match="at least 32"):
-            _config(SESSION_SECRET="too-short").validate_for_startup()
+            _config(SESSION_SECRET=REJECTED_SESSION_SECRET).validate_for_startup()
 
     def test_production_rejects_invalid_emby_url(self):
         with pytest.raises(ValueError, match="EMBY_SERVER_URL"):

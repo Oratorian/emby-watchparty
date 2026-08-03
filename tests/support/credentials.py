@@ -1,0 +1,22 @@
+"""Credential fixtures shared by the test suite.
+
+The valid secret is generated once per run rather than written as a literal, so
+the repository carries no hardcoded credential and no test can quietly come to
+depend on one particular value.
+
+The rejected fixtures below stay literal on purpose: being invalid in a specific
+way is the whole point of them, so each carries a narrow suppression rather than
+the suite-wide exemption these used to rely on.
+"""
+
+import secrets
+
+TEST_SESSION_SECRET = secrets.token_hex(32)
+"""A valid session secret: 64 hex characters, well over the 32-character minimum."""
+
+# Deliberately below the 32-character minimum, to assert that startup refuses it.
+REJECTED_SESSION_SECRET = "short"  # noqa: S105
+
+# Not a real token. Seeded into an admin session to exercise the path where a
+# stashed token fails revalidation and the session must be scrubbed.
+REVOKED_ACCESS_TOKEN = "revoked-token"  # noqa: S105
