@@ -244,6 +244,79 @@ def test_live_hls_rejects_foreign_playlist_urls(live_watchparty) -> None:
     asyncio.run(_exercise_foreign_playlist_rejection(live_watchparty))
 
 
+async def _exercise_emby_authored_query_params(live_watchparty) -> None:
+    """Emby's own playlist parameters must not kill playback.
+
+    `_rewrite_playlist` rewrites the path and leaves the query intact, so
+    whatever Emby puts in its playlist round-trips through the client and
+    comes back here. The allowlist was built from what our StreamBuilder
+    emits, which is a different vocabulary, so a name Emby uses and we do
+    not recognise used to return 400 and end the stream.
+
+    The fake previously emitted bare relative names with no query at all,
+    which is why nothing caught it, the same blind spot as the uppercase
+    extension.
+    """
+    async with httpx.AsyncClient() as controls:
+        await controls.post(f"{live_watchparty.fake.url}/__test__/reset")
+        await controls.post(
+            f"{live_watchparty.fake.url}/__test__/behavior",
+            json={
+                "variant_playlist": (
+                    "#EXTM3U\r\n#EXT-X-VERSION:3\r\n#EXT-X-TARGETDURATION:10\r\n"
+                    "#EXT-X-MEDIA-SEQUENCE:0\r\n#EXTINF:10.0,\r\n"
+                    "segment0.ts?runtimeTicks=1234567&MediaSourceId=source-1\r\n"
+                    "#EXT-X-ENDLIST\r\n"
+                )
+            },
+        )
+    client, realtime, master_url = await _select_video(live_watchparty.url)
+    try:
+        master = await client.get(master_url)
+        variant_url = urljoin(master_url, _media_line(master.text))
+        variant = await client.get(variant_url)
+        assert variant.status_code == 200
+
+        segment_url = urljoin(variant_url, _media_line(variant.text))
+        segment = await client.get(segment_url)
+        assert segment.status_code == 200, "Emby's own parameter ended the stream"
+        assert segment.content
+
+        # The unapproved name is dropped, not forwarded, so the security
+        # property the allowlist exists for is unchanged.
+        async with httpx.AsyncClient() as controls:
+            recorded = (await controls.get(f"{live_watchparty.fake.url}/__test__/requests")).json()
+        upstream = [r for r in recorded["requests"] if r["path"].endswith("segment0.ts")]
+        assert upstream, "no segment request reached the fake"
+        names = {key for row in upstream for key, _ in row["query"]}
+        assert "runtimeTicks" not in names, "unapproved parameter was forwarded upstream"
+        assert "MediaSourceId" in names, "approved parameter was dropped"
+    finally:
+        await realtime.disconnect()
+        await client.aclose()
+
+
+def test_emby_authored_query_params_are_dropped_not_rejected(live_watchparty) -> None:
+    asyncio.run(_exercise_emby_authored_query_params(live_watchparty))
+
+
+async def _exercise_client_tampering_on_master(live_watchparty) -> None:
+    """The master request is ours, so an unknown name there is tampering."""
+    client, realtime, master_url = await _select_video(live_watchparty.url)
+    try:
+        separator = "&" if "?" in master_url else "?"
+        tampered = await client.get(f"{master_url}{separator}api_key=stolen")
+        assert tampered.status_code == 400
+        assert tampered.json() == {"error": "Invalid HLS query"}
+    finally:
+        await realtime.disconnect()
+        await client.aclose()
+
+
+def test_master_still_refuses_client_supplied_parameters(live_watchparty) -> None:
+    asyncio.run(_exercise_client_tampering_on_master(live_watchparty))
+
+
 async def _exercise_select_leave_race(live_watchparty) -> None:
     controls = httpx.AsyncClient(base_url=live_watchparty.fake.url)
     await controls.post(

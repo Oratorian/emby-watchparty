@@ -75,15 +75,39 @@ class UnsafeHLSQueryError(ValueError):
     """A client supplied a parameter outside the HLS allowlist."""
 
 
-def _sanitize_query(query_items):
-    """Remove the party token and reject every unapproved upstream parameter."""
+def _sanitize_query(query_items, *, strict: bool, logger=None):
+    """Remove the party token and hold every other parameter to the allowlist.
+
+    `strict` decides what an unapproved name costs, and the two callers
+    differ in who authored the query.
+
+    The master request is built by our own StreamBuilder, so the allowlist
+    is the exact vocabulary it emits. Anything else there was appended by
+    the caller, which is the tampering this guard exists to stop, and
+    refusing it outright is both safe and loud.
+
+    Variant and segment URLs are Emby's. `_rewrite_playlist` rewrites the
+    path and leaves the query intact, so whatever Emby put in its playlist
+    round-trips through the client and arrives here. That vocabulary is
+    Emby's to change and is not enumerable from this side, so a name we do
+    not recognise is far more likely to be a version difference than an
+    attack. Rejecting cost the viewer all playback; dropping costs at most
+    one parameter, and the parameter still never reaches Emby, so the
+    security property is unchanged either way.
+    """
     sanitized = []
+    dropped = []
     for key, value in query_items:
         if key == "token":
             continue
         if key not in _ALLOWED_EMBY_PARAMS:
-            raise UnsafeHLSQueryError(key)
+            if strict:
+                raise UnsafeHLSQueryError(key)
+            dropped.append(key)
+            continue
         sanitized.append((key, value))
+    if dropped and logger:
+        logger.debug("Dropped unapproved HLS query parameters: %s", ", ".join(sorted(set(dropped))))
     return sanitized
 
 
@@ -290,7 +314,7 @@ async def proxy_hls_master(
                 media_type="application/json",
             )
 
-        query_params = _sanitize_query(request.query_params.multi_items())
+        query_params = _sanitize_query(request.query_params.multi_items(), strict=True)
         emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/master.m3u8"
 
         logger.debug(f"Proxying HLS master: {emby_url}")
@@ -394,7 +418,9 @@ async def proxy_hls_segment(
                 media_type="application/json",
             )
 
-        query_params = _sanitize_query(request.query_params.multi_items())
+        query_params = _sanitize_query(
+            request.query_params.multi_items(), strict=False, logger=logger
+        )
         emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/{subpath}"
 
         logger.debug(f"Proxying HLS segment: {subpath} -> {emby_url}")
