@@ -7,6 +7,42 @@ new setup has completed a real playback test.
 Users upgrading from 1.x should first follow the migration guide shipped with
 the latest 2.1.x release, then return here.
 
+## Do you need to change anything?
+
+Possibly not. If your existing `.env` already satisfies the checks below, 3.0
+boots on it unchanged. Read this section first and skip the rest if it applies.
+
+**Checked in every environment, development included:**
+
+- `APP_ENV` is `development` or `production`
+- `WATCH_PARTY_PORT` is between 1 and 65535
+- `APP_PREFIX`, if set, is slash-prefixed and uses only letters, numbers, dots,
+  underscores, tildes or hyphens
+- `EMBY_SERVER_URL` is a valid HTTP(S) URL
+- `TRUSTED_PROXY_CIDRS`, if set, contains valid IP networks
+- `BEHIND_PROXY=true` is not paired with an empty `TRUSTED_PROXY_CIDRS`, which
+  is a self-contradiction in any environment
+
+**Checked additionally when `APP_ENV=production`:**
+
+- `BEHIND_PROXY` is declared, either `true` or `false`. This is the one genuinely
+  new requirement in 3.0 and it has no default
+- `SESSION_SECRET` is set and at least 32 characters
+- `SESSION_COOKIE_SECURE` is `true`
+- `CORS_ALLOWED_ORIGINS` is explicit, not `*`
+- `EMBY_API_KEY` is set
+- `ENABLE_HLS_TOKEN_VALIDATION` is enabled
+
+So for a production deployment coming from 2.1.x that already sets a session
+secret, secure cookies and explicit origins, **the only addition is
+`BEHIND_PROXY`**. Everything else in this guide is either detail, a
+platform-specific note, or applies only if you build from source.
+
+One behavioural change to be aware of even when nothing needs editing:
+`SESSION_EXPIRY` now genuinely sets the session cookie lifetime, so with the
+default `86400` people are asked to rejoin after 24 hours idle rather than 14
+days. See the section on it below.
+
 ## Breaking changes
 
 3.0 changes deployment requirements and configuration ownership:
@@ -226,6 +262,29 @@ and the lock is compiled for it. 3.13 is not supported.
 
 The PowerShell launcher resolves the repository from `$PSScriptRoot`. It is a
 local convenience, not the primary production deployment path.
+
+## Performance
+
+Nothing here needs action; it is recorded so a change in throughput after
+upgrading is explainable rather than mysterious.
+
+3.0 restores `uvicorn[standard]`, which pulls in the platform-appropriate
+accelerators: `uvloop` and `httptools` on Linux, `httptools` and `websockets` on
+Windows. Early 3.0 development builds shipped plain `uvicorn`, and on those the
+HLS proxy ran on the pure-Python event loop and HTTP parser. If you tested a
+development build and found streaming slower than 2.1.x, that is why, and the
+release does not carry it.
+
+Segment delivery also changed shape. 2.1.x read each `.ts` segment fully into
+memory before responding; 3.0 streams it and tears the upstream Emby request
+down when the client disconnects. Peak memory per viewer drops and an abandoned
+seek no longer leaves a transcode running, but the first byte now depends on
+Emby's own responsiveness rather than arriving after the whole segment was
+buffered locally.
+
+Run exactly one worker, as before. Party state, administrator sessions, HLS
+grants and rate-limit buckets are all process-local, so a second worker does not
+share them.
 
 ## Validation checklist
 
