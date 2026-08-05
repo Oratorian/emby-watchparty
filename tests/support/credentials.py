@@ -20,3 +20,8 @@ REJECTED_SESSION_SECRET = "short"  # noqa: S105
 # Not a real token. Seeded into an admin session to exercise the path where a
 # stashed token fails revalidation and the session must be scrubbed.
 REVOKED_ACCESS_TOKEN = "revoked-token"  # noqa: S105
+
+# Stands in for the raw Emby admin token that 2.0.2 wrote into the signed
+# cookie. Tests assert this exact string is gone from the re-issued cookie,
+# so it has to be a literal they can search the decoded payload for.
+LEGACY_COOKIE_ADMIN_TOKEN = "legacy-secret"  # noqa: S105

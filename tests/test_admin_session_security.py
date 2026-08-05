@@ -13,7 +13,11 @@ from backend.src.config import Config, EnvConfig, RuntimeConfig
 from backend.src.domain import Participant
 from backend.src.socket_handlers.connection import _decode_session
 from tests.support.asgi import asgi_client
-from tests.support.credentials import REVOKED_ACCESS_TOKEN, TEST_SESSION_SECRET
+from tests.support.credentials import (
+    LEGACY_COOKIE_ADMIN_TOKEN,
+    REVOKED_ACCESS_TOKEN,
+    TEST_SESSION_SECRET,
+)
 
 
 def _config(
@@ -376,6 +380,52 @@ def test_departed_host_identity_still_needs_the_grant(tmp_path: Path) -> None:
                     json={"client_id": "host-client", "display_name": "Alice"},
                 )
             ).json()["success"] is True
+
+    asyncio.run(exercise())
+
+
+def test_legacy_cookie_credentials_age_out_without_an_admin_login(tmp_path: Path) -> None:
+    """Scrubbing must not depend on the user ever logging in as admin again.
+
+    2.0.2 wrote a raw Emby admin token into the signed cookie. Starlette
+    re-serialises the whole session dict on any modified response, so an
+    ordinary party join re-signs the surviving legacy key with a fresh
+    Max-Age: routine use renewed the leaked credential indefinitely rather
+    than ageing it out. Someone who upgrades and simply keeps watching
+    would never have triggered the login or logout paths.
+
+    `require_party_session` now scrubs before it validates, so even a
+    request that goes on to fail authorisation re-issues a cleaned cookie.
+    """
+
+    async def exercise() -> None:
+        app = _application(tmp_path)
+
+        async def seed_legacy(request: Request):
+            request.session["admin_emby_token"] = LEGACY_COOKIE_ADMIN_TOKEN
+            request.session["admin_emby_user_id"] = "legacy-user"
+            return {"success": True}
+
+        app.add_api_route("/_test/seed-legacy", seed_legacy, methods=["POST"])
+
+        async with asgi_client(app) as client:
+            await client.post("/_test/seed-legacy")
+            seeded = base64.b64decode(client.cookies.get("ewp_session").split(".", 1)[0])
+            assert LEGACY_COOKIE_ADMIN_TOKEN.encode() in seeded
+
+            # No admin login, no logout. Just a party-gated route, which is
+            # what ordinary use touches. It 401s for want of a party, and
+            # that is the point: the scrub runs before the check.
+            denied = await client.get("/hls/movie-1/master.m3u8")
+            assert denied.status_code in {401, 404}
+
+            remaining = client.cookies.get("ewp_session")
+            if remaining is not None:
+                decoded = base64.b64decode(remaining.split(".", 1)[0])
+                assert LEGACY_COOKIE_ADMIN_TOKEN.encode() not in decoded, (
+                    "legacy credential survived"
+                )
+                assert b"admin_emby_user_id" not in decoded
 
     asyncio.run(exercise())
 
