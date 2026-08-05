@@ -6,9 +6,11 @@ The 2.0 "Midnight Premiere" log (beta1 through beta18, every Added / Changed / F
 
 ---
 
-## [3.0.0-dev] - in development - Director's Cut
+## [3.0.0-beta1] - 2026-08-05 - Director's Cut
 
-**Not released. Not tagged. Not safe to deploy.** The running version reads `3.0.0-dev` until the release cut, the same convention 2.0 used through its beta cycle. No GHCR image carries a 3.0 tag.
+**First beta.** Tagged `v3.0.0-beta1` and published to GHCR as `:3.0.0-beta1`, tracked by `:devel` and `:nightly`. It does **not** move `:latest` or the rolling `:3` / `:3.0` tags, which are gated on the release not being a prerelease, so the stable line is untouched.
+
+Beta means the automated suite passes and the audit backlog is closed, not that it has been run by a real household against a real Emby server. Keep 2.1.x available for rollback until a playback test succeeds.
 
 ### Provenance
 

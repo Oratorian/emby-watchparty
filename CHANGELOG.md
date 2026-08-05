@@ -16,9 +16,13 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
-## [3.0.0] - TBA - Director's Cut
+## [3.0.0-beta1] - 2026-08-05 - Director's Cut
 
-**In development on `3.0-dev`.** The running version reads `3.0.0-dev` until the release cut, the same convention 2.0 used through its beta cycle. Nothing here is released, tagged, or safe to deploy yet.
+**First beta of the 3.0 line.** Tagged and published to GHCR as `:3.0.0-beta1`, and tracked by `:devel` and `:nightly`. It does **not** move `:latest`, which stays on the 2.1.x stable line, so a deployment pinned to `:latest` will not pick this up by accident.
+
+Treat it as a beta. It has been exercised by an automated suite that drives real HLS through a fake Emby, and by a security pass that reopened and closed two blockers, but it has not been run in anger by a real household on a real Emby server. That is what this beta is for. Keep your 2.1.x image and configuration for rollback until you have completed a playback test.
+
+**Read [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) before upgrading.** Its first section tells you whether you need to change anything at all; for most production deployments coming from 2.1.x the only addition is `BEHIND_PROXY`.
 
 2.0 rebuilt the product. 3.0 rebuilds the foundation underneath it. Nothing about what a watch party *does* changes: same parties, same per-user transcodes, same late-joiner vote, same admin panel, same look. What changes is how much of it the server can prove before it runs.
 
@@ -28,7 +32,9 @@ Three things drive the release:
 - **The app is built, not imported.** Construction moved into an application factory, so the server is assembled by a function instead of assembling itself at import time. A test can bring up a real app per case, and a startup that fails halfway releases what it already opened instead of leaving it behind.
 - **Tests talk to something that behaves like Emby.** The mocked routers are gone, replaced by a fake Emby server that serves real, playable HLS. Rate limits, socket validation, HLS rejection and browser-to-browser sync are exercised over the public surface, and CI gained a macOS WebKit job, so Safari's native-HLS path is finally covered by something other than a user reporting it.
 
-Alongside those: a guided first-run setup mode, so a fresh install no longer begins with hand-editing `.env`; a production readiness gate that refuses to boot an unsafe configuration instead of warning and continuing; redacted structured route logs, so an upstream failure cannot spill credentials into a log aggregator; hash-pinned Python dependencies; and `PartyView.vue` broken up into composables.
+Alongside those: a production readiness gate that refuses to boot an unsafe configuration instead of warning and continuing; redacted structured route logs, so an upstream failure cannot spill credentials into a log aggregator; hash-pinned Python dependencies; and `PartyView.vue` broken up into composables.
+
+**Configuration stays environment-only.** A development build of 3.0 briefly carried a guided first-run setup page, and it is gone. It could not work where most of this project runs: on Unraid, CasaOS, Portainer and TrueNAS every setting is already a container environment variable, and the form short-circuited any field it found in the environment back to its existing value. So it accepted your edits, reported success, and changed nothing. The recovery token compounded it, written `0600` inside a `0700` directory owned by root, which is unreadable from the appdata path those platforms give you. If you completed that setup on a development build, copy anything you set only through the form into your environment before upgrading; `data/bootstrap.json` and `data/setup-token` are now ignored and deleted on first boot.
 
 The work is **[dnordel](https://github.com/dnordel)**'s, contributed as [#45](https://github.com/Oratorian/emby-watchparty/pull/45): 165 commits over 139 files, of which 57 are tests and 51 are refactors. Too large and too breaking to land as one merge, so it went onto `3.0-dev` as the integration branch and was worked issue by issue against the [3.0 milestone](https://github.com/Oratorian/emby-watchparty/milestone/2), which is now empty.
 
@@ -43,13 +49,32 @@ The work is **[dnordel](https://github.com/dnordel)**'s, contributed as [#45](ht
 
 Every one of these was verified by removing the fix and confirming the tests fail, rather than by inspection.
 
+A second pass then went through the remaining audit findings. The ones with user-visible consequences:
+
+- **Playback no longer dies on a parameter Emby chose.** The HLS proxy held every request to one allowlist of query parameters, built from what this application sends. Variant and segment URLs are Emby's, and their query round-trips through the browser back to that guard, so a parameter name Emby used and we did not recognise returned 400 and ended the stream. Emby's own names are now dropped rather than refused, which leaves the guard's security property untouched, since the parameter still never reaches Emby, and changes only the cost of being wrong from the whole stream to one parameter. The top-level request the player builds is still refused outright, because there an unknown name really is tampering.
+- **An uppercase `.M3U8` no longer bypasses playlist handling.** Nothing constrained the case of a requested path, so that spelling missed the playlist branch entirely and the upstream body was returned unrewritten, unvalidated, and with no token appended to the child URIs it advertises.
+- **Seeking works on iPhone and iPad.** Range metadata was forwarded only when Emby answered `206`, so a plain `200` arrived with no `Accept-Ranges` and a `416` lost the `Content-Range` a client needs to learn the real length and retry. iOS drives native HLS entirely through range requests, so it was the platform that suffered. Relatedly, the native-HLS path started playing during an active ready check, jumping ahead of everyone else, because that branch was missing a guard the other two playback paths had.
+- **A host who reloads keeps their party.** An empty party was dissolved five seconds after the last socket dropped, sharing a constant with the unrelated question of how long to wait before handing on host privilege. A phone waking from background or a slow reconnect exceeded it and took the party's URL with it. Dissolution now has its own thirty-second window.
+- **`SESSION_EXPIRY` now does what it has always claimed.** `.env.example` has always described it as the session cookie lifetime; the cookie was hardcoded to fourteen days and the setting governed only how long an administrator session survived server-side. **With the default `86400`, people are asked to rejoin after 24 hours idle rather than fourteen days.** The migration guide gives the value that restores the old behaviour. The administrator session TTL also became an idle timeout that renews on use, so a host who logged in a day earlier no longer loses admin controls part-way through an evening while the party itself keeps working.
+- **Logs are readable again.** `/socket.io`, the SPA bundle and the party list, which is polled every few seconds per open tab, were each writing a line per request at INFO. The party list was the pointed case: its handler already logged at DEBUG and said why, and the middleware overrode that.
+- **Upstream calls are time-bounded.** The Emby gateway passed `timeout=None` through to httpx, which reads an explicit `None` as *no timeout at all* rather than *use the client default*, so it actively overrode the configured 30-second bound and left twelve call sites unbounded. A slow or wedged Emby could pin a worker slot until the operating system gave up on the socket.
+- **Two upstream advisories are patched**, carried over from 2.1.1: `socket.io-parser` ([CVE-2026-69185](https://github.com/advisories/GHSA-2m8v-j782-fhvr), high, and it runs in the browser) and `postcss` ([CVE-2026-69153](https://github.com/advisories/GHSA-fxqj-rqcc-2cmp), medium, build-time only).
+
+Two lessons from that pass are worth stating, because they shaped how the rest was checked. Three separate defects were hidden by the test harness rather than by the code: the fake Emby emitted only the narrowest shape a real Emby sends, so playlists carried no query string and ranges were clamped so `416` was unreachable. And five defects across the cycle existed only in a *second* copy of a guard that was correct in the first, including one introduced during this very pass and caught one commit later. Both patterns are now covered by tests that fail if the twin is missed.
+
 ### Expect a migration, not a drop-in
 
 Unlike every 2.x release, this one needs reading before you upgrade, and [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) now covers the 2.1.x → 3.0 path.
 
-Rate limiting becomes **enforced**, using the values already sitting in your `config.json`, values nobody has tuned because they previously did nothing. Behind a reverse proxy without `TRUSTED_PROXY_CIDRS` set, every viewer still shares one bucket. Bare-metal installs must recreate their virtualenv, because the hash-locked requirements put pip into `--require-hashes` mode; `requires-python` is now declared, so a mismatched interpreter refuses the install instead of succeeding quietly. A misconfigured container now reports `setup_required` from `/api/health` and logs the failing field, instead of reporting healthy and writing nothing.
+Rate limiting becomes **enforced**, using the values already sitting in your `config.json`, values nobody has tuned because they previously did nothing. This is the change most likely to be noticed, and it is silent when it bites: a third person tries to join movie night and simply cannot, with nothing in the interface naming a limit.
 
-Two rough edges remain and are called out in the migration guide: `EMBY_SERVER_URL` values like `http://emby_server:8096` still fail validation because the hostname pattern rejects underscores, and completing setup still chmods the shared `data/` volume to `0700`.
+`BEHIND_PROXY` is the one genuinely new setting, and production refuses to boot until you declare it, `true` or `false`. That is deliberate, because guessing wrong is silent: rate limiting keys on the address a connection arrives from, and behind a reverse proxy that address is the proxy, identical for every viewer, so all of them share one bucket. Setting it `true` makes `TRUSTED_PROXY_CIDRS` mandatory. If a forwarding header turns up on a deployment that declared itself direct, the server now says so in the log, once, rather than silently discarding it.
+
+Bare-metal installs must delete and recreate their virtualenv rather than upgrading in place, because the hash-locked requirements put pip into `--require-hashes` mode and because pip never removes a package merely for leaving the requirements file. `requires-python` is declared, so a mismatched interpreter refuses the install instead of succeeding quietly; 3.0 is Python 3.12 only.
+
+A misconfigured container now reports `setup_required` from `/api/health`, returns 503 from `/api/ready` and every other route, and prints the failing field names to stderr, instead of reporting healthy and writing nothing. It stays up rather than crash-looping, so the diagnosis survives in the log viewer those appliance platforms give you.
+
+The two rough edges previously listed here are both closed. `EMBY_SERVER_URL` values like `http://emby_server:8096` now validate, because Docker Compose service names may legally contain underscores and Docker's own DNS resolves them; browser-facing CORS origins keep the strict form. The `data/` volume chmod went with the setup flow.
 
 The full breakdown, breaking changes with their blast radius, the security analysis and the complete change log, lives in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
 
@@ -176,7 +201,7 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
-- **v3.0.0**  (TBA): Architecture release -- typed socket/REST contracts with runtime validation, application factory, first-run setup mode, production readiness gate, and a fake-Emby test suite. The 2.1.0 authorization work is re-established and four new findings closed. In development on `3.0-dev`.
+- **v3.0.0-beta1**  (2026-08-05): Architecture release, first beta -- typed socket/REST contracts with runtime validation, application factory, production readiness gate, and a fake-Emby test suite. Configuration is environment-only. The 2.1.0 authorization work is re-established, and the audit backlog is closed. Does not move `:latest`.
 - **v2.1.0**  (2026-08-03): Security -- `/hls` now session-gated with a cookie/token party match, and the Emby admin token moved out of the session cookie.
 - **v2.0.2**  (2026-08-01): HLS token rewriting fixed for CRLF playlists (playback stuck buffering at 0:00) + first HLS proxy tests.
 - **v2.0.1**  (2026-07-14): Democratic playback control (any member can play/pause/seek) + sync-guard fixes.
