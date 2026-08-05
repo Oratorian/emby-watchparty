@@ -145,6 +145,27 @@ For local plain HTTP, use `APP_ENV=development`,
 Disabled HLS token validation is development-only and still requires a valid
 signed party session cookie.
 
+### `SESSION_EXPIRY` now actually sets the session cookie lifetime
+
+`.env.example` has always described `SESSION_EXPIRY` as the session cookie
+lifetime. It was not. The cookie was hardcoded to 14 days and the setting
+governed only how long an administrator session survived server-side, so at
+the shipped defaults the cookie outlived the admin session by thirteen days.
+
+From 3.0 the cookie uses `SESSION_EXPIRY` as documented. **With the default
+`86400` your users are asked to rejoin after 24 hours of inactivity rather
+than 14 days.** If you want the old behaviour, set it explicitly:
+
+```env
+SESSION_EXPIRY=1209600
+```
+
+The administrator session TTL is now an idle timeout rather than an absolute
+one, so it renews on use. Previously a host who logged in 24 hours earlier
+lost admin controls part-way through a session, while the party cookie kept
+working, so nothing on screen explained why the controls had disappeared.
+Logging out still ends the session immediately.
+
 ## Runtime settings
 
 Runtime settings remain in `config.json` and the admin panel. Rate limits and

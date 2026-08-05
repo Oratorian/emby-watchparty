@@ -7,6 +7,7 @@ import httpx
 from fastapi import FastAPI, Request
 
 from backend.app import create_app
+from backend.src.admin_session_store import AdminSessionStore
 from backend.src.config import Config, EnvConfig, RuntimeConfig
 from backend.src.domain import Participant
 from tests.support.asgi import asgi_client
@@ -113,6 +114,46 @@ def test_expired_admin_session_no_longer_grants_access(tmp_path: Path) -> None:
             assert (await client.get("/api/admin/config")).json() == {"error": "Not authenticated"}
 
     asyncio.run(exercise())
+
+
+def test_session_cookie_lifetime_follows_session_expiry(tmp_path: Path) -> None:
+    """`.env.example` calls SESSION_EXPIRY the session cookie lifetime.
+
+    It was hardcoded to 14 days, so the setting governed only the admin
+    store's TTL and the cookie outlived the admin session by thirteen days
+    at the shipped defaults.
+    """
+
+    async def exercise() -> None:
+        async with asgi_client(_application(tmp_path, session_expiry=3600)) as client:
+            response = await _login(client)
+            assert response.status_code == 200
+            cookie = response.headers["set-cookie"]
+            assert "ewp_session=" in cookie
+            assert "Max-Age=3600" in cookie, f"cookie ignores SESSION_EXPIRY: {cookie}"
+
+    asyncio.run(exercise())
+
+
+def test_admin_session_ttl_renews_while_in_use() -> None:
+    """The TTL is an idle timeout, not an absolute one.
+
+    Without renewal a host who logged in 24 hours earlier lost admin
+    controls mid-session, while the party cookie kept working, so nothing
+    on screen explained why the controls had gone.
+    """
+    clock = [1000.0]
+    store = AdminSessionStore(ttl_seconds=100, clock=lambda: clock[0])
+    handle = store.create("Alice", "token", "user-1", is_admin=True)
+
+    clock[0] = 1090.0  # 90s in, inside the window
+    assert store.get(handle) is not None
+
+    clock[0] = 1180.0  # 180s from login, but only 90s since it was last used
+    assert store.get(handle) is not None, "an in-use session expired anyway"
+
+    clock[0] = 1400.0  # 220s idle, well past the window
+    assert store.get(handle) is None, "an idle session outlived its TTL"
 
 
 def test_process_restart_invalidates_admin_session(tmp_path: Path) -> None:

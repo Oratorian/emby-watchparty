@@ -390,7 +390,12 @@ def create_app(
         SessionMiddleware,
         secret_key=session_secret,
         session_cookie="ewp_session",
-        max_age=14 * 24 * 60 * 60,
+        # `.env.example` calls SESSION_EXPIRY "Session cookie lifetime in
+        # seconds", and this was a hardcoded 14 days, so the setting did not
+        # do the one thing it documented. It governed only the admin session
+        # store's TTL, which meant the cookie outlived the admin session by
+        # thirteen days at the shipped defaults.
+        max_age=resolved_config.SESSION_EXPIRY,
         same_site="lax",
         https_only=resolved_config.SESSION_COOKIE_SECURE,
     )

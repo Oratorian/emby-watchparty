@@ -7,7 +7,8 @@ handle belongs in that cookie; Emby credentials stay in this process.
 import secrets
 import threading
 import time
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True)
@@ -22,14 +23,20 @@ class AdminSession:
 class AdminSessionStore:
     """Bounded, in-memory TTL store for standalone admin credentials."""
 
-    def __init__(self, ttl_seconds: int = 24 * 60 * 60, max_entries: int = 1024):
+    def __init__(
+        self,
+        ttl_seconds: int = 24 * 60 * 60,
+        max_entries: int = 1024,
+        clock: Callable[[], float] = time.monotonic,
+    ):
         self._ttl_seconds = ttl_seconds
         self._max_entries = max_entries
+        self._clock = clock
         self._entries: dict[str, AdminSession] = {}
         self._lock = threading.Lock()
 
     def create(self, username: str, access_token: str, user_id: str, is_admin: bool = True) -> str:
-        now = time.monotonic()
+        now = self._clock()
         handle = secrets.token_urlsafe(32)
         session = AdminSession(
             username=username,
@@ -47,9 +54,22 @@ class AdminSessionStore:
         return handle
 
     def get(self, handle: str | None) -> AdminSession | None:
+        """Resolve a handle, renewing its TTL on use.
+
+        The TTL is an idle timeout, not an absolute one. Without renewal a
+        host who logged in 24 hours ago lost admin controls mid-session with
+        no warning and no way to tell why, because the party cookie kept
+        working while only the admin half expired.
+
+        The tradeoff is deliberate: a handle that keeps being used stays
+        valid, so a stolen one does too. It is opaque, 256-bit, never leaves
+        this process, and `revoke` on logout still ends it immediately. If a
+        bounded absolute lifetime is wanted later, it belongs here as a
+        second, longer deadline recorded at creation.
+        """
         if not handle:
             return None
-        now = time.monotonic()
+        now = self._clock()
         with self._lock:
             session = self._entries.get(handle)
             if not session:
@@ -57,7 +77,9 @@ class AdminSessionStore:
             if session.expires_at <= now:
                 self._entries.pop(handle, None)
                 return None
-            return session
+            renewed = replace(session, expires_at=now + self._ttl_seconds)
+            self._entries[handle] = renewed
+            return renewed
 
     def revoke(self, handle: str | None) -> None:
         if not handle:
