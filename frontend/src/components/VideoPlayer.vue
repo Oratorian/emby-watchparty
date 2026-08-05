@@ -139,7 +139,13 @@ function attachStream(url: string) {
       'loadedmetadata',
       () => {
         isBuffering.value = false
-        if (props.playing) {
+        // Same guard as the hls.js branch above and the props.playing
+        // watcher below: during a ready check the server coordinates the
+        // start via all_ready + play, so starting here jumps ahead of
+        // everyone else. This branch was missing it, which made iPhone and
+        // iPad the only clients that broke the ready check, on the path
+        // that is hardest to notice by hand.
+        if (props.playing && !party.readyCheckActive) {
           video.play().catch(() => {
             emit('autoplay-blocked')
           })
