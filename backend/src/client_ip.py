@@ -1,10 +1,53 @@
 """Trust-aware client IP resolution for security controls."""
 
+import logging
 from collections.abc import Iterable, Mapping
 from ipaddress import ip_address, ip_network
 from typing import Any
 
 from fastapi import Request
+
+_logger = logging.getLogger("emby-watchparty")
+
+_untrusted_forwarding_reported = False
+
+
+def reset_untrusted_forwarding_warning() -> None:
+    """Re-arm the one-shot warning below. Test hook."""
+    global _untrusted_forwarding_reported
+    _untrusted_forwarding_reported = False
+
+
+def _report_untrusted_forwarding(peer_ip: str) -> None:
+    """Warn once that a forwarded chain arrived and was discarded.
+
+    Boot validation cannot catch the case this covers. `BEHIND_PROXY=true`
+    with an empty `TRUSTED_PROXY_CIDRS` is already a startup error, so by
+    the time requests flow the operator has declared a direct deployment.
+    If forwarding headers turn up anyway, that declaration is wrong, and
+    the cost is silent: every viewer keys onto the proxy's address and
+    shares one rate-limit bucket, which surfaces to users only as a third
+    person being unable to join.
+
+    The other reading is worth the same line. On a genuinely direct
+    deployment, a client sending `X-Forwarded-For` is attempting to forge
+    its identity to escape those limits.
+
+    Once per process, because this fires on the request path and `/hls`
+    runs several requests per second per viewer.
+    """
+    global _untrusted_forwarding_reported
+    if _untrusted_forwarding_reported:
+        return
+    _untrusted_forwarding_reported = True
+    _logger.warning(
+        "X-Forwarded-For arrived from %s but was discarded: the peer is not in "
+        "TRUSTED_PROXY_CIDRS. If a reverse proxy terminates client connections, set "
+        "BEHIND_PROXY=true and TRUSTED_PROXY_CIDRS to the network it connects from, "
+        "or every client shares a single rate-limit bucket. If this server is exposed "
+        "directly, a client is forging forwarding headers. Reported once per process.",
+        peer_ip,
+    )
 
 
 def resolve_client_ip(
@@ -18,6 +61,8 @@ def resolve_client_ip(
         return peer_ip
 
     if not networks or not any(peer in network for network in networks):
+        if x_forwarded_for.strip():
+            _report_untrusted_forwarding(peer_ip)
         return peer_ip
 
     forwarded: list[str] = []

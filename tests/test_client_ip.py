@@ -1,6 +1,11 @@
+import logging
 import unittest
 
-from backend.src.client_ip import environ_client_ip, resolve_client_ip
+from backend.src.client_ip import (
+    environ_client_ip,
+    reset_untrusted_forwarding_warning,
+    resolve_client_ip,
+)
 
 
 def _handshake_environ(peer: str | None, forwarded: str = "") -> dict:
@@ -87,6 +92,63 @@ class ClientIPTests(unittest.TestCase):
             )
             == "10.0.0.3"
         )
+
+
+class UntrustedForwardingWarningTests(unittest.TestCase):
+    """The misdeclared-proxy case, which boot validation cannot reach.
+
+    `BEHIND_PROXY=true` with no CIDRs already fails startup, so a running
+    server has declared itself direct. Forwarding headers arriving anyway
+    mean that declaration is wrong and every viewer is sharing one bucket.
+    """
+
+    def setUp(self):
+        reset_untrusted_forwarding_warning()
+
+    def test_discarded_forwarded_header_is_reported(self):
+        with self.assertLogs("emby-watchparty", level=logging.WARNING) as captured:
+            resolve_client_ip(
+                peer_ip="203.0.113.10",
+                x_forwarded_for="198.51.100.25",
+                trusted_proxy_cidrs=(),
+            )
+        assert "TRUSTED_PROXY_CIDRS" in captured.output[0]
+        assert "203.0.113.10" in captured.output[0]
+
+    def test_reported_only_once_per_process(self):
+        # /hls runs several requests per second per viewer, so warning per
+        # request would reproduce the log flood this project already fixed.
+        with self.assertLogs("emby-watchparty", level=logging.WARNING) as captured:
+            for _ in range(5):
+                resolve_client_ip(
+                    peer_ip="203.0.113.10",
+                    x_forwarded_for="198.51.100.25",
+                    trusted_proxy_cidrs=(),
+                )
+        assert len(captured.output) == 1
+
+    def test_ordinary_direct_traffic_is_silent(self):
+        logger = logging.getLogger("emby-watchparty")
+        with self.assertNoLogs(logger, level=logging.WARNING):
+            resolve_client_ip(peer_ip="203.0.113.10", x_forwarded_for="", trusted_proxy_cidrs=())
+
+    def test_correctly_configured_proxy_is_silent(self):
+        logger = logging.getLogger("emby-watchparty")
+        with self.assertNoLogs(logger, level=logging.WARNING):
+            resolve_client_ip(
+                peer_ip="10.0.0.3",
+                x_forwarded_for="198.51.100.25, 10.0.0.2",
+                trusted_proxy_cidrs=("10.0.0.0/8",),
+            )
+
+    def test_socket_handshakes_report_it_too(self):
+        # #52's lesson: a fix applied to one path and not its twin.
+        with self.assertLogs("emby-watchparty", level=logging.WARNING) as captured:
+            environ_client_ip(
+                _handshake_environ("203.0.113.10", forwarded="198.51.100.25"),
+                trusted_proxy_cidrs=(),
+            )
+        assert "TRUSTED_PROXY_CIDRS" in captured.output[0]
 
 
 if __name__ == "__main__":
