@@ -63,6 +63,10 @@ class FakeEmbyBehavior:
     transient_status: int = 503
     segment_chunks: list[bytes] = field(default_factory=lambda: list(_SEGMENT_CHUNKS))
     segment_delay_ms: int = 0
+    # Emby sits behind its own routing and can answer a segment with a
+    # redirect. The shared httpx client runs with follow_redirects=False,
+    # so the proxy has to decide what to do with one.
+    redirect_segments: bool = False
     master_playlist: str = (
         "#EXTM3U\r\n#EXT-X-VERSION:3\r\n"
         '#EXT-X-STREAM-INF:BANDWIDTH=1000000,CODECS="avc1.42c00d,mp4a.40.2"\r\n'
@@ -144,6 +148,7 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
             state.behavior.master_playlist = str(data["master_playlist"])
         if "variant_playlist" in data:
             state.behavior.variant_playlist = str(data["variant_playlist"])
+        state.behavior.redirect_segments = bool(data.get("redirect_segments", False))
         return {"success": True}
 
     @app.get("/emby/System/Info/Public")
@@ -305,6 +310,12 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
                 media_type="application/vnd.apple.mpegurl",
             )
 
+        if state.behavior.redirect_segments:
+            return Response(
+                status_code=302,
+                headers={"Location": "http://emby.internal/relocated/segment0.ts"},
+            )
+
         chunks = state.behavior.segment_chunks
         range_header = request.headers.get("range")
         range_start = 0
@@ -312,6 +323,15 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         if range_header and range_header.startswith("bytes="):
             start_text, _, end_text = range_header.removeprefix("bytes=").partition("-")
             range_start = int(start_text or 0)
+            # A real server refuses a range that starts past the end, and
+            # RFC 7233 requires the 416 to carry the true length so the
+            # client can retry. The proxy used to drop that header because
+            # it only copied range metadata on 206.
+            if range_start >= len(_SEGMENT_BYTES):
+                return Response(
+                    status_code=416,
+                    headers={"Content-Range": f"bytes */{len(_SEGMENT_BYTES)}"},
+                )
             range_end = min(int(end_text or range_end), range_end)
             ranged = b"".join(chunks)[range_start : range_end + 1]
             chunks = [ranged]

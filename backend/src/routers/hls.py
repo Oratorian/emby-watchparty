@@ -455,11 +455,47 @@ async def proxy_hls_segment(
             headers=upstream_headers,
             params=query_params,
         )
+        if emby_resp.status_code == 416:
+            # Range Not Satisfiable is an answer, not a failure. RFC 7233
+            # requires it to carry `Content-Range: bytes */<length>`, which
+            # is how a client discovers the real length and retries. Letting
+            # raise_for_status turn it into a generic upstream error threw
+            # that header away and told the client nothing it could act on.
+            content_range = emby_resp.headers.get("Content-Range", "")
+            await emby_resp.aclose()
+            return Response(
+                status_code=416,
+                headers=(
+                    {"Content-Range": content_range, "X-Content-Type-Options": "nosniff"}
+                    if content_range
+                    else {"X-Content-Type-Options": "nosniff"}
+                ),
+            )
+
         try:
             emby_resp.raise_for_status()
         except Exception:
             await emby_resp.aclose()
             raise
+
+        if emby_resp.is_redirect:
+            # `follow_redirects=False` on the shared client is deliberate:
+            # following Emby's redirect would re-issue the host's credentials
+            # at whatever target it names. Forwarding it is no better, because
+            # Location points at an internal address the viewer cannot reach
+            # and should not be shown. Previously neither happened and the
+            # viewer received a bare 3xx with no Location at all, which is
+            # unactionable. Fail it as an upstream error instead.
+            await emby_resp.aclose()
+            logger.warning(
+                "Emby redirected an HLS segment request; not followed: status=%s",
+                emby_resp.status_code,
+            )
+            return Response(
+                content='{"error": "Upstream redirect not followed"}',
+                status_code=502,
+                media_type="application/json",
+            )
 
         content_type = "video/MP2T" if _is_segment(subpath) else "application/octet-stream"
 
@@ -470,13 +506,19 @@ async def proxy_hls_segment(
             finally:
                 await emby_resp.aclose()
 
+        # Range metadata matters well beyond 206. A plain 200 needs
+        # Content-Length and Accept-Ranges before a client will attempt to
+        # seek at all, and RFC 7233 requires a 416 to carry Content-Range so
+        # the client can learn the real length and retry. Copying these only
+        # on 206 meant iOS, which drives native HLS entirely through range
+        # requests, could neither start seeking nor recover from an
+        # out-of-range one. Forward whatever upstream actually sent.
         response_headers = {
             "X-Content-Type-Options": "nosniff",
         }
-        if emby_resp.status_code == 206:
-            for header in ("Content-Range", "Accept-Ranges", "Content-Length"):
-                if value := emby_resp.headers.get(header):
-                    response_headers[header] = value
+        for header in ("Content-Range", "Accept-Ranges", "Content-Length"):
+            if value := emby_resp.headers.get(header):
+                response_headers[header] = value
 
         return StreamingResponse(
             stream_body(),

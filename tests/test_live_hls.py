@@ -317,6 +317,77 @@ def test_master_still_refuses_client_supplied_parameters(live_watchparty) -> Non
     asyncio.run(_exercise_client_tampering_on_master(live_watchparty))
 
 
+async def _segment_url(client, master_url: str) -> str:
+    master = await client.get(master_url)
+    variant_url = urljoin(master_url, _media_line(master.text))
+    variant = await client.get(variant_url)
+    return urljoin(variant_url, _media_line(variant.text))
+
+
+async def _exercise_range_metadata_beyond_206(live_watchparty) -> None:
+    """Range headers were copied only when upstream answered 206.
+
+    iOS drives native HLS entirely through range requests, so a plain 200
+    that arrives without Accept-Ranges gives it nothing to seek with, and a
+    416 stripped of Content-Range gives it no way to learn the real length
+    and retry.
+    """
+    async with httpx.AsyncClient() as controls:
+        await controls.post(f"{live_watchparty.fake.url}/__test__/reset")
+    client, realtime, master_url = await _select_video(live_watchparty.url)
+    try:
+        segment_url = await _segment_url(client, master_url)
+
+        whole = await client.get(segment_url)
+        assert whole.status_code == 200
+        assert whole.headers.get("accept-ranges") == "bytes", "200 lost Accept-Ranges"
+
+        unsatisfiable = await client.get(segment_url, headers={"Range": "bytes=999999-"})
+        assert unsatisfiable.status_code == 416
+        assert unsatisfiable.headers.get("content-range") == "bytes */168260", (
+            "416 lost Content-Range, so the client cannot discover the length"
+        )
+    finally:
+        await realtime.disconnect()
+        await client.aclose()
+
+
+def test_range_metadata_survives_beyond_206(live_watchparty) -> None:
+    asyncio.run(_exercise_range_metadata_beyond_206(live_watchparty))
+
+
+async def _exercise_upstream_redirect(live_watchparty) -> None:
+    """An unfollowed redirect must not reach the viewer as a bare 3xx.
+
+    The shared client runs with follow_redirects=False so Emby cannot make
+    us re-issue the host's credentials at an arbitrary target. Forwarding
+    the redirect is equally wrong: Location names an internal address the
+    viewer cannot reach and should not see. Previously neither happened and
+    the response was a 3xx with no Location at all.
+    """
+    client, realtime, master_url = await _select_video(live_watchparty.url)
+    try:
+        segment_url = await _segment_url(client, master_url)
+        async with httpx.AsyncClient() as controls:
+            await controls.post(
+                f"{live_watchparty.fake.url}/__test__/behavior",
+                json={"redirect_segments": True},
+            )
+        response = await client.get(segment_url)
+        assert response.status_code == 502
+        assert "location" not in response.headers, "internal address disclosed to the viewer"
+        assert "emby.internal" not in response.text
+    finally:
+        async with httpx.AsyncClient() as controls:
+            await controls.post(f"{live_watchparty.fake.url}/__test__/behavior", json={})
+        await realtime.disconnect()
+        await client.aclose()
+
+
+def test_unfollowed_upstream_redirect_becomes_bad_gateway(live_watchparty) -> None:
+    asyncio.run(_exercise_upstream_redirect(live_watchparty))
+
+
 async def _exercise_select_leave_race(live_watchparty) -> None:
     controls = httpx.AsyncClient(base_url=live_watchparty.fake.url)
     await controls.post(
