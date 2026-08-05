@@ -24,7 +24,7 @@ Betas are image-only, as the whole 2.0 beta cycle was: no git tag and no GitHub 
 
 Treat it as a beta. It has been exercised by an automated suite that drives real HLS through a fake Emby, and by a security pass that reopened and closed two blockers, but it has not been run in anger by a real household on a real Emby server. That is what this beta is for. Keep your 2.1.x image and configuration for rollback until you have completed a playback test.
 
-**Read [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) before upgrading.** Its first section tells you whether you need to change anything at all; for most production deployments coming from 2.1.x the only addition is `BEHIND_PROXY`.
+**Read [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) before upgrading.** Its first section tells you whether you need to change anything at all; for most production deployments coming from 2.1.x the only addition is `BEHIND_PROXY`. The exception is anyone who turned HLS token validation off in **Admin -> Security**: that value is carried forward, production refuses to boot with the gate disabled, and the toggle that would have re-enabled it has moved out of the panel, so `ENABLE_HLS_TOKEN_VALIDATION=true` must be set in the environment.
 
 2.0 rebuilt the product. 3.0 rebuilds the foundation underneath it. Nothing about what a watch party *does* changes: same parties, same per-user transcodes, same late-joiner vote, same admin panel, same look. What changes is how much of it the server can prove before it runs.
 

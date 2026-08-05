@@ -34,9 +34,24 @@ boots on it unchanged. Read this section first and skip the rest if it applies.
 - `ENABLE_HLS_TOKEN_VALIDATION` is enabled
 
 So for a production deployment coming from 2.1.x that already sets a session
-secret, secure cookies and explicit origins, **the only addition is
-`BEHIND_PROXY`**. Everything else in this guide is either detail, a
+secret, secure cookies and explicit origins, **`BEHIND_PROXY` is normally the
+only addition**. Everything else in this guide is either detail, a
 platform-specific note, or applies only if you build from source.
+
+**One exception, and it is a hard boot failure rather than a warning.** If you
+ever turned HLS token validation **off** in **Admin → Security**, you must also
+set it in the environment:
+
+```env
+ENABLE_HLS_TOKEN_VALIDATION=true
+```
+
+3.0 reads your old `config.json` value and carries it forward, which is normally
+the helpful behaviour, but production refuses to start with that gate disabled.
+So a deployment that had it off inherits `false`, fails validation on first boot,
+and **cannot be fixed from the admin panel, because the toggle moved out of it.**
+The environment variable is the only way back. If you never touched that setting
+it has always been `true`, and there is nothing to do.
 
 One behavioural change to be aware of even when nothing needs editing:
 `SESSION_EXPIRY` now genuinely sets the session cookie lifetime, so with the
