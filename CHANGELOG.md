@@ -16,6 +16,29 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [2.1.1] - 2026-08-05 - Midnight Premiere
+
+A dependency-only security patch. Two upstream advisories are closed, one of which affects the JavaScript that runs in every viewer's browser. No application code changed, no `.env` changes, no migration, nothing to reconfigure. Pull the new image, restart, done.
+
+If you build from source, run `npm ci` in `frontend/` so the updated lockfile is actually installed; `npm install` alone may keep the old resolutions.
+
+### Security
+
+- **`socket.io-parser` 4.2.6 to 4.2.7** closes [CVE-2026-69185](https://github.com/advisories/GHSA-2m8v-j782-fhvr) (**high**), "Zero-attachment Memory Exhaustion", affecting every version from 4.0.0 up to 4.2.7. This is the one that matters most here: the parser is bundled into `socket.io-client` and runs **in the browser**, decoding every frame the server sends, so it sits on the path each viewer uses for the whole session. Watch Party never enabled the attachment features involved, but the parse path is shared, and the fix is a drop-in patch release from the Socket.IO maintainers.
+- **`postcss` 8.5.19 to 8.5.25** closes [CVE-2026-69153](https://github.com/advisories/GHSA-fxqj-rqcc-2cmp) (**medium**), an incomplete fix of [GHSA-6g55-p6wh-862q](https://github.com/advisories/GHSA-6g55-p6wh-862q) in which an attacker-controlled `sourceMappingURL` can read arbitrary `.map` files when `from` is unset. Patched upstream in 8.5.23; this goes to 8.5.25. Despite GitHub classifying it as runtime scope, `postcss` reaches this project only through `vite` and `@vue/compiler-sfc`, both build-time, so the realistic exposure is to whoever runs the build rather than to viewers. Included because there is no reason to ship a known-vulnerable build toolchain.
+
+Both are transitive dependencies. `package.json` is unchanged; the patched versions already sit inside its existing ranges, so only `frontend/package-lock.json` moved. `npm audit` reports zero vulnerabilities on the result.
+
+### Technical details
+
+Neither advisory was reachable through anything Watch Party calls directly, which is why this is a patch and not an emergency. The `socket.io-parser` bump is the substantive one purely because of where it executes: it ships to the client, so leaving it unpatched means shipping known-vulnerable JavaScript to every viewer regardless of whether this application exercises the affected code path.
+
+Both bumps arrived through Dependabot, as [#54](https://github.com/Oratorian/emby-watchparty/pull/54) and [#55](https://github.com/Oratorian/emby-watchparty/pull/55), and this release is the version bump and changelog that publish them.
+
+One incidental detail worth recording, since it will show up in a lockfile diff and looks alarming out of context: alongside its three-line version change, #54 also removed `"dev": true` from 54 `@esbuild/*` platform binaries, reclassifying them as production dependencies. It does not change the built output, because `vite build` emits the same static assets either way, but it does change what a vulnerability scanner configured to skip dev dependencies will report against this lockfile.
+
+---
+
 ## [2.1.0] - 2026-08-03 - Midnight Premiere
 
 A security release. Two authorization gaps are closed, and because the stricter gating can now refuse requests that used to succeed, the UI gained the banners needed to explain itself instead of leaving you staring at a dead player.
@@ -137,6 +160,7 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
+- **v2.1.1**  (2026-08-05): Security -- upstream advisories in `socket.io-parser` (high, browser-side) and `postcss` (medium, build-time).
 - **v2.1.0**  (2026-08-03): Security -- `/hls` now session-gated with a cookie/token party match, and the Emby admin token moved out of the session cookie.
 - **v2.0.2**  (2026-08-01): HLS token rewriting fixed for CRLF playlists (playback stuck buffering at 0:00) + first HLS proxy tests.
 - **v2.0.1**  (2026-07-14): Democratic playback control (any member can play/pause/seek) + sync-guard fixes.
