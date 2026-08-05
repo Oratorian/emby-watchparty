@@ -1,9 +1,12 @@
-# Emby Watch Party 2.0 -- docker-compose example
+# Emby Watch Party 3.0 -- docker-compose example
 #
-# Two volume mounts are required for bootstrap config and avatars to survive
-# container replacement: /app/data holds the SQLite avatar DB,
-# /app/images/avatars holds the uploaded image files. Without them
-# every restart wipes every member's chosen avatar.
+# Two volume mounts are required for avatars to survive container
+# replacement: /app/data holds the SQLite avatar DB, /app/images/avatars
+# holds the uploaded image files. Without them every restart wipes every
+# member's chosen avatar.
+#
+# 3.0 writes no bootstrap or setup state. Configuration is environment-only,
+# so /app/data carries the avatar database and nothing else.
 #
 # `version:` is omitted intentionally -- modern Docker Compose v2
 # ignores it and warns on its presence.
@@ -11,10 +14,12 @@
 services:
   emby-watchparty:
     # Recommended: pull the pre-built multi-arch image from GHCR.
-    # `:latest` tracks the latest stable, `:devel` / `:nightly` tracks
-    # the current closed-beta build, and `:2.0.0-betaN` pins a
-    # specific beta. Comment this line and uncomment `build: .` below
-    # to build from local source instead.
+    # `:latest` tracks the latest stable release. `:3` and `:3.0` are
+    # rolling major and major.minor tags, published for stable releases
+    # only. `:devel` and `:nightly` both track the current prerelease
+    # build, and `:3.0.0-betaN` pins one exact build. A prerelease never
+    # moves `:latest` or the rolling tags. Comment this line and uncomment
+    # `build: .` below to build from local source instead.
     image: ghcr.io/oratorian/emby-watchparty:latest
     # build: .
 
@@ -47,7 +52,10 @@ services:
     #   - WATCH_PARTY_BIND=0.0.0.0
     #   - WATCH_PARTY_PORT=5000
     #   - SESSION_EXPIRY=86400
-    #   - APP_PREFIX=/watchparty
+    #   # Leave empty unless the app is served under a subpath. Setting
+    #   # this to a path you are not actually proxying makes every URL 404.
+    #   # For a subpath deployment: APP_PREFIX=/watchparty
+    #   - APP_PREFIX=
     #   - EMBY_SERVER_URL=http://your-emby-server:8096
     #   - EMBY_API_KEY=your_api_key_here
     #   # Session cookie hardening (new in 2.0.0-beta18). See
@@ -79,8 +87,8 @@ services:
     #   - ENABLE_HLS_TOKEN_VALIDATION=true
 
     volumes:
-      # Required: persist bootstrap config and avatars. ./data and ./images
-      # are created next to this compose file on first run.
+      # Required: persist the avatar database and uploaded images. ./data
+      # and ./images are created next to this compose file on first run.
       - ./data:/app/data                     # avatar DB
       - ./images/avatars:/app/images/avatars # uploaded avatar images
       # Optional: persist application logs to the host (only useful if
