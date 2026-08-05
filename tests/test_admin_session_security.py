@@ -5,11 +5,13 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
+from itsdangerous import TimestampSigner
 
 from backend.app import create_app
 from backend.src.admin_session_store import AdminSessionStore
 from backend.src.config import Config, EnvConfig, RuntimeConfig
 from backend.src.domain import Participant
+from backend.src.socket_handlers.connection import _decode_session
 from tests.support.asgi import asgi_client
 from tests.support.credentials import REVOKED_ACCESS_TOKEN, TEST_SESSION_SECRET
 
@@ -133,6 +135,27 @@ def test_session_cookie_lifetime_follows_session_expiry(tmp_path: Path) -> None:
             assert "Max-Age=3600" in cookie, f"cookie ignores SESSION_EXPIRY: {cookie}"
 
     asyncio.run(exercise())
+
+
+def test_socket_handshake_expires_cookies_on_the_same_schedule_as_http() -> None:
+    """The socket decoder must not outlive the HTTP one.
+
+    connection.py hardcoded a 14-day max age with a comment requiring it to
+    stay in sync with SessionMiddleware. Once the cookie began honouring
+    SESSION_EXPIRY, that constant would have let the socket handshake accept
+    a session every HTTP route already treated as expired, which is the
+    fix-one-path-not-its-twin shape that reopened #48 and #52.
+    """
+    signer = TimestampSigner(TEST_SESSION_SECRET)
+    payload = base64.b64encode(json.dumps({"party_id": "ABCDE"}).encode())
+    environ = {"HTTP_COOKIE": f"ewp_session={signer.sign(payload).decode()}"}
+
+    # Fresh cookie, well inside any window.
+    assert _decode_session(environ, TEST_SESSION_SECRET, 3600) is not None
+
+    # A window this session is already past. The handshake must refuse it
+    # rather than fall back to a longer built-in lifetime.
+    assert _decode_session(environ, TEST_SESSION_SECRET, -1) is None
 
 
 def test_admin_session_ttl_renews_while_in_use() -> None:

@@ -8,6 +8,10 @@ import uvicorn
 
 from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
+from backend.src.socket_handlers.connection import (
+    EMPTY_PARTY_GRACE_SECONDS,
+    HOST_GRACE_SECONDS,
+)
 from tests.support.credentials import TEST_SESSION_SECRET
 
 
@@ -95,3 +99,22 @@ async def _exercise_last_user_leave(tmp_path: Path) -> None:
 
 def test_last_user_leave_dissolves_dynamic_party(tmp_path: Path) -> None:
     asyncio.run(_exercise_last_user_leave(tmp_path))
+
+
+def test_empty_party_grace_is_longer_than_the_host_privilege_grace() -> None:
+    """The two windows answer different questions and were the same number.
+
+    Five seconds is a fair "did they just refresh?" window for handing on
+    host privilege. Reusing it to dissolve the party meant a phone waking
+    from background, a laptop resuming, or a slow reconnect lost the party
+    and its URL outright.
+
+    The costs are lopsided, which is why these should not be equal:
+    dissolving early destroys a session people are in, while dissolving late
+    holds one small object a few seconds longer, and an empty party is not
+    advertised in the party list anyway.
+    """
+    assert EMPTY_PARTY_GRACE_SECONDS > HOST_GRACE_SECONDS
+    # Long enough to cover a real page load on a phone, not so long that
+    # abandoned parties pile up.
+    assert EMPTY_PARTY_GRACE_SECONDS >= 30

@@ -21,15 +21,30 @@ from backend.src.rate_limit import parse_rate
 # SessionMiddleware in backend/app.py; otherwise the socket handshake
 # reads the wrong cookie name and _decode_session always returns None.
 SESSION_COOKIE_NAME = "ewp_session"
-SESSION_MAX_AGE = 14 * 24 * 60 * 60  # Starlette SessionMiddleware default
 HOST_GRACE_SECONDS = 5
 
+# How long an *empty* party survives before it is destroyed. Deliberately
+# separate from HOST_GRACE_SECONDS: five seconds is a fair "did they just
+# refresh?" window for handing on host privilege, but the same five seconds
+# also dissolved the party outright, taking its URL with it. A phone waking
+# from background, a laptop resuming, or a slow reconnect all exceed it
+# easily. The costs are lopsided, since dissolving early destroys a session
+# people are actively in, while dissolving late holds one small object for a
+# few more seconds and an empty party is not advertised in the party list
+# anyway.
+EMPTY_PARTY_GRACE_SECONDS = 30
 
-def _decode_session(environ, secret):
+
+def _decode_session(environ, secret, max_age):
     """Decode Starlette's signed session cookie, or None.
 
     Mirrors `starlette.middleware.sessions.SessionMiddleware` so the
     handshake can read the same cookie HTTP routes use.
+
+    `max_age` must be the value handed to SessionMiddleware, which is
+    SESSION_EXPIRY. It used to be a hardcoded 14 days here, so once the
+    cookie started honouring SESSION_EXPIRY the socket path would have
+    accepted a session that every HTTP route already treated as expired.
     """
     if not secret:
         return None
@@ -43,7 +58,7 @@ def _decode_session(environ, secret):
         return None
     try:
         signer = TimestampSigner(str(secret))
-        data = signer.unsign(morsel.value, max_age=SESSION_MAX_AGE)
+        data = signer.unsign(morsel.value, max_age=max_age)
         return json.loads(base64.b64decode(data))
     except (BadSignature, ValueError, json.JSONDecodeError):
         return None
@@ -153,7 +168,7 @@ def register(ctx):
 
         # Session-cookie proof gate.
         environ = sio.get_environ(sid) or {}
-        session = _decode_session(environ, session_secret)
+        session = _decode_session(environ, session_secret, config.SESSION_EXPIRY)
         if not session:
             logger.warning(
                 f"Host reclaim REJECTED for {party_id}: sid={sid} has no "
@@ -205,7 +220,7 @@ def register(ctx):
         # static-session reset) just leaves the frontend silently
         # un-joinable, which is a worse failure mode than letting an
         # extra cookieless connect through.
-        session = _decode_session(environ, session_secret)
+        session = _decode_session(environ, session_secret, config.SESSION_EXPIRY)
         if session and session.get("party_id") and session.get("client_id"):
             party_id = session["party_id"].upper()
             if party_manager.exists(party_id):
@@ -334,4 +349,4 @@ def register(ctx):
                 )
                 lifecycle = ctx.get("party_lifecycle")
                 if lifecycle:
-                    lifecycle.schedule_empty_dissolution(party_id, delay=HOST_GRACE_SECONDS)
+                    lifecycle.schedule_empty_dissolution(party_id, delay=EMPTY_PARTY_GRACE_SECONDS)

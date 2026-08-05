@@ -43,7 +43,7 @@ def register(ctx):
         # break auth on one side.
         from backend.src.socket_handlers.connection import _decode_session
 
-        return _decode_session(environ, session_secret)
+        return _decode_session(environ, session_secret, config.SESSION_EXPIRY)
 
     # -------------------------------------------------------------------------
     # Late-joiner vote helpers
