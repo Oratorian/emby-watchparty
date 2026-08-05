@@ -336,35 +336,19 @@ Use the GitHub issue templates to report bugs. Include:
    - Include screenshots for UI changes
    - Include your test evidence (see [Testing](#testing))
 
-4. **PR Template**
+4. **Fill in the template**
 
-   ```markdown
-   ## Summary
-   Brief description of changes
+   Opening a pull request loads
+   [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md)
+   automatically. It is the checklist form of this document: scope, the suite
+   commands, the manual test report, and the documentation items. Work through
+   it rather than deleting it.
 
-   ## Changes Made
-   - Change 1
-   - Change 2
-
-   ## Testing Done
-   Suite run locally: pass / fail
-   - [ ] ruff check and ruff format --check
-   - [ ] mypy
-   - [ ] pytest
-   - [ ] eslint, type-check, vitest
-   - [ ] production build
-   - [ ] playwright
-
-   Manual verification (required where no automated test covers the change):
-   - How:
-   - Covered:
-   - Not covered:
-   - Expected:
-   - Actual:
-
-   ## Related Issues
-   Fixes #123
-   ```
+   The template is deliberately not reproduced here. The copy that used to sit
+   in this section drifted out of step with the real file and ended up asking
+   contributors to add tests "as needed", which is the opposite of the policy
+   above. One authority, in one place; if the template and this document ever
+   disagree, this document wins and the disagreement is a bug.
 
 ### Review Process
 

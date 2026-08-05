@@ -79,6 +79,37 @@ body:
     validations:
       required: false
 
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      description: |
+        How is Emby Watch Party running? This decides more than it looks like it
+        should: client addresses, rate-limit buckets and session cookie flags all
+        behave differently behind a reverse proxy than they do on a directly
+        reachable server.
+      options:
+        - Docker, directly reachable
+        - Docker, behind a reverse proxy (nginx, Caddy, Traefik, NPM)
+        - Unraid / CasaOS / Portainer / TrueNAS
+        - Bare metal or source install, directly reachable
+        - Bare metal or source install, behind a reverse proxy
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: proxy-settings
+    attributes:
+      label: BEHIND_PROXY and TRUSTED_PROXY_CIDRS
+      description: |
+        3.0 and later only, and only if you are behind a proxy. Do not paste your
+        whole environment; these two values are enough. If the log contains a
+        warning about `X-Forwarded-For` being discarded, please say so.
+      placeholder: "e.g. BEHIND_PROXY=true, TRUSTED_PROXY_CIDRS=172.16.0.0/12"
+    validations:
+      required: false
+
   - type: textarea
     id: logs
     attributes:
