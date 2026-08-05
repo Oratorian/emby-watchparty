@@ -12,6 +12,31 @@ if TYPE_CHECKING:
     from starlette.responses import Response
 
 
+# Request lines that are noise rather than signal, dropped to DEBUG so the
+# INFO stream stays readable. Matched as substring or suffix so an
+# APP_PREFIX deployment is covered without rebuilding the list.
+#
+# Volume, worst first:
+#   /hls/            several requests per second per viewer
+#   /socket.io       the polling transport, before and instead of upgrade
+#   /api/party/list  polled every ~5s per open index tab
+#   /assets/         every file of the SPA bundle, per page load
+#   health/ready     whatever the orchestrator's probe interval is
+#
+# /api/party/list is the pointed one: its handler already logs at DEBUG and
+# says so, "this route is polled every ~5s per open index tab, so it
+# deliberately stays at DEBUG (no INFO spam)". The middleware was emitting
+# an INFO line for the same request and defeating that.
+_QUIET_PATH_FRAGMENTS = ("/hls/", "/socket.io", "/assets/")
+_QUIET_PATH_SUFFIXES = ("/api/health", "/api/ready", "/api/party/list")
+
+
+def _is_quiet_path(path: str) -> bool:
+    return any(fragment in path for fragment in _QUIET_PATH_FRAGMENTS) or path.endswith(
+        _QUIET_PATH_SUFFIXES
+    )
+
+
 class RequestLogMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         started = perf_counter()
@@ -26,12 +51,7 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
                 session = request.scope.get("session") or {}
                 party_id = session.get("party_id", "-")
                 latency_ms = (perf_counter() - started) * 1000
-                log = (
-                    logger.debug
-                    if "/hls/" in request.url.path
-                    or request.url.path.endswith(("/api/health", "/api/ready"))
-                    else logger.info
-                )
+                log = logger.debug if _is_quiet_path(request.url.path) else logger.info
                 log(
                     "request route=%s method=%s party=%s latency_ms=%.1f outcome=%s retry=0",
                     request.url.path,
