@@ -3,7 +3,7 @@
 import re
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -45,12 +45,23 @@ class RateLimitDecision:
 
 
 class SlidingWindowRateLimiter:
+    # Reclaiming expired buckets is a memory concern, not a correctness one.
+    # `check` already discards every timestamp older than the window from the
+    # bucket it touches, so a bucket that has not been swept yet still yields
+    # the right decision; the sweep only stops empty buckets accumulating.
+    # Running it per request therefore bought nothing and cost an
+    # O(tracked keys) pass, holding the lock, on the event loop, for every
+    # request: 10,000 entries at the default cap.
+    _SWEEP_INTERVAL_SECONDS = 1.0
+
     def __init__(self, max_keys: int = 10_000, clock: Callable[[], float] = time.monotonic):
         self._max_keys = max_keys
         self._clock = clock
-        self._buckets: dict[str, deque[float]] = {}
-        self._last_seen: dict[str, float] = {}
+        # Ordered least-recently-used first, so eviction is popitem(last=False)
+        # instead of a min() over every tracked key.
+        self._buckets: OrderedDict[str, deque[float]] = OrderedDict()
         self._expires_at: dict[str, float] = {}
+        self._next_sweep = 0.0
         self._lock = threading.Lock()
 
     @property
@@ -62,11 +73,18 @@ class SlidingWindowRateLimiter:
         now = self._clock()
         cutoff = now - window_seconds
         with self._lock:
-            self._expire_inactive_locked(now)
-            bucket = self._buckets.setdefault(key, deque())
+            if now >= self._next_sweep:
+                self._expire_inactive_locked(now)
+                self._next_sweep = now + self._SWEEP_INTERVAL_SECONDS
+            bucket = self._buckets.get(key)
+            if bucket is None:
+                bucket = self._buckets[key] = deque()
+            else:
+                # Touching the key makes it most-recently-used, which is what
+                # keeps popitem(last=False) an LRU eviction.
+                self._buckets.move_to_end(key)
             while bucket and bucket[0] <= cutoff:
                 bucket.popleft()
-            self._last_seen[key] = now
             self._expires_at[key] = now + window_seconds
             if len(bucket) >= limit:
                 retry_after = max(1, int(window_seconds - (now - bucket[0])) + 1)
@@ -78,7 +96,6 @@ class SlidingWindowRateLimiter:
     def clear(self, key: str) -> None:
         with self._lock:
             self._buckets.pop(key, None)
-            self._last_seen.pop(key, None)
             self._expires_at.pop(key, None)
 
     def clear_prefix(self, prefix: str) -> int:
@@ -87,7 +104,6 @@ class SlidingWindowRateLimiter:
             keys = [key for key in self._buckets if key.startswith(prefix)]
             for key in keys:
                 self._buckets.pop(key, None)
-                self._last_seen.pop(key, None)
                 self._expires_at.pop(key, None)
             return len(keys)
 
@@ -96,7 +112,6 @@ class SlidingWindowRateLimiter:
         with self._lock:
             count = len(self._buckets)
             self._buckets.clear()
-            self._last_seen.clear()
             self._expires_at.clear()
             return count
 
@@ -104,14 +119,11 @@ class SlidingWindowRateLimiter:
         expired = [key for key, expiry in self._expires_at.items() if expiry <= now]
         for key in expired:
             self._buckets.pop(key, None)
-            self._last_seen.pop(key, None)
             self._expires_at.pop(key, None)
 
     def _evict_if_needed_locked(self) -> None:
         while len(self._buckets) > self._max_keys:
-            oldest = min(self._last_seen, key=lambda key: self._last_seen[key])
-            self._buckets.pop(oldest, None)
-            self._last_seen.pop(oldest, None)
+            oldest, _ = self._buckets.popitem(last=False)
             self._expires_at.pop(oldest, None)
 
 

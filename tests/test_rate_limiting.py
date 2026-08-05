@@ -88,6 +88,68 @@ def test_inactive_buckets_expire_and_registry_stays_bounded():
     assert limiter.active_bucket_count == 1
 
 
+def test_expiry_sweep_is_amortised_rather_than_per_request():
+    """The sweep used to run on every single check.
+
+    At the default cap that is a 10,000-entry pass over the expiry map,
+    holding the lock, on the event loop, for every request that reaches the
+    limiter.
+    """
+    now = [0.0]
+    limiter = SlidingWindowRateLimiter(clock=lambda: now[0])
+    sweeps: list[float] = []
+    original = limiter._expire_inactive_locked
+
+    def counting(when: float) -> None:
+        sweeps.append(when)
+        original(when)
+
+    limiter._expire_inactive_locked = counting  # type: ignore[method-assign]
+
+    for index in range(500):
+        limiter.check(f"key-{index}", 100, 60)
+    assert len(sweeps) == 1, "the sweep is still running per request"
+
+    # It must still run as the clock advances, or expired buckets leak.
+    now[0] = limiter._SWEEP_INTERVAL_SECONDS
+    limiter.check("later", 100, 60)
+    assert len(sweeps) == 2
+
+
+def test_decisions_are_correct_before_a_sweep_has_run():
+    """Correctness comes from the per-bucket cutoff, not the sweep.
+
+    This is what makes amortising it safe: `check` drops timestamps older
+    than the window from the bucket it touches, so an unswept bucket still
+    answers correctly.
+    """
+    now = [0.0]
+    limiter = SlidingWindowRateLimiter(clock=lambda: now[0])
+    assert limiter.check("caller", 1, 10).allowed
+    assert not limiter.check("caller", 1, 10).allowed
+
+    # Past the window but inside the sweep interval, so no sweep intervenes.
+    now[0] = 10.5
+    limiter._next_sweep = 1e9
+    assert limiter.check("caller", 1, 10).allowed, "stale timestamps were not discarded"
+
+
+def test_eviction_removes_the_least_recently_used_key():
+    now = [0.0]
+    limiter = SlidingWindowRateLimiter(max_keys=2, clock=lambda: now[0])
+    limiter.check("first", 5, 600)
+    limiter.check("second", 5, 600)
+    # Touching "first" makes "second" the least recently used.
+    limiter.check("first", 5, 600)
+    limiter.check("third", 5, 600)
+
+    assert limiter.active_bucket_count == 2
+    # "first" was touched most recently, so it survived with both timestamps.
+    assert not limiter.check("first", 1, 600).allowed
+    # "second" was least recently used, so it was evicted and starts fresh.
+    assert limiter.check("second", 1, 600).allowed
+
+
 def test_zero_limit_is_rejected_instead_of_crashing_request_handling():
     with pytest.raises(ValueError, match="positive"):
         parse_rate("0 per minute")
