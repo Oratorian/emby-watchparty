@@ -87,6 +87,24 @@ def _sanitize_query(query_items):
     return sanitized
 
 
+def _is_playlist(value: str) -> bool:
+    """Whether `value` names an HLS playlist, regardless of case.
+
+    Nothing constrains the case of a requested subpath: `_safe_hls_subpath`
+    rejects traversal and control characters but never inspects the
+    extension. A case-sensitive test therefore let `variant.M3U8` miss the
+    playlist branch and fall through to the segment streamer, which handed
+    the raw upstream body back unrewritten, unvalidated, and without a
+    token appended to its child URIs.
+    """
+    return value.lower().endswith(".m3u8")
+
+
+def _is_segment(value: str) -> bool:
+    """Whether `value` names a transport-stream segment, regardless of case."""
+    return value.lower().endswith(".ts")
+
+
 def _safe_hls_subpath(subpath: str) -> bool:
     decoded = subpath
     for _ in range(8):
@@ -224,7 +242,8 @@ def _rewrite_playlist(
                 continue
             uri = line.rstrip("\r\n")
             terminator = line[len(uri) :]
-            if (".m3u8" in uri or ".ts" in uri) and "token=" not in uri:
+            lowered = uri.lower()
+            if (".m3u8" in lowered or ".ts" in lowered) and "token=" not in lowered:
                 sep = "&" if "?" in uri else "?"
                 lines[i] = uri + f"{sep}token={token}" + terminator
         content = "".join(lines)
@@ -380,7 +399,7 @@ async def proxy_hls_segment(
 
         logger.debug(f"Proxying HLS segment: {subpath} -> {emby_url}")
 
-        if subpath.endswith(".m3u8"):
+        if _is_playlist(subpath):
             emby_resp = await emby_gateway.get(
                 emby_url,
                 headers=emby_client._headers(access_token, user_id),
@@ -416,7 +435,7 @@ async def proxy_hls_segment(
             await emby_resp.aclose()
             raise
 
-        content_type = "video/MP2T" if subpath.endswith(".ts") else "application/octet-stream"
+        content_type = "video/MP2T" if _is_segment(subpath) else "application/octet-stream"
 
         async def stream_body():
             try:

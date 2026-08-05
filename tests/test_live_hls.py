@@ -12,6 +12,15 @@ def _media_line(playlist: str) -> str:
     return next(line for line in playlist.splitlines() if line and not line.startswith("#"))
 
 
+def _shout_extension(url: str) -> str:
+    """Uppercase the path's extension, leaving the query string alone.
+
+    The token is case-sensitive, so only the part before `?` is touched.
+    """
+    path, separator, query = url.partition("?")
+    return path.replace(".m3u8", ".M3U8") + separator + query
+
+
 async def _select_video(base_url: str) -> tuple[httpx.AsyncClient, socketio.AsyncClient, str]:
     client = httpx.AsyncClient(base_url=base_url)
     created = await client.post("/api/party/create", json={})
@@ -88,6 +97,47 @@ async def _exercise_streaming_and_range(live_watchparty) -> None:
 
 def test_live_hls_streams_first_chunk_and_forwards_ios_range(live_watchparty) -> None:
     asyncio.run(_exercise_streaming_and_range(live_watchparty))
+
+
+async def _exercise_uppercase_playlist_extension(live_watchparty) -> None:
+    """An uppercase extension must not skip playlist handling.
+
+    `_safe_hls_subpath` never inspects the extension, so `main.M3U8`
+    reached the segment streamer and the raw upstream body was returned
+    verbatim: `_safe_upstream_playlist_uri` never ran over its lines, and
+    no token was appended to the child URIs it advertises.
+
+    What this test can demonstrate is the content type and the missing
+    token, which is what breaks first. The skipped URI validation is the
+    security half and does not show up here, because the fake's fixtures
+    use bare relative names; real Emby emits absolute `/emby/Videos/`
+    forms, which is why `_rewrite_playlist` carries two regexes for them.
+    The `/emby/Videos/` assertion below is therefore a regression guard,
+    not the demonstration.
+    """
+    client, realtime, master_url = await _select_video(live_watchparty.url)
+    try:
+        master = await client.get(master_url)
+        assert master.status_code == 200
+        variant_url = urljoin(master_url, _media_line(master.text))
+
+        shouted = await client.get(_shout_extension(variant_url))
+        assert shouted.status_code == 200
+        assert shouted.headers["content-type"].startswith("application/vnd.apple.mpegurl")
+        # Rewritten, so no upstream path survives...
+        assert "/emby/Videos/" not in shouted.text
+        # ...and the child URI still carries a token to be authorised with.
+        assert "token=" in _media_line(shouted.text)
+
+        lowercase = await client.get(variant_url)
+        assert _media_line(shouted.text) == _media_line(lowercase.text)
+    finally:
+        await realtime.disconnect()
+        await client.aclose()
+
+
+def test_uppercase_playlist_extension_is_still_rewritten(live_watchparty) -> None:
+    asyncio.run(_exercise_uppercase_playlist_extension(live_watchparty))
 
 
 async def _exercise_tokenless_development_playback(live_watchparty) -> None:

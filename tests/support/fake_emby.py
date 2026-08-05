@@ -290,8 +290,20 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
 
     @app.get("/emby/Videos/{item_id}/{segment_name}")
     async def segment(request: Request, item_id: str, segment_name: str):
-        del item_id, segment_name
+        del item_id
         state.record(request)
+
+        # Emby runs on ASP.NET, whose route matching is case-insensitive,
+        # so `main.M3U8` returns the variant playlist rather than falling
+        # through to segment bytes. Reproduced here because the proxy has
+        # to handle an uppercase extension the same way it handles a
+        # lowercase one; with this route case-sensitive, a proxy that
+        # streamed the raw upstream body looked harmless in tests.
+        if segment_name.lower().endswith(".m3u8"):
+            return Response(
+                content=state.behavior.variant_playlist,
+                media_type="application/vnd.apple.mpegurl",
+            )
 
         chunks = state.behavior.segment_chunks
         range_header = request.headers.get("range")
