@@ -154,12 +154,54 @@ specifications are rejected without replacing or persisting the prior value.
 Boot settings, including HLS token validation, are not exposed through the
 runtime admin API and require restart.
 
+### `ENABLE_HLS_TOKEN_VALIDATION` moved, and your setting came with it
+
+The toggle is gone from **Admin → Security**. Nothing was reset, and you do not
+need to set it again. On first 3.0 boot the existing value is read out of your
+`config.json` and becomes the starting value of the boot setting, so a
+deployment that had it off stays off and one that had it on stays on.
+
+Only the location changed. It is now a boot setting, which means it is set
+through the environment and applied at startup; a runtime write through the
+admin API is refused with an explicit "boot setting; restart required" rather
+than being silently ignored. To change it, set `ENABLE_HLS_TOKEN_VALIDATION`
+in the environment and restart.
+
+Production requires it enabled, and startup validation fails loudly if it is
+not, so the only deployments that can carry a disabled value forward are
+development ones.
+
 ## Source and Windows installs
 
-Create a fresh Python 3.12 virtual environment and install the hash-locked
-requirements. `uvicorn[standard]` installs platform-appropriate accelerators:
-Linux receives `uvloop` and `httptools`; Windows automatically skips `uvloop`
-but keeps `httptools`, `websockets`, and `watchfiles`.
+**Delete the old virtual environment and create a new one. Do not upgrade in
+place.** This is not a tidiness preference; an in-place upgrade leaves an
+environment that is half 2.1.x and half 3.0.
+
+```bash
+rm -rf .venv                      # Windows: Remove-Item -Recurse -Force .venv
+python -m venv .venv
+source .venv/bin/activate         # Windows: .venv\Scripts\activate
+python -m pip install -r requirements.txt
+```
+
+Two reasons it has to be a fresh environment:
+
+- `requirements.txt` is now generated with hashes. Any hash in a requirements
+  file puts pip into `--require-hashes` mode, which then demands that every
+  transitive dependency also be pinned with a hash valid for the running
+  interpreter. A partially populated environment fails this in ways whose error
+  messages point at the wrong package.
+- 3.0 drops some distributions that 2.1.x installed, and **pip never removes a
+  package just because it left the requirements file**. Upgrading in place
+  leaves those behind, still importable, which is how you get a machine that
+  behaves differently from a clean install and from CI.
+
+Python 3.12 specifically: `pyproject.toml` pins `requires-python = ">=3.12,<3.13"`,
+and the lock is compiled for it. 3.13 is not supported.
+
+`uvicorn[standard]` installs platform-appropriate accelerators: Linux receives
+`uvloop` and `httptools`; Windows automatically skips `uvloop` but keeps
+`httptools`, `websockets`, and `watchfiles`.
 
 The PowerShell launcher resolves the repository from `$PSScriptRoot`. It is a
 local convenience, not the primary production deployment path.
