@@ -13,11 +13,21 @@ export function usePartyReconnect(
   avatar: AvatarStore,
   clientId: () => string,
 ) {
-  let initialConnectSeen = false
+  // Whether the next `connect` event is a reconnect rather than this
+  // page's first connection. That is a property of the socket, not of this
+  // component, which is why it is seeded from the store in `attach`.
+  //
+  // It used to be a plain `let ... = false`, reset on every mount. A
+  // remount therefore made the next genuine reconnect look like the
+  // initial connect, so it was swallowed and no `join_party` was sent. The
+  // member was then absent from the party server-side while the UI still
+  // showed them joined, which is the worst version of this failure because
+  // nothing on screen contradicts it.
+  let nextConnectIsRejoin = false
 
   const rejoin = () => {
-    if (!initialConnectSeen) {
-      initialConnectSeen = true
+    if (!nextConnectIsRejoin) {
+      nextConnectIsRejoin = true
       return
     }
     if (!party.partyId || !party.username) return
@@ -30,6 +40,13 @@ export function usePartyReconnect(
   }
 
   function attach() {
+    // `hasEverConnected` is documented in the socket store for exactly
+    // this: telling a cold connect apart from a reconnect. If the socket
+    // has connected before we attached, this component missed that initial
+    // connect, so any connect event we do see is a reconnect and needs a
+    // rejoin. Reading `connected` instead would be wrong, because a
+    // remount during an outage is disconnected yet still owes a rejoin.
+    nextConnectIsRejoin = socket.hasEverConnected
     socket.off('connect', rejoin)
     socket.on('connect', rejoin)
   }
