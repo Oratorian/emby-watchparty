@@ -53,7 +53,16 @@ class EmbyGateway:
                 response = await self.client.request(
                     method,
                     self.url(path),
-                    timeout=timeout,
+                    # httpx treats an explicit `timeout=None` as "no timeout
+                    # at all", not "use the client's default", so passing
+                    # this straight through actively overrode the client's
+                    # Timeout(30.0, connect=5.0, pool=5.0) and left every
+                    # caller that omitted a timeout completely unbounded. A
+                    # slow or wedged Emby could then pin a worker slot until
+                    # the OS gave up on the socket. USE_CLIENT_DEFAULT is
+                    # httpx's sentinel for "fall back to the client", which
+                    # is what `None` was always meant to mean here.
+                    timeout=httpx.USE_CLIENT_DEFAULT if timeout is None else timeout,
                     headers=headers,
                     params=params,
                     json=json,
