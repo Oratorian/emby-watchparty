@@ -18,7 +18,9 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ## [3.0.0-beta1] - 2026-08-05 - Director's Cut
 
-**First beta of the 3.0 line.** Tagged and published to GHCR as `:3.0.0-beta1`, and tracked by `:devel` and `:nightly`. It does **not** move `:latest`, which stays on the 2.1.x stable line, so a deployment pinned to `:latest` will not pick this up by accident.
+**First beta of the 3.0 line.** Published to GHCR as `:3.0.0-beta1`, and tracked by `:devel` and `:nightly`. It does **not** move `:latest`, which stays on the 2.1.x stable line, so a deployment pinned to `:latest` will not pick this up by accident.
+
+Betas are image-only, as the whole 2.0 beta cycle was: no git tag and no GitHub Release, so the release list keeps showing 2.1.1 as the current stable.
 
 Treat it as a beta. It has been exercised by an automated suite that drives real HLS through a fake Emby, and by a security pass that reopened and closed two blockers, but it has not been run in anger by a real household on a real Emby server. That is what this beta is for. Keep your 2.1.x image and configuration for rollback until you have completed a playback test.
 

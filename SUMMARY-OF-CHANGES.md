@@ -8,7 +8,9 @@ The 2.0 "Midnight Premiere" log (beta1 through beta18, every Added / Changed / F
 
 ## [3.0.0-beta1] - 2026-08-05 - Director's Cut
 
-**First beta.** Tagged `v3.0.0-beta1` and published to GHCR as `:3.0.0-beta1`, tracked by `:devel` and `:nightly`. It does **not** move `:latest` or the rolling `:3` / `:3.0` tags, which are gated on the release not being a prerelease, so the stable line is untouched.
+**First beta.** Published to GHCR as `:3.0.0-beta1`, tracked by `:devel` and `:nightly`. It does **not** move `:latest` or the rolling `:3` / `:3.0` tags, so the stable line is untouched.
+
+Cut through `release.yml`'s `workflow_dispatch` path with `docker_only`, against `3.0-dev`. Betas carry no git tag and no GitHub Release; that is how the entire 2.0 beta cycle ran, and the only tags in the repository are stable releases.
 
 Beta means the automated suite passes and the audit backlog is closed, not that it has been run by a real household against a real Emby server. Keep 2.1.x available for rollback until a playback test succeeds.
 
@@ -26,7 +28,7 @@ Grouped by area below rather than by commit; the branch has no beta cadence to b
 
 ### Breaking Changes
 
-Ranked by how many deployments they affect. Several have since been closed; each is marked. The ones still open are marked **STILL OPEN** and are the reason this section is worth reading before upgrading.
+Ranked by how many deployments they affect, and each marked with where it ended up: **RESOLVED** if it was fixed, **MOOT** if the code it described stopped existing when the setup flow was removed. None is still open. The section is kept in full rather than pruned, because the reasoning behind a breaking change is worth more than the status line, and because two of these were closed by deleting a feature rather than by fixing it.
 
 #### 1. Rate limiting becomes enforced, and collapses to a single bucket behind a reverse proxy
 
@@ -48,39 +50,45 @@ The symptom an operator actually sees is a third person trying to join movie nig
 
 **Resolved in part.** `pyproject.toml` now declares `[project]` with `requires-python = ">=3.12,<3.13"`, so a mismatched interpreter refuses the install rather than succeeding quietly. That gap was live long enough to bite during review, where a shell defaulting to 3.13 ran the whole suite on an interpreter neither CI nor the image covers. The venv recreation itself is still required.
 
-#### 3. Losing `data/bootstrap.json` fails **open** into development mode -- RESOLVED
+#### 3. Losing `data/bootstrap.json` fails **open** into development mode -- MOOT
 
 **Blast radius: anyone who loses or does not mount `./data`. Security-relevant.** Tracked as [#49](https://github.com/Oratorian/emby-watchparty/issues/49).
 
 `EnvConfig.from_env` treats a missing `data/bootstrap.json` as "no persisted values" and falls through to hardcoded defaults: `APP_ENV=development`, `CORS_ALLOWED_ORIGINS=*`, empty `SESSION_SECRET`, `SESSION_COOKIE_SECURE=false`. Because the strict checks only run when `APP_ENV == "production"`, a production deployment that loses its bootstrap file **silently downgrades to development posture**. It does not enter setup mode, and it does not fail.
 
-**Resolved.** `save_bootstrap_config` writes a `CONFIGURED: true` sentinel and `config.py` only adopts persisted values when it is present, so a missing or partial bootstrap file enters setup mode instead of silently downgrading.
+**Moot.** This was first resolved with a `CONFIGURED: true` sentinel, then the whole persistence layer was removed. No bootstrap file is read or written, so there is no fail-open path left to close. A stale `data/bootstrap.json` from a development build is ignored and deleted on boot.
 
-#### 4. Setup mode reports HEALTHY to Docker and writes nothing to any log -- RESOLVED
+#### 4. Setup mode reports HEALTHY to Docker and writes nothing to any log -- RESOLVED, then partly MOOT
 
 **Blast radius: every Docker deployment that hits a boot-config error.** Tracked as [#50](https://github.com/Oratorian/emby-watchparty/issues/50).
 
 `create_app` catches the startup-validation error and returns the setup app instead of raising. The setup app's health endpoint returns `{"status": "ok"}`, indistinguishable from the normal app, while the Dockerfile still probes `/api/health` and the compose example uses `restart: unless-stopped`. So a misconfigured container reports healthy, serves a setup page, and serves no API, no Socket.IO and no HLS. The setup app installs no middleware and never reaches `_setup_logging`, so nothing is logged at all; the bootstrap token reaches **stdout only**, printed at module import.
 
-**Resolved.** `/api/health` returns `{"status": "setup_required"}`, readiness holds at 503, `setup_lifespan` configures a logger so the failing field is named, and the bootstrap token is written to a recoverable file. Separately, the token no longer leaks on import: construction was happening at module scope, so any `import backend.app` minted and printed one.
+**Resolved, and then half of it stopped applying.** What survives: `/api/health` returns `{"status": "setup_required"}` at HTTP 200 so an orchestrator does not restart-loop, `/api/ready` holds at 503, every other route returns 503, and the failing field names are printed to stderr in a framed banner, which is what the appliance log viewers actually show. The token half is moot; there is no token. It was also the mechanism that made the flow unworkable, being written `0600` inside a root-owned `0700` directory. Separately, and still relevant: construction was happening at module scope, so any `import backend.app` built an app and printed a token, including in nine test modules.
 
-#### 5. `EMBY_SERVER_URL` validation rejects Docker service names containing underscores -- STILL OPEN
+#### 5. `EMBY_SERVER_URL` validation rejects Docker service names containing underscores -- RESOLVED
 
 **Blast radius: anyone using `http://emby_server:8096`.**
 
-Hostname validation runs unconditionally, outside the production-only block, and the DNS label pattern permits no underscore. Docker Compose service and container names may legally contain `_`, and Docker's embedded DNS resolves them. The value is also not stripped the way `SESSION_SECRET` is, so a trailing space fails too. Failure lands the operator in setup mode with a healthy-looking container and no log line naming the field, per the item above.
+Hostname validation runs unconditionally, outside the production-only block, and the DNS label pattern permits no underscore. Docker Compose service and container names may legally contain `_`, and Docker's embedded DNS resolves them. The value was also not stripped the way `SESSION_SECRET` is, so a trailing space failed too.
 
-#### 6. The setup form silently discards edits to env-provided fields -- STILL OPEN
+**Resolved.** Underscores are accepted through a separate service-name pattern applied only to addresses this server dials itself. CORS origins keep the strict RFC 1123 form, because a browser cannot originate from such a host, so loosening it there would only ever accept a typo. `EMBY_SERVER_URL` and `EMBY_API_KEY` are both stripped now.
 
-`validate_bootstrap_submission` short-circuits every field in `explicit_env_fields` back to its current value before validation, and a field counts as explicit if it appears in `os.environ` **or** `.env`. The recommended compose file uses `env_file: .env`, which loads the whole file into the process environment. **So for the recommended Docker deployment every bootstrap field is "explicit" and the setup page is entirely inert.** Edits appear to save and are discarded.
+#### 6. The setup form silently discards edits to env-provided fields -- MOOT, and the reason the flow was removed
+
+`validate_bootstrap_submission` short-circuits every field in `explicit_env_fields` back to its current value before validation, and a field counts as explicit if it appears in `os.environ` **or** `.env`. The recommended compose file uses `env_file: .env`, which loads the whole file into the process environment. **So for the recommended Docker deployment every bootstrap field was "explicit" and the setup page was entirely inert.** Edits appeared to save and were discarded.
+
+**Moot.** This is the argument that ended the flow rather than a defect that was fixed. On Unraid, CasaOS, Portainer and TrueNAS every setting is a container environment variable, so the form was inert exactly where this project's users are, while reporting success. It bought no security either: environment beats persisted state in the precedence order, and anyone who could read the token from a log or the volume already had host access.
 
 #### 7. `ENABLE_HLS_TOKEN_VALIDATION` moves from the admin panel to boot config
 
 Restart-only now; runtime writes return an explicit "boot setting; restart required" rejection. The existing `config.json` value **is inherited automatically**, so nobody's setting silently changes, only the UI location moved. Documentation-only, but worth stating plainly: "my setting vanished from /admin" reads as data loss.
 
-#### 8. Completing setup chmods the shared data volume to `0700` -- STILL OPEN
+#### 8. Completing setup chmods the shared data volume to `0700` -- MOOT
 
-`save_bootstrap_config` creates the directory then **unconditionally** chmods it to `0700`. `data/` is not new for upgraders; it has held `avatars.db` since 2.0 and is a documented bind mount. The container runs as root, so the host directory becomes root-owned `0700`.
+`save_bootstrap_config` created the directory then **unconditionally** chmodded it to `0700`. `data/` is not new for upgraders; it has held `avatars.db` since 2.0 and is a documented bind mount. The container runs as root, so the host directory became root-owned `0700`.
+
+**Moot.** No chmod remains anywhere in `backend/`.
 
 #### 9. Single-worker requirement
 
@@ -92,7 +100,7 @@ Parties, Socket.IO mappings, HLS grants, admin sessions, limiters and timers are
 
 #### 11. No 2.x to 3.0 migration document exists yet -- RESOLVED
 
-`docs/Migration-HowTo.md` is now titled "Migration: 2.1.x → 3.0" and covers the beta line built from `3.0-dev`. It was previously titled "Migration: 1.x → 2.0", with this branch's entire change to it being one table row. Every new operator concept is documented only as first-install material. A `docs/Migration-HowTo-2x-to-3.md` is required before release, ordered: nothing-required-if-your-env-already-validates, `TRUSTED_PROXY_CIDRS`, venv recreation, the `EMBY_SERVER_URL` pre-check, bootstrap and setup semantics, the HLS toggle relocation, the single-worker rule, and the performance note.
+`docs/Migration-HowTo.md` is now titled "Migration: 2.1.x → 3.0" and covers the beta line built from `3.0-dev`. It was previously titled "Migration: 1.x → 2.0", with this branch's entire change to it being one table row. Every new operator concept is documented only as first-install material. It covers, in order: whether you need to change anything at all, `BEHIND_PROXY` and `TRUSTED_PROXY_CIDRS`, venv recreation with both reasons stated, what unconfigured mode looks like, the `ENABLE_HLS_TOKEN_VALIDATION` relocation and that your value is carried forward, `SESSION_EXPIRY` now genuinely governing the cookie, the single-worker rule, and a performance note. The `EMBY_SERVER_URL` pre-check is deliberately absent, because #5 above makes it unnecessary.
 
 ---
 
@@ -182,17 +190,21 @@ The test suite is the largest single part of the branch: **57 test commits, 23 t
 
 ### Outstanding before release
 
-The 3.0 milestone is empty, so nothing here is a filed blocker. What follows is what a beta needs anyway.
+The 3.0 milestone is empty, and the audit backlog behind it is now closed too. Everything previously listed here has landed:
 
-1. **The three operator traps still open**, all silent: `EMBY_SERVER_URL` rejecting underscored Docker service names (#5 above), the setup form discarding edits to env-provided fields (#6), and setup chmodding the shared `data/` volume to `0700` (#8). The first two both end with an operator staring at a setup page with no log line naming the field.
-2. **Make every remaining breaking change announce itself.** The original complaint about this section was that each item is silent; that is now true of fewer of them, but still true.
-3. **Warn at boot when a proxy is likely and `TRUSTED_PROXY_CIDRS` is empty,** and add it to the commented `environment:` block in `docker-compose.yml.example`. The HTTP half of #1 remains live and is the most likely thing to break a real deployment.
-4. **Case-insensitive `.m3u8` matching in the segment proxy.** The branch that rewrites and validates playlists tests `subpath.endswith(".m3u8")`, so `.M3U8` skips both.
-5. **`_sanitize_query` returns 400 where it should drop** the unapproved parameter.
-6. **Re-verify the review findings not yet independently confirmed.** An adversarial audit of this branch overturned 11 of 16 items previously called done. Three were checked by hand and all three held, two of them being reopened blockers ([#48](https://github.com/Oratorian/emby-watchparty/issues/48), [#52](https://github.com/Oratorian/emby-watchparty/issues/52)); the remaining eight are probable rather than confirmed and are tracked in the maintainer's working notes.
+1. ~~The three operator traps.~~ #5 is fixed, #6 and #8 are moot with the setup flow.
+2. ~~Make every remaining breaking change announce itself.~~ Production refuses to boot with an undeclared `BEHIND_PROXY`; a misdeclared one is reported at runtime when a forwarded header arrives and is discarded, once per process; invalid boot config names its failing fields on stderr.
+3. ~~Warn when a proxy is likely and `TRUSTED_PROXY_CIDRS` is empty.~~ Done at runtime rather than boot, because boot cannot observe traffic and any guess would be wrong in both directions. Both variables are in the compose example.
+4. ~~Case-insensitive `.m3u8` matching.~~ Three sites were case-sensitive, not one, and the fake Emby was hiding it by routing uppercase paths to its segment handler.
+5. ~~`_sanitize_query` returns 400 where it should drop.~~ Strict on the request the player builds, dropping on URLs Emby authored.
+6. ~~Re-verify the findings not independently confirmed.~~ All checked. The challengers were right every time, except 5.4, where the note was stale rather than the code and the behaviour simply had no test.
+
+What is genuinely left is **not a defect**: five of the six rate limits are enforced for the first time in 3.0, carrying values nobody tuned because tuning them previously did nothing. Party creation at 5/hour and socket connects at 30/minute are the tight ones for a household behind a single public IP. That is a tuning decision to make on beta feedback, which is part of what this beta is for.
 
 ### Verification posture
 
 Every security fix in this cycle was checked by removing the guard and confirming the tests fail, not by reading the diff. That was not ceremony: all eight milestone issues were closed once after per-issue verification, and two had to be reopened because the verification had followed the code path the issue *named* rather than every path implementing the behaviour. In both cases the fix had been applied to one gate and not its twin.
 
-Current state: **103 backend tests**, ruff, `ruff format` and `mypy` clean on 3.12.10, CI green on `3.0-dev` across `validate`, `docker` and the macOS WebKit native-HLS job.
+Current state at beta1: **116 backend tests**, 17 Vitest, 14 Playwright, ruff, `ruff format` and `mypy` clean over 42 source files on 3.12.10, socket contracts current, CI green on `3.0-dev` across `validate`, `docker` and the macOS WebKit native-HLS job.
+
+Two patterns are worth carrying into the next cycle. The fake Emby harness hid three separate defects by emitting only the narrowest shape a real Emby sends, so playlists carried no query string and ranges were clamped such that `416` was unreachable. And five defects existed only in a *second* copy of a guard that was correct in the first, including one introduced during the final pass and caught one commit later.
