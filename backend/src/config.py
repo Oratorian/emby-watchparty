@@ -31,6 +31,13 @@ def _bool(value: str) -> bool:
 CONFIG_JSON_PATH = Path(__file__).parent.parent.parent / "config.json"
 _APP_PREFIX_RE = re.compile(r"(?:/[A-Za-z0-9][A-Za-z0-9._~-]*)+")
 _DNS_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+# Docker Compose service and container names may legally contain underscores,
+# and Docker's embedded DNS resolves them, so `http://emby_server:8096` is a
+# real upstream address even though RFC 1123 forbids the character. This stays
+# separate from `_DNS_LABEL_RE` because it is only correct for addresses this
+# server dials itself: a browser cannot originate from such a host, so CORS
+# origins keep the strict form.
+_SERVICE_LABEL_RE = re.compile(r"[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?")
 _PRIVATE_ENV_FIELDS = frozenset(
     {
         "EMBY_WATCHPARTY_X_DEV_HOST",
@@ -49,7 +56,7 @@ _RATE_LIMIT_FIELDS = frozenset(
 )
 
 
-def _valid_url_host(hostname: str | None) -> bool:
+def _valid_url_host(hostname: str | None, *, allow_service_names: bool = False) -> bool:
     if not hostname or "*" in hostname:
         return False
     try:
@@ -61,8 +68,9 @@ def _valid_url_host(hostname: str | None) -> bool:
         ascii_hostname = hostname.encode("ascii").decode("ascii")
     except UnicodeError:
         return False
+    label = _SERVICE_LABEL_RE if allow_service_names else _DNS_LABEL_RE
     return len(ascii_hostname) <= 253 and all(
-        _DNS_LABEL_RE.fullmatch(label) for label in ascii_hostname.split(".")
+        label.fullmatch(part) for part in ascii_hostname.split(".")
     )
 
 
@@ -76,7 +84,7 @@ def _valid_http_url(value: str, *, origin: bool) -> bool:
         return False
     if (
         parsed.scheme not in {"http", "https"}
-        or not _valid_url_host(parsed.hostname)
+        or not _valid_url_host(parsed.hostname, allow_service_names=not origin)
         or parsed.username is not None
         or parsed.password is not None
         or parsed.query
@@ -192,8 +200,8 @@ class EnvConfig:
             WATCH_PARTY_PORT=integer("WATCH_PARTY_PORT", 5000),
             APP_PREFIX=str(value("APP_PREFIX")).rstrip("/"),
             SESSION_EXPIRY=integer("SESSION_EXPIRY", 86400),
-            EMBY_SERVER_URL=str(value("EMBY_SERVER_URL")),
-            EMBY_API_KEY=str(value("EMBY_API_KEY")),
+            EMBY_SERVER_URL=str(value("EMBY_SERVER_URL")).strip(),
+            EMBY_API_KEY=str(value("EMBY_API_KEY")).strip(),
             APP_ENV=str(value("APP_ENV")).strip().lower(),
             SESSION_SECRET=str(value("SESSION_SECRET")).strip(),
             SESSION_COOKIE_SECURE=boolean("SESSION_COOKIE_SECURE", False),

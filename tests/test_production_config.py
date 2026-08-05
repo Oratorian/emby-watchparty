@@ -1,4 +1,8 @@
+import os
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -28,6 +32,53 @@ def _config(runtime: RuntimeConfig | None = None, **overrides) -> Config:
     }
     values.update(overrides)
     return Config(EnvConfig(**values), runtime or RuntimeConfig())
+
+
+class UpstreamHostnameTests(unittest.TestCase):
+    """`EMBY_SERVER_URL` addresses a container, not a public host.
+
+    Docker Compose service and container names may contain underscores and
+    Docker's embedded DNS resolves them, so rejecting them stranded anyone
+    whose Emby container is named `emby_server`, in unconfigured mode.
+    """
+
+    def test_underscored_service_name_is_accepted(self):
+        _config(
+            SESSION_SECRET="s" * 32,
+            EMBY_SERVER_URL="http://emby_server:8096",
+        ).validate_for_startup()
+
+    def test_underscored_host_still_rejected_for_cors_origins(self):
+        # A browser cannot originate from an underscored host, so the
+        # allowlist keeps the strict RFC 1123 form.
+        errors = _config(
+            SESSION_SECRET="s" * 32,
+            CORS_ALLOWED_ORIGINS=("https://watch_party.example",),
+        ).startup_errors()
+        assert "CORS_ALLOWED_ORIGINS" in errors
+
+    def test_surrounding_whitespace_is_stripped_from_upstream_values(self):
+        # A trailing space in a Docker environment variable is invisible in
+        # every management UI this project targets. SESSION_SECRET was
+        # already stripped; these two were not, so the space reached the
+        # URL validator and the Emby auth header.
+        with (
+            tempfile.TemporaryDirectory() as root,
+            mock.patch.dict(
+                os.environ,
+                {"EMBY_SERVER_URL": "  http://emby.test  ", "EMBY_API_KEY": "  admin-key  "},
+            ),
+        ):
+            config = Config.from_env(project_root=Path(root))
+        assert config.EMBY_SERVER_URL == "http://emby.test"
+        assert config.EMBY_API_KEY == "admin-key"
+
+    def test_genuinely_malformed_upstream_url_still_rejected(self):
+        errors = _config(
+            SESSION_SECRET="s" * 32,
+            EMBY_SERVER_URL="http://emby server:8096",
+        ).startup_errors()
+        assert "EMBY_SERVER_URL" in errors
 
 
 class ProxyTopologyGateTests(unittest.TestCase):
@@ -195,7 +246,11 @@ class ProductionConfigTests(unittest.TestCase):
             "https://emby.example/path?query=yes",
             "https://emby.example/path#fragment",
             "https://[invalid",
-            "https://not_a_host.example",
+            # "https://not_a_host.example" used to sit here. Underscored
+            # hosts are legitimate upstream addresses, because Docker
+            # Compose service names may contain them and Docker's embedded
+            # DNS resolves them. Asserted valid in UpstreamHostnameTests,
+            # and still rejected for CORS origins, which are browser-facing.
             "https://emby.example\\admin",
         )
         for url in invalid:
