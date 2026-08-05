@@ -36,6 +36,9 @@ wheels/
 .claude
 .venv
 *.code-workspace
+.mypy_cache
+.pytest_cache
+.ruff_cache
 
 # OS
 .DS_Store
