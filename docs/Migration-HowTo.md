@@ -1,8 +1,8 @@
 # Migration: 2.1.x → 3.0
 
 This guide covers the 3.0 beta line built from `3.0-dev`. Read it before
-upgrading a stable deployment. Keep 2.1.x available for rollback until the
-new setup has completed a real playback test.
+upgrading a stable deployment. Keep the complete 2.1.x configuration and image
+available for rollback until 3.0 has completed a real playback test.
 
 Users upgrading from 1.x should first follow the migration guide shipped with
 the latest 2.1.x release, then return here.
@@ -79,11 +79,62 @@ days. See the section on it below.
 No migration should delete the old `.env`, `config.json`, `data/`, or avatar
 directories before the new version has started successfully.
 
+## Run the read-only preflight
+
+Back up `.env`, the Compose/container definition, `config.json`, `data/`,
+`images/avatars/`, and every volume mapping first. Then run the 3.0 image's
+preflight against the same environment and mounts the application will use:
+
+```bash
+docker compose run --rm --no-deps emby-watchparty python -m backend.migration_preflight
+```
+
+The command only reads migration inputs. It does not load the normal mutating
+configuration path, write settings, move malformed files, clean stale setup
+artifacts, or print session secrets, API keys, tokens, credentials, or cookies.
+It exits `0` when inspection completed, even when work remains. It exits `1`
+only when an input could not be inspected, such as malformed JSON or a path
+that is a directory instead of a file.
+
+Interpret every line by its prefix:
+
+- `ERROR` means an input was malformed or unreadable. Fix it before relying on
+  the rest of the report.
+- `REQUIRED ACTION` is an operator step that must be completed or explicitly
+  confirmed. This includes backup and rollback readiness; exit `0` does not
+  certify that a backup exists.
+- `INFO` records an effective setting, its safe source, a preserved path, or a
+  behavior change to validate.
+
+For a source checkout, include runtime checks:
+
+```bash
+python -m backend.migration_preflight --deployment source
+```
+
+On Windows use `.venv\Scripts\python.exe` in place of `python`. Windows results
+are best effort and recommend Docker/Linux for production. On Unraid, CasaOS,
+Portainer, and TrueNAS, run the same module as a one-shot command using the 3.0
+image, the production container's environment, and the same read-only appdata
+mounts; set the command override to
+`python -m backend.migration_preflight --root /app`. Plain Docker users can use:
+
+```bash
+docker run --rm --env-file .env \
+  -v "$PWD/config.json:/app/config.json:ro" \
+  -v "$PWD/data:/app/data:ro" \
+  -v "$PWD/images/avatars:/app/images/avatars:ro" \
+  IMAGE python -m backend.migration_preflight --root /app
+```
+
+Replace `IMAGE` with the exact 3.0 image being tested. Never paste secret values
+into a support request.
+
 ## Docker Compose upgrade
 
 1. Stop the watch-party container. Emby can remain online.
-2. Back up `.env`, `docker-compose.yml`, `config.json`, `data/`, and
-   `images/avatars/`.
+2. Back up `.env`, the effective Compose configuration, `config.json`, `data/`,
+   `images/avatars/`, and the volume mappings. Keep the old image reference.
 3. Keep these mounts:
 
    ```yaml
@@ -94,8 +145,9 @@ directories before the new version has started successfully.
    ```
 
    Create the host-side `config.json` as a file before starting Compose.
-4. Pull the chosen 3.0 beta image or build from `3.0-dev`.
-5. Start the container and inspect its logs.
+4. Run the preflight and resolve every required production action.
+5. Pull the chosen 3.0 beta image or build from `3.0-dev`.
+6. Start the container and inspect its logs.
 
 The baked `/api/health` probe is liveness only. Setup mode intentionally
 returns HTTP 200 with `status: setup_required` so Docker does not restart-loop.
@@ -146,10 +198,13 @@ Precedence is:
 
 1. Process environment
 2. Untracked `.env`
-3. Code defaults
+3. Supported legacy persisted value (`ENABLE_HLS_TOKEN_VALIDATION` only)
+4. Code defaults
 
 Process-environment and `.env` are one explicit-operator tier, with process
 values winning. Reading `.env` does not mutate the running process environment.
+Runtime settings such as rate limits continue to come from `config.json`; the
+preflight reports each effective value and its source because 3.0 enforces it.
 
 ## Required production boot values
 
@@ -175,9 +230,9 @@ guessing wrong is silent and expensive.
 Rate limiting keys on the address a connection arrives from. Behind a reverse
 proxy that address is the **proxy**, identical for every viewer, so all of them
 share one bucket. With the shipped defaults that means 5 party creations per
-hour and 30 socket connects per minute for the entire deployment, and the person
-affected simply sees it not work, with nothing in the UI naming a limit. 2.x was
-unaffected because none of these limits were enforced.
+hour and 30 socket connects per minute for the entire deployment. 2.x was
+unaffected because none of these limits were enforced. 3.0 now names a blocked
+action and its safe retry delay in the affected form or connection banner.
 
 - **`BEHIND_PROXY=true`** makes `TRUSTED_PROXY_CIDRS` mandatory. Setting it true
   with an empty CIDR list is refused at boot, in every environment, because it
@@ -305,19 +360,31 @@ share them.
 
 Before directing users to 3.0:
 
-- `/api/health` reports `ok`, not `setup_required`.
-- `/api/ready` succeeds and reaches Emby.
-- Administrator login and logout work.
+- `curl -i http://HOST:PORT/api/health` returns `200` with `status: ok`, not
+  `setup_required`.
+- `curl -i http://HOST:PORT/api/ready` returns `200` and reaches Emby.
+- Administrator login, renewed admin controls, and logout work.
 - Create two separate parties and verify an HLS URL from one cannot be used
   with the other party's cookie.
-- Test master playlist, variant playlist, segment playback, seeking, audio,
-  subtitles, and an alternate media version.
-- Refresh and reconnect a participant using the same browser identity.
+- Test the master playlist, media playlist, segment playback, byte ranges,
+  pause/resume, forward and backward seeking, audio, subtitles, and an
+  alternate media version.
+- Disconnect/reconnect a participant, reload the host page, and confirm both
+  identities resume the same party and receive a fresh playable stream.
+- In a staging party, temporarily use a low rate limit and confirm create,
+  join/session binding, Socket.IO reconnect, chat, login, and avatar recovery
+  show the backend message and retry delay. Restore the production value.
 - Confirm logs do not contain Emby tokens, session secrets, or setup tokens.
 - Confirm `/hls` and health request logs remain at DEBUG volume.
 
+Keep the old configuration and image until every playback check passes. The
+automated fake-Emby gate is `cd frontend && npm run test:playback-gate`; it does
+not replace testing real media, a physical iPhone/iPad, and the actual proxy.
+
 ## Rollback
 
-Stop 3.0, restore the backed-up 2.1.x image and configuration, then start the
-old container. Do not point 2.1.x at files you allowed 3.0 to modify unless you
-have verified their compatibility; restoring the backup is safer.
+Stop 3.0. Restore the full backup: the previous image reference, `.env`,
+Compose/container definition, `config.json`, data, avatars, and volume mappings.
+Then start the old container and validate its health. Do not point 2.1.x at
+files 3.0 used or delete legacy data; restoring the complete backup is the
+supported rollback.
