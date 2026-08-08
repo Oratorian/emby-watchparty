@@ -13,7 +13,6 @@ Two paths in:
 """
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
 
 from backend.src.client_ip import request_client_ip
 from backend.src.dependencies import (
@@ -28,7 +27,7 @@ from backend.src.dependencies import (
     scrub_legacy_admin_session,
 )
 from backend.src.log_levels import apply_log_levels
-from backend.src.rate_limit import parse_rate
+from backend.src.rate_limit import parse_rate, rate_limit_response
 from backend.src.schemas import (
     AdminLoginRequest,
     AdminLoginResponse,
@@ -78,16 +77,7 @@ async def admin_login(
             logger.warning(
                 f"Admin login rate-limited for IP {ip} (retry in {decision.retry_after}s)"
             )
-            return JSONResponse(
-                {
-                    "success": False,
-                    "message": (
-                        f"Too many login attempts. Try again in {decision.retry_after} seconds."
-                    ),
-                },
-                status_code=429,
-                headers={"Retry-After": str(decision.retry_after)},
-            )
+            return rate_limit_response("login attempts", decision.retry_after)
     auth = await emby_client.authenticate(body.username, body.password)
     if not auth:
         return {"success": False, "message": "Invalid credentials"}

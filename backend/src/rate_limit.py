@@ -44,6 +44,20 @@ class RateLimitDecision:
     retry_after: int = 0
 
 
+def rate_limit_response(action: str, retry_after: int) -> JSONResponse:
+    """Return one safe, typed HTTP 429 contract."""
+    detail = f"Too many {action}. Try again in {retry_after} seconds."
+    return JSONResponse(
+        {
+            "detail": detail,
+            "code": "rate_limited",
+            "retry_after": retry_after,
+        },
+        status_code=429,
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
 class SlidingWindowRateLimiter:
     # Reclaiming expired buckets is a memory concern, not a correctness one.
     # `check` already discards every timestamp older than the window from the
@@ -142,6 +156,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         is_party_create = path == f"{api_root}/party/create" and request.method == "POST"
+        is_party_join = (
+            request.method == "POST"
+            and path.startswith(f"{api_root}/party/")
+            and path.endswith("/join")
+        )
         spec = config.RATE_LIMIT_PARTY_CREATION if is_party_create else config.RATE_LIMIT_API_CALLS
         try:
             limit, window = parse_rate(spec)
@@ -152,9 +171,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         scope = "party-create" if is_party_create else "api"
         decision = request.app.state.rate_limiter.check(f"{scope}:{client_ip}", limit, window)
         if not decision.allowed:
-            return JSONResponse(
-                {"detail": "Rate limit exceeded"},
-                status_code=429,
-                headers={"Retry-After": str(decision.retry_after)},
-            )
+            if is_party_create:
+                action = "party creation attempts"
+            elif is_party_join:
+                action = "party join attempts"
+            else:
+                action = "requests"
+            return rate_limit_response(action, decision.retry_after)
         return await call_next(request)

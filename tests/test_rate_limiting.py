@@ -72,7 +72,12 @@ def test_avatar_recovery_uses_shared_limiter_and_retry_after(tmp_path: Path):
 
     limited = asyncio.run(exercise())
     assert limited.status_code == 429
-    assert int(limited.headers["retry-after"]) > 0
+    retry_after = int(limited.headers["retry-after"])
+    assert limited.json() == {
+        "detail": f"Too many avatar recovery attempts. Try again in {retry_after} seconds.",
+        "code": "rate_limited",
+        "retry_after": retry_after,
+    }
     assert app.state.rate_limiter.active_bucket_count == 1
 
 
@@ -201,7 +206,12 @@ def test_general_api_limit_returns_429_with_retry_after():
 
     limited = asyncio.run(exercise())
     assert limited.status_code == 429
-    assert int(limited.headers["retry-after"]) > 0
+    retry_after = int(limited.headers["retry-after"])
+    assert limited.json() == {
+        "detail": f"Too many requests. Try again in {retry_after} seconds.",
+        "code": "rate_limited",
+        "retry_after": retry_after,
+    }
 
 
 def test_party_creation_uses_stricter_limit():
@@ -211,12 +221,40 @@ def test_party_creation_uses_stricter_limit():
     def create():
         return {"ok": True}
 
-    async def exercise() -> None:
+    async def exercise() -> httpx.Response:
         async with asgi_client(app) as client:
             assert (await client.post("/api/party/create")).status_code == 200
-            assert (await client.post("/api/party/create")).status_code == 429
+            return await client.post("/api/party/create")
 
-    asyncio.run(exercise())
+    limited = asyncio.run(exercise())
+    retry_after = int(limited.headers["retry-after"])
+    assert limited.json() == {
+        "detail": f"Too many party creation attempts. Try again in {retry_after} seconds.",
+        "code": "rate_limited",
+        "retry_after": retry_after,
+    }
+
+
+def test_party_join_limit_names_the_blocked_action():
+    app = _limited_app()
+
+    @app.post("/api/party/ABC123/join")
+    def join():
+        return {"ok": True}
+
+    async def exercise() -> httpx.Response:
+        async with asgi_client(app) as client:
+            assert (await client.post("/api/party/ABC123/join")).status_code == 200
+            assert (await client.post("/api/party/ABC123/join")).status_code == 200
+            return await client.post("/api/party/ABC123/join")
+
+    limited = asyncio.run(exercise())
+    retry_after = int(limited.headers["retry-after"])
+    assert limited.json() == {
+        "detail": f"Too many party join attempts. Try again in {retry_after} seconds.",
+        "code": "rate_limited",
+        "retry_after": retry_after,
+    }
 
 
 def test_rate_limit_honors_application_prefix():
