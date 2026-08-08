@@ -144,19 +144,13 @@ class LegacyBootPrecedenceTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {}, clear=True):
                 assert Config.from_env(root).ENABLE_HLS_TOKEN_VALIDATION is True
 
-                config_path.write_text(
-                    '{"ENABLE_HLS_TOKEN_VALIDATION": false}', encoding="utf-8"
-                )
+                config_path.write_text('{"ENABLE_HLS_TOKEN_VALIDATION": false}', encoding="utf-8")
                 assert Config.from_env(root).ENABLE_HLS_TOKEN_VALIDATION is False
 
-                (root / ".env").write_text(
-                    "ENABLE_HLS_TOKEN_VALIDATION=true\n", encoding="utf-8"
-                )
+                (root / ".env").write_text("ENABLE_HLS_TOKEN_VALIDATION=true\n", encoding="utf-8")
                 assert Config.from_env(root).ENABLE_HLS_TOKEN_VALIDATION is True
 
-                with mock.patch.dict(
-                    os.environ, {"ENABLE_HLS_TOKEN_VALIDATION": "false"}
-                ):
+                with mock.patch.dict(os.environ, {"ENABLE_HLS_TOKEN_VALIDATION": "false"}):
                     assert Config.from_env(root).ENABLE_HLS_TOKEN_VALIDATION is False
 
 

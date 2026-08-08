@@ -211,8 +211,7 @@ def register(ctx):
             decision = rate_limiter.check(f"socket-connect:{client_ip}", limit, window)
             if not decision.allowed:
                 message = (
-                    "Too many connection attempts. "
-                    f"Try again in {decision.retry_after} seconds."
+                    f"Too many connection attempts. Try again in {decision.retry_after} seconds."
                 )
                 raise SocketConnectionRefusedError(
                     message,
