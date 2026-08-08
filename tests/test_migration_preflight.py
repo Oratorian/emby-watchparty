@@ -1,0 +1,99 @@
+import hashlib
+from pathlib import Path
+
+from backend.migration_preflight import run_preflight
+
+
+def _fingerprint(root: Path) -> dict[str, tuple[str, int]]:
+    return {
+        str(path.relative_to(root)): (
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            path.stat().st_mtime_ns,
+        )
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+
+def test_preflight_reports_precedence_rates_and_never_writes_or_prints_secrets(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".env").write_text(
+        "BEHIND_PROXY=true\n"
+        "TRUSTED_PROXY_CIDRS=172.16.0.0/12\n"
+        "ENABLE_HLS_TOKEN_VALIDATION=false\n"
+        "SESSION_SECRET=DOTENV_SENTINEL_SECRET\n"
+        "EMBY_API_KEY=DOTENV_SENTINEL_KEY\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "config.json").write_text(
+        '{"ENABLE_HLS_TOKEN_VALIDATION": false,"UNKNOWN_TOKEN": "CONFIG_SENTINEL_TOKEN"}',
+        encoding="utf-8",
+    )
+    before = _fingerprint(tmp_path)
+
+    code, output = run_preflight(
+        tmp_path,
+        target="production",
+        deployment="docker",
+        environ={"ENABLE_HLS_TOKEN_VALIDATION": "true", "SESSION_SECRET": "PROCESS_SECRET"},
+    )
+
+    assert code == 0
+    assert "ENABLE_HLS_TOKEN_VALIDATION=true (process environment)" in output
+    assert "BEHIND_PROXY=true (.env)" in output
+    assert "DOTENV_SENTINEL" not in output
+    assert "PROCESS_SECRET" not in output
+    assert "CONFIG_SENTINEL" not in output
+    assert _fingerprint(tmp_path) == before
+
+
+def test_preflight_names_production_actions_for_disabled_legacy_hls_and_proxy(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "config.json").write_text(
+        '{"ENABLE_HLS_TOKEN_VALIDATION": false}', encoding="utf-8"
+    )
+
+    code, output = run_preflight(
+        tmp_path,
+        target="production",
+        deployment="docker",
+        environ={},
+    )
+
+    assert code == 0
+    assert "REQUIRED ACTION: Set BEHIND_PROXY=true or BEHIND_PROXY=false" in output
+    assert "ENABLE_HLS_TOKEN_VALIDATION=false (legacy config.json)" in output
+    assert "REQUIRED ACTION: Set ENABLE_HLS_TOKEN_VALIDATION=true" in output
+    assert "SESSION_EXPIRY=1209600" in output
+
+
+def test_preflight_accepts_direct_deployment_and_reports_default_hls(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("BEHIND_PROXY=false\nTRUSTED_PROXY_CIDRS=\n", encoding="utf-8")
+
+    code, output = run_preflight(
+        tmp_path,
+        target="production",
+        deployment="docker",
+        environ={},
+    )
+
+    assert code == 0
+    assert "BEHIND_PROXY=false (.env)" in output
+    assert "ENABLE_HLS_TOKEN_VALIDATION=true (default)" in output
+    assert "REQUIRED ACTION: Set TRUSTED_PROXY_CIDRS" not in output
+
+
+def test_preflight_fails_only_when_input_cannot_be_inspected(tmp_path: Path) -> None:
+    (tmp_path / "config.json").write_text("{broken", encoding="utf-8")
+
+    code, output = run_preflight(
+        tmp_path,
+        target="development",
+        deployment="docker",
+        environ={},
+    )
+
+    assert code == 1
+    assert "ERROR: config.json is not valid JSON" in output
