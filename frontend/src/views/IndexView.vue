@@ -93,11 +93,15 @@ async function createParty() {
     return
   }
   status.value = 'Creating party...'
-  const data = await api.createParty({ client_id: getClientId() })
-  if (data.party_id) {
-    router.push(`/party/${data.party_id}`)
-  } else {
-    status.value = data.message || 'Error creating party'
+  try {
+    const data = await api.createParty({ client_id: getClientId() })
+    if (data.party_id) {
+      router.push(`/party/${data.party_id}`)
+    } else {
+      status.value = data.message || 'Error creating party'
+    }
+  } catch (error: unknown) {
+    status.value = error instanceof Error ? error.message : 'Error creating party'
   }
 }
 
@@ -105,17 +109,21 @@ async function submitCreateLogin(payload: { username: string; password: string }
   createBusy.value = true
   createError.value = null
   try {
-    const data = await api.createParty({
-      client_id: getClientId(),
-      display_name: payload.username,
-      username: payload.username,
-      password: payload.password,
-    })
-    if (data.party_id) {
-      showCreateModal.value = false
-      router.push(`/party/${data.party_id}`)
-    } else {
-      createError.value = data.message || 'Could not create the party'
+    try {
+      const data = await api.createParty({
+        client_id: getClientId(),
+        display_name: payload.username,
+        username: payload.username,
+        password: payload.password,
+      })
+      if (data.party_id) {
+        showCreateModal.value = false
+        router.push(`/party/${data.party_id}`)
+      } else {
+        createError.value = data.message || 'Could not create the party'
+      }
+    } catch (error: unknown) {
+      createError.value = error instanceof Error ? error.message : 'Could not create the party'
     }
   } finally {
     createBusy.value = false
