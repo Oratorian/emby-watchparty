@@ -188,7 +188,15 @@ def test_stale_bootstrap_artefacts_are_ignored_and_removed(tmp_path: Path, monke
     config = Config.from_env(project_root=tmp_path)
     assert config.EMBY_API_KEY != "from-stale-file", "persisted file was still being read"
 
-    create_app(project_root=tmp_path, enable_update_check=False)
+    app = create_app(project_root=tmp_path, enable_update_check=False)
+    assert (data / "setup-token").exists(), "setup token removed before startup succeeded"
+    assert (data / "bootstrap.json").exists(), "bootstrap file removed before startup succeeded"
+
+    async def boot() -> None:
+        async with app.router.lifespan_context(app):
+            pass
+
+    asyncio.run(boot())
     assert not (data / "setup-token").exists(), "stale setup token left on disk"
     assert not (data / "bootstrap.json").exists(), "stale bootstrap file left on disk"
 

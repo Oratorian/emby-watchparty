@@ -6,7 +6,7 @@ import json
 import logging
 import secrets
 import sys
-from contextlib import AsyncExitStack, asynccontextmanager, suppress
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 
 import httpx
@@ -163,6 +163,16 @@ async def _shutdown_runtime(
     )
 
 
+def _remove_stale_setup_artifacts(root: Path, logger) -> None:
+    """Remove obsolete setup files only after runtime startup succeeds."""
+    for name in ("bootstrap.json", "setup-token"):
+        path = root / "data" / name
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("Could not remove obsolete setup artifact %s: %s", name, exc)
+
+
 def _setup_logging(config: Config):
     from rsyslog_logger import setup_logger
 
@@ -273,6 +283,8 @@ async def lifespan(application: FastAPI):
         if application.state.enable_update_check:
             await check_for_updates(http_client, logger)
 
+        _remove_stale_setup_artifacts(root, logger)
+
         yield
 
 
@@ -349,12 +361,6 @@ def create_app(
         resolved_config.validate_for_startup()
     except ValueError:
         return _create_setup_app(resolved_config, resolved_root)
-    # Left behind by 3.0 development builds that had an interactive setup
-    # flow. Configuration is environment-only now, so neither file is
-    # read; remove them rather than leave a stale credential on disk.
-    for stale in ("bootstrap.json", "setup-token"):
-        with suppress(OSError):
-            (resolved_root / "data" / stale).unlink()
     prefix = resolved_config.APP_PREFIX
     session_secret = resolved_config.SESSION_SECRET or secrets.token_hex(32)
     origins: str | list[str]
