@@ -68,7 +68,11 @@ Two lessons from that pass are worth stating, because they shaped how the rest w
 
 Unlike every 2.x release, this one needs reading before you upgrade, and [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) now covers the 2.1.x → 3.0 path.
 
-Rate limiting becomes **enforced**, using the values already sitting in your `config.json`, values nobody has tuned because they previously did nothing. This is the change most likely to be noticed, and it is silent when it bites: a third person tries to join movie night and simply cannot, with nothing in the interface naming a limit.
+Rate limiting becomes **enforced**, using the values already sitting in your `config.json`, values nobody has tuned because they previously did nothing. This is the change most likely to be noticed. Blocked HTTP actions, socket connections, session binding, chat, login, and avatar recovery now name the limit and show a safe retry delay; rejected chat text is restored for manual resend. Progress telemetry remains silently coalesced because the latest visible party time is still committed.
+
+A read-only `python -m backend.migration_preflight` command now inventories the effective 2.1.x inputs without writing files or printing secrets. It reports proxy/HLS actions, inherited rate limits, session-expiry behavior, runtime versions, one-worker requirements, preserved paths, health/readiness expectations, and manual backup/rollback work. The migration guide includes Compose, appliance, plain Docker, source, and Windows invocations.
+
+The named `npm run test:playback-gate` acceptance command now drives authenticated master/media playlists, segments and byte ranges; pause/resume and bidirectional seeking; audio/subtitle selection; reconnect, host reload, and session-bind retry; cross-party denial; plus the iPhone WebKit native-HLS selection path against fake Emby.
 
 `BEHIND_PROXY` is the one genuinely new setting, and production refuses to boot until you declare it, `true` or `false`. That is deliberate, because guessing wrong is silent: rate limiting keys on the address a connection arrives from, and behind a reverse proxy that address is the proxy, identical for every viewer, so all of them share one bucket. Setting it `true` makes `TRUSTED_PROXY_CIDRS` mandatory. If a forwarding header turns up on a deployment that declared itself direct, the server now says so in the log, once, rather than silently discarding it.
 
