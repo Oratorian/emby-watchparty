@@ -27,4 +27,10 @@ def test_socket_connection_attempts_return_rate_limited_reason(
 ) -> None:
     reason = asyncio.run(_exhaust_public_socket_limit(live_watchparty.url))
 
-    assert reason == {"message": "rate_limited"}
+    assert isinstance(reason, dict)
+    retry_after = reason["data"]["retry_after"]
+    assert retry_after > 0
+    assert reason == {
+        "message": f"Too many connection attempts. Try again in {retry_after} seconds.",
+        "data": {"code": "rate_limited", "retry_after": retry_after},
+    }
