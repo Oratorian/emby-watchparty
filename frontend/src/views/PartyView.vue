@@ -1075,15 +1075,18 @@ async function submitBecomeHost(payload: { username: string; password: string })
       aria-live="assertive"
     >
       <span>
-        Could not authenticate with the server, so video will not load.
-        Chat and the participant list still work.
+        {{ party.sessionError }} Video will not load until this succeeds.
       </span>
       <button
         class="session-retry"
-        :disabled="party.sessionRetrying"
+        :disabled="party.sessionRetrying || party.sessionRetryAfter > 0"
         @click="party.retrySession()"
       >
-        {{ party.sessionRetrying ? 'Retrying…' : 'Retry' }}
+        {{ party.sessionRetrying
+          ? 'Retrying…'
+          : party.sessionRetryAfter > 0
+            ? `Retry in ${party.sessionRetryAfter}s`
+            : 'Retry' }}
       </button>
     </div>
     <header class="party-header">

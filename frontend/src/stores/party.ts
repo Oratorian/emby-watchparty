@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useSocketStore } from './socket'
 import { useAvatarStore } from './avatar'
 import { useAuthStore } from './auth'
-import { api } from '@/api/client'
+import { ApiError, api } from '@/api/client'
 import type { ServerToClientPayloads } from '@/types/socket.generated'
 
 export interface MemberInfo {
@@ -64,6 +64,23 @@ export const usePartyStore = defineStore('party', () => {
   // retry and an unreproducible "video won't load for one person".
   const sessionError = ref<string | null>(null)
   const sessionRetrying = ref(false)
+  const sessionRetryAfter = ref(0)
+  let sessionRetryTimer: ReturnType<typeof setInterval> | null = null
+
+  function clearSessionRetryCountdown() {
+    if (sessionRetryTimer) clearInterval(sessionRetryTimer)
+    sessionRetryTimer = null
+    sessionRetryAfter.value = 0
+  }
+
+  function startSessionRetryCountdown(seconds: number) {
+    clearSessionRetryCountdown()
+    sessionRetryAfter.value = Math.max(1, Math.ceil(seconds))
+    sessionRetryTimer = setInterval(() => {
+      sessionRetryAfter.value = Math.max(0, sessionRetryAfter.value - 1)
+      if (sessionRetryAfter.value === 0) clearSessionRetryCountdown()
+    }, 1000)
+  }
 
   // Set to the other party's code when a different tab in this browser
   // takes over the session cookie. See PARTY_BINDING_CHANNEL above.
@@ -194,8 +211,14 @@ export const usePartyStore = defineStore('party', () => {
         // for a party that was already unlocked when they joined).
         try { await auth.refresh() } catch { /* ignore */ }
         sessionError.value = null
+        clearSessionRetryCountdown()
         return true
       } catch (e: unknown) {
+        if (e instanceof ApiError && e.code === 'rate_limited') {
+          sessionError.value = e.message
+          startSessionRetryCountdown(e.retryAfter || 1)
+          break
+        }
         if (attempt === 0) {
           await new Promise((r) => setTimeout(r, 600))
           continue
@@ -209,7 +232,10 @@ export const usePartyStore = defineStore('party', () => {
 
   /** Re-attempt the session cookie after a visible failure. */
   async function retrySession() {
-    if (!lastJoinArgs || !partyId.value || sessionRetrying.value) return false
+    if (
+      !lastJoinArgs || !partyId.value || sessionRetrying.value
+      || sessionRetryAfter.value > 0
+    ) return false
     sessionRetrying.value = true
     try {
       const { clientId, name, avatarUuid } = lastJoinArgs
@@ -254,6 +280,7 @@ export const usePartyStore = defineStore('party', () => {
     waitingUsers.value = []
     pendingVote.value = null
     sessionError.value = null
+    clearSessionRetryCountdown()
     supersededBy.value = null
   }
 
@@ -519,7 +546,7 @@ export const usePartyStore = defineStore('party', () => {
     myStreamUrl, streamOffset, readyCheckActive, readyUsers, waitingUsers,
     pendingVote,
     bingeWatch, pendingAutoAdvance,
-    sessionError, sessionRetrying, supersededBy,
+    sessionError, sessionRetrying, sessionRetryAfter, supersededBy,
     join, leave, setupListeners, submitVote, retrySession,
     setBingeWatchActive, cancelAutoAdvance,
   }
