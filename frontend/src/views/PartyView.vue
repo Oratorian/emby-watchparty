@@ -73,6 +73,8 @@ const {
   input: chatInput,
   showParticipants,
   showMobileChat,
+  rateLimitError: chatRateLimitError,
+  rateLimitRetryAfter: chatRateLimitRetryAfter,
   attach: attachChat,
   dispose: disposeChat,
   send: sendChat,
@@ -1313,10 +1315,22 @@ async function submitBecomeHost(payload: { username: string; password: string })
               placeholder="Type a message..."
               class="chat-composer-input"
             />
-            <button @click="sendChat" class="chat-composer-send" title="Send" aria-label="Send message">
+            <button
+              @click="sendChat"
+              class="chat-composer-send"
+              title="Send"
+              aria-label="Send message"
+              :disabled="chatRateLimitRetryAfter > 0"
+            >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
           </div>
+          <p v-if="chatRateLimitError" class="form-error" role="alert">
+            {{ chatRateLimitError }}
+            <span v-if="chatRateLimitRetryAfter > 0">
+              Retry in {{ chatRateLimitRetryAfter }}s.
+            </span>
+          </p>
         </div>
       </aside>
       <button

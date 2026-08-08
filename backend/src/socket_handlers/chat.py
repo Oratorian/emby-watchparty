@@ -38,6 +38,19 @@ def register(ctx):
             decision = rate_limiter.check(f"chat:{sid}", limit, window)
             if not decision.allowed:
                 logger.debug(f"Chat message dropped: sid={sid} rate-limited in {party_id}")
+                await sio.emit(
+                    "rate_limited",
+                    {
+                        "action": "chat",
+                        "message": (
+                            "Message not sent: chat limit reached. "
+                            f"Try again in {decision.retry_after} seconds."
+                        ),
+                        "retry_after": decision.retry_after,
+                        "request_id": data.get("request_id"),
+                    },
+                    to=sid,
+                )
                 return
             username = party.username_for_sid(sid)
             # Look up the sender's persistent avatar identity so the

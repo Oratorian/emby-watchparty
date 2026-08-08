@@ -72,6 +72,18 @@
         "party_id": {
           "title": "Party Id",
           "type": "string"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Id"
         }
       },
       "required": [
@@ -1390,6 +1402,43 @@
         "time"
       ],
       "title": "TimedOutbound",
+      "type": "object"
+    },
+    "rate_limited": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "chat",
+          "title": "Action",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Id"
+        },
+        "retry_after": {
+          "title": "Retry After",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "message",
+        "action",
+        "retry_after"
+      ],
+      "title": "RateLimitedOutbound",
       "type": "object"
     },
     "ready_check_update": {

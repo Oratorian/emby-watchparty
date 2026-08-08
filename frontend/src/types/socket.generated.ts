@@ -12,6 +12,7 @@ export interface ClientToServerPayloads {
   "chat_message": {
     "party_id": string
     "message": string
+    "request_id"?: string | null
   }
   "heartbeat": {
     "party_id": string
@@ -210,6 +211,12 @@ export interface ServerToClientPayloads {
     "playing"?: boolean | null
     "auto_binge"?: boolean | null
     "wait_for_ready"?: boolean | null
+  }
+  "rate_limited": {
+    "message": string
+    "action": string
+    "retry_after": number
+    "request_id"?: string | null
   }
   "ready_check_update": {
     "ready"?: string[]

@@ -46,6 +46,7 @@ class UpdateAvatarPayload(PartyPayload):
 
 class ChatPayload(PartyPayload):
     message: str
+    request_id: str | None = None
 
 
 class ToggleLibraryPayload(PartyPayload):
@@ -212,6 +213,12 @@ class ChatOutbound(OutboundPayload):
     timestamp: str
 
 
+class RateLimitedOutbound(MessageOutbound):
+    action: Literal["chat"]
+    retry_after: int
+    request_id: str | None = None
+
+
 class ToggleLibraryOutbound(OutboundPayload):
     show: bool
 
@@ -301,6 +308,7 @@ OUTBOUND_MODELS: dict[str, type[OutboundPayload]] = {
     "force_pause_before_seek": TimedOutbound,
     "drift_correction": TimedOutbound,
     "chat_message": ChatOutbound,
+    "rate_limited": RateLimitedOutbound,
     "toggle_library": ToggleLibraryOutbound,
     "host_changed": HostOutbound,
     "host_left": HostOutbound,
