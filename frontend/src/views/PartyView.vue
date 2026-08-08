@@ -1005,6 +1005,17 @@ async function submitBecomeHost(payload: { username: string; password: string })
 </script>
 
 <template>
+  <div
+    v-if="socket.connectionError"
+    class="session-banner"
+    role="alert"
+    aria-live="assertive"
+  >
+    <span>{{ socket.connectionError }}</span>
+    <span v-if="socket.connectionRetryAfter > 0">
+      Reconnecting in {{ socket.connectionRetryAfter }}s.
+    </span>
+  </div>
   <!-- Auto-join spinner: shown when we have a saved username and are
        waiting on the socket to confirm the join. Suppresses the name
        modal flash-of-stale-UI on every mount / refresh. -->
