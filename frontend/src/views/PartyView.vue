@@ -1000,6 +1000,10 @@ async function submitBecomeHost(payload: { username: string; password: string })
     } else {
       becomeHostError.value = data.message || 'Login failed'
     }
+  } catch (error: unknown) {
+    becomeHostError.value = error instanceof Error && error.message
+      ? error.message
+      : 'Login failed'
   } finally {
     becomeHostBusy.value = false
   }
