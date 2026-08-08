@@ -22,7 +22,7 @@ test('iOS viewport supports safe areas and party controls remain usable', async 
   await expect(page.getByTitle('Close chat')).toBeVisible()
 })
 
-test('iPhone WebKit selects native HLS from fake Emby', async ({ page }) => {
+test('@playback-gate iPhone WebKit selects native HLS from fake Emby', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Create Party', exact: true }).tap()
   await page.getByPlaceholder('Your name (optional)').fill('Alice')
