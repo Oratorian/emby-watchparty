@@ -23,6 +23,8 @@ export class ApiError extends Error {
     public readonly status: number,
     message: string,
     public readonly body: JsonValue | undefined,
+    public readonly code?: string,
+    public readonly retryAfter?: number,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -46,7 +48,13 @@ function responseError(resp: Response, body: JsonValue | undefined): ApiError {
     || (typeof body === 'string' && body)
     || resp.statusText
     || `Request failed (${resp.status})`
-  return new ApiError(resp.status, message, body)
+  const code = typeof record?.code === 'string' ? record.code : undefined
+  const bodyRetry = record?.retry_after
+  const headerRetry = Number.parseInt(resp.headers.get('Retry-After') || '', 10)
+  const retryAfter = typeof bodyRetry === 'number' && Number.isFinite(bodyRetry)
+    ? Math.max(0, Math.ceil(bodyRetry))
+    : Number.isFinite(headerRetry) ? Math.max(0, headerRetry) : undefined
+  return new ApiError(resp.status, message, body, code, retryAfter)
 }
 
 export interface SuccessResponse { success?: boolean; message?: string }

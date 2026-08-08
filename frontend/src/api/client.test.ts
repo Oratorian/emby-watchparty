@@ -37,6 +37,27 @@ describe('apiFetch', () => {
     )
   })
 
+  it('preserves structured rate-limit details and Retry-After', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({
+        detail: 'Too many party join attempts. Try again in 42 seconds.',
+        code: 'rate_limited',
+        retry_after: 42,
+      }),
+      {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '42' },
+      },
+    )))
+
+    await expect(api.joinParty('ABC123', 'client-1', 'Alice')).rejects.toMatchObject({
+      status: 429,
+      message: 'Too many party join attempts. Try again in 42 seconds.',
+      code: 'rate_limited',
+      retryAfter: 42,
+    })
+  })
+
   it('preserves readable multipart upload errors', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
       'Upload too large',
