@@ -9,6 +9,8 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from backend.src.rate_limit import parse_rate
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
@@ -17,6 +19,14 @@ _BOOT_FIELDS = {
     "TRUSTED_PROXY_CIDRS",
     "ENABLE_HLS_TOKEN_VALIDATION",
     "SESSION_EXPIRY",
+}
+_RATE_DEFAULTS = {
+    "RATE_LIMIT_PARTY_CREATION": "5 per hour",
+    "RATE_LIMIT_API_CALLS": "1000 per minute",
+    "RATE_LIMIT_LOGIN": "10 per 15 minutes",
+    "RATE_LIMIT_AVATAR_RECOVERY": "10 per hour",
+    "RATE_LIMIT_CHAT": "5 per 3 seconds",
+    "RATE_LIMIT_SOCKET_CONNECTIONS": "30 per minute",
 }
 _ENV_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
@@ -188,6 +198,19 @@ def run_preflight(
         report.info(f"SESSION_EXPIRY={expiry} ({expiry_source})")
         if expiry != 1_209_600:
             report.info("Set SESSION_EXPIRY=1209600 to retain the old 14-day cookie behavior")
+
+    for name, default in _RATE_DEFAULTS.items():
+        raw = legacy.get(name, default)
+        source = "legacy config.json" if name in legacy else "default"
+        if not isinstance(raw, str):
+            report.error(f"{name} must be a rate string")
+            continue
+        try:
+            parse_rate(raw)
+        except ValueError:
+            report.error(f"{name} has a malformed legacy value")
+            continue
+        report.info(f"{name}={raw} ({source}); this limit is enforced in 3.0")
 
     if deployment == "docker":
         report.info("Docker image supplies Python 3.12 and its frontend is built with Node 24")

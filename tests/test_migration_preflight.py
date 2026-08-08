@@ -97,3 +97,30 @@ def test_preflight_fails_only_when_input_cannot_be_inspected(tmp_path: Path) -> 
 
     assert code == 1
     assert "ERROR: config.json is not valid JSON" in output
+
+
+def test_preflight_reports_each_effective_legacy_rate_limit(tmp_path: Path) -> None:
+    (tmp_path / "config.json").write_text(
+        '{"RATE_LIMIT_API_CALLS": "77 per minute","RATE_LIMIT_CHAT": "4 per 3 seconds"}',
+        encoding="utf-8",
+    )
+
+    code, output = run_preflight(tmp_path, environ={})
+
+    assert code == 0
+    assert "RATE_LIMIT_API_CALLS=77 per minute (legacy config.json)" in output
+    assert "RATE_LIMIT_CHAT=4 per 3 seconds (legacy config.json)" in output
+    assert "RATE_LIMIT_LOGIN=10 per 15 minutes (default)" in output
+    assert output.count("this limit is enforced in 3.0") == 6
+
+
+def test_preflight_reports_malformed_rate_without_echoing_value(tmp_path: Path) -> None:
+    (tmp_path / "config.json").write_text(
+        '{"RATE_LIMIT_LOGIN": "SECRET_SENTINEL"}', encoding="utf-8"
+    )
+
+    code, output = run_preflight(tmp_path, environ={})
+
+    assert code == 0
+    assert "ERROR: RATE_LIMIT_LOGIN has a malformed legacy value" in output
+    assert "SECRET_SENTINEL" not in output
