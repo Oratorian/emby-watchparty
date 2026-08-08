@@ -124,3 +124,38 @@ def test_preflight_reports_malformed_rate_without_echoing_value(tmp_path: Path) 
     assert code == 0
     assert "ERROR: RATE_LIMIT_LOGIN has a malformed legacy value" in output
     assert "SECRET_SENTINEL" not in output
+
+
+def test_source_and_windows_requirements_are_explicit(tmp_path: Path) -> None:
+    code, output = run_preflight(
+        tmp_path,
+        target="development",
+        deployment="source",
+        environ={"WEB_CONCURRENCY": "2"},
+        platform_name="win32",
+        python_version=(3, 13, 0),
+        node_version=(20, 18, 0),
+    )
+
+    assert code == 0
+    assert "REQUIRED ACTION: Use Python >=3.12,<3.13" in output
+    assert "REQUIRED ACTION: Use Node >=20.19" in output
+    assert "REQUIRED ACTION: Run exactly one application worker" in output
+    assert "INFO: Windows support is best effort; Docker/Linux is recommended" in output
+
+
+def test_source_runtime_versions_and_single_worker_can_pass(tmp_path: Path) -> None:
+    code, output = run_preflight(
+        tmp_path,
+        target="development",
+        deployment="source",
+        environ={"UVICORN_WORKERS": "1"},
+        platform_name="linux",
+        python_version=(3, 12, 9),
+        node_version=(24, 1, 0),
+    )
+
+    assert code == 0
+    assert "Python 3.12.9 meets >=3.12,<3.13" in output
+    assert "Node 24.1.0 meets >=20.19" in output
+    assert "Application worker count is 1" in output

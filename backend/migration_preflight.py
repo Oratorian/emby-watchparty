@@ -6,6 +6,9 @@ import argparse
 import json
 import os
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -28,6 +31,7 @@ _RATE_DEFAULTS = {
     "RATE_LIMIT_CHAT": "5 per 3 seconds",
     "RATE_LIMIT_SOCKET_CONNECTIONS": "30 per minute",
 }
+_WORKER_FIELDS = ("WEB_CONCURRENCY", "UVICORN_WORKERS", "WORKERS")
 _ENV_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
@@ -75,7 +79,7 @@ def _read_dotenv(path: Path, report: _Report) -> dict[str, str]:
         if not _ENV_KEY.fullmatch(key):
             report.error(f".env line {number} has an invalid variable name", incomplete=True)
             continue
-        if key not in _BOOT_FIELDS:
+        if key not in _BOOT_FIELDS and key not in _WORKER_FIELDS:
             continue
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
@@ -133,12 +137,33 @@ def _effective(
     return default, "default"
 
 
+def _node_version() -> tuple[int, ...] | None:
+    executable = shutil.which("node")
+    if executable is None:
+        return None
+    try:
+        result = subprocess.run(  # noqa: S603 - executable resolved with shutil.which
+            [executable, "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)\s*", result.stdout)
+    return tuple(map(int, match.groups())) if match else None
+
+
 def run_preflight(
     root: Path,
     *,
     target: str = "production",
     deployment: str = "docker",
     environ: Mapping[str, str] | None = None,
+    platform_name: str | None = None,
+    python_version: Sequence[int] | None = None,
+    node_version: Sequence[int] | None = None,
 ) -> tuple[int, str]:
     """Inspect migration inputs without invoking mutating config loaders."""
     report = _Report()
@@ -212,10 +237,42 @@ def run_preflight(
             continue
         report.info(f"{name}={raw} ({source}); this limit is enforced in 3.0")
 
+    worker_declared = False
+    worker_valid = True
+    for name in _WORKER_FIELDS:
+        raw, source = _effective(name, env, dotenv, default="", legacy=None)
+        if source == "default" or not str(raw).strip():
+            continue
+        worker_declared = True
+        try:
+            valid = int(str(raw)) == 1
+        except ValueError:
+            valid = False
+        worker_valid = worker_valid and valid
+    if not worker_declared:
+        report.info("No worker override found; 3.0 supports exactly one application worker")
+    elif worker_valid:
+        report.info("Application worker count is 1")
+    else:
+        report.action("Run exactly one application worker; set worker count to 1")
+
+    active_platform = (platform_name or sys.platform).lower()
+    if active_platform.startswith("win"):
+        report.info("Windows support is best effort; Docker/Linux is recommended")
+
+    active_python = tuple(python_version or sys.version_info[:3])
     if deployment == "docker":
         report.info("Docker image supplies Python 3.12 and its frontend is built with Node 24")
     else:
-        report.info("Source deployment requires Python >=3.12,<3.13 and Node >=20.19")
+        if not ((3, 12) <= active_python[:2] < (3, 13)):
+            report.action("Use Python >=3.12,<3.13 and recreate the virtual environment")
+        else:
+            report.info(f"Python {'.'.join(map(str, active_python[:3]))} meets >=3.12,<3.13")
+        active_node = tuple(node_version) if node_version is not None else _node_version()
+        if active_node is None or active_node[:2] < (20, 19):
+            report.action("Use Node >=20.19 when building the frontend from source")
+        else:
+            report.info(f"Node {'.'.join(map(str, active_node[:3]))} meets >=20.19")
 
     for relative, label in (
         (".env", "environment file"),
