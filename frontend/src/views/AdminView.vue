@@ -22,11 +22,15 @@ const loginError = ref('')
 
 async function adminLogin() {
   loginError.value = ''
-  const result = await api.adminLogin(loginUser.value, loginPass.value)
-  if (result.success) {
-    authenticated.value = true
-  } else {
-    loginError.value = result.message || 'Login failed'
+  try {
+    const result = await api.adminLogin(loginUser.value, loginPass.value)
+    if (result.success) {
+      authenticated.value = true
+    } else {
+      loginError.value = result.message || 'Login failed'
+    }
+  } catch (error: unknown) {
+    loginError.value = error instanceof Error ? error.message : 'Login failed'
   }
 }
 
