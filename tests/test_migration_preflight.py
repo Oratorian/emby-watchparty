@@ -159,3 +159,44 @@ def test_source_runtime_versions_and_single_worker_can_pass(tmp_path: Path) -> N
     assert "Python 3.12.9 meets >=3.12,<3.13" in output
     assert "Node 24.1.0 meets >=20.19" in output
     assert "Application worker count is 1" in output
+
+
+def test_proxied_deployment_requires_trusted_cidrs(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("BEHIND_PROXY=true\n", encoding="utf-8")
+
+    code, output = run_preflight(tmp_path, environ={})
+
+    assert code == 0
+    assert "REQUIRED ACTION: Set TRUSTED_PROXY_CIDRS" in output
+    assert "TRUSTED_PROXY_CIDRS=172.16.0.0/12" in output
+
+
+def test_development_reports_but_does_not_reject_disabled_hls(tmp_path: Path) -> None:
+    (tmp_path / "config.json").write_text(
+        '{"ENABLE_HLS_TOKEN_VALIDATION": false}', encoding="utf-8"
+    )
+
+    code, output = run_preflight(tmp_path, target="development", environ={})
+
+    assert code == 0
+    assert "ENABLE_HLS_TOKEN_VALIDATION=false (legacy config.json)" in output
+    assert "REQUIRED ACTION: Set ENABLE_HLS_TOKEN_VALIDATION=true" not in output
+
+
+def test_malformed_dotenv_fails_without_printing_its_contents(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("SECRET_SENTINEL_WITHOUT_EQUALS\n", encoding="utf-8")
+
+    code, output = run_preflight(tmp_path, environ={})
+
+    assert code == 1
+    assert "ERROR: .env line 1 is malformed" in output
+    assert "SECRET_SENTINEL" not in output
+
+
+def test_non_file_legacy_config_is_an_inspection_error(tmp_path: Path) -> None:
+    (tmp_path / "config.json").mkdir()
+
+    code, output = run_preflight(tmp_path, environ={})
+
+    assert code == 1
+    assert "ERROR: config.json is not a regular file" in output
