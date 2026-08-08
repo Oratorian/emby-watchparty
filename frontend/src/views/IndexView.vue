@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
-import { api } from '@/api/client'
+import { ApiError, api } from '@/api/client'
 import { withPrefix } from '@/utils/appPrefix'
 import { useAuthStore } from '@/stores/auth'
 import { getHiddenParties } from '@/utils/hiddenParties'
@@ -27,6 +27,7 @@ interface ActiveParty {
   locked: boolean
 }
 const parties = ref<ActiveParty[]>([])
+const partyListStatus = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 async function loadParties() {
@@ -38,8 +39,11 @@ async function loadParties() {
     const data = await api.listParties()
     const hidden = getHiddenParties()
     parties.value = (data.parties || []).filter((p: ActiveParty) => !hidden.includes(p.code))
-  } catch {
-    /* ignore transient errors; the next poll retries */
+    partyListStatus.value = ''
+  } catch (error: unknown) {
+    if (error instanceof ApiError && error.code === 'rate_limited') {
+      partyListStatus.value = error.message
+    }
   }
 }
 
@@ -172,6 +176,15 @@ function joinParty() {
         </div>
       </div>
     </main>
+
+    <div
+      v-if="partyListStatus"
+      class="status-msg"
+      data-testid="party-list-status"
+      role="status"
+    >
+      {{ partyListStatus }}
+    </div>
 
     <section v-if="!auth.requireLogin && parties.length" class="active-parties">
       <h2 class="ap-heading">Active parties</h2>

@@ -13,6 +13,7 @@ vi.mock('vue-router', () => ({
 
 describe('party creation failures', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
     push.mockReset()
     vi.spyOn(api, 'listParties').mockResolvedValue({ require_login: false, parties: [] })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })))
@@ -40,5 +41,27 @@ describe('party creation failures', () => {
       'Too many party creation attempts. Try again in 60 seconds.',
     )
     expect(push).not.toHaveBeenCalled()
+  })
+
+  it('shows one contextual status when party-list polling is limited', async () => {
+    vi.mocked(api.listParties).mockRejectedValue(new ApiError(
+      429,
+      'Too many requests. Try again in 15 seconds.',
+      { code: 'rate_limited', retry_after: 15 },
+      'rate_limited',
+      15,
+    ))
+
+    const wrapper = mount(IndexView, {
+      global: {
+        plugins: [createPinia()],
+        stubs: { EmbyLoginModal: true, RouterLink: true },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="party-list-status"]').text()).toBe(
+      'Too many requests. Try again in 15 seconds.',
+    )
   })
 })
