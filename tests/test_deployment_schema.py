@@ -48,3 +48,14 @@ def test_schema_rejects_malformed_top_level_shape(tmp_path: Path) -> None:
 
     with pytest.raises(SchemaError, match="schema: must be an object"):
         load_schema(candidate)
+
+
+def test_schema_rejects_secret_defaults(tmp_path: Path) -> None:
+    raw = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    secret = next(setting for setting in raw["settings"] if setting["name"] == "SESSION_SECRET")
+    secret["artifact_default"] = "SENTINEL_SESSION_SECRET"
+    candidate = tmp_path / "schema.json"
+    candidate.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(SchemaError, match="SESSION_SECRET: secret defaults must be empty"):
+        load_schema(candidate)

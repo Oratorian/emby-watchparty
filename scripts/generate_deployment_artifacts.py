@@ -81,6 +81,11 @@ def load_schema(path: Path = DEFAULT_SCHEMA) -> dict[str, Any]:
             raise SchemaError(f"{path_name}.secret: must be a boolean")
         if setting["secret"] and setting["safe_example"] not in (None, ""):
             raise SchemaError(f"{path_name}.safe_example: secret examples must be empty")
+        if setting["secret"] and (
+            setting["runtime_default"] not in (None, "")
+            or setting["artifact_default"] not in (None, "")
+        ):
+            raise SchemaError(f"{name}: secret defaults must be empty")
     return raw
 
 
