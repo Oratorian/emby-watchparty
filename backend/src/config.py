@@ -8,6 +8,7 @@ Two tiers:
 """
 
 import contextlib
+import copy
 import ipaddress
 import json
 import os
@@ -631,10 +632,19 @@ class Config:
                         "reason": "boot setting; restart required",
                     }
                 )
-            changed, runtime_rejected = runtime.update_from_dict(payload)
-            rejected.extend(runtime_rejected)
-            if changed:
-                runtime.save()
+            # One request can update many scalar and collection fields. Keep a
+            # deep snapshot so any persistence failure restores all of them;
+            # callers must never observe a partially applied failed save.
+            original_values = copy.deepcopy(runtime.to_dict())
+            try:
+                changed, runtime_rejected = runtime.update_from_dict(payload)
+                rejected.extend(runtime_rejected)
+                if changed:
+                    runtime.save()
+            except Exception:
+                for key, value in original_values.items():
+                    setattr(runtime, key, value)
+                raise
             return changed, rejected
 
     def get_runtime_dict(self) -> dict:
