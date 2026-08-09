@@ -156,6 +156,8 @@ export interface SearchGroup {
   items: LibraryItem[]
 }
 export interface GroupedSearchResponse { query: string; groups: SearchGroup[] }
+export type ItemSection = 'related' | 'trailers' | 'extras'
+export interface ItemSectionResponse { section: ItemSection; items: LibraryItem[] }
 export interface PartyResponse extends SuccessResponse {
   party_id?: string
   url?: string
@@ -345,6 +347,8 @@ export const api = {
   itemDetails: (id: string, signal?: AbortSignal) => apiFetch<LibraryItem>(
     `/api/item/${id}`, { signal },
   ),
+  itemSection: (id: string, section: ItemSection, signal?: AbortSignal) =>
+    apiFetch<ItemSectionResponse>(`/api/item/${id}/sections/${section}`, { signal }),
   // mediaSourceId optionally scopes the response to one alternate
   // version. When omitted, the audio/subtitle arrays describe Emby's
   // default source and `versions` still lists every alternate.

@@ -20,6 +20,10 @@ describe('TitleDetails', () => {
       Studios: [{ Id: 'studio-1', Name: 'Studio A' }],
       Tags: ['Featured'],
     })
+    const itemSection = vi.spyOn(api, 'itemSection').mockResolvedValue({
+      section: 'related',
+      items: [{ Id: 'movie-2', Name: 'Related Movie', Type: 'Movie' }],
+    })
     const wrapper = mount(TitleDetails, {
       props: {
         item: { Id: 'movie-1', Name: 'Artifact Movie', Type: 'Movie' },
@@ -34,6 +38,11 @@ describe('TitleDetails', () => {
     expect(wrapper.text()).toContain('Drama')
     expect(wrapper.text()).toContain('Actor')
     expect(wrapper.find('[aria-label="Personal actions"]').exists()).toBe(false)
+    expect(itemSection).not.toHaveBeenCalled()
+
+    await wrapper.get('button[data-section="related"]').trigger('click')
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Related Movie'))
+    expect(itemSection).toHaveBeenCalledWith('movie-1', 'related', expect.any(AbortSignal))
 
     await wrapper.get('button.play-title').trigger('click')
     expect(wrapper.emitted('play')?.[0]?.[0]).toMatchObject({ Id: 'movie-1' })

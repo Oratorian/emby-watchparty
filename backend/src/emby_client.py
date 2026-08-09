@@ -474,6 +474,7 @@ class EmbyClient:
     ):
         if not user_id:
             return {"Items": []}
+
         params = {
             "SearchTerm": query,
             "Recursive": "true",
@@ -496,6 +497,24 @@ class EmbyClient:
         except httpx.HTTPError as exc:
             self.logger.error("Error searching items: error=%s", type(exc).__name__)
             return {"Items": []}
+
+    async def get_item_section(
+        self, item_id, section, access_token=None, user_id=None
+    ):
+        routes = {
+            "related": (f"/emby/Items/{item_id}/Similar", {"UserId": user_id, "Limit": 12}),
+            "trailers": (f"/emby/Users/{user_id}/Items/{item_id}/LocalTrailers", {}),
+            "extras": (f"/emby/Users/{user_id}/Items/{item_id}/SpecialFeatures", {}),
+        }
+        path, params = routes[section]
+        response = await self.gateway.get(
+            path,
+            headers=self._headers(access_token, user_id),
+            params=params,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("Items", []) if isinstance(payload, dict) else payload
 
     def get_image_url(
         self,

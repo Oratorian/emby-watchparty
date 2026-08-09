@@ -6,6 +6,8 @@ a party-bound session cookie AND the party must have a current host
 whose Emby access_token signs the upstream call.
 """
 
+from typing import Literal
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
@@ -20,6 +22,7 @@ from backend.src.schemas import (
     FilterOptionsResponse,
     GroupedSearchResponse,
     ItemDetailsResponse,
+    ItemSectionResponse,
     LibraryItemsResponse,
     LibraryPrefixesResponse,
     LibraryQueryRequest,
@@ -363,6 +366,30 @@ async def api_item_details(
     # {"error": "..."} return tripped FastAPI response validation
     # and surfaced as a 500. 404 is the honest answer.
     raise HTTPException(status_code=404, detail="Item not found")
+
+
+@router.get(
+    "/item/{item_id}/sections/{section}",
+    response_model=ItemSectionResponse,
+    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Optional section unavailable"}},
+)
+async def api_item_section(
+    item_id: str,
+    section: Literal["related", "trailers", "extras"],
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    try:
+        items = await emby_client.get_item_section(
+            item_id,
+            section,
+            access_token=access_token,
+            user_id=user_id,
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"{section.title()} unavailable") from exc
+    return {"section": section, "items": items}
 
 
 @router.get(

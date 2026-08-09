@@ -269,6 +269,11 @@ class GroupedSearchResponse(StrictApiModel):
     groups: list[SearchGroup] = Field(default_factory=list)
 
 
+class ItemSectionResponse(StrictApiModel):
+    section: Literal["related", "trailers", "extras"]
+    items: list[LibraryItem] = Field(default_factory=list)
+
+
 class ItemDetailsResponse(BaseModel):
     """Single item with extended details. Wraps a LibraryItem plus any
     additional fields Emby returns for that item type."""

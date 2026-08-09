@@ -57,13 +57,33 @@
       </section>
       <section v-if="details.Studios?.length"><h3>Studios</h3><p>{{ details.Studios.map((studio) => studio.Name).join(' · ') }}</p></section>
       <section v-if="details.Tags?.length"><h3>Tags</h3><p>{{ details.Tags.join(' · ') }}</p></section>
+      <section class="optional-sections">
+        <h3>More</h3>
+        <button
+          v-for="section in optionalSections"
+          :key="section.id"
+          type="button"
+          :data-section="section.id"
+          @click="loadSection(section.id)"
+        >
+          {{ section.label }}
+        </button>
+        <div v-for="section in optionalSections" :key="`${section.id}-content`">
+          <p v-if="sectionErrors[section.id]" role="alert">{{ sectionErrors[section.id] }}</p>
+          <p v-else-if="sectionLoading === section.id" role="status">Loading {{ section.label.toLowerCase() }}…</p>
+          <ul v-else-if="sectionItems[section.id]">
+            <li v-for="item in sectionItems[section.id]" :key="item.Id">{{ item.Name }}</li>
+            <li v-if="!sectionItems[section.id]?.length">None available.</li>
+          </ul>
+        </div>
+      </section>
     </template>
   </article>
 </template>
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
-import { api, type LibraryItem } from '@/api/client'
+import { api, type ItemSection, type LibraryItem } from '@/api/client'
 
 const props = defineProps<{ item: LibraryItem; isHost: boolean }>()
 defineEmits<{
@@ -79,6 +99,15 @@ const details = ref<LibraryItem | null>(null)
 const loading = ref(false)
 const error = ref('')
 let controller: AbortController | null = null
+let sectionController: AbortController | null = null
+const optionalSections: Array<{ id: ItemSection; label: string }> = [
+  { id: 'related', label: 'Related titles' },
+  { id: 'extras', label: 'Extras' },
+  { id: 'trailers', label: 'Trailers' },
+]
+const sectionItems = ref<Partial<Record<ItemSection, LibraryItem[]>>>({})
+const sectionErrors = ref<Partial<Record<ItemSection, string>>>({})
+const sectionLoading = ref<ItemSection | null>(null)
 
 const playable = computed(() => ['Movie', 'Episode', 'Video'].includes(details.value?.Type || ''))
 const browsable = computed(() => ['Series', 'Season', 'BoxSet'].includes(details.value?.Type || ''))
@@ -108,8 +137,28 @@ async function load() {
   }
 }
 
+async function loadSection(section: ItemSection) {
+  if (sectionItems.value[section] || sectionLoading.value === section) return
+  sectionController?.abort()
+  sectionController = new AbortController()
+  sectionLoading.value = section
+  delete sectionErrors.value[section]
+  try {
+    const response = await api.itemSection(props.item.Id, section, sectionController.signal)
+    sectionItems.value[section] = response.items
+  } catch (cause) {
+    if (sectionController.signal.aborted) return
+    sectionErrors.value[section] = cause instanceof Error ? cause.message : `${section} unavailable.`
+  } finally {
+    if (!sectionController.signal.aborted) sectionLoading.value = null
+  }
+}
+
 watch(() => props.item.Id, () => void load(), { immediate: true })
-onUnmounted(() => controller?.abort())
+onUnmounted(() => {
+  controller?.abort()
+  sectionController?.abort()
+})
 </script>
 
 <style scoped>

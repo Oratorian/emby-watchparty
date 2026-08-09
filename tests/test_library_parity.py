@@ -183,3 +183,21 @@ def test_grouped_search_normalizes_supported_emby_item_types(live_watchparty) ->
         "IncludeItemTypes",
         "Movie,Series,Episode,Person,BoxSet",
     ) in upstream["query"]
+
+
+def test_detail_sections_proxy_artifact_observed_boundaries(live_watchparty) -> None:
+    client = _unlocked_client(live_watchparty)
+    try:
+        responses = {
+            section: client.get(f"/api/item/movie-1/sections/{section}")
+            for section in ("related", "trailers", "extras")
+        }
+    finally:
+        client.close()
+
+    assert all(response.status_code == 200 for response in responses.values())
+    assert all("items" in response.json() for response in responses.values())
+    paths = {row["path"] for row in live_watchparty.fake.state.requests}
+    assert "/emby/Items/movie-1/Similar" in paths
+    assert "/emby/Users/user-1/Items/movie-1/LocalTrailers" in paths
+    assert "/emby/Users/user-1/Items/movie-1/SpecialFeatures" in paths

@@ -343,6 +343,24 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         state.record(request)
         return {"Items": [MOVIE], "TotalRecordCount": 1}
 
+    @app.get("/emby/Items/{item_id}/Similar")
+    async def similar_items(request: Request, item_id: str):
+        del item_id
+        state.record(request)
+        return json.loads((_ARTIFACT_ROOT / "related-items.json").read_text(encoding="utf-8"))
+
+    @app.get("/emby/Users/{user_id}/Items/{item_id}/LocalTrailers")
+    async def local_trailers(request: Request, user_id: str, item_id: str):
+        del user_id, item_id
+        state.record(request)
+        return json.loads((_ARTIFACT_ROOT / "trailers.json").read_text(encoding="utf-8"))
+
+    @app.get("/emby/Users/{user_id}/Items/{item_id}/SpecialFeatures")
+    async def special_features(request: Request, user_id: str, item_id: str):
+        del user_id, item_id
+        state.record(request)
+        return json.loads((_ARTIFACT_ROOT / "extras.json").read_text(encoding="utf-8"))
+
     @app.get("/emby/Items/Intros")
     async def intros(request: Request):
         state.record(request)
