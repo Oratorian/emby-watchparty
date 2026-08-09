@@ -193,8 +193,13 @@ def test_stale_bootstrap_artefacts_are_ignored_and_removed(tmp_path: Path, monke
     assert (data / "bootstrap.json").exists(), "bootstrap file removed before startup succeeded"
 
     async def boot() -> None:
+        assert (data / "setup-token").exists()
+        assert (data / "bootstrap.json").exists()
         async with app.router.lifespan_context(app):
-            pass
+            # Entering the lifespan means every fallible startup step
+            # completed and Starlette can begin serving requests.
+            assert not (data / "setup-token").exists()
+            assert not (data / "bootstrap.json").exists()
 
     asyncio.run(boot())
     assert not (data / "setup-token").exists(), "stale setup token left on disk"
