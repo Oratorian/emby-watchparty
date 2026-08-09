@@ -17,6 +17,9 @@ def test_compose_uses_production_safe_schema_defaults() -> None:
 
     assert service["image"] == "ghcr.io/oratorian/emby-watchparty:3.0"
     assert list(service["environment"]) == SETTING_NAMES
+    assert service["environment"]["WATCH_PARTY_BIND"] == "0.0.0.0"
+    assert service["environment"]["WATCH_PARTY_PORT"] == "5000"
+    assert service["ports"] == ["5000:5000"]
     assert service["environment"]["APP_ENV"] == "${APP_ENV:-production}"
     assert service["environment"]["SESSION_COOKIE_SECURE"] == ("${SESSION_COOKIE_SECURE:-true}")
     assert service["environment"]["ENABLE_HLS_TOKEN_VALIDATION"] == (
@@ -69,6 +72,7 @@ def test_casaos_manifest_is_compose_with_current_top_level_metadata() -> None:
     assert metadata["id"] == "com.oratorian.emby-watchparty"
     assert metadata["main"] == "emby-watchparty"
     assert metadata["port_map"] == "5000"
+    assert service["ports"] == [{"target": 5000, "published": "5000", "protocol": "tcp"}]
     assert metadata["architectures"] == ["amd64", "arm64"]
     assert "Schema-SHA256:" in manifest
 
@@ -81,6 +85,7 @@ def test_truenas_custom_app_uses_host_paths_without_privilege() -> None:
     assert list(service["environment"]) == SETTING_NAMES
     assert service["environment"]["EMBY_API_KEY"] == ""
     assert service["environment"]["SESSION_SECRET"] == ""
+    assert service["ports"] == ["5000:5000"]
     assert all(volume.startswith("/mnt/") for volume in service["volumes"])
     assert "privileged" not in service
     assert "cap_add" not in service

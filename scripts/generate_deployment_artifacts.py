@@ -122,13 +122,18 @@ def _yaml_document(value: dict[str, Any], schema: dict[str, Any]) -> str:
 
 def _compose_model(schema: dict[str, Any]) -> dict[str, Any]:
     image = schema["image"]
+    container_port = schema["application"]["container_port"]
+    environment = _compose_environment(schema)
+    artifact_environment = _environment(schema)
+    environment["WATCH_PARTY_BIND"] = artifact_environment["WATCH_PARTY_BIND"]
+    environment["WATCH_PARTY_PORT"] = str(container_port)
     return {
         "services": {
             "emby-watchparty": {
                 "image": f"{image['repository']}:{image['tag']}",
                 "container_name": "emby-watchparty",
-                "environment": _compose_environment(schema),
-                "ports": ["5000:5000"],
+                "environment": environment,
+                "ports": [f"{container_port}:{container_port}"],
                 "volumes": [
                     "./data:/app/data",
                     "./images/avatars:/app/images/avatars",
@@ -198,22 +203,31 @@ def _environment_reference(schema: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _casaos(schema: dict[str, Any]) -> str:
-    data_root = "${APP_DATA_DIR:-/DATA/AppData/emby-watchparty}"
+def _appliance_compose_model(schema: dict[str, Any], data_root: str) -> dict[str, Any]:
     model = copy.deepcopy(_compose_model(schema))
     service = model["services"]["emby-watchparty"]
     service["environment"] = _environment(schema)
-    service["ports"] = [{"target": 5000, "published": "5000", "protocol": "tcp"}]
     service["volumes"] = [
         f"{data_root}/{volume.split(':', 1)[0].removeprefix('./')}:{volume.rsplit(':', 1)[1]}"
         for volume in service["volumes"]
     ]
-    model = {"name": "emby-watchparty", **model}
+    return {"name": "emby-watchparty", **model}
+
+
+def _casaos(schema: dict[str, Any]) -> str:
+    model = _appliance_compose_model(
+        schema, "${APP_DATA_DIR:-/DATA/AppData/emby-watchparty}"
+    )
+    container_port = schema["application"]["container_port"]
+    service = model["services"]["emby-watchparty"]
+    service["ports"] = [
+        {"target": container_port, "published": str(container_port), "protocol": "tcp"}
+    ]
     model["x-casaos"] = {
         "id": "com.oratorian.emby-watchparty",
         "main": "emby-watchparty",
         "index": "/",
-        "port_map": "5000",
+        "port_map": str(container_port),
         "scheme": "http",
         "icon": "https://raw.githubusercontent.com/Oratorian/emby-watchparty/3.0-dev/frontend/public/favicon.ico",
         "title": {"en_US": "Emby Watch Party"},
@@ -233,15 +247,7 @@ def _casaos(schema: dict[str, Any]) -> str:
 
 
 def _truenas(schema: dict[str, Any]) -> str:
-    data_root = "/mnt/POOL/emby-watchparty"
-    model = copy.deepcopy(_compose_model(schema))
-    service = model["services"]["emby-watchparty"]
-    service["environment"] = _environment(schema)
-    service["volumes"] = [
-        f"{data_root}/{volume.split(':', 1)[0].removeprefix('./')}:{volume.rsplit(':', 1)[1]}"
-        for volume in service["volumes"]
-    ]
-    model = {"name": "emby-watchparty", **model}
+    model = _appliance_compose_model(schema, "/mnt/POOL/emby-watchparty")
     warning = "# TrueNAS SCALE 24.10+ Custom App YAML. Replace POOL before deployment.\n"
     return warning + _yaml_document(model, schema)
 
