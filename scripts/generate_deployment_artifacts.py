@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -189,12 +190,118 @@ def _environment_reference(schema: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _unraid_choice_default(setting: dict[str, Any], value: str) -> str:
+    if setting["type"] == "boolean":
+        choices = ["true", "false"]
+        if value == "":
+            choices.insert(0, "")
+        elif value == "false":
+            choices.reverse()
+        return "|".join(choices)
+    allowed = setting["validation"].get("allowed")
+    if allowed:
+        choices = [str(item) for item in allowed]
+        if value in choices:
+            choices.remove(value)
+            choices.insert(0, value)
+        return "|".join(choices)
+    return value
+
+
+def _unraid(schema: dict[str, Any]) -> str:
+    root = ET.Element("Container", {"version": "2"})
+    root.append(ET.Comment(f" Schema-SHA256: {_schema_hash(schema)} "))
+    image = schema["image"]
+    metadata = {
+        "Name": "Emby-Watch-Party",
+        "Repository": f"{image['repository']}:{image['tag']}",
+        "Registry": "https://github.com/Oratorian/emby-watchparty/pkgs/container/emby-watchparty",
+        "Network": "bridge",
+        "Shell": "sh",
+        "Privileged": "false",
+        "Support": "https://github.com/Oratorian/emby-watchparty/issues",
+        "Project": "https://github.com/Oratorian/emby-watchparty",
+        "Overview": "Production-safe Emby Watch Party 3.0 appliance deployment.",
+        "Category": "MediaApp:Video",
+        "WebUI": "http://[IP]:[PORT:5000]/",
+        "Icon": "https://raw.githubusercontent.com/Oratorian/emby-watchparty/3.0-dev/frontend/public/favicon.ico",
+        "ExtraParams": "",
+        "PostArgs": "",
+    }
+    for name, value in metadata.items():
+        ET.SubElement(root, name).text = value
+
+    ET.SubElement(
+        root,
+        "Config",
+        {
+            "Name": "Web Port",
+            "Target": "5000",
+            "Default": "5000",
+            "Mode": "tcp",
+            "Description": "Host port for Emby Watch Party.",
+            "Type": "Port",
+            "Display": "always",
+            "Required": "true",
+            "Mask": "false",
+        },
+    ).text = "5000"
+    path_defaults = {
+        "data": "/mnt/user/appdata/emby-watchparty/data",
+        "avatars": "/mnt/user/appdata/emby-watchparty/images/avatars",
+        "logs": "/mnt/user/appdata/emby-watchparty/logs",
+        "config": "/mnt/user/appdata/emby-watchparty/config.json",
+    }
+    for storage in schema["storage"]:
+        ET.SubElement(
+            root,
+            "Config",
+            {
+                "Name": storage["id"].replace("_", " ").title(),
+                "Target": storage["target"],
+                "Default": path_defaults[storage["id"]],
+                "Mode": "rw",
+                "Description": f"Persistent {storage['id']} {storage['kind']}.",
+                "Type": "Path",
+                "Display": "always" if storage["required"] else "advanced",
+                "Required": "true" if storage["required"] else "false",
+                "Mask": "false",
+            },
+        ).text = path_defaults[storage["id"]]
+
+    environment = _environment(schema)
+    for setting in schema["settings"]:
+        value = environment[setting["name"]]
+        ET.SubElement(
+            root,
+            "Config",
+            {
+                "Name": setting["display"]["label"],
+                "Target": setting["name"],
+                "Default": _unraid_choice_default(setting, value),
+                "Mode": "",
+                "Description": setting["description"],
+                "Type": "Variable",
+                "Display": "advanced" if setting["display"]["advanced"] else "always",
+                "Required": "false" if setting["required"] == "optional" else "true",
+                "Mask": "true" if setting["secret"] else "false",
+            },
+        ).text = value
+    ET.indent(root, space="  ")
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        + ET.tostring(root, encoding="unicode", short_empty_elements=True)
+        + "\n"
+    )
+
+
 def generate_artifacts(schema: dict[str, Any]) -> dict[Path, str]:
     """Render every deterministic artifact from validated schema data."""
     return {
         Path(".env.example"): _env_example(schema),
         Path("docker-compose.yml.example"): _compose(schema),
         Path("docs/deployment/environment.md"): _environment_reference(schema),
+        Path("deploy/unraid/emby-watchparty.xml"): _unraid(schema),
     }
 
 

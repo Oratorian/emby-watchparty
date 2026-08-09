@@ -1,4 +1,5 @@
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import yaml
@@ -48,3 +49,22 @@ def test_environment_reference_carries_schema_metadata() -> None:
     assert "Generated from `deploy/schema.json`" in reference
     assert "| `SESSION_SECRET` | string | production | yes |" in reference
     assert "BEHIND_PROXY=true requires TRUSTED_PROXY_CIDRS" in reference
+
+
+def test_unraid_template_exposes_schema_fields_and_persistent_paths() -> None:
+    artifacts = generate_artifacts(SCHEMA)
+    xml = artifacts[Path("deploy/unraid/emby-watchparty.xml")]
+    root = ET.fromstring(xml)  # noqa: S314 -- parser input is this generator's output
+    configs = root.findall("Config")
+    variables = [item for item in configs if item.attrib["Type"] == "Variable"]
+    paths = [item.attrib["Target"] for item in configs if item.attrib["Type"] == "Path"]
+
+    assert [item.attrib["Target"] for item in variables] == SETTING_NAMES
+    assert {item.attrib["Target"] for item in variables if item.attrib["Mask"] == "true"} == {
+        "EMBY_API_KEY",
+        "SESSION_SECRET",
+    }
+    assert paths == ["/app/data", "/app/images/avatars", "/app/logs", "/app/config.json"]
+    assert root.findtext("Repository") == "ghcr.io/oratorian/emby-watchparty:3.0"
+    assert "WEB_CONCURRENCY" not in xml
+    assert "Schema-SHA256:" in xml
