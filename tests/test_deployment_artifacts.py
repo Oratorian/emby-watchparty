@@ -68,3 +68,20 @@ def test_unraid_template_exposes_schema_fields_and_persistent_paths() -> None:
     assert root.findtext("Repository") == "ghcr.io/oratorian/emby-watchparty:3.0"
     assert "WEB_CONCURRENCY" not in xml
     assert "Schema-SHA256:" in xml
+
+
+def test_casaos_manifest_is_compose_with_current_top_level_metadata() -> None:
+    manifest = generate_artifacts(SCHEMA)[Path("deploy/casaos/docker-compose.yml")]
+    model = yaml.safe_load(manifest)
+    service = model["services"]["emby-watchparty"]
+    metadata = model["x-casaos"]
+
+    assert model["name"] == "emby-watchparty"
+    assert list(service["environment"]) == SETTING_NAMES
+    assert service["environment"]["EMBY_API_KEY"] == ""
+    assert service["environment"]["SESSION_SECRET"] == ""
+    assert metadata["id"] == "com.oratorian.emby-watchparty"
+    assert metadata["main"] == "emby-watchparty"
+    assert metadata["port_map"] == "5000"
+    assert metadata["architectures"] == ["amd64", "arm64"]
+    assert "Schema-SHA256:" in manifest

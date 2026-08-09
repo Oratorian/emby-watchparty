@@ -295,6 +295,50 @@ def _unraid(schema: dict[str, Any]) -> str:
     )
 
 
+def _casaos(schema: dict[str, Any]) -> str:
+    image = schema["image"]
+    data_root = "${APP_DATA_DIR:-/DATA/AppData/emby-watchparty}"
+    model = {
+        "name": "emby-watchparty",
+        "services": {
+            "emby-watchparty": {
+                "image": f"{image['repository']}:{image['tag']}",
+                "container_name": "emby-watchparty",
+                "environment": _environment(schema),
+                "ports": [{"target": 5000, "published": "5000", "protocol": "tcp"}],
+                "volumes": [
+                    f"{data_root}/data:/app/data",
+                    f"{data_root}/images/avatars:/app/images/avatars",
+                    f"{data_root}/logs:/app/logs",
+                    f"{data_root}/config.json:/app/config.json",
+                ],
+                "restart": "unless-stopped",
+            }
+        },
+        "x-casaos": {
+            "id": "com.oratorian.emby-watchparty",
+            "main": "emby-watchparty",
+            "index": "/",
+            "port_map": "5000",
+            "scheme": "http",
+            "icon": "https://raw.githubusercontent.com/Oratorian/emby-watchparty/3.0-dev/frontend/public/favicon.ico",
+            "title": {"en_US": "Emby Watch Party"},
+            "tagline": {"en_US": "Synchronized Emby playback for remote parties"},
+            "description": {
+                "en_US": "Host synchronized watch parties backed by an existing Emby server."
+            },
+            "author": "Oratorian",
+            "developer": "Oratorian",
+            "category": "Media",
+            "architectures": ["amd64", "arm64"],
+            "version": "3.0",
+            "repo": "https://github.com/Oratorian/emby-watchparty",
+            "support": "https://github.com/Oratorian/emby-watchparty/issues",
+        },
+    }
+    return _yaml_document(model, schema)
+
+
 def generate_artifacts(schema: dict[str, Any]) -> dict[Path, str]:
     """Render every deterministic artifact from validated schema data."""
     return {
@@ -302,6 +346,7 @@ def generate_artifacts(schema: dict[str, Any]) -> dict[Path, str]:
         Path("docker-compose.yml.example"): _compose(schema),
         Path("docs/deployment/environment.md"): _environment_reference(schema),
         Path("deploy/unraid/emby-watchparty.xml"): _unraid(schema),
+        Path("deploy/casaos/docker-compose.yml"): _casaos(schema),
     }
 
 
