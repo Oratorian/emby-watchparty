@@ -86,11 +86,64 @@ test('alphabet bar jumps across an unloaded library and can scroll back', async 
   const middle = page.getByRole('button', { name: 'Jump to M', exact: true })
   await expect(middle).toBeEnabled()
   await middle.click()
-  await expect(page.getByText('Middle Movie 0000', { exact: true })).toBeVisible()
+  const middleMovie = page.getByText('Middle Movie 0000', { exact: true })
+  await expect(middleMovie).toBeVisible()
+  await page.waitForTimeout(500)
+  expect(await middleMovie.evaluate((item) => {
+    const rect = item.getBoundingClientRect()
+    return rect.bottom > 0 && rect.top < window.innerHeight
+  })).toBe(true)
   expect(await page.locator('.item-card').count()).toBeLessThanOrEqual(100)
 
   await page.locator('.library-panel').evaluate((panel) => panel.scrollTo(0, 0))
   await expect(page.getByText('Alpha Movie 0050', { exact: true })).toBeVisible()
+
+  const zulu = page.getByText('Zulu Movie 0000', { exact: true })
+  await page.getByRole('button', { name: 'Jump to Z', exact: true }).click()
+  await expect(zulu).toBeVisible()
+  expect(await zulu.evaluate((item) => {
+    const rect = item.getBoundingClientRect()
+    return rect.bottom > 0 && rect.top < window.innerHeight
+  })).toBe(true)
+
+  const alpha = page.getByText('Alpha Movie 0000', { exact: true })
+  await page.getByRole('button', { name: 'Jump to A', exact: true }).click()
+  await expect(alpha).toBeVisible()
+  expect(await alpha.evaluate((item) => {
+    const rect = item.getBoundingClientRect()
+    return rect.bottom > 0 && rect.top < window.innerHeight
+  })).toBe(true)
+})
+
+test('legacy saved library state still enables alphabet navigation', async ({ page }) => {
+  await page.setViewportSize({ width: 910, height: 427 })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+  await page.getByRole('main').getByRole(
+    'button', { name: 'Login to Become Host', exact: true },
+  ).click()
+  await page.getByPlaceholder('Emby username').fill('AlphabetLibrary')
+  await page.getByPlaceholder('Emby password').fill('password')
+  await page.getByRole('button', { name: 'Become Host', exact: true }).click()
+
+  await page.evaluate(() => localStorage.setItem(
+    'emby-watchparty-library-state',
+    JSON.stringify({
+      parentId: 'library-1',
+      breadcrumbs: [{ id: 'library-1', name: 'Movies' }],
+    }),
+  ))
+  await page.getByRole('button', { name: 'Hide Library', exact: true }).click()
+  await page.getByRole('banner').getByRole(
+    'button', { name: 'Browse Library', exact: true },
+  ).click()
+
+  await expect(page.getByText('Movies', { exact: true }).nth(1)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Jump to M', exact: true })).toBeEnabled()
+  const lastPrefix = page.getByRole('button', { name: 'Jump to Z', exact: true })
+  expect(await lastPrefix.evaluate((button) => button.getBoundingClientRect().bottom)).toBeLessThanOrEqual(427)
 })
 
 test('two browsers receive selection and synchronized controls', async ({ browser, page }) => {

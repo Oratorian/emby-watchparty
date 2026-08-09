@@ -303,7 +303,21 @@ function loadLibraryState(): LibraryState | null {
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!parsed?.parentId || !Array.isArray(parsed?.breadcrumbs)) return null
-    return parsed as LibraryState
+    const breadcrumbs = parsed.breadcrumbs as Breadcrumb[]
+
+    // Saved states written before breadcrumb types were persisted contain
+    // only the top-level library id/name. That location is necessarily an
+    // Emby CollectionFolder, so migrate it instead of silently disabling
+    // alphabetical mode (and therefore the entire prefix rail). Deeper
+    // untyped paths are ambiguous (Folder, Series, or Season); discard those
+    // restore targets rather than applying alphabetical ordering to episodes.
+    const rootBreadcrumb = breadcrumbs[0]
+    if (breadcrumbs.length === 1 && rootBreadcrumb && !rootBreadcrumb.type) {
+      breadcrumbs[0] = { ...rootBreadcrumb, type: 'CollectionFolder' }
+    }
+    if (!breadcrumbs.at(-1)?.type) return null
+
+    return { parentId: parsed.parentId, breadcrumbs }
   } catch {
     return null
   }
@@ -343,7 +357,11 @@ async function jumpToLetter(letter: string) {
   if (!firstItem) return
   browserRoot.value
     ?.querySelector<HTMLElement>(`[data-item-id="${CSS.escape(firstItem.Id)}"]`)
-    ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // A smooth scroll races the top sentinel: it can prepend several pages
+    // while the animation is still moving, leaving the viewport before (or
+    // halfway through) the selected prefix. Land synchronously so prepend
+    // scroll-height compensation keeps this exact first item pinned.
+    ?.scrollIntoView({ behavior: 'auto', block: 'start' })
 }
 
 // Compute the card's aspect ratio from Emby's PrimaryImageAspectRatio.
@@ -794,10 +812,13 @@ onUnmounted(() => {
 .alphabet-bar {
   position: sticky;
   top: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-auto-flow: row;
+  grid-auto-rows: minmax(0, 1fr);
   align-items: center;
-  gap: 1px;
+  gap: clamp(0px, 0.15dvh, 1px);
+  height: min(467px, calc(100dvh - 200px));
+  min-height: 0;
   padding: 4px 2px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
@@ -812,10 +833,11 @@ onUnmounted(() => {
   border: 0;
   padding: 0;
   width: 18px;
-  height: 16px;
+  height: 100%;
+  min-height: 0;
   display: grid;
   place-items: center;
-  font-size: 10px;
+  font-size: clamp(7px, 1.2dvh, 10px);
   font-weight: 600;
   color: var(--accent-primary);
   font-family: var(--font-sans);
@@ -1087,8 +1109,9 @@ onUnmounted(() => {
 
   .alphabet-bar {
     right: 0;
-    max-height: calc(100dvh - 170px - env(safe-area-inset-top));
-    overflow-y: auto;
+    height: min(521px, calc(100dvh - 180px - env(safe-area-inset-top)));
+    max-height: none;
+    overflow: hidden;
     scrollbar-width: none;
   }
 
@@ -1098,8 +1121,7 @@ onUnmounted(() => {
 
   .alphabet-letter {
     width: 20px;
-    height: 18px;
-    flex-shrink: 0;
+    height: 100%;
   }
 }
 </style>
