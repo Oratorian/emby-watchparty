@@ -20,8 +20,23 @@ port field when another external port is needed.
    it discards every admin setting and blinds the preflight below. Use `echo {}` rather
    than `touch`, since an empty file is quarantined as invalid JSON on every boot.
 4. Import manifest. Enter required values in app settings/Compose, leaving the container bind and
-   port fixed. Keep production security defaults; declare proxy topology explicitly. Secret fields
-   start blank and fail closed.
+   port fixed. Secret fields start blank and fail closed.
+
+   Two settings ship **commented out** because neither has a safe default, and the app
+   refuses to start rather than guess:
+
+   - `BEHIND_PROXY` must be declared `true` or `false`. Rate limiting keys on the
+     connecting address, so behind a proxy that address is the proxy for every viewer and
+     they all share one bucket. `true` also makes `TRUSTED_PROXY_CIDRS` mandatory.
+   - `SESSION_COOKIE_SECURE` follows how you actually reach the app. Set `true` when a TLS
+     terminator sits in front, and point the appliance tile at that HTTPS address. Set
+     `false` only for a plain-HTTP LAN address: a Secure cookie is **silently discarded**
+     by the browser over `http://`, so the app appears to start correctly and then rejects
+     every request after party creation with "No party session".
+
+   `APP_ENV=production` additionally requires `SESSION_COOKIE_SECURE=true`, so a plain-HTTP
+   deployment needs either a TLS terminator or `APP_ENV=development`, which also drops the
+   `SESSION_SECRET`, CORS and HLS-token gates. Prefer the terminator.
 5. Duplicate candidate Compose with identical environment and volumes. Temporarily add:
 
    ```yaml
