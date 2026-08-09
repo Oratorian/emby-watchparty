@@ -397,9 +397,10 @@ export const api = {
   imageUrl: (
     id: string,
     type = 'Primary',
-    opts?: { maxWidth?: number; maxHeight?: number; quality?: number },
+    opts?: { index?: number; maxWidth?: number; maxHeight?: number; quality?: number },
   ) => {
     const params = new URLSearchParams({ type })
+    if (opts?.index !== undefined) params.set('index', String(opts.index))
     if (opts?.maxWidth) params.set('maxWidth', String(opts.maxWidth))
     if (opts?.maxHeight) params.set('maxHeight', String(opts.maxHeight))
     if (opts?.quality) params.set('quality', String(opts.quality))

@@ -591,6 +591,7 @@ class EmbyClient:
         max_width=None,
         max_height=None,
         quality=None,
+        image_index=None,
     ):
         params = [f"api_key={self._auth_param(access_token)}"]
         if max_width:
@@ -599,7 +600,10 @@ class EmbyClient:
             params.append(f"maxHeight={int(max_height)}")
         if quality:
             params.append(f"quality={int(quality)}")
-        return f"{self.server_url}/emby/Items/{item_id}/Images/{image_type}?{'&'.join(params)}"
+        path = f"{self.server_url}/emby/Items/{item_id}/Images/{image_type}"
+        if image_index is not None:
+            path += f"/{int(image_index)}"
+        return f"{path}?{'&'.join(params)}"
 
     async def get_playback_info(
         self,

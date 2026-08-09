@@ -135,4 +135,10 @@ describe('apiFetch', () => {
     expect(payload).toEqual(config)
     expect(payload).not.toHaveProperty('ENABLE_HLS_TOKEN_VALIDATION')
   })
+
+  it('builds bounded indexed artwork proxy URLs', () => {
+    expect(api.imageUrl('movie-1', 'Backdrop', {
+      index: 2, maxWidth: 1600, maxHeight: 900, quality: 85,
+    })).toBe('/api/image/movie-1?type=Backdrop&index=2&maxWidth=1600&maxHeight=900&quality=85')
+  })
 })
