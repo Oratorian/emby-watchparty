@@ -8,6 +8,7 @@ export interface ClientToServerPayloads {
     "audio_index"?: number | null
     "subtitle_index"?: number | null
     "quality"?: string | null
+    "media_source_id"?: string | null
   }
   "chat_message": {
     "party_id": string
@@ -56,6 +57,10 @@ export interface ClientToServerPayloads {
     "media_source_id"?: string | null
     "start_seconds"?: number
     "quality"?: string | null
+    "audio_index"?: number | null
+    "subtitle_index"?: number | null
+    "resume_mode"?: "resume" | "start_over"
+    "binge"?: boolean | null
   }
   "set_binge_watch_active": {
     "party_id": string

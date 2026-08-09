@@ -145,7 +145,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { api, type FilterControl, type LibraryFilterState, type LibraryItem, type LibraryQueryRequest } from '@/api/client'
+import { api, type FilterControl, type LibraryFilterState, type LibraryItem, type LibraryQueryRequest, type PlaybackSelection } from '@/api/client'
 import { usePartyStore } from '@/stores/party'
 import { useAuthStore } from '@/stores/auth'
 import LibraryFilters from './LibraryFilters.vue'
@@ -256,7 +256,7 @@ interface Breadcrumb {
 }
 
 const emit = defineEmits<{
-  'select-video': [item: EmbyItem]
+  'select-video': [selection: EmbyItem | PlaybackSelection]
   'navigation-change': [label: string]
 }>()
 

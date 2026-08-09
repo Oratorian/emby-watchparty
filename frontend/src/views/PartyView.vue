@@ -891,17 +891,14 @@ watch(() => party.currentVideo, (newVal, oldVal) => {
   }
 })
 
-function onChangeStreams(opts: { audioIndex?: number; subtitleIndex?: number; quality?: string }) {
+function onChangeStreams(opts: { audioIndex?: number; subtitleIndex?: number; quality?: string; mediaSourceId?: string }) {
   if (!party.partyId) return
-  // The alternate Emby version (issue #43) is locked at select_video
-  // time on the backend (current_video.media_source_id), so this emit
-  // never needs to carry it -- audio/subtitle/quality changes always
-  // resolve to the same version automatically.
   socket.emit('change_streams', {
     party_id: party.partyId,
     audio_index: opts.audioIndex,
     subtitle_index: opts.subtitleIndex,
     quality: opts.quality,
+    media_source_id: opts.mediaSourceId,
   })
 }
 

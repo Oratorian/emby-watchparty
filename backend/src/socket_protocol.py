@@ -6,7 +6,7 @@ from functools import wraps
 from time import perf_counter
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 if TYPE_CHECKING:
     import logging
@@ -60,12 +60,17 @@ class SelectVideoPayload(PartyPayload):
     media_source_id: str | None = None
     start_seconds: float = 0.0
     quality: str | None = None
+    audio_index: int | None = Field(default=None, ge=0)
+    subtitle_index: int | None = Field(default=None, ge=-1)
+    resume_mode: Literal["resume", "start_over"] = "start_over"
+    binge: bool | None = None
 
 
 class ChangeStreamsPayload(PartyPayload):
     audio_index: int | None = None
     subtitle_index: int | None = None
     quality: str | None = None
+    media_source_id: str | None = None
 
 
 class BingeWatchPayload(PartyPayload):

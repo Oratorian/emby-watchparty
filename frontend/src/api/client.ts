@@ -159,6 +159,16 @@ export interface GroupedSearchResponse { query: string; groups: SearchGroup[] }
 export type ItemSection = 'related' | 'trailers' | 'extras'
 export interface ItemSectionResponse { section: ItemSection; items: LibraryItem[] }
 export interface PlaylistListResponse { items: LibraryItem[] }
+export interface PlaybackSelection {
+  item: LibraryItem
+  mediaSourceId?: string
+  quality: string
+  audioIndex: number | null
+  subtitleIndex: number | null
+  startSeconds: number
+  resumeMode: 'resume' | 'start_over'
+  binge?: boolean
+}
 export interface PartyResponse extends SuccessResponse {
   party_id?: string
   url?: string

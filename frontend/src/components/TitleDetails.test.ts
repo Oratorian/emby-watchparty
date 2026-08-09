@@ -24,6 +24,16 @@ describe('TitleDetails', () => {
       section: 'related',
       items: [{ Id: 'movie-2', Name: 'Related Movie', Type: 'Movie' }],
     })
+    vi.spyOn(api, 'itemStreams').mockResolvedValue({
+      audio: [{ index: 1, language: 'eng', displayLanguage: 'English', codec: 'aac', channels: 2, isDefault: true, title: 'English' }],
+      subtitles: [{ index: 2, language: 'eng', displayLanguage: 'English', codec: 'subrip', isDefault: false, isForced: false, isExternal: true, isPGS: false, isTextSubtitleStream: true, title: 'English' }],
+      media_source_id: 'source-1',
+      versions: [{ id: 'source-1', name: '1080p', container: 'mkv', run_time_ticks: 7_200_000_000 }],
+    })
+    vi.spyOn(api, 'qualityOptions').mockResolvedValue({
+      options: [{ id: 'auto', label: 'Auto', resolution: null, width: null, height: null, bitrate_kbps: null }],
+      default_id: 'auto',
+    })
     const wrapper = mount(TitleDetails, {
       props: {
         item: { Id: 'movie-1', Name: 'Artifact Movie', Type: 'Movie' },
@@ -45,7 +55,16 @@ describe('TitleDetails', () => {
     expect(itemSection).toHaveBeenCalledWith('movie-1', 'related', expect.any(AbortSignal))
 
     await wrapper.get('button.play-title').trigger('click')
-    expect(wrapper.emitted('play')?.[0]?.[0]).toMatchObject({ Id: 'movie-1' })
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Start watch party'))
+    await wrapper.get('button.start-playback').trigger('click')
+    expect(wrapper.emitted('play')?.[0]?.[0]).toMatchObject({
+      item: { Id: 'movie-1' },
+      mediaSourceId: 'source-1',
+      quality: 'auto',
+      audioIndex: 1,
+      subtitleIndex: -1,
+      resumeMode: 'start_over',
+    })
     await wrapper.get('button.back-to-library').trigger('click')
     expect(wrapper.emitted('back')).toHaveLength(1)
   })

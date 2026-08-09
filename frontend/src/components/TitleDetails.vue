@@ -30,7 +30,7 @@
               v-if="playable"
               class="play-title"
               type="button"
-              @click="$emit('play', details)"
+              @click="openPlaybackOptions"
             >
               Play
             </button>
@@ -81,6 +81,50 @@
               Create and add
             </button>
           </div>
+          <div v-if="showPlaybackOptions" class="playback-options" aria-label="Playback options">
+            <p v-if="playbackLoading" role="status">Loading playback options…</p>
+            <p v-else-if="playbackError" role="alert">{{ playbackError }}</p>
+            <template v-else>
+              <label v-if="streams.versions.length > 1">
+                Version
+                <select v-model="selectedMediaSource" aria-label="Version" @change="reloadVersionStreams">
+                  <option v-for="version in streams.versions" :key="version.id" :value="version.id">
+                    {{ version.name }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                Quality
+                <select v-model="selectedQuality" aria-label="Quality">
+                  <option v-for="option in qualities" :key="option.id" :value="option.id">{{ option.label }}</option>
+                </select>
+              </label>
+              <label v-if="streams.audio.length">
+                Audio
+                <select v-model.number="selectedAudio" aria-label="Audio">
+                  <option v-for="track in streams.audio" :key="track.index" :value="track.index">{{ track.title }}</option>
+                </select>
+              </label>
+              <label>
+                Subtitles
+                <select v-model.number="selectedSubtitle" aria-label="Subtitles">
+                  <option :value="-1">Off</option>
+                  <option v-for="track in streams.subtitles" :key="track.index" :value="track.index">{{ track.title }}</option>
+                </select>
+              </label>
+              <label v-if="resumeSeconds > 0">
+                Start
+                <select v-model="resumeMode" aria-label="Start position">
+                  <option value="resume">Resume at {{ formatTime(resumeSeconds) }}</option>
+                  <option value="start_over">Start over</option>
+                </select>
+              </label>
+              <label v-if="isHost && details.Type === 'Episode'">
+                <input v-model="binge" type="checkbox" /> Binge next episodes
+              </label>
+              <button class="start-playback" type="button" @click="startPlayback">Start watch party</button>
+            </template>
+          </div>
         </div>
       </header>
 
@@ -117,12 +161,19 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
-import { api, type ItemSection, type LibraryItem } from '@/api/client'
+import {
+  api,
+  type ItemSection,
+  type LibraryItem,
+  type PlaybackSelection,
+  type QualityOptionsResponse,
+  type StreamsResponse,
+} from '@/api/client'
 
 const props = defineProps<{ item: LibraryItem; isHost: boolean }>()
-defineEmits<{
+const emit = defineEmits<{
   back: []
-  play: [item: LibraryItem]
+  play: [selection: PlaybackSelection]
   browse: [item: LibraryItem]
 }>()
 
@@ -145,6 +196,18 @@ const showPlaylists = ref(false)
 const playlists = ref<LibraryItem[]>([])
 const selectedPlaylist = ref('')
 const newPlaylistName = ref('')
+const showPlaybackOptions = ref(false)
+const playbackLoading = ref(false)
+const playbackError = ref('')
+const streams = ref<StreamsResponse>({ audio: [], subtitles: [], media_source_id: null, versions: [] })
+const qualities = ref<QualityOptionsResponse['options']>([])
+const selectedMediaSource = ref('')
+const selectedQuality = ref('auto')
+const selectedAudio = ref<number | null>(null)
+const selectedSubtitle = ref<number | null>(-1)
+const resumeMode = ref<'resume' | 'start_over'>('start_over')
+const binge = ref(false)
+const resumeSeconds = computed(() => Number(details.value?.UserData?.PlaybackPositionTicks ?? 0) / 10_000_000)
 
 function setBusy(action: string, busy: boolean) {
   const next = new Set(busyActions.value)
@@ -229,6 +292,69 @@ async function createAndAddPlaylist() {
   } finally {
     setBusy('playlist-create', false)
   }
+}
+
+function applyStreams(response: StreamsResponse) {
+  streams.value = response
+  selectedMediaSource.value = response.media_source_id || response.versions[0]?.id || ''
+  selectedAudio.value = response.audio.find((track) => track.isDefault)?.index
+    ?? response.audio[0]?.index
+    ?? null
+  selectedSubtitle.value = response.subtitles.find((track) => track.isDefault)?.index ?? -1
+}
+
+async function openPlaybackOptions() {
+  if (!details.value || playbackLoading.value) return
+  showPlaybackOptions.value = true
+  playbackLoading.value = true
+  playbackError.value = ''
+  try {
+    const [streamResponse, qualityResponse] = await Promise.all([
+      api.itemStreams(details.value.Id),
+      api.qualityOptions(),
+    ])
+    applyStreams(streamResponse)
+    qualities.value = qualityResponse.options
+    selectedQuality.value = qualityResponse.default_id
+    resumeMode.value = resumeSeconds.value > 0 ? 'resume' : 'start_over'
+  } catch (cause) {
+    playbackError.value = cause instanceof Error ? cause.message : 'Playback options unavailable.'
+  } finally {
+    playbackLoading.value = false
+  }
+}
+
+async function reloadVersionStreams() {
+  if (!details.value || !selectedMediaSource.value) return
+  playbackLoading.value = true
+  try {
+    applyStreams(await api.itemStreams(details.value.Id, selectedMediaSource.value))
+  } catch (cause) {
+    playbackError.value = cause instanceof Error ? cause.message : 'Version unavailable.'
+  } finally {
+    playbackLoading.value = false
+  }
+}
+
+function formatTime(seconds: number): string {
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const remaining = Math.floor(seconds % 60)
+  return [hours, minutes, remaining].map((value) => String(value).padStart(2, '0')).join(':')
+}
+
+function startPlayback() {
+  if (!details.value) return
+  emit('play', {
+    item: details.value,
+    mediaSourceId: selectedMediaSource.value || undefined,
+    quality: selectedQuality.value,
+    audioIndex: selectedAudio.value,
+    subtitleIndex: selectedSubtitle.value,
+    startSeconds: resumeMode.value === 'resume' ? resumeSeconds.value : 0,
+    resumeMode: resumeMode.value,
+    binge: props.isHost && details.value.Type === 'Episode' ? binge.value : undefined,
+  })
 }
 
 const playable = computed(() => ['Movie', 'Episode', 'Video'].includes(details.value?.Type || ''))
