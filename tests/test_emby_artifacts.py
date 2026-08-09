@@ -12,6 +12,7 @@ REQUIRED_BOUNDARIES = {
     "subtitle-codecs",
     "official-ratings",
     "movie-items",
+    "resolution-filter",
     "movie-detail",
     "series-detail",
     "episode-detail",

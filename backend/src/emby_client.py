@@ -347,6 +347,15 @@ class EmbyClient:
             if values:
                 params[key] = separator.join(str(value) for value in values)
 
+        resolution_ranges = {
+            "4K": {"MinHeight": 2160},
+            "1080p": {"MinHeight": 1080, "MaxHeight": 2159},
+            "720p": {"MinHeight": 720, "MaxHeight": 1079},
+            "SD": {"MaxHeight": 719},
+        }
+        if filters["resolutions"]:
+            params.update(resolution_ranges[filters["resolutions"][0]])
+
         truth_values = {
             "HasSubtitles": filters["subtitles"],
             "HasTrailer": filters["trailers"],

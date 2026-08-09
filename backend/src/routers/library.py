@@ -248,8 +248,9 @@ async def api_filter_options(
             {
                 "id": "resolution",
                 "label": "Resolution",
-                "kind": "multi",
-                "values": [
+                "kind": "select",
+                "values": [{"value": "any", "label": "Any"}]
+                + [
                     {"value": value, "label": value}
                     for value in ("4K", "1080p", "720p", "SD")
                 ],

@@ -388,6 +388,8 @@ function queryFilters(): LibraryQueryRequest['filters'] {
       result[target] = value === 'true'
     } else if (id === 'year') {
       result[target] = (Array.isArray(value) ? value : [value]).map(Number)
+    } else if (id === 'resolution') {
+      result[target] = Array.isArray(value) ? value : [value]
     } else {
       result[target] = value
     }

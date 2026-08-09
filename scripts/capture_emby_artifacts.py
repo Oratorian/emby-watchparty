@@ -170,6 +170,22 @@ def main() -> None:
                 movie_items_response,
             ),
             (
+                "resolution-filter",
+                "GET",
+                "/emby/Users/{user_id}/Items?MinHeight=1080&MaxHeight=2159",
+                client.get(
+                    f"/emby/Users/{user_id}/Items",
+                    params={
+                        "ParentId": movie_view["Id"],
+                        "Recursive": "true",
+                        "IncludeItemTypes": "Movie",
+                        "MinHeight": 1080,
+                        "MaxHeight": 2159,
+                        "Limit": 3,
+                    },
+                ),
+            ),
+            (
                 "movie-detail",
                 "GET",
                 "/emby/Users/{user_id}/Items/{item_id}",

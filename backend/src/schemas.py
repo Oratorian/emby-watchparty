@@ -215,7 +215,9 @@ class LibraryQueryFilters(StrictApiModel):
     containers: list[str] = Field(default_factory=list)
     video_codecs: list[str] = Field(default_factory=list)
     video_types: list[str] = Field(default_factory=list)
-    resolutions: list[str] = Field(default_factory=list)
+    resolutions: list[Literal["4K", "1080p", "720p", "SD"]] = Field(
+        default_factory=list, max_length=1
+    )
     is_3d: bool | None = None
     audio_codecs: list[str] = Field(default_factory=list)
     audio_layouts: list[str] = Field(default_factory=list)
