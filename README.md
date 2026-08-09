@@ -72,7 +72,8 @@ https://discord.gg/RWUpxq9xsA
 ## Documentation
 
 - **[Project wiki](https://github.com/Oratorian/emby-watchparty/wiki)** - hardware, deployment, troubleshooting, and FAQ
-- **[Migration guide](docs/Migration-HowTo.md)** - upgrade path for 1.x users moving to 2.0
+- **[Migration guide](docs/Migration-HowTo.md)** - upgrade path from 2.1.x to 3.0
+- **[Appliance deployment](docs/deployment/appliance-migration.md)** - Compose, Unraid, CasaOS, Portainer, and TrueNAS setup, diagnosis, update, and rollback
 - **[Socket.IO API](docs/SOCKET_API.md)** - developer reference for the Socket.IO event protocol
 - **OpenAPI reference** - `GET /docs` (Swagger UI) or `GET /redoc` on a running instance
 - **[CHANGELOG.md](CHANGELOG.md)** - per-release details including every fix and the reasoning behind it
@@ -185,6 +186,9 @@ docker compose run --rm --no-deps emby-watchparty python -m backend.migration_pr
 Keep the full 2.1.x backup and previous image until health, readiness, login,
 HLS, seeking, subtitles, reconnects, and rate-limit messages pass validation.
 Rollback restores that complete backup and image; do not delete legacy data.
+
+Platform-specific generated artifacts and workflows are indexed in the
+[appliance deployment guide](docs/deployment/appliance-migration.md).
 
 The pre-built multi-arch image is published to GitHub Container Registry:
 
