@@ -161,6 +161,42 @@ def main() -> None:
                 client.get(f"/emby/Users/{user_id}/Items/{movie['Id']}", params={"Fields": fields}),
             ),
             (
+                "playback-selection",
+                "POST",
+                "/emby/Items/{item_id}/PlaybackInfo",
+                client.post(
+                    f"/emby/Items/{movie['Id']}/PlaybackInfo",
+                    params={
+                        "UserId": user_id,
+                        "IsPlayback": "true",
+                        "AutoOpenLiveStream": "true",
+                        "StartTimeTicks": 0,
+                    },
+                    json={},
+                ),
+            ),
+            (
+                "related-items",
+                "GET",
+                "/emby/Items/{item_id}/Similar",
+                client.get(
+                    f"/emby/Items/{movie['Id']}/Similar",
+                    params={"UserId": user_id, "Fields": fields, "Limit": 12},
+                ),
+            ),
+            (
+                "trailers",
+                "GET",
+                "/emby/Users/{user_id}/Items/{item_id}/LocalTrailers",
+                client.get(f"/emby/Users/{user_id}/Items/{movie['Id']}/LocalTrailers"),
+            ),
+            (
+                "extras",
+                "GET",
+                "/emby/Users/{user_id}/Items/{item_id}/SpecialFeatures",
+                client.get(f"/emby/Users/{user_id}/Items/{movie['Id']}/SpecialFeatures"),
+            ),
+            (
                 "grouped-search-source",
                 "GET",
                 "/emby/Users/{user_id}/Items?SearchTerm={sanitized}",
@@ -230,11 +266,22 @@ def main() -> None:
             captures.append(
                 ("series-detail", "GET", "/emby/Users/{user_id}/Items/{series_id}", series_detail)
             )
+            seasons_response = client.get(
+                f"/emby/Shows/{series['Id']}/Seasons",
+                params={"UserId": user_id, "Fields": fields},
+            )
+            seasons_response.raise_for_status()
+            captures.append(
+                ("seasons", "GET", "/emby/Shows/{series_id}/Seasons", seasons_response)
+            )
             episodes_response = client.get(
                 f"/emby/Shows/{series['Id']}/Episodes",
                 params={"UserId": user_id, "Fields": fields, "Limit": 1},
             )
             episodes_response.raise_for_status()
+            captures.append(
+                ("episodes", "GET", "/emby/Shows/{series_id}/Episodes", episodes_response)
+            )
             episode = episodes_response.json()["Items"][0]
             captures.append(
                 (

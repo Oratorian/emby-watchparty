@@ -17,6 +17,12 @@ REQUIRED_BOUNDARIES = {
     "episode-detail",
     "grouped-search-source",
     "playlists",
+    "playback-selection",
+    "related-items",
+    "trailers",
+    "extras",
+    "seasons",
+    "episodes",
 }
 PRIVATE_MARKERS = ("api_key", "access_token", "password", "192.168.", "127.0.0.1")
 
