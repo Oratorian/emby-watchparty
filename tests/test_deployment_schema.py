@@ -284,6 +284,28 @@ def test_a_deployment_built_from_the_env_example_actually_boots() -> None:
         os.environ.update(saved)
 
 
+def test_committed_env_example_boots_through_the_real_loader(tmp_path: Path) -> None:
+    """The checked-in operator artifact must preserve intentional absence."""
+    import os
+
+    (tmp_path / ".env").write_text(
+        (ROOT / ".env.example").read_text(encoding="utf-8") + "\nAPP_ENV=development\n",
+        encoding="utf-8",
+    )
+
+    saved = dict(os.environ)
+    os.environ.clear()
+    try:
+        errors: dict[str, str] = {}
+        env = EnvConfig.from_env(tmp_path, errors=errors)
+        assert env.BEHIND_PROXY is None
+        assert env.SESSION_COOKIE_SECURE is False
+        assert Config(env, RuntimeConfig(), load_errors=errors).startup_errors() == {}
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
 def test_validation_patterns_agree_with_the_loader_they_describe() -> None:
     """The schema is a third description of config.py's rules; pin them together.
 
