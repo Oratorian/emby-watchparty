@@ -16,6 +16,18 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [Unreleased]
+
+Work on the 3.0 line since beta1. Not in any published image yet, so nothing here is available by pulling `:3.0.0-beta1`.
+
+A blocked action now says so. Rate-limited HTTP requests, socket connections, session binding, chat, admin login and avatar recovery name the limit and show a safe retry delay, instead of failing silently or, in the admin login case, doing nothing visible at all. Chat text refused by the limit is handed back for manual resend rather than discarded. Every 429 carries the same `{detail, code, retry_after}` shape, and each one names the bucket that actually refused it, so the message cannot describe a limit the request never hit.
+
+A read-only `python -m backend.migration_preflight` command inventories the effective 2.1.x inputs without writing files or printing secrets. It resolves values through the same loader the application boots with and takes its verdict from the same startup validation, so it cannot clear a configuration that then refuses to start. It reports proxy and HLS actions, inherited rate limits and whether the master switch leaves them enforced, session-expiry behaviour, runtime versions, the one-worker requirement, preserved paths, prefix-aware health and readiness expectations, and the manual backup and rollback work. The migration guide includes Compose, appliance, plain Docker, source and Windows invocations.
+
+The named `npm run test:playback-gate` acceptance command drives authenticated master and media playlists, segments and byte ranges; pause/resume and bidirectional seeking; audio and subtitle selection; reconnect, host reload and session-bind retry; cross-party denial; plus the iPhone WebKit native-HLS selection path against fake Emby.
+
+---
+
 ## [3.0.0-beta1] - 2026-08-05 - Director's Cut
 
 **First beta of the 3.0 line.** Published to GHCR as `:3.0.0-beta1`, and tracked by `:devel` and `:nightly`. It does **not** move `:latest`, which stays on the 2.1.x stable line, so a deployment pinned to `:latest` will not pick this up by accident.
@@ -68,11 +80,7 @@ Two lessons from that pass are worth stating, because they shaped how the rest w
 
 Unlike every 2.x release, this one needs reading before you upgrade, and [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) now covers the 2.1.x → 3.0 path.
 
-Rate limiting becomes **enforced**, using the values already sitting in your `config.json`, values nobody has tuned because they previously did nothing. This is the change most likely to be noticed. Blocked HTTP actions, socket connections, session binding, chat, login, and avatar recovery now name the limit and show a safe retry delay; rejected chat text is restored for manual resend. Progress telemetry remains silently coalesced because the latest visible party time is still committed.
-
-A read-only `python -m backend.migration_preflight` command now inventories the effective 2.1.x inputs without writing files or printing secrets. It reports proxy/HLS actions, inherited rate limits, session-expiry behavior, runtime versions, one-worker requirements, preserved paths, health/readiness expectations, and manual backup/rollback work. The migration guide includes Compose, appliance, plain Docker, source, and Windows invocations.
-
-The named `npm run test:playback-gate` acceptance command now drives authenticated master/media playlists, segments and byte ranges; pause/resume and bidirectional seeking; audio/subtitle selection; reconnect, host reload, and session-bind retry; cross-party denial; plus the iPhone WebKit native-HLS selection path against fake Emby.
+Rate limiting becomes **enforced**, using the values already sitting in your `config.json`, values nobody has tuned because they previously did nothing. This is the change most likely to be noticed, and it is silent when it bites: a third person tries to join movie night and simply cannot, with nothing in the interface naming a limit.
 
 `BEHIND_PROXY` is the one genuinely new setting, and production refuses to boot until you declare it, `true` or `false`. That is deliberate, because guessing wrong is silent: rate limiting keys on the address a connection arrives from, and behind a reverse proxy that address is the proxy, identical for every viewer, so all of them share one bucket. Setting it `true` makes `TRUSTED_PROXY_CIDRS` mandatory. If a forwarding header turns up on a deployment that declared itself direct, the server now says so in the log, once, rather than silently discarding it.
 

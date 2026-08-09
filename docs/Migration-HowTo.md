@@ -145,8 +145,10 @@ into a support request.
    ```
 
    Create the host-side `config.json` as a file before starting Compose.
-4. Run the preflight and resolve every required production action.
-5. Pull the chosen 3.0 beta image or build from `3.0-dev`.
+4. Point the Compose service at the chosen 3.0 beta image (or `build: .` from
+   `3.0-dev`) and pull it. The preflight ships *in* the 3.0 image; a 2.1.x
+   image has no such module, so this has to come first.
+5. Run the preflight and resolve every required production action.
 6. Start the container and inspect its logs.
 
 The baked `/api/health` probe is liveness only. Setup mode intentionally
@@ -360,9 +362,17 @@ share them.
 
 Before directing users to 3.0:
 
-- `curl -i http://HOST:PORT/api/health` returns `200` with `status: ok`, not
-  `setup_required`.
-- `curl -i http://HOST:PORT/api/ready` returns `200` and reaches Emby.
+- `curl -i http://HOST:PORT<APP_PREFIX>/api/health` returns `200` with
+  `status: ok`, not `setup_required`.
+- `curl -i http://HOST:PORT<APP_PREFIX>/api/ready` returns `200` and reaches
+  Emby.
+
+  Both probes are mounted under `APP_PREFIX`. On a subpath deployment the
+  unprefixed URL returns `404` against a perfectly healthy server, and against
+  a misconfigured one it falls through to the unprefixed catch-all and returns
+  `503`, which reads as "dead" rather than "misconfigured". Leave the
+  placeholder out entirely when `APP_PREFIX` is empty. The preflight prints
+  both URLs already resolved for your configuration.
 - Administrator login, renewed admin controls, and logout work.
 - Create two separate parties and verify an HLS URL from one cannot be used
   with the other party's cookie.

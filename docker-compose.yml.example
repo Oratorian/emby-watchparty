@@ -11,7 +11,9 @@
 # `version:` is omitted intentionally -- modern Docker Compose v2
 # ignores it and warns on its presence.
 #
-# 2.1.x upgrade preflight (read-only; back up every listed mount first):
+# 2.1.x upgrade preflight (read-only). Point `image:` below at a 3.0 tag
+# first -- the preflight ships in the 3.0 image, and `:latest` is still
+# 2.1.x, which has no such module. Back up every listed mount before running:
 # docker compose run --rm --no-deps emby-watchparty python -m backend.migration_preflight
 
 services:
