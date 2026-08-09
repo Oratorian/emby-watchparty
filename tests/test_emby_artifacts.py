@@ -13,6 +13,7 @@ REQUIRED_BOUNDARIES = {
     "official-ratings",
     "movie-items",
     "resolution-filter",
+    "filtered-prefixes",
     "movie-detail",
     "series-detail",
     "episode-detail",

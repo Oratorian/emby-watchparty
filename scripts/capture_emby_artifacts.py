@@ -186,6 +186,23 @@ def main() -> None:
                 ),
             ),
             (
+                "filtered-prefixes",
+                "GET",
+                "/emby/Items/Prefixes?Filters=IsResumable",
+                client.get(
+                    "/emby/Items/Prefixes",
+                    params={
+                        "UserId": user_id,
+                        "ParentId": movie_view["Id"],
+                        "Recursive": "true",
+                        "IncludeItemTypes": "Movie",
+                        "Filters": "IsResumable",
+                        "SortBy": "SortName",
+                        "SortOrder": "Ascending",
+                    },
+                ),
+            ),
+            (
                 "movie-detail",
                 "GET",
                 "/emby/Users/{user_id}/Items/{item_id}",

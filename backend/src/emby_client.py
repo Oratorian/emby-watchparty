@@ -278,7 +278,9 @@ class EmbyClient:
         response.raise_for_status()
         return response.json()
 
-    async def query_items(self, query, access_token=None, user_id=None):
+    async def query_items(
+        self, query, access_token=None, user_id=None, *, prefixes=False
+    ):
         """Run a strict watchparty library query through Emby's allowlisted API."""
         if not user_id:
             return {"Items": [], "TotalRecordCount": 0, "StartIndex": 0}
@@ -375,6 +377,35 @@ class EmbyClient:
         for provider in filters["missing_provider_ids"]:
             params[provider_params[provider]] = "false"
 
+        if prefixes:
+            for key in ("Fields", "StartIndex", "Limit"):
+                params.pop(key, None)
+            response = await self.gateway.get(
+                "/emby/Items/Prefixes",
+                headers=self._headers(access_token, user_id),
+                params=params,
+            )
+            response.raise_for_status()
+            return response.json()
+
+        anchor_prefix = query.get("anchor_prefix")
+        if sort["field"] == "SortName" and anchor_prefix:
+            count_params = {
+                **params,
+                "NameLessThan": anchor_prefix,
+                "StartIndex": 0,
+                "Limit": 1,
+            }
+            count_response = await self.gateway.get(
+                f"/emby/Users/{user_id}/Items",
+                headers=self._headers(access_token, user_id),
+                params=count_params,
+            )
+            count_response.raise_for_status()
+            params["StartIndex"] = int(
+                count_response.json().get("TotalRecordCount") or 0
+            )
+
         response = await self.gateway.get(
             f"/emby/Users/{user_id}/Items",
             headers=self._headers(access_token, user_id),
@@ -382,7 +413,7 @@ class EmbyClient:
         )
         response.raise_for_status()
         result = response.json()
-        result["StartIndex"] = page["start_index"]
+        result["StartIndex"] = int(params["StartIndex"])
         return result
 
     async def get_filter_options(

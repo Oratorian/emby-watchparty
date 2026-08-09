@@ -152,6 +152,30 @@ async def api_query_items(
         raise HTTPException(status_code=502, detail="Emby upstream unavailable") from exc
 
 
+@router.post(
+    "/items/prefixes/query",
+    response_model=LibraryPrefixesResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
+async def api_query_prefixes(
+    query: LibraryQueryRequest,
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    rows = await emby_client.query_items(
+        query.model_dump(),
+        access_token=access_token,
+        user_id=user_id,
+        prefixes=True,
+    )
+    return {
+        "Prefixes": [
+            row["Name"] for row in rows if isinstance(row, dict) and row.get("Name")
+        ]
+    }
+
+
 def _filter_values(
     payload: dict | None, *, uppercase_labels: bool = False
 ) -> list[dict[str, str]]:

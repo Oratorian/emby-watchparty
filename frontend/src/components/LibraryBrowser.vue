@@ -502,7 +502,6 @@ const showAlphabetBar = computed(() => (
   alphabeticalMode.value
   && sortField.value === 'SortName'
   && sortDirection.value === 'Ascending'
-  && Object.keys(filterState.value).length === 0
   && totalRecordCount.value >= ALPHABET_BAR_MIN_ITEMS
   && availablePrefixes.value.size > 0
 ))
@@ -612,7 +611,14 @@ async function fetchPrefixes(parentId: string) {
     return
   }
   try {
-    const data = await api.itemPrefixes(parentId, navigationSignal())
+    const data = Object.keys(filterState.value).length
+      ? await api.queryPrefixes({
+          scope: { parent_id: parentId, include_item_types: [], media_types: [], recursive: false },
+          page: { start_index: 0, limit: PAGE_SIZE },
+          sort: { field: sortField.value, direction: sortDirection.value },
+          filters: queryFilters(),
+        }, navigationSignal())
+      : await api.itemPrefixes(parentId, navigationSignal())
     availablePrefixes.value = new Set(
       (data.Prefixes ?? []).map((prefix) => prefix.trim().toUpperCase()).filter(Boolean),
     )
@@ -672,6 +678,7 @@ async function fetchItems(
           page: { start_index: startIndex, limit: PAGE_SIZE },
           sort: { field: sortField.value, direction: sortDirection.value },
           filters: queryFilters(),
+          anchor_prefix: anchorPrefix,
         }, navigationSignal())
       : await api.items(params, navigationSignal())
     if (myToken !== navToken) {

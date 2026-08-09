@@ -242,6 +242,7 @@ class LibraryQueryRequest(StrictApiModel):
     sort: LibraryQuerySort = Field(default_factory=LibraryQuerySort)
     filters: LibraryQueryFilters = Field(default_factory=LibraryQueryFilters)
     search_term: str | None = Field(default=None, max_length=200)
+    anchor_prefix: str | None = Field(default=None, min_length=1, max_length=8)
 
 
 class FilterOption(StrictApiModel):

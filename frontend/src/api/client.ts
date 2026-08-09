@@ -149,6 +149,7 @@ export interface LibraryQueryRequest {
   }
   filters: Record<string, string | string[] | number[] | boolean | null>
   search_term?: string | null
+  anchor_prefix?: string | null
 }
 export interface SearchGroup {
   id: 'movies' | 'series' | 'episodes' | 'people' | 'collections' | 'other'
@@ -350,6 +351,10 @@ export const api = {
     '/api/items/query',
     { method: 'POST', body: JSON.stringify(query), signal },
   ),
+  queryPrefixes: (query: LibraryQueryRequest, signal?: AbortSignal) =>
+    apiFetch<LibraryPrefixesResponse>('/api/items/prefixes/query', {
+      method: 'POST', body: JSON.stringify(query), signal,
+    }),
   search: (q: string, signal?: AbortSignal) => apiFetch<LibraryResponse>(
     `/api/search?q=${encodeURIComponent(q)}`, { signal },
   ),

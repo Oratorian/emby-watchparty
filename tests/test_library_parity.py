@@ -281,3 +281,24 @@ def test_series_sections_use_observed_season_and_episode_endpoints(live_watchpar
         and ("SeasonId", "season-1") in row["query"]
         for row in requests
     )
+
+
+def test_filtered_prefixes_forward_the_same_filter_contract(live_watchparty) -> None:
+    client = _unlocked_client(live_watchparty)
+    try:
+        response = client.post(
+            "/api/items/prefixes/query",
+            json={
+                "scope": {"parent_id": "library-1"},
+                "sort": {"field": "SortName", "direction": "Ascending"},
+                "filters": {"genres": ["Drama"], "playstate": "unplayed"},
+            },
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    upstream = live_watchparty.fake.state.requests[-1]
+    assert upstream["path"] == "/emby/Items/Prefixes"
+    assert ("Genres", "Drama") in upstream["query"]
+    assert ("Filters", "IsUnplayed") in upstream["query"]
