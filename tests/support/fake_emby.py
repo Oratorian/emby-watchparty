@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -14,6 +16,19 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 _SEGMENT_BYTES = (Path(__file__).parent / "assets" / "fake_segment.ts").read_bytes()
+_ARTIFACT_ROOT = Path(__file__).parents[1] / "artifacts" / "emby" / "4.9.5.0"
+_FILTER_ARTIFACT_NAMES = {
+    "Genres": ("filter-options", "Drama"),
+    "Studios": ("studios", "Studio A"),
+    "Tags": ("tags", "Featured"),
+    "Years": ("years", "2024"),
+    "OfficialRatings": ("official-ratings", "PG-13"),
+    "Containers": ("containers", "mkv"),
+    "VideoCodecs": ("video-codecs", "h264"),
+    "AudioCodecs": ("audio-codecs", "aac"),
+    "AudioLayouts": ("audio-layouts", "stereo"),
+    "SubtitleCodecs": ("subtitle-codecs", "subrip"),
+}
 _SEGMENT_CHUNKS = [
     _SEGMENT_BYTES[: len(_SEGMENT_BYTES) // 2],
     _SEGMENT_BYTES[len(_SEGMENT_BYTES) // 2 :],
@@ -134,6 +149,17 @@ def _require_loopback(request: Request) -> None:
         raise HTTPException(status_code=403, detail="test controls are loopback-only")
 
 
+def _filter_artifact(kind: str) -> dict[str, Any]:
+    artifact_name, value = _FILTER_ARTIFACT_NAMES[kind]
+    payload = json.loads((_ARTIFACT_ROOT / f"{artifact_name}.json").read_text(encoding="utf-8"))
+    result = copy.deepcopy(payload)
+    first = dict(result["Items"][0])
+    first["Name"] = value
+    result["Items"] = [first]
+    result["TotalRecordCount"] = 1
+    return result
+
+
 def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     state = state or FakeEmbyState()
     app = FastAPI(title="Fake Emby", docs_url=None, redoc_url=None)
@@ -241,6 +267,20 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
             {"Name": "M", "Value": None},
             {"Name": "Z", "Value": None},
         ]
+
+    @app.get("/emby/Genres")
+    @app.get("/emby/Studios")
+    @app.get("/emby/Tags")
+    @app.get("/emby/Years")
+    @app.get("/emby/OfficialRatings")
+    @app.get("/emby/Containers")
+    @app.get("/emby/VideoCodecs")
+    @app.get("/emby/AudioCodecs")
+    @app.get("/emby/AudioLayouts")
+    @app.get("/emby/SubtitleCodecs")
+    async def filter_values(request: Request):
+        state.record(request)
+        return _filter_artifact(request.url.path.rsplit("/", 1)[-1])
 
     @app.get("/emby/Users/{user_id}/Items")
     async def user_items(request: Request, user_id: str):

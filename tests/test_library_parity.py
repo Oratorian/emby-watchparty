@@ -107,3 +107,50 @@ def test_library_query_maps_viewer_filters_to_emby(live_watchparty) -> None:
         "VideoTypes": "VideoFile",
         "Years": "2024",
     }
+
+
+def test_filter_options_are_capability_driven_from_emby(live_watchparty) -> None:
+    client = _unlocked_client(live_watchparty)
+    try:
+        response = client.get(
+            "/api/items/filter-options",
+            params={
+                "parentId": "library-1",
+                "includeItemTypes": "Movie",
+                "mediaTypes": "Video",
+            },
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    controls = {control["id"]: control for control in response.json()["controls"]}
+    assert controls["playstate"]["values"] == [
+        {"value": "any", "label": "Any"},
+        {"value": "unplayed", "label": "Unplayed"},
+        {"value": "played", "label": "Played"},
+        {"value": "resumable", "label": "In progress"},
+    ]
+    assert controls["genre"]["values"] == [{"value": "Drama", "label": "Drama"}]
+    assert controls["container"]["values"] == [{"value": "mkv", "label": "MKV"}]
+    assert controls["video_codec"]["values"] == [{"value": "h264", "label": "H264"}]
+    assert controls["audio_codec"]["values"] == [{"value": "aac", "label": "AAC"}]
+    assert controls["subtitle_codec"]["values"] == [
+        {"value": "subrip", "label": "SUBRIP"}
+    ]
+    assert "audio_language" not in controls
+
+    recorded = httpx.get(f"{live_watchparty.fake.url}/__test__/requests").json()["requests"]
+    option_paths = {row["path"] for row in recorded}
+    assert {
+        "/emby/Genres",
+        "/emby/Studios",
+        "/emby/Tags",
+        "/emby/Years",
+        "/emby/OfficialRatings",
+        "/emby/Containers",
+        "/emby/VideoCodecs",
+        "/emby/AudioCodecs",
+        "/emby/AudioLayouts",
+        "/emby/SubtitleCodecs",
+    } <= option_paths

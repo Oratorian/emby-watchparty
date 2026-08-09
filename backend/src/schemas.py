@@ -242,6 +242,22 @@ class LibraryQueryRequest(StrictApiModel):
     search_term: str | None = Field(default=None, max_length=200)
 
 
+class FilterOption(StrictApiModel):
+    value: str
+    label: str
+
+
+class FilterControl(StrictApiModel):
+    id: str
+    label: str
+    kind: Literal["select", "multi", "toggle"]
+    values: list[FilterOption] = Field(default_factory=list)
+
+
+class FilterOptionsResponse(StrictApiModel):
+    controls: list[FilterControl]
+
+
 class ItemDetailsResponse(BaseModel):
     """Single item with extended details. Wraps a LibraryItem plus any
     additional fields Emby returns for that item type."""

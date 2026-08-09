@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 from typing import TYPE_CHECKING
 
@@ -374,6 +375,51 @@ class EmbyClient:
         result = response.json()
         result["StartIndex"] = page["start_index"]
         return result
+
+    async def get_filter_options(
+        self,
+        *,
+        parent_id=None,
+        include_item_types=None,
+        media_types=None,
+        access_token=None,
+        user_id=None,
+    ):
+        params = {
+            "UserId": user_id or "",
+            "Recursive": "true",
+            "ParentId": parent_id or "",
+            "IncludeItemTypes": include_item_types or "",
+            "MediaTypes": media_types or "",
+            "Limit": 200,
+        }
+        paths = {
+            "genre": "/emby/Genres",
+            "studio": "/emby/Studios",
+            "tag": "/emby/Tags",
+            "year": "/emby/Years",
+            "official_rating": "/emby/OfficialRatings",
+            "container": "/emby/Containers",
+            "video_codec": "/emby/VideoCodecs",
+            "audio_codec": "/emby/AudioCodecs",
+            "audio_layout": "/emby/AudioLayouts",
+            "subtitle_codec": "/emby/SubtitleCodecs",
+        }
+
+        async def fetch(path):
+            try:
+                response = await self.gateway.get(
+                    path,
+                    headers=self._headers(access_token, user_id),
+                    params={key: value for key, value in params.items() if value != ""},
+                )
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPError:
+                return None
+
+        responses = await asyncio.gather(*(fetch(path) for path in paths.values()))
+        return dict(zip(paths, responses, strict=True))
 
     async def get_season_episodes(self, season_id, access_token=None, user_id=None):
         path = f"/emby/Users/{user_id}/Items" if user_id else "/emby/Items"

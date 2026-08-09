@@ -17,6 +17,7 @@ from backend.src.dependencies import (
     require_party_unlocked,
 )
 from backend.src.schemas import (
+    FilterOptionsResponse,
     ItemDetailsResponse,
     LibraryItemsResponse,
     LibraryPrefixesResponse,
@@ -134,6 +135,150 @@ async def api_query_items(
         )
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="Emby upstream unavailable") from exc
+
+
+def _filter_values(
+    payload: dict | None, *, uppercase_labels: bool = False
+) -> list[dict[str, str]]:
+    if not payload:
+        return []
+    return [
+        {
+            "value": str(item["Name"]),
+            "label": (
+                str(item["Name"]).upper()
+                if uppercase_labels
+                else str(item["Name"])
+            ),
+        }
+        for item in payload.get("Items", [])
+        if item.get("Name")
+    ]
+
+
+@router.get(
+    "/items/filter-options",
+    response_model=FilterOptionsResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
+async def api_filter_options(
+    parent_id: str | None = Query(None, alias="parentId"),
+    include_item_types: str | None = Query(None, alias="includeItemTypes"),
+    media_types: str | None = Query(None, alias="mediaTypes"),
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    catalogs = await emby_client.get_filter_options(
+        parent_id=parent_id,
+        include_item_types=include_item_types,
+        media_types=media_types,
+        access_token=access_token,
+        user_id=user_id,
+    )
+    controls: list[dict] = [
+        {
+            "id": "playstate",
+            "label": "Playstate",
+            "kind": "select",
+            "values": [
+                {"value": "any", "label": "Any"},
+                {"value": "unplayed", "label": "Unplayed"},
+                {"value": "played", "label": "Played"},
+                {"value": "resumable", "label": "In progress"},
+            ],
+        },
+        {"id": "favorite", "label": "Favorite", "kind": "toggle", "values": []},
+        {"id": "duplicates", "label": "Duplicates", "kind": "toggle", "values": []},
+    ]
+    labels = {
+        "genre": "Genre",
+        "studio": "Studio",
+        "tag": "Tag",
+        "year": "Year",
+        "official_rating": "Parental rating",
+        "container": "Container",
+        "video_codec": "Video codec",
+        "audio_codec": "Audio codec",
+        "audio_layout": "Audio layout",
+        "subtitle_codec": "Subtitle codec",
+    }
+    for control_id, label in labels.items():
+        values = _filter_values(
+            catalogs.get(control_id),
+            uppercase_labels=control_id
+            in {
+                "container",
+                "video_codec",
+                "audio_codec",
+                "audio_layout",
+                "subtitle_codec",
+            },
+        )
+        if values:
+            controls.append(
+                {"id": control_id, "label": label, "kind": "multi", "values": values}
+            )
+    controls.extend(
+        [
+            {
+                "id": "video_type",
+                "label": "Video type",
+                "kind": "multi",
+                "values": [
+                    {"value": value, "label": value}
+                    for value in ("VideoFile", "Bluray", "Dvd", "Iso")
+                ],
+            },
+            {
+                "id": "resolution",
+                "label": "Resolution",
+                "kind": "multi",
+                "values": [
+                    {"value": value, "label": value}
+                    for value in ("4K", "1080p", "720p", "SD")
+                ],
+            },
+            {"id": "is_3d", "label": "3D", "kind": "toggle", "values": []},
+        ]
+    )
+    for control_id, label in (
+        ("subtitles", "Subtitles"),
+        ("trailers", "Trailers"),
+        ("extras", "Extras"),
+        ("theme_songs", "Theme songs"),
+        ("theme_videos", "Theme videos"),
+        ("locked", "Locked"),
+        ("overview", "Overview"),
+    ):
+        positive_value, negative_value = (
+            ("yes", "no") if control_id == "locked" else ("with", "without")
+        )
+        controls.append(
+            {
+                "id": control_id,
+                "label": label,
+                "kind": "select",
+                "values": [
+                    {"value": "any", "label": "Any"},
+                    {"value": positive_value, "label": "With"},
+                    {"value": negative_value, "label": "Without"},
+                ],
+            }
+        )
+    controls.append(
+        {
+            "id": "missing_provider_ids",
+            "label": "Missing metadata",
+            "kind": "multi",
+            "values": [
+                {"value": "imdb", "label": "IMDb Id"},
+                {"value": "tmdb", "label": "MovieDb Id"},
+                {"value": "tvdb", "label": "Tvdb Id"},
+            ],
+        }
+    )
+    return {"controls": controls}
 
 
 @router.get(
