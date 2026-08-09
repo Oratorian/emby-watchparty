@@ -93,11 +93,28 @@ export interface LibraryItem {
   Overview?: string
   RunTimeTicks?: number
   SortName?: string
+  ProductionYear?: number
+  Tagline?: string
+  Taglines?: string[]
+  CommunityRating?: number
+  CriticRating?: number
+  OfficialRating?: string
+  Genres?: string[]
+  Tags?: string[]
+  People?: Array<{ Id?: string; Name?: string; Type?: string; Role?: string }>
+  Studios?: Array<{ Id?: string; Name?: string }>
+  ImageTags?: Record<string, string>
+  BackdropImageTags?: string[]
+  LogoImageTag?: string
+  PrimaryImageAspectRatio?: number
+  MediaSources?: JsonObject[]
+  MediaStreams?: JsonObject[]
   MediaSourceCount?: number
   UserData?: {
     PlaybackPositionTicks?: number
     PlayedPercentage?: number
     Played?: boolean
+    IsFavorite?: boolean
   }
 }
 export interface LibraryResponse {

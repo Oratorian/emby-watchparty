@@ -1,5 +1,14 @@
 <template>
   <div ref="browserRoot" class="library-browser">
+    <TitleDetails
+      v-if="detailItem"
+      :item="detailItem"
+      :is-host="auth.isHost"
+      @back="closeDetails"
+      @play="emit('select-video', $event)"
+      @browse="browseDetail"
+    />
+    <template v-else>
       <div class="panel-header">
         <div class="breadcrumbs">
           <span class="crumb" @click="goToRoot">Libraries</span>
@@ -57,11 +66,13 @@
             :key="item.Id"
             :data-item-id="item.Id"
             class="item-card"
+            tabindex="0"
             :class="{
               'item-card-live': item.Id === playingItemId,
               'item-card-next': item.Id === nextItemId,
             }"
             @click="handleItemClick(item)"
+            @keydown.enter.prevent="handleItemClick(item)"
           >
             <div class="item-poster" :style="posterStyle(item)">
               <img
@@ -128,17 +139,21 @@
           </button>
         </div>
       </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { api, type FilterControl, type LibraryFilterState, type LibraryQueryRequest } from '@/api/client'
+import { api, type FilterControl, type LibraryFilterState, type LibraryItem, type LibraryQueryRequest } from '@/api/client'
 import { usePartyStore } from '@/stores/party'
+import { useAuthStore } from '@/stores/auth'
 import LibraryFilters from './LibraryFilters.vue'
 import GlobalLibrarySearch from './GlobalLibrarySearch.vue'
+import TitleDetails from './TitleDetails.vue'
 
 const party = usePartyStore()
+const auth = useAuthStore()
 // Drives the LIVE badge + EQ animation overlay on the currently-playing
 // card. Falls back to null when nothing is selected so the overlay never
 // renders accidentally on a stale match.
@@ -193,6 +208,8 @@ interface EmbyItem {
   Overview?: string
   RunTimeTicks?: number
   SortName?: string
+  SeriesId?: string
+  SeriesName?: string
   UserData?: {
     PlaybackPositionTicks?: number
     PlayedPercentage?: number
@@ -256,6 +273,35 @@ const totalRecordCount = ref(0)
 const currentParentId = ref<string | null>(null)
 const currentParentType = ref<string | null>(null)
 const PAGE_SIZE = 50
+const detailItem = ref<LibraryItem | null>(null)
+let detailScrollTop = 0
+let detailFocusId: string | null = null
+
+function openDetails(item: EmbyItem) {
+  const panel = browserRoot.value?.closest<HTMLElement>('.library-panel')
+  detailScrollTop = panel?.scrollTop ?? 0
+  detailFocusId = item.Id
+  detailItem.value = item
+  emit('navigation-change', item.Name)
+}
+
+async function closeDetails() {
+  detailItem.value = null
+  emit('navigation-change', breadcrumbs.value.at(-1)?.name ?? 'Libraries')
+  await nextTick()
+  const panel = browserRoot.value?.closest<HTMLElement>('.library-panel')
+  if (panel) panel.scrollTop = detailScrollTop
+  if (detailFocusId) {
+    browserRoot.value
+      ?.querySelector<HTMLElement>(`[data-item-id="${CSS.escape(detailFocusId)}"]`)
+      ?.focus()
+  }
+}
+
+async function browseDetail(item: LibraryItem) {
+  detailItem.value = null
+  await handleItemClick(item as EmbyItem, true)
+}
 const filterControls = ref<FilterControl[]>([])
 const filterState = ref<LibraryFilterState>({})
 const sortField = ref<LibraryQueryRequest['sort']['field']>('SortName')
@@ -692,9 +738,9 @@ function loadPrevious() {
   fetchItems(currentParentId.value, false, true)
 }
 
-async function handleItemClick(item: EmbyItem) {
-  if (playableTypes.has(item.Type)) {
-    emit('select-video', item)
+async function handleItemClick(item: EmbyItem, browse = false) {
+  if (!browse && (playableTypes.has(item.Type) || item.Type === 'Series')) {
+    openDetails(item)
     return
   }
 
