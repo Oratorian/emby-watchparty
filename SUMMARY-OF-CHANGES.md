@@ -6,13 +6,25 @@ The 2.0 "Midnight Premiere" log (beta1 through beta18, every Added / Changed / F
 
 ---
 
-## [Unreleased] - appliance deployment
+## [Unreleased]
+
+Two bodies of work since beta1, both **[dnordel](https://github.com/dnordel)**'s, both
+landed on `3.0-dev` via their branch after an audit rather than through a PR merge:
+appliance deployment ([#58](https://github.com/Oratorian/emby-watchparty/pull/58)) and
+migration diagnostics ([#57](https://github.com/Oratorian/emby-watchparty/pull/57)).
+
+Neither is in a published image. `:3.0.0-beta1`, `:devel` and `:nightly` all still point
+at beta1.
+
+---
+
+### Appliance deployment
 
 **[dnordel](https://github.com/dnordel)**'s, contributed as [#58](https://github.com/Oratorian/emby-watchparty/pull/58): 16 commits over 20 files, +1627 / -204, making `deploy/schema.json` the single description of a deployment and rendering five artifacts from it with a hash stamp and a CI drift gate.
 
 The design is right and the two largest commits in the PR are the author hardening his own guarantees, `+181` of schema validation and a drift check taught to notice deleted artifacts. The audit found nothing wrong with the architecture. It found that the *values* it shipped did not work.
 
-### The audit
+#### The audit
 
 Six lenses over the 20-file diff, then severity-scaled adversarial verification. 36 candidates, 16 verified, **13 confirmed and all fixed here**, 2 refuted, 1 split.
 
@@ -32,23 +44,25 @@ Relatedly, `README.md` still said `touch config.json` in two places, which preda
 
 **A gate that was red for everyone.** `--check` swept for the generated header to find obsolete artifacts, and that header is exactly what `cp .env.example .env` copies, so the check `CONTRIBUTING.md` makes a required pre-PR step failed for anyone who had ever run the app, on a clean tree with no drift. A gate everyone must ignore is worse than no gate.
 
-### What the tests could not have caught
+#### What the tests could not have caught
 
 The 44 tests shipped with the PR all passed against artifacts that could not be pulled, could not boot, and could not hold a session, because none of them asked the real loader what it made of the output, and the image was asserted as a literal rather than derived. Five tests added: omitted settings ship absent and commented, a deployment built from `.env.example` actually boots, published validation patterns agree with the loader they describe, `schema.storage` reaches every artifact, and the image derives from the schema. CI additionally resolves the schema's image against the registry.
 
-### Provenance note
+#### Provenance note
 
 `397ed2f` removed `deploy/unraid/emby-watchparty.xml` citing "platform ownership". The outcome is correct, Unraid templates are published from a separate repository, but the stated reason is not: that repository is the maintainer's own, and Unraid Community Apps only indexes it via `TemplateURL`. `schema.json` still carries the `display` metadata that existed to generate the XML, so the capability survives if it is ever wanted.
 
 ---
 
-## [Unreleased] - migration diagnostics
+---
+
+### Migration diagnostics
 
 Not published. `:3.0.0-beta1`, `:devel` and `:nightly` all still point at beta1.
 
 31 commits over 46 files, +2466 / -111. 21 of those files are tests.
 
-### Provenance
+#### Provenance
 
 The feature work is **[dnordel](https://github.com/dnordel)**'s, contributed as [#57](https://github.com/Oratorian/emby-watchparty/pull/57): 25 commits over 45 files, split 12 fixes, 7 tests, 3 features, 2 docs, 1 formatting.
 
@@ -56,7 +70,7 @@ The PR was closed rather than merged, and its branch landed on `3.0-dev` directl
 
 The remaining 6 commits are fixes for what an audit of that work found before it landed, described below.
 
-### What the PR added
+#### What the PR added
 
 **A uniform 429.** `rate_limit_response(action, retry_after)` in `backend/src/rate_limit.py` is now the single construction site for a rate-limit refusal, returning `{detail, code: "rate_limited", retry_after}` with the matching `Retry-After` header. The middleware, admin login and avatar recovery all route through it, replacing two hand-rolled bodies with different shapes, one of which did not conform to its own route's declared `response_model`.
 
@@ -70,13 +84,13 @@ The remaining 6 commits are fixes for what an audit of that work found before it
 
 **`npm run test:playback-gate`**, a Playwright grep on `@playback-gate` covering one complete authenticated session end to end.
 
-### The audit
+#### The audit
 
 Two passes over the 45-file diff before it merged. Seven lenses ran blind to each other, so the same defect was frequently reported several times under different wording: 38 candidates, of which the first pass verified 8 and the second adjudicated the remaining 30. They collapse to **19 distinct defects, all confirmed and all fixed**. Four candidates were refuted, one split its verifiers, and three were already closed by a fix earlier in the same cycle. A twentieth turned up later, when this section itself was fact-checked; it is described below.
 
 Convergence did the useful work. Four independent lenses landed on the preflight's `.env` parser and four on its handling of `ENABLE_RATE_LIMITING`, which is far stronger evidence than any single lens asserting either.
 
-#### The dominant defect class: diagnostics describing a system that does not exist
+##### The dominant defect class: diagnostics describing a system that does not exist
 
 Most of the 19 were a report contradicting the code it reported on. This is the failure mode a diagnostics feature can least afford, because the whole product is the report, and an operator acts on it precisely when they cannot yet observe the thing themselves.
 
@@ -103,7 +117,7 @@ Values now come from `dotenv_values` and the verdict from `Config.startup_errors
 
 **`retry_after` overshot.** `int(...) + 1` truncated and added a second, so a full three-second window reported four. The eviction above it already leaves `bucket[0]` as the oldest hit inside the window, making the expression the exact wait, so `math.ceil` is correct. The `max(1, ...)` floor stays.
 
-#### Frontend: state that outlived its cause
+##### Frontend: state that outlived its cause
 
 - **Refused chat drafts were concatenated into the composer.** With anything already typed, two distinct messages merged into one, and because refusals arrive in send order while each arrival prepended, the merge came out reversed. Drafts now return only to an empty composer; otherwise they queue FIFO and render as restorable chips, and restoring into an occupied composer is refused so a draft can never overwrite live typing.
 - **The chat rate-limit alert was never cleared**, only its counter, so it persisted until the next successful send.
@@ -111,7 +125,7 @@ Values now come from `dotenv_values` and the verdict from `Config.startup_errors
 - **The session banner interpolated raw upstream text and dropped its own guidance**, so a proxy's HTML 502 page rendered where the explanation belongs. The fixed sentence now leads, with upstream detail in bounded, ellipsised parentheses. `party.ts` no longer promotes a fetch-layer exception, and `client.ts` takes a non-JSON body only when it reads like one line of prose. That last discrimination is deliberate: dropping unparsed bodies outright would have broken the `preserves readable multipart upload errors` test that predates this branch, which encodes a real nginx 413.
 - **`IndexView`'s party-list banner was assigned only on 429**, so it survived every later failure and blamed rate limiting for the duration of an outage.
 
-#### Tests that could not fail
+##### Tests that could not fail
 
 Four, each found by mutation rather than reading.
 
@@ -124,22 +138,22 @@ Separately, `usePartyChat.test.ts` asserted nothing about the "without resending
 
 One near-miss is worth recording. `chat.py` emits `rate_limited` with `to=sid`, which is correct, but replacing that with `room=party_id` passes the **entire** backend suite. The code is right and nothing pins it, and `usePartyChat.ts` has no `request_id` ownership guard, so a regression there would broadcast one viewer's rate-limit banner to the whole party. Left as-is deliberately, since it is a coverage gap rather than a defect.
 
-#### Documentation that had drifted from the artefact
+##### Documentation that had drifted from the artefact
 
 - **The CHANGELOG rewrote the already-published beta1 section** to advertise the preflight and the playback gate, neither of which that image can run, and deleted the sentence explaining why enforced rate limiting is the change most likely to be noticed. beta1 is restored byte-for-byte, verified by diffing against `3.0-dev`, and the new prose moved under `[Unreleased]`. Retroactively editing published release notes is worth calling out as a class: the beta1 text is linked from the Discord announcement and read by people deciding whether to upgrade.
 - **The documented upgrade order ran the preflight before pulling the 3.0 image**, so as written it executes inside the 2.1.x image, which has no such module. Steps swapped, with the image repoint made explicit since no step previously said to do it, and `docker-compose.yml.example` carries the same caveat because `:latest` is still 2.1.x.
 
-### Verification posture
+#### Verification posture
 
 Every fix for a real defect has a test proven to fail against the code it replaced, by reverting the source and rerunning; tests that pass on both sides are labelled guards rather than passed off as regression coverage. The audit's own findings were adversarially refuted before being accepted, with lenses assigned by severity, and vote splits recorded rather than collapsed.
 
-Current state: **149 backend tests** across 25 modules, **31 Vitest**, **16 Playwright**. `ruff check` and `ruff format --check` clean over 74 files, `mypy` clean over the 43 it covers (`backend` and `scripts`), eslint and `vue-tsc` clean, all on 3.12.10 and run with CI's exact commands against the merged tree.
+Current state after both bodies of work: **197 backend tests** across 27 modules, **31 Vitest**, **16 Playwright**. `ruff check` and `ruff format --check` clean over 77 files, `mypy` clean over the 44 it covers (`backend` and `scripts`), eslint and `vue-tsc` clean, and the generated deployment artifacts in sync with the schema. All on 3.12.10, run with CI's exact commands against the merged tree.
 
 That last clause is not decoration. The first draft of this section claimed `ruff format` was clean having only ever run `ruff check`, and CI runs both; the merged tree was red on the format step until a fact-check pass caught it. The gap and its correction are recorded here rather than quietly fixed, because "the checks pass" is the one claim a reader cannot verify without redoing the work.
 
 The two patterns flagged at beta1 both recurred, which is the argument for keeping them named. The fake Emby hid a defect again by being more permissive than the real server. And the twin path produced four more, all in one new module that re-derived what `config.py` already owned; the fix was structural, making the preflight call the boot gate rather than predict it, because patching the four instances individually would have left the fifth to be found later.
 
-### Still open
+#### Still open
 
 Unchanged from beta1 and still a tuning decision rather than a defect: party creation at 5/hour and socket connects at 30/minute are the tight ones for a household behind a single public IP. Beta feedback is what should settle them. The difference now is that hitting one says so.
 

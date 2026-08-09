@@ -20,7 +20,9 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 **Not published.** Nothing here is in `:3.0.0-beta1`, `:devel` or `:nightly` yet; pulling any of those still gets beta1. This section is what the next beta will carry.
 
-beta1 said the change most likely to be noticed was rate limiting becoming enforced, **and that it is silent when it bites**: a third person tries to join movie night and simply cannot, with nothing in the interface naming a limit. This is the release that stops it being silent, and adds a way to find out what a 2.1.x configuration will do to 3.0 before you upgrade rather than after.
+beta1 said the change most likely to be noticed was rate limiting becoming enforced, **and that it is silent when it bites**: a third person tries to join movie night and simply cannot, with nothing in the interface naming a limit. This is the release that stops it being silent.
+
+It also stops the upgrade itself being guesswork. There is now a read-only command that tells you what 3.0 will make of your 2.1.x configuration before you pull it, and the deployment examples for Compose, CasaOS, TrueNAS and Portainer are generated from one schema rather than kept in step by hand.
 
 ### A blocked action now says so
 
@@ -78,9 +80,11 @@ The rest of the rate-limit surfacing was written and corrected inside this cycle
 
 ### Technical details
 
-The rate-limit work and the preflight are **[dnordel](https://github.com/dnordel)**'s, contributed as [#57](https://github.com/Oratorian/emby-watchparty/pull/57): 25 commits over 45 files. The fixes above came out of an audit of that work before it landed, which found 20 defects and is described, with its methodology and the two patterns worth carrying forward, in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+All of this is **[dnordel](https://github.com/dnordel)**'s: the rate-limit surfacing and the preflight as [#57](https://github.com/Oratorian/emby-watchparty/pull/57), 25 commits over 45 files, and the deployment schema as [#58](https://github.com/Oratorian/emby-watchparty/pull/58), 16 commits over 20 files. Both landed on `3.0-dev` via their branches after an audit rather than through a PR merge.
 
-Test coverage since beta1: **149 backend tests** across 25 modules (was 116), **31 Vitest** (was 17), **16 Playwright** (was 14), with `ruff check`, `ruff format` and `eslint` clean, and `mypy` clean over 43 source files.
+Those audits found 20 defects in the first and 13 in the second, all fixed before either landed. Their methodology, the defect classes, and the two failure patterns now recurring across cycles are in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+
+Test coverage since beta1: **197 backend tests** across 27 modules (was 116), **31 Vitest** (was 17), **16 Playwright** (was 14), with `ruff check`, `ruff format` and `eslint` clean, and `mypy` clean over 44 source files.
 
 ---
 
