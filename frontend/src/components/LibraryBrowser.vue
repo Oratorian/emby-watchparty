@@ -27,6 +27,31 @@
         </div>
       </div>
 
+      <div v-if="currentParentId" class="library-tools">
+        <LibraryFilters
+          :controls="filterControls"
+          :model-value="filterState"
+          @update:model-value="applyFilters"
+        />
+        <label>
+          Sort
+          <select v-model="sortField" aria-label="Sort titles" @change="applySort">
+            <option value="SortName">Title</option>
+            <option value="DateCreated">Date added</option>
+            <option value="PremiereDate">Release date</option>
+            <option value="ProductionYear">Year</option>
+            <option value="CommunityRating">Community rating</option>
+            <option value="CriticRating">Critic rating</option>
+            <option value="Runtime">Runtime</option>
+            <option value="Random">Random</option>
+          </select>
+          <select v-model="sortDirection" aria-label="Sort direction" @change="applySort">
+            <option value="Ascending">Ascending</option>
+            <option value="Descending">Descending</option>
+          </select>
+        </label>
+      </div>
+
       <div v-if="loading" class="loading">Loading...</div>
 
       <div v-else-if="items.length === 0" class="empty">No items found.</div>
@@ -117,8 +142,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { api } from '@/api/client'
+import { api, type FilterControl, type LibraryFilterState, type LibraryQueryRequest } from '@/api/client'
 import { usePartyStore } from '@/stores/party'
+import LibraryFilters from './LibraryFilters.vue'
 
 const party = usePartyStore()
 // Drives the LIVE badge + EQ animation overlay on the currently-playing
@@ -240,6 +266,93 @@ const totalRecordCount = ref(0)
 const currentParentId = ref<string | null>(null)
 const currentParentType = ref<string | null>(null)
 const PAGE_SIZE = 50
+const filterControls = ref<FilterControl[]>([])
+const filterState = ref<LibraryFilterState>({})
+const sortField = ref<LibraryQueryRequest['sort']['field']>('SortName')
+const sortDirection = ref<LibraryQueryRequest['sort']['direction']>('Ascending')
+let configuredParentId: string | null = null
+
+const FILTER_FIELDS: Record<string, string> = {
+  genre: 'genres',
+  official_rating: 'official_ratings',
+  studio: 'studios',
+  tag: 'tags',
+  year: 'years',
+  container: 'containers',
+  video_codec: 'video_codecs',
+  video_type: 'video_types',
+  resolution: 'resolutions',
+  audio_codec: 'audio_codecs',
+  audio_layout: 'audio_layouts',
+  audio_language: 'audio_languages',
+  subtitle_codec: 'subtitle_codecs',
+  subtitle_language: 'subtitle_languages',
+}
+
+function filterStorageKey(parentId: string): string {
+  return `emby-watchparty-library-filters:${parentId}`
+}
+
+function configureFilters(parentId: string) {
+  if (configuredParentId === parentId) return
+  configuredParentId = parentId
+  try {
+    const saved = JSON.parse(localStorage.getItem(filterStorageKey(parentId)) || '{}')
+    filterState.value = saved.filters && typeof saved.filters === 'object' ? saved.filters : {}
+    sortField.value = saved.sortField || 'SortName'
+    sortDirection.value = saved.sortDirection || 'Ascending'
+  } catch {
+    filterState.value = {}
+  }
+  api.filterOptions({ parentId }, navigationSignal())
+    .then((response) => {
+      if (configuredParentId === parentId) filterControls.value = response.controls
+    })
+    .catch(() => {
+      if (configuredParentId === parentId) filterControls.value = []
+    })
+}
+
+function persistFilters() {
+  if (!currentParentId.value) return
+  try {
+    localStorage.setItem(filterStorageKey(currentParentId.value), JSON.stringify({
+      filters: filterState.value,
+      sortField: sortField.value,
+      sortDirection: sortDirection.value,
+    }))
+  } catch { /* ignore disabled storage */ }
+}
+
+function applyFilters(value: LibraryFilterState) {
+  filterState.value = value
+  persistFilters()
+  if (!currentParentId.value) return
+  bumpNavToken('applyFilters')
+  void fetchItems(currentParentId.value)
+}
+
+function applySort() {
+  persistFilters()
+  if (!currentParentId.value) return
+  bumpNavToken('applySort')
+  void fetchItems(currentParentId.value)
+}
+
+function queryFilters(): LibraryQueryRequest['filters'] {
+  const result: LibraryQueryRequest['filters'] = {}
+  for (const [id, value] of Object.entries(filterState.value)) {
+    const target = FILTER_FIELDS[id] || id
+    if (id === 'favorite' || id === 'duplicates' || id === 'is_3d') {
+      result[target] = value === 'true'
+    } else if (id === 'year') {
+      result[target] = (Array.isArray(value) ? value : [value]).map(Number)
+    } else {
+      result[target] = value
+    }
+  }
+  return result
+}
 
 // Per-tab nav token. Bumped on every navigation (root, breadcrumb,
 // folder click, search). Every async fetch captures the token at
@@ -344,6 +457,9 @@ const displayedPrefixes = computed(() => {
 })
 const showAlphabetBar = computed(() => (
   alphabeticalMode.value
+  && sortField.value === 'SortName'
+  && sortDirection.value === 'Ascending'
+  && Object.keys(filterState.value).length === 0
   && totalRecordCount.value >= ALPHABET_BAR_MIN_ITEMS
   && availablePrefixes.value.size > 0
 ))
@@ -484,6 +600,7 @@ async function fetchItems(
     loading.value = true
     items.value = []
     currentParentId.value = parentId
+    configureFilters(parentId)
     hasPrevious.value = false
     hasMore.value = false
   }
@@ -502,10 +619,22 @@ async function fetchItems(
       sortMode: alphabeticalMode.value ? 'alphabetical' : 'default',
     }
     if (anchorPrefix) params.anchorPrefix = anchorPrefix
-    const data = await api.items(
-      params,
-      navigationSignal(),
-    )
+    const useQuery = Object.keys(filterState.value).length > 0
+      || sortField.value !== 'SortName'
+      || sortDirection.value !== 'Ascending'
+    const data = useQuery
+      ? await api.queryItems({
+          scope: {
+            parent_id: parentId,
+            include_item_types: [],
+            media_types: [],
+            recursive: false,
+          },
+          page: { start_index: startIndex, limit: PAGE_SIZE },
+          sort: { field: sortField.value, direction: sortDirection.value },
+          filters: queryFilters(),
+        }, navigationSignal())
+      : await api.items(params, navigationSignal())
     if (myToken !== navToken) {
       console.debug('[LibraryBrowser] fetchItems STALE — dropping result', { startedAt: myToken, current: navToken, parentId, append })
       return 'stale'
@@ -1073,6 +1202,20 @@ onUnmounted(() => {
   color: var(--text-muted);
   font-size: 0.85rem;
   overflow-anchor: none;
+}
+
+.library-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+
+.library-tools select { margin-left: .35rem; }
+
+@media (max-width: 700px) {
+  .library-tools { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {

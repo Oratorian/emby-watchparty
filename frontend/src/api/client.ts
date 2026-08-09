@@ -108,6 +108,31 @@ export interface LibraryResponse {
 export interface LibraryPrefixesResponse {
   Prefixes: string[]
 }
+export interface FilterOption { value: string; label: string }
+export interface FilterControl {
+  id: string
+  label: string
+  kind: 'select' | 'multi' | 'toggle'
+  values: FilterOption[]
+}
+export interface FilterOptionsResponse { controls: FilterControl[] }
+export type LibraryFilterState = Record<string, string | string[]>
+export interface LibraryQueryRequest {
+  scope: {
+    parent_id: string | null
+    include_item_types: string[]
+    media_types: string[]
+    recursive: boolean
+  }
+  page: { start_index: number; limit: number }
+  sort: {
+    field: 'SortName' | 'DateCreated' | 'PremiereDate' | 'ProductionYear'
+      | 'CommunityRating' | 'CriticRating' | 'Runtime' | 'Random'
+    direction: 'Ascending' | 'Descending'
+  }
+  filters: Record<string, string | string[] | number[] | boolean | null>
+  search_term?: string | null
+}
 export interface PartyResponse extends SuccessResponse {
   party_id?: string
   url?: string
@@ -276,6 +301,17 @@ export const api = {
   itemPrefixes: (parentId: string, signal?: AbortSignal) => apiFetch<LibraryPrefixesResponse>(
     `/api/items/prefixes?${new URLSearchParams({ parentId }).toString()}`,
     { signal },
+  ),
+  filterOptions: (
+    params: { parentId?: string; includeItemTypes?: string; mediaTypes?: string },
+    signal?: AbortSignal,
+  ) => apiFetch<FilterOptionsResponse>(
+    `/api/items/filter-options?${new URLSearchParams(params).toString()}`,
+    { signal },
+  ),
+  queryItems: (query: LibraryQueryRequest, signal?: AbortSignal) => apiFetch<LibraryResponse>(
+    '/api/items/query',
+    { method: 'POST', body: JSON.stringify(query), signal },
   ),
   search: (q: string, signal?: AbortSignal) => apiFetch<LibraryResponse>(
     `/api/search?q=${encodeURIComponent(q)}`, { signal },
