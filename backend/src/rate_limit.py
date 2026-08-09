@@ -156,26 +156,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         is_party_create = path == f"{api_root}/party/create" and request.method == "POST"
-        is_party_join = (
-            request.method == "POST"
-            and path.startswith(f"{api_root}/party/")
-            and path.endswith("/join")
-        )
-        spec = config.RATE_LIMIT_PARTY_CREATION if is_party_create else config.RATE_LIMIT_API_CALLS
+        # Bucket, spec and label are picked together, so the 429 can only ever
+        # name the limit that actually refused the request. Deriving the label
+        # from the request path lets it drift from the bucket: everything that
+        # is not party creation shares one `api` bucket, so a path-derived
+        # "too many join attempts" fires on a viewer's FIRST join once other
+        # traffic has drained it -- and the index page polls /api/party/list
+        # through that same bucket every 5s while they sit there.
+        if is_party_create:
+            scope = "party-create"
+            spec = config.RATE_LIMIT_PARTY_CREATION
+            action = "party creation attempts"
+        else:
+            scope = "api"
+            spec = config.RATE_LIMIT_API_CALLS
+            action = "requests"
         try:
             limit, window = parse_rate(spec)
         except ValueError:
             return await call_next(request)
 
         client_ip = request_client_ip(request, config.TRUSTED_PROXY_CIDRS)
-        scope = "party-create" if is_party_create else "api"
         decision = request.app.state.rate_limiter.check(f"{scope}:{client_ip}", limit, window)
         if not decision.allowed:
-            if is_party_create:
-                action = "party creation attempts"
-            elif is_party_join:
-                action = "party join attempts"
-            else:
-                action = "requests"
             return rate_limit_response(action, decision.retry_after)
         return await call_next(request)

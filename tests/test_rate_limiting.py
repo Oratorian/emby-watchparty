@@ -235,8 +235,21 @@ def test_party_creation_uses_stricter_limit():
     }
 
 
-def test_party_join_limit_names_the_blocked_action():
+def test_429_names_the_bucket_it_was_refused_by_not_the_path():
+    """A 429 must describe the limit that actually refused the request.
+
+    `/api/party/{id}/join` has no bucket of its own; it shares the general
+    `api` bucket with every other route. Deriving the label from the request
+    path instead of the bucket reports a viewer's FIRST join as "too many
+    join attempts" once unrelated traffic has drained that shared bucket --
+    and IndexView polls `/api/party/list` every 5s through the same bucket,
+    so the page the viewer joins from is what exhausts it.
+    """
     app = _limited_app()
+
+    @app.get("/api/party/list")
+    def party_list():
+        return {"ok": True}
 
     @app.post("/api/party/ABC123/join")
     def join():
@@ -244,14 +257,17 @@ def test_party_join_limit_names_the_blocked_action():
 
     async def exercise() -> httpx.Response:
         async with asgi_client(app) as client:
-            assert (await client.post("/api/party/ABC123/join")).status_code == 200
-            assert (await client.post("/api/party/ABC123/join")).status_code == 200
+            # Background polling drains the shared bucket. No joins yet.
+            assert (await client.get("/api/party/list")).status_code == 200
+            assert (await client.get("/api/party/list")).status_code == 200
+            # The viewer's first and only join attempt.
             return await client.post("/api/party/ABC123/join")
 
     limited = asyncio.run(exercise())
+    assert limited.status_code == 429
     retry_after = int(limited.headers["retry-after"])
     assert limited.json() == {
-        "detail": f"Too many party join attempts. Try again in {retry_after} seconds.",
+        "detail": f"Too many requests. Try again in {retry_after} seconds.",
         "code": "rate_limited",
         "retry_after": retry_after,
     }
