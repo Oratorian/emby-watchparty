@@ -193,6 +193,10 @@ def main() -> None:
             ("/emby/Years", "years"),
             ("/emby/VideoCodecs", "video-codecs"),
             ("/emby/AudioCodecs", "audio-codecs"),
+            ("/emby/Containers", "containers"),
+            ("/emby/AudioLayouts", "audio-layouts"),
+            ("/emby/SubtitleCodecs", "subtitle-codecs"),
+            ("/emby/OfficialRatings", "official-ratings"),
         ):
             response = client.get(
                 endpoint,
