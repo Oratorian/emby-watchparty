@@ -72,6 +72,7 @@ diagnosis, updates, playback acceptance and full rollback, without ever deleting
 
 Three of these are defects a beta1 user can actually hit today.
 
+- **Mobile library browsing no longer hides its own navigation.** Opening a library on a phone now replaces the oversized party controls with a compact library bar, keeps search and the A-Z rail inside the viewport, and provides an always-visible route back to all libraries. Alphabet jumps now use Emby's full-library prefixes and `SortName` pagination instead of only the posters already loaded, so enabled letters work immediately on mobile and desktop without fetching every image first.
 - **A proxy error page no longer replaces the explanation.** When a reverse proxy answered with its own HTML error page, that page was printed in the party banner where the guidance should be. The fixed sentence now leads and any upstream detail follows in bounded parentheses.
 - **Turning rate limiting off now turns off chat's limit too.** Chat is the one limiter that ignored the master switch in **Admin -> Security**, so with limiting disabled it was still the only one firing, silently dropping messages. This release would have made that visible by disabling the composer, which is what surfaced it.
 - **A retry delay could be longer than the limit it belonged to.** A three-second window reported four seconds in `Retry-After`.

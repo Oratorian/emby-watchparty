@@ -22,6 +22,40 @@ test('iOS viewport supports safe areas and party controls remain usable', async 
   await expect(page.getByTitle('Close chat')).toBeVisible()
 })
 
+test('mobile library uses compact navigation and keeps alphabet controls visible', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).tap()
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).tap()
+  await page.getByRole('main').getByRole(
+    'button', { name: 'Login to Become Host', exact: true },
+  ).tap()
+  await page.getByPlaceholder('Emby username').fill('AlphabetLibrary')
+  await page.getByPlaceholder('Emby password').fill('password')
+  await page.getByRole('button', { name: 'Become Host', exact: true }).tap()
+
+  const allLibraries = page.getByRole('button', { name: 'All Libraries', exact: true })
+  await expect(allLibraries).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Hide Library', exact: true })).toBeVisible()
+  await page.getByText('Movies', { exact: true }).tap()
+
+  const middle = page.getByRole('button', { name: 'Jump to M', exact: true })
+  await expect(middle).toBeEnabled()
+  await expect(middle).toBeInViewport()
+  await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeInViewport()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    await page.evaluate(() => document.documentElement.clientWidth),
+  )
+
+  await allLibraries.tap()
+  await expect(page.getByText('Movies', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Hide Library', exact: true }).tap()
+  await expect(page.getByRole('banner').getByRole(
+    'button', { name: 'Browse Library', exact: true },
+  )).toBeVisible()
+  await expect(allLibraries).toBeHidden()
+})
+
 test('@playback-gate iPhone WebKit selects native HLS from fake Emby', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Create Party', exact: true }).tap()

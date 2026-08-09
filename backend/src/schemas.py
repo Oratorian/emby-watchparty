@@ -162,8 +162,13 @@ class LibraryItemsResponse(BaseModel):
 
     Items: list[LibraryItem] = []
     TotalRecordCount: int | None = None
+    StartIndex: int = 0
 
     model_config = ConfigDict(extra="allow")
+
+
+class LibraryPrefixesResponse(BaseModel):
+    Prefixes: list[str] = []
 
 
 class ItemDetailsResponse(BaseModel):

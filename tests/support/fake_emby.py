@@ -185,7 +185,13 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         state.record(request)  # Never retain submitted credentials.
         if failure := await state.before(request):
             return failure
-        user_id = "user-large" if credentials.get("Username") == "LargeLibrary" else "user-1"
+        username = credentials.get("Username")
+        if username == "LargeLibrary":
+            user_id = "user-large"
+        elif username == "AlphabetLibrary":
+            user_id = "user-alphabet"
+        else:
+            user_id = "user-1"
         return {
             "AccessToken": "fake-access-token",
             "User": {
@@ -226,23 +232,59 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         state.record(request)
         return {"Items": [{"Id": "library-1", "Name": "Movies", "CollectionType": "movies"}]}
 
+    @app.get("/emby/Items/Prefixes")
+    async def item_prefixes(request: Request):
+        state.record(request)
+        return [
+            {"Name": "#", "Value": None},
+            {"Name": "A", "Value": None},
+            {"Name": "M", "Value": None},
+            {"Name": "Z", "Value": None},
+        ]
+
     @app.get("/emby/Users/{user_id}/Items")
     async def user_items(request: Request, user_id: str):
         state.record(request)
-        if user_id != "user-large":
+        if user_id not in {"user-large", "user-alphabet"}:
             return {"Items": [MOVIE], "TotalRecordCount": 1}
 
-        catalog = [
-            {
-                **MOVIE,
-                "Id": f"large-{index:04d}",
-                "Name": f"Large Movie {index:04d}",
-            }
-            for index in range(500)
-        ]
+        if user_id == "user-alphabet":
+            catalog: list[dict[str, Any]] = []
+            for prefix, count in (
+                ("# Feature", 25),
+                ("Alpha Movie", 75),
+                ("Middle Movie", 150),
+                ("Zulu Movie", 150),
+            ):
+                for index in range(count):
+                    name = f"{prefix} {index:04d}"
+                    catalog.append(
+                        {
+                            **MOVIE,
+                            "Id": f"alphabet-{len(catalog):04d}",
+                            "Name": name,
+                            "SortName": name,
+                        }
+                    )
+        else:
+            catalog = [
+                {
+                    **MOVIE,
+                    "Id": f"large-{index:04d}",
+                    "Name": f"Large Movie {index:04d}",
+                }
+                for index in range(500)
+            ]
         search_term = request.query_params.get("SearchTerm", "").casefold()
         if search_term:
             catalog = [item for item in catalog if search_term in item["Name"].casefold()]
+        name_less_than = request.query_params.get("NameLessThan")
+        if name_less_than:
+            boundary = name_less_than.casefold()
+            preceding = [
+                item for item in catalog if item.get("SortName", item["Name"]).casefold() < boundary
+            ]
+            return {"Items": preceding[:1], "TotalRecordCount": len(preceding)}
         start = int(request.query_params.get("StartIndex", 0))
         limit = int(request.query_params.get("Limit", len(catalog)))
         return {

@@ -70,6 +70,29 @@ test('large library stays bounded and search remains responsive', async ({ page 
   await expect(page.getByText('Large Movie 0420', { exact: true })).toBeVisible()
 })
 
+test('alphabet bar jumps across an unloaded library and can scroll back', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+  await page.getByRole('main').getByRole(
+    'button', { name: 'Login to Become Host', exact: true },
+  ).click()
+  await page.getByPlaceholder('Emby username').fill('AlphabetLibrary')
+  await page.getByPlaceholder('Emby password').fill('password')
+  await page.getByRole('button', { name: 'Become Host', exact: true }).click()
+  await page.getByText('Movies', { exact: true }).click()
+
+  const middle = page.getByRole('button', { name: 'Jump to M', exact: true })
+  await expect(middle).toBeEnabled()
+  await middle.click()
+  await expect(page.getByText('Middle Movie 0000', { exact: true })).toBeVisible()
+  expect(await page.locator('.item-card').count()).toBeLessThanOrEqual(100)
+
+  await page.locator('.library-panel').evaluate((panel) => panel.scrollTo(0, 0))
+  await expect(page.getByText('Alpha Movie 0050', { exact: true })).toBeVisible()
+})
+
 test('two browsers receive selection and synchronized controls', async ({ browser, page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Create Party', exact: true }).click()

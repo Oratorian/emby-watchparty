@@ -167,16 +167,9 @@ class EmbyClient:
             if item.get("Id")
         }
 
-    async def get_items(
-        self,
-        parent_id=None,
-        item_type=None,
-        recursive=False,
-        start_index=None,
-        limit=None,
-        access_token=None,
-        user_id=None,
-    ):
+    async def _resolve_item_scope(
+        self, parent_id, item_type, recursive, access_token, user_id
+    ) -> tuple[str | None, bool]:
         effective_type = item_type
         effective_recursive = recursive
         if parent_id and not item_type and not recursive:
@@ -184,7 +177,7 @@ class EmbyClient:
             collection_type = self._library_collection_types.get(user_id or "_anon_", {}).get(
                 parent_id
             )
-            mapping = {
+            collection_types = {
                 "movies": "Movie",
                 "tvshows": "Series",
                 "boxsets": "BoxSet",
@@ -192,30 +185,95 @@ class EmbyClient:
                 "homevideos": "Movie,Video,Photo",
                 "photos": "Movie,Video,Photo",
             }
-            if collection_type in mapping:
-                effective_type = mapping[collection_type]
+            effective_type = collection_types.get(collection_type) if collection_type else None
+            if effective_type:
                 effective_recursive = True
+        return effective_type, effective_recursive
+
+    async def get_items(
+        self,
+        parent_id=None,
+        item_type=None,
+        recursive=False,
+        start_index=None,
+        limit=None,
+        sort_mode="default",
+        anchor_prefix=None,
+        access_token=None,
+        user_id=None,
+    ):
+        effective_type, effective_recursive = await self._resolve_item_scope(
+            parent_id, item_type, recursive, access_token, user_id
+        )
         path = f"/emby/Users/{user_id}/Items" if user_id else "/emby/Items"
+        fields = (
+            "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,"
+            "ParentIndexNumber,SeriesId,SeasonId,UserData,MediaSourceCount"
+        )
+        if sort_mode == "alphabetical":
+            fields += ",SortName"
         params: dict[str, str | int] = {
             "Recursive": str(effective_recursive).lower(),
-            "Fields": (
-                "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,"
-                "ParentIndexNumber,SeriesId,SeasonId,UserData,MediaSourceCount"
+            "Fields": fields,
+            "SortBy": (
+                "SortName"
+                if sort_mode == "alphabetical"
+                else "ParentIndexNumber,IndexNumber,SortName"
             ),
-            "SortBy": "ParentIndexNumber,IndexNumber,SortName",
             "SortOrder": "Ascending",
         }
         if parent_id:
             params["ParentId"] = parent_id
         if effective_type:
             params["IncludeItemTypes"] = effective_type
-        if start_index is not None:
-            params["StartIndex"] = start_index
-        if limit is not None:
-            params["Limit"] = limit
         headers = self._headers(access_token, user_id)
         headers["Cache-Control"] = "no-cache"
+        if sort_mode == "alphabetical" and anchor_prefix:
+            count_params = {
+                **params,
+                "NameLessThan": anchor_prefix,
+                "StartIndex": 0,
+                "Limit": 1,
+            }
+            count_response = await self.gateway.get(path, headers=headers, params=count_params)
+            count_response.raise_for_status()
+            start_index = int(count_response.json().get("TotalRecordCount") or 0)
+        resolved_start_index = int(start_index or 0)
+        params["StartIndex"] = resolved_start_index
+        if limit is not None:
+            params["Limit"] = limit
         response = await self.gateway.get(path, headers=headers, params=params)
+        response.raise_for_status()
+        result = response.json()
+        result["StartIndex"] = resolved_start_index
+        return result
+
+    async def get_item_prefixes(
+        self,
+        parent_id=None,
+        item_type=None,
+        recursive=False,
+        access_token=None,
+        user_id=None,
+    ):
+        effective_type, effective_recursive = await self._resolve_item_scope(
+            parent_id, item_type, recursive, access_token, user_id
+        )
+        params: dict[str, str] = {
+            "UserId": user_id or "",
+            "Recursive": str(effective_recursive).lower(),
+            "SortBy": "SortName",
+            "SortOrder": "Ascending",
+        }
+        if parent_id:
+            params["ParentId"] = parent_id
+        if effective_type:
+            params["IncludeItemTypes"] = effective_type
+        response = await self.gateway.get(
+            "/emby/Items/Prefixes",
+            headers=self._headers(access_token, user_id),
+            params=params,
+        )
         response.raise_for_status()
         return response.json()
 

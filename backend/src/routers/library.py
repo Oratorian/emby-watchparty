@@ -19,6 +19,7 @@ from backend.src.dependencies import (
 from backend.src.schemas import (
     ItemDetailsResponse,
     LibraryItemsResponse,
+    LibraryPrefixesResponse,
     StreamsResponse,
 )
 
@@ -49,6 +50,27 @@ async def api_libraries(
 
 
 @router.get(
+    "/items/prefixes",
+    response_model=LibraryPrefixesResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
+async def api_item_prefixes(
+    parent_id: str | None = Query(None, alias="parentId"),
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    prefixes = await emby_client.get_item_prefixes(
+        parent_id=parent_id,
+        access_token=access_token,
+        user_id=user_id,
+    )
+    return {
+        "Prefixes": [row["Name"] for row in prefixes if isinstance(row, dict) and row.get("Name")]
+    }
+
+
+@router.get(
     "/items",
     response_model=LibraryItemsResponse,
     responses={
@@ -63,6 +85,8 @@ async def api_items(
     recursive: bool = False,
     start_index: int | None = Query(None, alias="startIndex"),
     limit: int | None = None,
+    sort_mode: str = Query("default", alias="sortMode", pattern="^(default|alphabetical)$"),
+    anchor_prefix: str | None = Query(None, alias="anchorPrefix", min_length=1, max_length=8),
     party_session: PartySession = Depends(require_party_unlocked),
     emby_client=Depends(get_emby_client),
 ):
@@ -75,6 +99,8 @@ async def api_items(
             recursive=recursive,
             start_index=start_index,
             limit=limit,
+            sort_mode=sort_mode,
+            anchor_prefix=anchor_prefix,
             access_token=access_token,
             user_id=user_id,
         )

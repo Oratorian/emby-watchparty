@@ -92,6 +92,7 @@ export interface LibraryItem {
   Type: string
   Overview?: string
   RunTimeTicks?: number
+  SortName?: string
   MediaSourceCount?: number
   UserData?: {
     PlaybackPositionTicks?: number
@@ -102,6 +103,10 @@ export interface LibraryItem {
 export interface LibraryResponse {
   Items: LibraryItem[]
   TotalRecordCount?: number
+  StartIndex?: number
+}
+export interface LibraryPrefixesResponse {
+  Prefixes: string[]
 }
 export interface PartyResponse extends SuccessResponse {
   party_id?: string
@@ -268,6 +273,10 @@ export const api = {
     ).toString()
     return apiFetch<LibraryResponse>(`/api/items?${qs}`, { signal })
   },
+  itemPrefixes: (parentId: string, signal?: AbortSignal) => apiFetch<LibraryPrefixesResponse>(
+    `/api/items/prefixes?${new URLSearchParams({ parentId }).toString()}`,
+    { signal },
+  ),
   search: (q: string, signal?: AbortSignal) => apiFetch<LibraryResponse>(
     `/api/search?q=${encodeURIComponent(q)}`, { signal },
   ),
