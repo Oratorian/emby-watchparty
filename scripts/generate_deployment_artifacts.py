@@ -399,7 +399,7 @@ def _check_artifacts(output_dir: Path, artifacts: dict[Path, str]) -> int:
         if actual != expected:
             stale.append(relative)
     for relative in stale:
-        print(f"stale deployment artifact: {relative}")
+        print(f"stale deployment artifact: {relative.as_posix()}")
     return 1 if stale else 0
 
 

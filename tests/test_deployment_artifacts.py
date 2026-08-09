@@ -143,4 +143,4 @@ def test_check_mode_detects_missing_and_changed_artifacts(tmp_path: Path, capsys
     assert main(["--output-dir", str(tmp_path), "--check"]) == 1
     output = capsys.readouterr().out
     assert "docker-compose.yml.example" in output
-    assert "deploy\\unraid\\emby-watchparty.xml" in output
+    assert "deploy/unraid/emby-watchparty.xml" in output
