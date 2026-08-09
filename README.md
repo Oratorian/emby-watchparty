@@ -207,6 +207,10 @@ touch config.json
 docker compose up -d
 ```
 
+The supplied container always listens on `0.0.0.0:5000`. To expose another host port, edit only
+the left side of the Compose `ports` mapping (for example, `8080:5000`). Keep the container target
+and its `WATCH_PARTY_BIND`/`WATCH_PARTY_PORT` values unchanged.
+
 The compose file mounts everything correctly out of the box. If you prefer `docker run`, the equivalent invocation is:
 
 ```bash
@@ -347,8 +351,8 @@ Boot-essential, restart required.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | **Application** | | |
-| `WATCH_PARTY_BIND` | IP address to bind to | `0.0.0.0` |
-| `WATCH_PARTY_PORT` | Port to run on | `5000` |
+| `WATCH_PARTY_BIND` | IP address to bind to. Supplied container artifacts pin this to `0.0.0.0`. | `0.0.0.0` |
+| `WATCH_PARTY_PORT` | Runtime listen port. Supplied container artifacts pin this to `5000`; edit only the published host port. | `5000` |
 | `APP_ENV` | `development` or strict startup-validated `production` mode | `development` |
 | `APP_PREFIX` | URL prefix for reverse proxy deployments (e.g. `/watchparty`) | (empty) |
 | `SESSION_EXPIRY` | Session expiry in seconds | `86400` |

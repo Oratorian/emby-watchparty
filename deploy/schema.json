@@ -54,7 +54,7 @@
   "settings": [
     {
       "name": "WATCH_PARTY_BIND",
-      "description": "Address listened on inside the container.",
+      "description": "Address listened on inside the container. Supplied container artifacts pin this to 0.0.0.0.",
       "type": "string",
       "runtime_default": "0.0.0.0",
       "artifact_default": "0.0.0.0",
@@ -70,7 +70,7 @@
     },
     {
       "name": "WATCH_PARTY_PORT",
-      "description": "Port listened on inside the container.",
+      "description": "Port listened on inside the container. Supplied container artifacts pin this to 5000; change only the published host port.",
       "type": "integer",
       "runtime_default": 5000,
       "artifact_default": 5000,

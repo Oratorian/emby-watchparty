@@ -49,7 +49,19 @@ def test_environment_reference_carries_schema_metadata() -> None:
     reference = generate_artifacts(SCHEMA)[Path("docs/deployment/environment.md")]
 
     assert "Generated from `deploy/schema.json`" in reference
+    assert (
+        "| Variable | Type | Required | Secret | Validation | Safe example | Description |"
+        in reference
+    )
+    assert (
+        '| `WATCH_PARTY_PORT` | integer | always | no | <code>{"maximum":65535,"minimum":1}</code> | '
+        "<code>5000</code> |" in reference
+    )
     assert "| `SESSION_SECRET` | string | production | yes |" in reference
+    assert "| — | Stable signing secret" in reference
+    assert "&#124;" in reference
+    assert "Supplied container artifacts pin this to 0.0.0.0" in reference
+    assert "Supplied container artifacts pin this to 5000" in reference
     assert "BEHIND_PROXY=true requires TRUSTED_PROXY_CIDRS" in reference
 
 

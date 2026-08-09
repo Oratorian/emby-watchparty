@@ -5,6 +5,9 @@ Use `deploy/truenas/custom-app.yml` through **Install via YAML**. Its service is
 the existing dataset path. TrueNAS performs basic YAML validation only; this is not a catalog app.
 Host-path datasets are outside catalog rollback protection.
 
+The workload always binds `0.0.0.0:5000`. To expose another host port, change only the published
+side of the TrueNAS port mapping; keep its container target and `WATCH_PARTY_PORT` at `5000`.
+
 ## Setup or 2.1.x migration
 
 1. Disable automatic updates. Record old image/digest, Custom App YAML, environment, ports, and
@@ -13,8 +16,8 @@ Host-path datasets are outside catalog rollback protection.
    avatars, and logs. Preserve old 2.1.x image/configuration.
 3. Create host-path directories and `config.json` containing `{}`. Replace every `/mnt/POOL`
    placeholder before deployment.
-4. Paste YAML and fill blank required environment values. Keep production security defaults.
-   Declare proxy topology using actual source CIDRs only.
+4. Paste YAML and fill blank required environment values, leaving container bind/port fixed. Keep
+   production security defaults. Declare proxy topology using actual source CIDRs only.
 5. For candidate preflight, temporarily add:
 
    ```yaml

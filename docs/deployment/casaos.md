@@ -6,6 +6,9 @@ metadata added as a thin wrapper. Publishing to an AppStore is outside this proj
 CasaOS offers no protected secret primitive in this manifest. Host administrators can read saved
 environment values.
 
+The container bind and target are fixed at `0.0.0.0:5000`. Change only CasaOS's published host
+port field when another external port is needed.
+
 ## Setup or 2.1.x migration
 
 1. Disable automatic updates. Record old image/digest, installed Compose, ports, networks,
@@ -13,8 +16,9 @@ environment values.
 2. Back up installed Compose, `config.json`, data, avatars, logs, environment values, and every
    mapped path. Preserve old 2.1.x image and full configuration.
 3. Ensure app data directories exist and `config.json` contains `{}`.
-4. Import manifest. Enter required values in app settings/Compose. Keep production security
-   defaults; declare proxy topology explicitly. Secret fields start blank and fail closed.
+4. Import manifest. Enter required values in app settings/Compose, leaving the container bind and
+   port fixed. Keep production security defaults; declare proxy topology explicitly. Secret fields
+   start blank and fail closed.
 5. Duplicate candidate Compose with identical environment and volumes. Temporarily add:
 
    ```yaml

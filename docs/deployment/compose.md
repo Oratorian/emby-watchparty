@@ -3,6 +3,10 @@
 Use `docker-compose.yml.example` and `.env.example`; both are generated from
 `deploy/schema.json`.
 
+The supplied container always binds `0.0.0.0:5000`. To publish another host port, change only
+the left side of `HOST_PORT:5000` under `ports`; do not change `WATCH_PARTY_BIND`,
+`WATCH_PARTY_PORT`, or the container-side port.
+
 ## Setup or 2.1.x migration
 
 1. Disable automatic updates. Record old image tag/digest, Compose file, environment,
@@ -17,8 +21,9 @@ Use `docker-compose.yml.example` and `.env.example`; both are generated from
    printf '{}\n' > config.json
    ```
 
-4. Fill every required `.env` field. Generate `SESSION_SECRET` once. Set
-   `BEHIND_PROXY` explicitly. If true, use only actual proxy source CIDRs.
+4. Fill every required `.env` field except the pinned container bind/port. Generate
+   `SESSION_SECRET` once. Set `BEHIND_PROXY` explicitly. If true, use only actual proxy source
+   CIDRs.
 5. Run read-only preflight with exact candidate environment and volumes:
 
    ```sh

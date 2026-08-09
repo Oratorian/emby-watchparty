@@ -4,6 +4,10 @@ Use generated `docker-compose.yml.example` as uploaded or Web Editor stack. Targ
 Standalone, not Swarm. Manage interpolation variables through Portainer stack environment.
 Portainer administrators and raw container inspection can read environment values.
 
+The imported service always listens on container port `5000`. To use another external port,
+change only Portainer's published host port; keep `WATCH_PARTY_BIND=0.0.0.0`,
+`WATCH_PARTY_PORT=5000`, and the container-side mapping unchanged.
+
 ## Setup or 2.1.x migration
 
 1. Disable webhooks/automatic updates. Record old image/digest, stack file/version, environment,
@@ -11,8 +15,8 @@ Portainer administrators and raw container inspection can read environment value
 2. Back up stack configuration, separately export environment values securely, and back up
    `config.json`, data, avatars, logs, and all host paths. Preserve old image/configuration.
 3. Use absolute Docker-host paths; create directories and `config.json` containing `{}`.
-4. Upload/paste generated Compose. Enter all stack variables. Set production security fields and
-   declare proxy topology without a universal CIDR.
+4. Upload/paste generated Compose. Enter all non-network stack variables. Set production security
+   fields and declare proxy topology without a universal CIDR.
 5. Before normal start, temporarily add to service:
 
    ```yaml

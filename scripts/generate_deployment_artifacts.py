@@ -345,6 +345,17 @@ def _env_example(schema: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _markdown_code(value: Any) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    escaped = (
+        encoded.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("|", "&#124;")
+    )
+    return f"<code>{escaped}</code>"
+
+
 def _environment_reference(schema: dict[str, Any]) -> str:
     lines = [
         "<!-- Generated from deploy/schema.json; do not edit. -->",
@@ -354,16 +365,16 @@ def _environment_reference(schema: dict[str, Any]) -> str:
         "",
         "Generated from `deploy/schema.json`. Every field requires container recreation.",
         "",
-        "| Variable | Type | Required | Secret | Description |",
-        "| --- | --- | --- | --- | --- |",
+        "| Variable | Type | Required | Secret | Validation | Safe example | Description |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
-    lines.extend(
-        (
+    for setting in schema["settings"]:
+        safe_example = "—" if setting["secret"] else _markdown_code(setting["safe_example"])
+        lines.append(
             f"| `{setting['name']}` | {setting['type']} | {setting['required']} | "
-            f"{'yes' if setting['secret'] else 'no'} | {setting['description']} |"
+            f"{'yes' if setting['secret'] else 'no'} | {_markdown_code(setting['validation'])} | "
+            f"{safe_example} | {setting['description']} |"
         )
-        for setting in schema["settings"]
-    )
     lines.extend(
         [
             "",

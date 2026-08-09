@@ -2,7 +2,7 @@
 # docker compose -f docker-compose.yml.example run --rm --no-deps emby-watchparty python -m backend.migration_preflight --root /app --target production --deployment docker
 # Generated from deploy/schema.json; do not edit.
 # Schema-Version: 1
-# Schema-SHA256: 6da4b3538b883f26e2e26b1337045b2b28a8d05c01033454cf64d58b7e881d4c
+# Schema-SHA256: 04aa16e1188e664518f105a7a34036f0f290cf2ac13707de1318df5a33096c73
 services:
   emby-watchparty:
     image: ghcr.io/oratorian/emby-watchparty:3.0
