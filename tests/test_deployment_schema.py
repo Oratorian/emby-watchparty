@@ -1,15 +1,23 @@
 import dataclasses
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from backend.src.config import EnvConfig
-from scripts.generate_deployment_artifacts import SchemaError, load_schema
+import yaml
+
+from backend.src.config import Config, EnvConfig, RuntimeConfig
+from scripts.generate_deployment_artifacts import (
+    SchemaError,
+    generate_artifacts,
+    load_schema,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "deploy" / "schema.json"
+SCHEMA = load_schema(SCHEMA_PATH)
 
 
 def test_canonical_schema_describes_every_deployment_environment_variable() -> None:
@@ -216,3 +224,86 @@ def test_schema_rejects_secret_defaults(tmp_path: Path) -> None:
 
     with pytest.raises(SchemaError, match="SESSION_SECRET: secret defaults must be empty"):
         load_schema(candidate)
+
+
+def test_omitted_settings_ship_absent_and_commented_not_blank() -> None:
+    """A blank value is *declared*, which is the opposite of what these mean.
+
+    `EnvConfig.declared()` is a membership test, so `BEHIND_PROXY=` is parsed
+    and fails with "Must be true or false" in every environment, replacing the
+    tri-state guidance with a parse error and refusing the boot. Absent is the
+    only encoding of "the operator has not chosen yet".
+    """
+    artifacts = generate_artifacts(SCHEMA)
+    omitted = [s["name"] for s in SCHEMA["settings"] if s["artifact_omit"]]
+    assert omitted, "the omit mechanism is unused; this test would be vacuous"
+
+    env_example = artifacts[Path(".env.example")]
+    for name in omitted:
+        assert f"\n# {name}=" in env_example
+        assert f"\n{name}=" not in env_example
+
+    for path in (
+        Path("docker-compose.yml.example"),
+        Path("deploy/casaos/docker-compose.yml"),
+        Path("deploy/truenas/custom-app.yml"),
+    ):
+        document = artifacts[path]
+        service = yaml.safe_load(document)["services"]["emby-watchparty"]
+        for name in omitted:
+            assert name not in service["environment"]
+            # Present as guidance so an operator can still find and set it.
+            assert f"# {name}: " in document
+
+
+def test_a_deployment_built_from_the_env_example_actually_boots() -> None:
+    """The artifacts are only useful if what they generate can start.
+
+    Every appliance path and the documented contributor setup begin by copying
+    `.env.example`. Shipping one that cannot boot made all four dead on arrival
+    while every drift test stayed green, because nothing here ever asked the
+    real loader what it made of the output.
+    """
+    import os
+    import tempfile
+
+    artifacts = generate_artifacts(SCHEMA)
+    root = Path(tempfile.mkdtemp())
+    (root / ".env").write_text(
+        artifacts[Path(".env.example")] + "\nAPP_ENV=development\n", encoding="utf-8"
+    )
+
+    saved = dict(os.environ)
+    os.environ.clear()
+    try:
+        errors: dict[str, str] = {}
+        env = EnvConfig.from_env(root, errors=errors)
+        assert Config(env, RuntimeConfig(), load_errors=errors).startup_errors() == {}
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
+def test_validation_patterns_agree_with_the_loader_they_describe() -> None:
+    """The schema is a third description of config.py's rules; pin them together.
+
+    A published pattern looser than the boot gate sends an operator to a value
+    the server then refuses, with an error message that contradicts the docs
+    they just read.
+    """
+    from backend.src.config import _APP_PREFIX_RE
+
+    pattern = next(
+        s["validation"]["pattern"] for s in SCHEMA["settings"] if s["name"] == "APP_PREFIX"
+    )
+    compiled = re.compile(pattern)
+
+    accepted_by_boot_gate = ["/watchparty", "/a/b", "/x.y_z~w-v"]
+    refused_by_boot_gate = ["/_media", "/-wp", "/.hidden", "/~user", "no-slash", "/"]
+
+    for value in accepted_by_boot_gate:
+        assert _APP_PREFIX_RE.fullmatch(value), value
+        assert compiled.fullmatch(value), f"schema rejects what the loader accepts: {value}"
+    for value in refused_by_boot_gate:
+        assert not _APP_PREFIX_RE.fullmatch(value), value
+        assert not compiled.fullmatch(value), f"schema admits what the loader refuses: {value}"

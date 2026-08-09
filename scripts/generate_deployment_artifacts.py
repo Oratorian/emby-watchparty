@@ -21,6 +21,7 @@ _TOP_LEVEL_FIELDS = (
     "process",
     "endpoints",
     "storage",
+    "artifact_notes",
     "settings",
 )
 _SETTING_FIELDS = (
@@ -29,6 +30,8 @@ _SETTING_FIELDS = (
     "type",
     "runtime_default",
     "artifact_default",
+    "artifact_omit",
+    "artifact_note",
     "required",
     "safe_example",
     "secret",
@@ -188,6 +191,7 @@ def load_schema(path: Path = DEFAULT_SCHEMA) -> dict[str, Any]:
     _require_fields(endpoints, _ENDPOINT_FIELDS, "schema.endpoints")
     for field in _ENDPOINT_FIELDS:
         _require_string(endpoints[field], f"schema.endpoints.{field}")
+    _require_string_array(raw["artifact_notes"], "schema.artifact_notes")
     storage_items = _require_array(raw["storage"], "schema.storage")
     for index, storage in enumerate(storage_items):
         storage_path = f"schema.storage[{index}]"
@@ -226,8 +230,15 @@ def load_schema(path: Path = DEFAULT_SCHEMA) -> dict[str, Any]:
                 f"{path_name}.{field}",
                 allow_blank=field == "artifact_default",
             )
-        for field in ("secret", "restart_required"):
+        for field in ("secret", "restart_required", "artifact_omit"):
             _require_boolean(setting[field], f"{path_name}.{field}")
+        if setting["artifact_note"] is not None:
+            _require_string(setting["artifact_note"], f"{path_name}.artifact_note")
+        # An omitted setting has no artifact value, so a non-empty default
+        # would be silently discarded and the two fields would disagree about
+        # what ships.
+        if setting["artifact_omit"] and setting["artifact_default"] not in (None, ""):
+            raise SchemaError(f"{path_name}.artifact_default: must be empty when artifact_omit")
         validation = _require_object(setting["validation"], f"{path_name}.validation")
         _validate_rule_types(validation, f"{path_name}.validation")
         display = _require_object(setting["display"], f"{path_name}.display")
@@ -267,9 +278,43 @@ def _schema_hash(schema: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _omitted(setting: dict[str, Any]) -> bool:
+    """True when an artifact must carry no assignment for this setting at all.
+
+    There is a real difference between a variable set to the empty string and
+    one that is absent, and `EnvConfig.from_env` depends on it: `declared()`
+    tests membership, so `BEHIND_PROXY=` counts as declared and is then parsed,
+    failing with "Must be true or false" in every environment. That turns the
+    tri-state None the setting exists for into an unreachable state and swaps
+    its purpose-written guidance for a generic parse error.
+
+    Emitting nothing instead lets the operator's absence of a choice reach the
+    boot gate intact, where production says exactly what to declare and why.
+    """
+    return bool(setting.get("artifact_omit"))
+
+
+def _artifact_notes(setting: dict[str, Any]) -> list[str]:
+    """Operator guidance the schema carries into every artifact that has comments.
+
+    The hand-maintained compose example this generator replaced earned its
+    length: it warned that an unmounted `config.json` becomes a directory, that
+    a prefix you are not actually proxying 404s every URL, and which image tags
+    move on a prerelease. Regenerating dropped all of it. Carrying the notes in
+    the schema is what lets one source of truth and a readable example coexist,
+    rather than trading one for the other.
+    """
+    note = setting.get("artifact_note")
+    if not note:
+        return []
+    return [line for line in str(note).splitlines() if line.strip()]
+
+
 def _environment(schema: dict[str, Any]) -> dict[str, str]:
     values: dict[str, str] = {}
     for setting in schema["settings"]:
+        if _omitted(setting):
+            continue
         value = setting["artifact_default"]
         if isinstance(value, bool):
             values[setting["name"]] = "true" if value else "false"
@@ -284,13 +329,70 @@ def _compose_environment(schema: dict[str, Any]) -> dict[str, str]:
     return {name: f"${{{name}:-{value}}}" for name, value in _environment(schema).items()}
 
 
+def _annotate(document: str, schema: dict[str, Any]) -> str:
+    """Insert each setting's schema note above its line in a rendered mapping.
+
+    yaml.safe_dump cannot carry comments, so they are woven back in afterwards.
+    Anchored on indentation plus the exact key, which is unambiguous because a
+    settings name appears at most once in the environment mapping.
+    """
+    notes = {
+        setting["name"]: _artifact_notes(setting)
+        for setting in schema["settings"]
+        if _artifact_notes(setting)
+    }
+    # Settings that ship absent still have to be reachable: Compose only passes
+    # what the environment mapping names, so dropping them entirely would leave
+    # an operator no way to set them from .env at all. They are emitted
+    # commented out instead, which keeps the variable undeclared until someone
+    # uncomments it and states a value.
+    omitted = [s for s in schema["settings"] if _omitted(s)]
+    if not notes and not omitted:
+        return document
+
+    out: list[str] = []
+    env_indent: int | None = None
+    for line in document.splitlines():
+        stripped = line.lstrip()
+        indent_width = len(line) - len(stripped)
+
+        if env_indent is not None and stripped and indent_width <= env_indent:
+            out.extend(_commented_settings(omitted, env_indent + 2))
+            env_indent = None
+
+        key = stripped.split(":", 1)[0] if ":" in stripped else ""
+        if key in notes:
+            out.extend(f"{' ' * indent_width}# {note}" for note in notes[key])
+        out.append(line)
+
+        if stripped == "environment:":
+            env_indent = indent_width
+    if env_indent is not None:
+        out.extend(_commented_settings(omitted, env_indent + 2))
+    return "\n".join(out) + "\n"
+
+
+def _commented_settings(settings: list[dict[str, Any]], indent: int) -> list[str]:
+    pad = " " * indent
+    lines: list[str] = []
+    for setting in settings:
+        name = setting["name"]
+        lines.extend(f"{pad}# {note}" for note in _artifact_notes(setting))
+        lines.append(f"{pad}# {name}: ${{{name}:-}}")
+    return lines
+
+
 def _yaml_document(value: dict[str, Any], schema: dict[str, Any]) -> str:
-    header = (
-        "# Generated from deploy/schema.json; do not edit.\n"
-        f"# Schema-Version: {schema['schema_version']}\n"
-        f"# Schema-SHA256: {_schema_hash(schema)}\n"
-    )
-    return header + yaml.safe_dump(value, sort_keys=False, default_flow_style=False)
+    lines = [
+        "# Generated from deploy/schema.json; do not edit this file.",
+        "# Copy it to docker-compose.yml and edit the copy.",
+        f"# Schema-Version: {schema['schema_version']}",
+        f"# Schema-SHA256: {_schema_hash(schema)}",
+    ]
+    lines.extend(f"# {note}" for note in schema.get("artifact_notes", []))
+    header = "\n".join(lines) + "\n"
+    body = yaml.safe_dump(value, sort_keys=False, default_flow_style=False)
+    return header + _annotate(body, schema)
 
 
 def _compose_model(schema: dict[str, Any]) -> dict[str, Any]:
@@ -339,8 +441,16 @@ def _env_example(schema: dict[str, Any]) -> str:
     ]
     for setting in schema["settings"]:
         lines.append(f"# {setting['description']}")
-        value = _environment({"settings": [setting]})[setting["name"]]
-        lines.append(f"{setting['name']}={value}")
+        for note in _artifact_notes(setting):
+            lines.append(f"# {note}")
+        if _omitted(setting):
+            # Commented out, not blank. The operator can see the variable
+            # exists and what it is for, while the file still hands the
+            # application an absent value rather than an unparseable one.
+            lines.append(f"# {setting['name']}=")
+        else:
+            value = _environment({"settings": [setting]})[setting["name"]]
+            lines.append(f"{setting['name']}={value}")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 

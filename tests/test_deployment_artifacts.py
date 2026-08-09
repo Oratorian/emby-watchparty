@@ -8,6 +8,12 @@ from scripts.generate_deployment_artifacts import generate_artifacts, load_schem
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = load_schema(ROOT / "deploy" / "schema.json")
 SETTING_NAMES = [setting["name"] for setting in SCHEMA["settings"]]
+# Settings deliberately absent from the environment mapping. A variable set to
+# the empty string is *declared* as far as EnvConfig is concerned, so shipping
+# `BEHIND_PROXY=` made every artifact fail to boot with a parse error and made
+# the tri-state the setting exists for unreachable. These ship commented out.
+OMITTED_NAMES = [s["name"] for s in SCHEMA["settings"] if s["artifact_omit"]]
+EMITTED_NAMES = [s["name"] for s in SCHEMA["settings"] if not s["artifact_omit"]]
 
 
 def test_compose_uses_production_safe_schema_defaults() -> None:
@@ -15,17 +21,19 @@ def test_compose_uses_production_safe_schema_defaults() -> None:
     compose = yaml.safe_load(artifacts[Path("docker-compose.yml.example")])
     service = compose["services"]["emby-watchparty"]
 
-    assert service["image"] == "ghcr.io/oratorian/emby-watchparty:3.0"
-    assert list(service["environment"]) == SETTING_NAMES
+    # Derived, not a literal: asserting the literal left the schema-to-artifact
+    # step untested, so an image.tag change could not fail here.
+    assert service["image"] == f"{SCHEMA['image']['repository']}:{SCHEMA['image']['tag']}"
+    assert list(service["environment"]) == EMITTED_NAMES
     assert service["environment"]["WATCH_PARTY_BIND"] == "0.0.0.0"
     assert service["environment"]["WATCH_PARTY_PORT"] == "5000"
     assert service["ports"] == ["5000:5000"]
     assert service["environment"]["APP_ENV"] == "${APP_ENV:-production}"
-    assert service["environment"]["SESSION_COOKIE_SECURE"] == ("${SESSION_COOKIE_SECURE:-true}")
     assert service["environment"]["ENABLE_HLS_TOKEN_VALIDATION"] == (
         "${ENABLE_HLS_TOKEN_VALIDATION:-true}"  # noqa: S105 -- configuration boolean
     )
-    assert service["environment"]["BEHIND_PROXY"] == "${BEHIND_PROXY:-}"
+    for name in OMITTED_NAMES:
+        assert name not in service["environment"]
     assert service["environment"]["TRUSTED_PROXY_CIDRS"] == "${TRUSTED_PROXY_CIDRS:-}"
     assert "WEB_CONCURRENCY" not in service["environment"]
     assert len(compose["services"]) == 1
@@ -78,7 +86,7 @@ def test_casaos_manifest_is_compose_with_current_top_level_metadata() -> None:
     metadata = model["x-casaos"]
 
     assert model["name"] == "emby-watchparty"
-    assert list(service["environment"]) == SETTING_NAMES
+    assert list(service["environment"]) == EMITTED_NAMES
     assert service["environment"]["EMBY_API_KEY"] == ""
     assert service["environment"]["SESSION_SECRET"] == ""
     assert metadata["id"] == "com.oratorian.emby-watchparty"
@@ -94,7 +102,7 @@ def test_truenas_custom_app_uses_host_paths_without_privilege() -> None:
     model = yaml.safe_load(manifest)
     service = model["services"]["emby-watchparty"]
 
-    assert list(service["environment"]) == SETTING_NAMES
+    assert list(service["environment"]) == EMITTED_NAMES
     assert service["environment"]["EMBY_API_KEY"] == ""
     assert service["environment"]["SESSION_SECRET"] == ""
     assert service["ports"] == ["5000:5000"]
@@ -121,7 +129,7 @@ def test_all_platforms_share_vocabulary_and_schema_hash() -> None:
         if (match := re.search(r"Schema-SHA256:\s*([0-9a-f]{64})", content))
     }
 
-    assert vocabularies == [SETTING_NAMES] * 3
+    assert vocabularies == [EMITTED_NAMES] * 3
     assert len(hashes) == 1
     assert len(artifacts) == 5
 
@@ -142,7 +150,7 @@ def test_appliance_wrappers_preserve_the_canonical_compose_service() -> None:
     assert all(service["image"] == canonical["image"] for service in services)
     assert all(service["container_name"] == canonical["container_name"] for service in services)
     assert all(service["restart"] == canonical["restart"] for service in services)
-    assert all(list(service["environment"]) == SETTING_NAMES for service in services)
+    assert all(list(service["environment"]) == EMITTED_NAMES for service in services)
     assert all(
         [volume.rsplit(":", 1)[1] for volume in service["volumes"]]
         == [volume.rsplit(":", 1)[1] for volume in canonical["volumes"]]
