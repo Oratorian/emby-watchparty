@@ -1,5 +1,6 @@
 """Bounded in-memory rate limiting for single-process deployments."""
 
+import math
 import re
 import threading
 import time
@@ -101,7 +102,14 @@ class SlidingWindowRateLimiter:
                 bucket.popleft()
             self._expires_at[key] = now + window_seconds
             if len(bucket) >= limit:
-                retry_after = max(1, int(window_seconds - (now - bucket[0])) + 1)
+                # ceil, not int()+1: the eviction above leaves bucket[0] as the
+                # oldest hit still inside the window, so this expression IS the
+                # exact wait. Truncating and adding a second overshot every
+                # non-integral remainder and could name a delay longer than the
+                # whole window. The max(1) floor stays, so a sub-second
+                # remainder cannot become Retry-After 0 and invite an immediate
+                # retry that is refused again.
+                retry_after = max(1, math.ceil(window_seconds - (now - bucket[0])))
                 return RateLimitDecision(False, retry_after)
             bucket.append(now)
             self._evict_if_needed_locked()

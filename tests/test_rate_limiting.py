@@ -235,6 +235,38 @@ def test_party_creation_uses_stricter_limit():
     }
 
 
+def test_retry_after_never_exceeds_the_configured_window():
+    """`int(...) + 1` overshot every non-integral remainder.
+
+    A frozen clock is the only way to reach the divergence deterministically:
+    with the bucket filled at t and the window untouched, the true wait is the
+    whole window, so the reported delay must equal it and never exceed it.
+    """
+    limiter = SlidingWindowRateLimiter(clock=lambda: 1000.0)
+    for _ in range(5):
+        assert limiter.check("key", 5, 3).allowed
+
+    decision = limiter.check("key", 5, 3)
+
+    assert not decision.allowed
+    assert decision.retry_after == 3
+
+
+def test_retry_after_rounds_a_partial_second_up_not_to_zero():
+    """Guard on the max(1) floor, which the ceil change must not remove."""
+    now = [1000.0]
+    limiter = SlidingWindowRateLimiter(clock=lambda: now[0])
+    assert limiter.check("key", 1, 3).allowed
+    now[0] = 1002.5
+
+    decision = limiter.check("key", 1, 3)
+
+    assert not decision.allowed
+    # 0.5s of window left: rounds up to 1, never down to 0, which would invite
+    # an immediate retry that is refused again.
+    assert decision.retry_after == 1
+
+
 def test_429_names_the_bucket_it_was_refused_by_not_the_path():
     """A 429 must describe the limit that actually refused the request.
 

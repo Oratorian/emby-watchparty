@@ -118,6 +118,13 @@ async def _exercise_progress_coalescing(live_watchparty) -> None:
                 if request["path"] == "/emby/Sessions/Playing/Progress"
             ]
             assert len(progress_reports) == 1
+            # WHICH report survived, not just how many. The handler throttles
+            # by dropping anything inside the window, so the report that
+            # reaches Emby carries the FIRST position, 12.0s, while the party
+            # state advances to 34.0s. Asserting only the count left
+            # "drop the newer" and "coalesce to the latest" indistinguishable,
+            # though they send different positions upstream.
+            assert progress_reports[0]["body"]["PositionTicks"] == 120_000_000
         finally:
             await realtime.disconnect()
 
