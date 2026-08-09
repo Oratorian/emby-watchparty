@@ -18,13 +18,50 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ## [Unreleased]
 
-Work on the 3.0 line since beta1. Not in any published image yet, so nothing here is available by pulling `:3.0.0-beta1`.
+**Not published.** Nothing here is in `:3.0.0-beta1`, `:devel` or `:nightly` yet; pulling any of those still gets beta1. This section is what the next beta will carry.
 
-A blocked action now says so. Rate-limited HTTP requests, socket connections, session binding, chat, admin login and avatar recovery name the limit and show a safe retry delay, instead of failing silently or, in the admin login case, doing nothing visible at all. Chat text refused by the limit is handed back for manual resend rather than discarded. Every 429 carries the same `{detail, code, retry_after}` shape, and each one names the bucket that actually refused it, so the message cannot describe a limit the request never hit.
+beta1 said the change most likely to be noticed was rate limiting becoming enforced, **and that it is silent when it bites**: a third person tries to join movie night and simply cannot, with nothing in the interface naming a limit. This is the release that stops it being silent, and adds a way to find out what a 2.1.x configuration will do to 3.0 before you upgrade rather than after.
 
-A read-only `python -m backend.migration_preflight` command inventories the effective 2.1.x inputs without writing files or printing secrets. It resolves values through the same loader the application boots with and takes its verdict from the same startup validation, so it cannot clear a configuration that then refuses to start. It reports proxy and HLS actions, inherited rate limits and whether the master switch leaves them enforced, session-expiry behaviour, runtime versions, the one-worker requirement, preserved paths, prefix-aware health and readiness expectations, and the manual backup and rollback work. The migration guide includes Compose, appliance, plain Docker, source and Windows invocations.
+### A blocked action now says so
 
-The named `npm run test:playback-gate` acceptance command drives authenticated master and media playlists, segments and byte ranges; pause/resume and bidirectional seeking; audio and subtitle selection; reconnect, host reload and session-bind retry; cross-party denial; plus the iPhone WebKit native-HLS selection path against fake Emby.
+Party creation, joining, admin login, avatar recovery, background requests, socket connections and chat all name the limit and show a safe retry delay. Previously they failed with nothing on screen; the admin login case was worse than nothing, throwing an error the page never caught, so the button simply did not respond.
+
+Chat text refused by a limit is handed back rather than discarded, and if you had already started typing something else it is kept beside the composer instead of being pasted into the middle of it.
+
+Every 429 carries the same `{detail, code, retry_after}` shape, and each one names the limit that actually refused the request. That last part is not decoration. Diagnostics that describe a limit the request never hit send you looking for a setting that does not exist, and this cycle found several of those, listed in the technical section below.
+
+### Find out before you upgrade, not after
+
+```
+docker compose run --rm --no-deps emby-watchparty python -m backend.migration_preflight
+```
+
+A read-only command that reads your existing `.env` and `config.json` and reports what 3.0 will make of them. It writes nothing, prints no secrets, and needs the container only to run, not to start the application.
+
+It resolves values with the same loader the application boots with and takes its verdict from the same startup validation, so **it cannot clear a configuration that then refuses to start**. It reports which of your settings are actually in effect and where each came from, whether your inherited rate limits are enabled at all, the proxy and HLS actions you need, what `SESSION_EXPIRY` will now do, the one-worker rule, the paths to preserve, the health and readiness URLs to check afterwards, and the backup and rollback steps that remain manual.
+
+Run it **after** pointing your Compose file at a 3.0 image and pulling it. The command ships inside that image; a 2.1.x image has no such module. [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) carries the corrected step order along with Compose, appliance, plain Docker, source and Windows invocations.
+
+### One command that says whether playback works
+
+`npm run test:playback-gate` drives a complete session against a fake Emby: authenticated master and media playlists, segments and byte ranges, pause and resume, seeking in both directions, audio and subtitle selection, reconnect, host reload, session-bind retry, cross-party denial, and the iPhone WebKit native-HLS path. It is the check to run before calling a change safe, and the one this cycle's fixes were held to.
+
+### Fixed
+
+- **A viewer's first attempt at joining could be refused as "too many join attempts."** Joining has no limit of its own; it shares the general API budget, which the party-list page spends by polling every five seconds while you sit on it. So the page you join from is what exhausts the allowance, and the message blamed you for the one thing you had not done yet.
+- **A retry delay could be longer than the limit it belonged to.** A three-second window reported four seconds.
+- **The chat "message not sent" warning never went away.** Only its countdown did, so the warning stayed on screen until your next successful message, which for anyone who stopped typing meant permanently.
+- **Two refused chat messages became one, backwards.** They were joined together in reverse order, producing a line you never wrote.
+- **Routine reconnections no longer look like failures.** A red alert reading `xhr poll error` was appearing for ordinary connection retries, which the browser does constantly and recovers from on its own.
+- **A proxy error page no longer replaces the explanation.** When a reverse proxy answered with its own HTML error page, that page was printed in the party banner where the guidance should be.
+- **Turning rate limiting off now turns off chat's limit too.** Chat was the one limiter ignoring the master switch in **Admin -> Security**, so with limiting disabled it was the only one still firing, and this release would have made it visibly block people.
+- **A stale party-list warning no longer blames rate limiting for a server outage.** It was set when limited and never cleared, so it survived every later failure.
+
+### Technical details
+
+The rate-limit work and the preflight are **[dnordel](https://github.com/dnordel)**'s, contributed as [#57](https://github.com/Oratorian/emby-watchparty/pull/57): 25 commits over 45 files. The fixes above came out of an audit of that work before it landed, which found 19 defects and is described, with its methodology and the two patterns worth carrying forward, in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+
+Test coverage since beta1: **147 backend tests** across 25 modules (was 116), **31 Vitest** (was 17), **16 Playwright** (was 14), with ruff, `ruff format` and `mypy` clean over 43 source files.
 
 ---
 

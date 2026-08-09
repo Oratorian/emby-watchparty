@@ -6,6 +6,105 @@ The 2.0 "Midnight Premiere" log (beta1 through beta18, every Added / Changed / F
 
 ---
 
+## [Unreleased] - migration diagnostics
+
+Not published. `:3.0.0-beta1`, `:devel` and `:nightly` all still point at beta1.
+
+31 commits over 46 files, +2466 / -111. 21 of those files are tests.
+
+### Provenance
+
+The feature work is **[dnordel](https://github.com/dnordel)**'s, contributed as [#57](https://github.com/Oratorian/emby-watchparty/pull/57): 25 commits over 45 files, split 12 fixes, 7 tests, 3 features, 2 docs, 1 formatting.
+
+The PR was closed rather than merged, and its branch landed on `3.0-dev` directly, the same arrangement as [#45](https://github.com/Oratorian/emby-watchparty/pull/45). It carried no defect that made it unmergeable; closing it reflects that `3.0-dev` takes this work without a per-change PR gate. The branch is preserved at `refs/pull/57/head` and was deleted after merge.
+
+The remaining 6 commits are fixes for what an audit of that work found before it landed, described below.
+
+### What the PR added
+
+**A uniform 429.** `rate_limit_response(action, retry_after)` in `backend/src/rate_limit.py` is now the single construction site for a rate-limit refusal, returning `{detail, code: "rate_limited", retry_after}` with the matching `Retry-After` header. The middleware, admin login and avatar recovery all route through it, replacing two hand-rolled bodies with different shapes, one of which did not conform to its own route's declared `response_model`.
+
+**A machine-readable code.** `ApiError` on the frontend carries `code` and `retryAfter`, parsed from the body with a header fallback. Three call sites consume the code rather than string-matching a message: `stores/party.ts` for session binding, `views/IndexView.vue` for party creation and `stores/socket.ts` for the socket handshake.
+
+**A new `rate_limited` socket event**, added to `backend/socket-events.schema.json` with regenerated TypeScript, carrying `action`, `message`, `retry_after` and the originating `request_id`. It is emitted to the offending socket only, which is what lets a refused chat message be handed back to the one person who sent it.
+
+**`backend/migration_preflight.py`**, 484 lines, read-only, with `tests/test_migration_preflight.py` alongside it. Reports config precedence and provenance, proxy topology, the HLS gate, inherited rate limits, runtime and worker requirements, paths to preserve, health and readiness expectations, and manual backup and rollback steps.
+
+**Startup cleanup deferred until startup succeeds**, so a failed boot no longer discards the stale setup state a retry might need.
+
+**`npm run test:playback-gate`**, a Playwright grep on `@playback-gate` covering one complete authenticated session end to end.
+
+### The audit
+
+Two passes over the 45-file diff before it merged. Seven lenses ran blind to each other, so the same defect was frequently reported several times under different wording: 38 candidates, of which the first pass verified 8 and the second adjudicated the remaining 30. They collapse to **19 distinct defects, all confirmed and all fixed**. Four candidates were refuted, one split its verifiers, and three were already closed by a fix earlier in the same cycle.
+
+Convergence did the useful work. Four independent lenses landed on the preflight's `.env` parser and four on its handling of `ENABLE_RATE_LIMITING`, which is far stronger evidence than any single lens asserting either.
+
+#### The dominant defect class: diagnostics describing a system that does not exist
+
+Most of the 19 were a report contradicting the code it reported on. This is the failure mode a diagnostics feature can least afford, because the whole product is the report, and an operator acts on it precisely when they cannot yet observe the thing themselves.
+
+**The preflight cleared configurations that then refuse to boot.** Four separate ways, all the twin-path pattern from the previous cycle: it re-implemented what `config.py` already owns, and the copies disagreed.
+
+| the preflight did | `config.py` does | consequence |
+| --- | --- | --- |
+| hand-rolled `.env` split on `=` | `dotenv_values`, which strips inline `# comment` | correct settings reported malformed; `ENABLE_HLS_TOKEN_VALIDATION=false  # ...` parsed to `None`, so the required action was never printed |
+| non-empty `TRUSTED_PROXY_CIDRS` ⇒ "is declared" | `ipaddress.ip_network` on every entry, **all environments** | `172.16.0.0/12 10.0.0.0/8`, a space where a comma belongs, cleared preflight and then blocked the boot |
+| verdict from a four-name `_BOOT_FIELDS` list | `startup_errors()` hard-fails on roughly twelve | a stock 2.1.x production `.env`, wildcard CORS and no API key, collected a clean report and then served 503 everywhere |
+| `legacy.get()` for the HLS flag | `RuntimeConfig` coerces JSON `null` to `False` | an explicit `null` read as absent and reported as the default `true` |
+
+Values now come from `dotenv_values` and the verdict from `Config.startup_errors()`, evaluated against `--target` rather than whatever `APP_ENV` currently says. Asking "does your current `APP_ENV` pass" answers the wrong question: a 2.1.x deployment that never set it reads as development and sails through every production rule it is about to meet. `EnvConfig.from_env` gained an injectable `environ` so the preflight can resolve precedence through the real loader instead of imitating it.
+
+**Read-only is a hard constraint and it is why the duplication existed.** `Config.from_env` routes through `RuntimeConfig.from_file`, which `shutil.copy2`s a corrupt `config.json` to `config.json.corrupt-<timestamp>`. The preflight therefore rebuilds the runtime half from the JSON it already parsed and never calls that loader. A test now pins the absence of that side-move on the corrupt-config path, which is exactly where the guarantee had only ever been asserted on the happy path.
+
+**`ENABLE_RATE_LIMITING` was never read**, so all six limits were reported "enforced in 3.0" while the master switch sat in the same parsed dict. That flag carries over from 2.1.x untouched, so an operator who turned limiting off in **Admin -> Security** was told six limits protected them while nothing was throttled. Compounding it, `socket_handlers/chat.py` was the only limiter with no such guard, so with the switch off chat was simultaneously the only limit still firing, and this PR promotes it from a silent drop to a visible notice that disables the composer.
+
+**The health and readiness probes were printed unprefixed.** Both mount under `APP_PREFIX`, so on a subpath deployment the documented `curl` returns 404 against a perfectly healthy upgrade, and against a broken one it falls to the unprefixed 503 catch-all and reports "dead" precisely where those lines promise to separate "misconfigured" from "dead". Resolved through `_effective` and dropped when the boot gate rejects the prefix, mirroring `app.py`.
+
+**A 429 named a limit the request had not hit.** `is_party_join` in the middleware changed only the wording, not the bucket: joining shares `api:{ip}` with every other route, and `IndexView` polls `/api/party/list` through it every five seconds, so a viewer's first join was reported as too many join attempts by the very page they joined from. Scope, spec and label are now chosen in one block, which removes the class rather than the instance.
+
+**`retry_after` overshot.** `int(...) + 1` truncated and added a second, so a full three-second window reported four. The eviction above it already leaves `bucket[0]` as the oldest hit inside the window, making the expression the exact wait, so `math.ceil` is correct. The `max(1, ...)` floor stays.
+
+#### Frontend: state that outlived its cause
+
+- **Refused chat drafts were concatenated into the composer.** With anything already typed, two distinct messages merged into one, and because refusals arrive in send order while each arrival prepended, the merge came out reversed. Drafts now return only to an empty composer; otherwise they queue FIFO and render as restorable chips, and restoring into an occupied composer is refused so a draft can never overwrite live typing.
+- **The chat rate-limit alert was never cleared**, only its counter, so it persisted until the next successful send.
+- **`connectionError` was assigned on every `connect_error`.** engine.io fires that for each failed transport probe with a library string as the message, so routine churn painted an assertive banner reading `xhr poll error`. Only a server-authored refusal is worth interrupting a viewer for; everything else now speaks in the application's own words, and only once the party had actually connected.
+- **The session banner interpolated raw upstream text and dropped its own guidance**, so a proxy's HTML 502 page rendered where the explanation belongs. The fixed sentence now leads, with upstream detail in bounded, ellipsised parentheses. `party.ts` no longer promotes a fetch-layer exception, and `client.ts` takes a non-JSON body only when it reads like one line of prose. That last discrimination is deliberate: dropping unparsed bodies outright would have broken the `preserves readable multipart upload errors` test that predates this branch, which encodes a real nginx 413.
+- **`IndexView`'s party-list banner was assigned only on 429**, so it survived every later failure and blamed rate limiting for the duration of an outage.
+
+#### Tests that could not fail
+
+Four, each found by mutation rather than reading.
+
+- `test_party_join_limit_names_the_blocked_action` filled the bucket using joins only, so it asserted the label while structurally unable to catch a wrong one.
+- The fake Emby subtitle endpoint discarded item, source and index and answered WEBVTT to any of them. That the whole suite passed once validation was added is itself the finding: nothing exercised the subtitle path.
+- A second audio stream was added to the fake with nothing pinning which is default, so inverting default-track selection kept the suite green.
+- The progress-throttle test asserted that exactly one report reached Emby but never which one. "Drop anything inside the window" and "coalesce to the latest" both send exactly one, and they send different positions.
+
+Separately, `usePartyChat.test.ts` asserted nothing about the "without resending it" half of its own name, leaving the guard in `send()` deletable with the suite green.
+
+One near-miss is worth recording. `chat.py` emits `rate_limited` with `to=sid`, which is correct, but replacing that with `room=party_id` passes the **entire** backend suite. The code is right and nothing pins it, and `usePartyChat.ts` has no `request_id` ownership guard, so a regression there would broadcast one viewer's rate-limit banner to the whole party. Left as-is deliberately, since it is a coverage gap rather than a defect.
+
+#### Documentation that had drifted from the artefact
+
+- **The CHANGELOG rewrote the already-published beta1 section** to advertise the preflight and the playback gate, neither of which that image can run, and deleted the sentence explaining why enforced rate limiting is the change most likely to be noticed. beta1 is restored byte-for-byte, verified by diffing against `3.0-dev`, and the new prose moved under `[Unreleased]`. Retroactively editing published release notes is worth calling out as a class: the beta1 text is linked from the Discord announcement and read by people deciding whether to upgrade.
+- **The documented upgrade order ran the preflight before pulling the 3.0 image**, so as written it executes inside the 2.1.x image, which has no such module. Steps swapped, with the image repoint made explicit since no step previously said to do it, and `docker-compose.yml.example` carries the same caveat because `:latest` is still 2.1.x.
+
+### Verification posture
+
+Every fix for a real defect has a test proven to fail against the code it replaced, by reverting the source and rerunning; tests that pass on both sides are labelled guards rather than passed off as regression coverage. The audit's own findings were adversarially refuted before being accepted, with lenses assigned by severity, and vote splits recorded rather than collapsed.
+
+Current state: **147 backend tests** across 25 modules, **31 Vitest**, **16 Playwright**, ruff, `ruff format` and `mypy` clean over 43 source files on 3.12.10, eslint and `vue-tsc` clean, verified on the merged tree rather than on the branch.
+
+The two patterns flagged at beta1 both recurred, which is the argument for keeping them named. The fake Emby hid a defect again by being more permissive than the real server. And the twin path produced four more, all in one new module that re-derived what `config.py` already owned; the fix was structural, making the preflight call the boot gate rather than predict it, because patching the four instances individually would have left the fifth to be found later.
+
+### Still open
+
+Unchanged from beta1 and still a tuning decision rather than a defect: party creation at 5/hour and socket connects at 30/minute are the tight ones for a household behind a single public IP. Beta feedback is what should settle them. The difference now is that hitting one says so.
+
+---
+
 ## [3.0.0-beta1] - 2026-08-05 - Director's Cut
 
 **First beta.** Published to GHCR as `:3.0.0-beta1`, tracked by `:devel` and `:nightly`. It does **not** move `:latest` or the rolling `:3` / `:3.0` tags, so the stable line is untouched.
