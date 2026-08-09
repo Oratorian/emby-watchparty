@@ -387,9 +387,7 @@ def test_json_null_legacy_hls_flag_reports_what_the_runtime_resolves(tmp_path: P
     RuntimeConfig coerces null to False, so reporting the default `true` put an
     INFO claiming the gate was on beside the action saying it must be turned on.
     """
-    (tmp_path / "config.json").write_text(
-        '{"ENABLE_HLS_TOKEN_VALIDATION": null}', encoding="utf-8"
-    )
+    (tmp_path / "config.json").write_text('{"ENABLE_HLS_TOKEN_VALIDATION": null}', encoding="utf-8")
 
     code, output = run_preflight(tmp_path, target="production", environ={})
 
@@ -397,6 +395,54 @@ def test_json_null_legacy_hls_flag_reports_what_the_runtime_resolves(tmp_path: P
     assert "ENABLE_HLS_TOKEN_VALIDATION=false (legacy config.json)" in output
     assert "ENABLE_HLS_TOKEN_VALIDATION=true (default)" not in output
     assert "REQUIRED ACTION: Set ENABLE_HLS_TOKEN_VALIDATION=true" in output
+
+
+def test_an_unrecognised_app_env_is_reported_not_substituted_away(tmp_path: Path) -> None:
+    """Judging against --target must not hide APP_ENV's own validity rule.
+
+    The report evaluates the config as the environment being migrated *to*,
+    which means `startup_errors` sees the substituted value and its
+    "must be 'development' or 'production'" check can never fire. Without a
+    separate check, `APP_ENV=prod` collects a clean report and then refuses to
+    boot: the exact false all-clear this module exists to prevent.
+    """
+    (tmp_path / ".env").write_text(
+        "APP_ENV=prod\n"
+        "BEHIND_PROXY=false\n"
+        f"SESSION_SECRET={'a' * 40}\n"
+        "SESSION_COOKIE_SECURE=true\n"
+        "CORS_ALLOWED_ORIGINS=https://watchparty.example.com\n"
+        "EMBY_SERVER_URL=http://emby.example.com:8096\n"
+        "EMBY_API_KEY=an-api-key\n",
+        encoding="utf-8",
+    )
+
+    code, output = run_preflight(tmp_path, target="production", environ={})
+
+    assert code == 0
+    assert "REQUIRED ACTION: APP_ENV must be 'development' or 'production'" in output
+    assert "3.0 boot validation passes" not in output
+
+
+def test_a_valid_app_env_differing_from_the_target_is_not_an_error(tmp_path: Path) -> None:
+    """Migrating a development deployment to production is the normal case."""
+    (tmp_path / ".env").write_text(
+        "APP_ENV=development\n"
+        "BEHIND_PROXY=true\n"
+        "TRUSTED_PROXY_CIDRS=172.16.0.0/12\n"
+        f"SESSION_SECRET={'a' * 40}\n"
+        "SESSION_COOKIE_SECURE=true\n"
+        "CORS_ALLOWED_ORIGINS=https://watchparty.example.com\n"
+        "EMBY_SERVER_URL=http://emby.example.com:8096\n"
+        "EMBY_API_KEY=an-api-key\n",
+        encoding="utf-8",
+    )
+
+    code, output = run_preflight(tmp_path, target="production", environ={})
+
+    assert code == 0
+    assert "APP_ENV must be" not in output
+    assert "INFO: 3.0 boot validation passes for target=production" in output
 
 
 def test_corrupt_legacy_config_is_never_side_moved_by_the_preflight(tmp_path: Path) -> None:

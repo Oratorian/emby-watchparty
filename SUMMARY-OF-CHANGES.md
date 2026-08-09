@@ -24,11 +24,11 @@ The remaining 6 commits are fixes for what an audit of that work found before it
 
 **A uniform 429.** `rate_limit_response(action, retry_after)` in `backend/src/rate_limit.py` is now the single construction site for a rate-limit refusal, returning `{detail, code: "rate_limited", retry_after}` with the matching `Retry-After` header. The middleware, admin login and avatar recovery all route through it, replacing two hand-rolled bodies with different shapes, one of which did not conform to its own route's declared `response_model`.
 
-**A machine-readable code.** `ApiError` on the frontend carries `code` and `retryAfter`, parsed from the body with a header fallback. Three call sites consume the code rather than string-matching a message: `stores/party.ts` for session binding, `views/IndexView.vue` for party creation and `stores/socket.ts` for the socket handshake.
+**A machine-readable code.** `ApiError` on the frontend carries `code` and `retryAfter`, parsed from the body with a header fallback. Three call sites branch on the code rather than string-matching a message: `stores/party.ts` for session binding and `views/IndexView.vue` for the background party-list poll, both off `ApiError`, plus `stores/socket.ts` for the socket handshake, which reads the same code off the `connect_error` payload rather than an `ApiError`. Party creation in `IndexView.vue` gained a `catch` in this PR but still surfaces `error.message` without inspecting the code.
 
 **A new `rate_limited` socket event**, added to `backend/socket-events.schema.json` with regenerated TypeScript, carrying `action`, `message`, `retry_after` and the originating `request_id`. It is emitted to the offending socket only, which is what lets a refused chat message be handed back to the one person who sent it.
 
-**`backend/migration_preflight.py`**, 484 lines, read-only, with `tests/test_migration_preflight.py` alongside it. Reports config precedence and provenance, proxy topology, the HLS gate, inherited rate limits, runtime and worker requirements, paths to preserve, health and readiness expectations, and manual backup and rollback steps.
+**`backend/migration_preflight.py`**, 492 lines, read-only, with `tests/test_migration_preflight.py` alongside it. Reports config precedence and provenance, proxy topology, the HLS gate, inherited rate limits, runtime and worker requirements, paths to preserve, health and readiness expectations, and manual backup and rollback steps.
 
 **Startup cleanup deferred until startup succeeds**, so a failed boot no longer discards the stale setup state a retry might need.
 
@@ -36,7 +36,7 @@ The remaining 6 commits are fixes for what an audit of that work found before it
 
 ### The audit
 
-Two passes over the 45-file diff before it merged. Seven lenses ran blind to each other, so the same defect was frequently reported several times under different wording: 38 candidates, of which the first pass verified 8 and the second adjudicated the remaining 30. They collapse to **19 distinct defects, all confirmed and all fixed**. Four candidates were refuted, one split its verifiers, and three were already closed by a fix earlier in the same cycle.
+Two passes over the 45-file diff before it merged. Seven lenses ran blind to each other, so the same defect was frequently reported several times under different wording: 38 candidates, of which the first pass verified 8 and the second adjudicated the remaining 30. They collapse to **19 distinct defects, all confirmed and all fixed**. Four candidates were refuted, one split its verifiers, and three were already closed by a fix earlier in the same cycle. A twentieth turned up later, when this section itself was fact-checked; it is described below.
 
 Convergence did the useful work. Four independent lenses landed on the preflight's `.env` parser and four on its handling of `ENABLE_RATE_LIMITING`, which is far stronger evidence than any single lens asserting either.
 
@@ -52,6 +52,8 @@ Most of the 19 were a report contradicting the code it reported on. This is the 
 | non-empty `TRUSTED_PROXY_CIDRS` ⇒ "is declared" | `ipaddress.ip_network` on every entry, **all environments** | `172.16.0.0/12 10.0.0.0/8`, a space where a comma belongs, cleared preflight and then blocked the boot |
 | verdict from a four-name `_BOOT_FIELDS` list | `startup_errors()` hard-fails on roughly twelve | a stock 2.1.x production `.env`, wildcard CORS and no API key, collected a clean report and then served 503 everywhere |
 | `legacy.get()` for the HLS flag | `RuntimeConfig` coerces JSON `null` to `False` | an explicit `null` read as absent and reported as the default `true` |
+
+A fifth surfaced only when this section was fact-checked, and it was introduced *by the fix for the other four*. Evaluating against `--target` means substituting `APP_ENV`, which hides `startup_errors`' own check that the declared value is one 3.0 accepts at all; the substituted value always is. So `APP_ENV=prod` collected an explicit "boot validation passes" and then refused to start. The declared value is now checked separately. Worth recording rather than quietly patching: the same twin-path reflex that caused the original four produced one more inside the repair, which is the second time in two cycles a fix has introduced a narrower instance of the bug it closed.
 
 Values now come from `dotenv_values` and the verdict from `Config.startup_errors()`, evaluated against `--target` rather than whatever `APP_ENV` currently says. Asking "does your current `APP_ENV` pass" answers the wrong question: a 2.1.x deployment that never set it reads as development and sails through every production rule it is about to meet. `EnvConfig.from_env` gained an injectable `environ` so the preflight can resolve precedence through the real loader instead of imitating it.
 
@@ -95,7 +97,9 @@ One near-miss is worth recording. `chat.py` emits `rate_limited` with `to=sid`, 
 
 Every fix for a real defect has a test proven to fail against the code it replaced, by reverting the source and rerunning; tests that pass on both sides are labelled guards rather than passed off as regression coverage. The audit's own findings were adversarially refuted before being accepted, with lenses assigned by severity, and vote splits recorded rather than collapsed.
 
-Current state: **147 backend tests** across 25 modules, **31 Vitest**, **16 Playwright**, ruff, `ruff format` and `mypy` clean over 43 source files on 3.12.10, eslint and `vue-tsc` clean, verified on the merged tree rather than on the branch.
+Current state: **149 backend tests** across 25 modules, **31 Vitest**, **16 Playwright**. `ruff check` and `ruff format --check` clean over 74 files, `mypy` clean over the 43 it covers (`backend` and `scripts`), eslint and `vue-tsc` clean, all on 3.12.10 and run with CI's exact commands against the merged tree.
+
+That last clause is not decoration. The first draft of this section claimed `ruff format` was clean having only ever run `ruff check`, and CI runs both; the merged tree was red on the format step until a fact-check pass caught it. The gap and its correction are recorded here rather than quietly fixed, because "the checks pass" is the one claim a reader cannot verify without redoing the work.
 
 The two patterns flagged at beta1 both recurred, which is the argument for keeping them named. The fake Emby hid a defect again by being more permissive than the real server. And the twin path produced four more, all in one new module that re-derived what `config.py` already owned; the fix was structural, making the preflight call the boot gate rather than predict it, because patching the four instances individually would have left the fifth to be found later.
 

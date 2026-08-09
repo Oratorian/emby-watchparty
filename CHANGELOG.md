@@ -24,11 +24,11 @@ beta1 said the change most likely to be noticed was rate limiting becoming enfor
 
 ### A blocked action now says so
 
-Party creation, joining, admin login, avatar recovery, background requests, socket connections and chat all name the limit and show a safe retry delay. Previously they failed with nothing on screen; the admin login case was worse than nothing, throwing an error the page never caught, so the button simply did not respond.
+Party creation, joining, admin login, avatar recovery, background requests, socket connections and chat all name the limit and show a safe retry delay. Previously most of them showed nothing useful: chat, avatar recovery and the background party list said nothing at all, and a rate-limited join showed only a generic "could not authenticate" banner. Party creation and admin login were worse than nothing, throwing an error neither page caught, so the create button stuck on "Creating party..." and the admin login button simply did not respond.
 
-Chat text refused by a limit is handed back rather than discarded, and if you had already started typing something else it is kept beside the composer instead of being pasted into the middle of it.
+Chat text refused by a limit is handed back rather than discarded, and if you had already started typing something else it is kept beside the composer instead of being pasted in front of it.
 
-Every 429 carries the same `{detail, code, retry_after}` shape, and each one names the limit that actually refused the request. That last part is not decoration. Diagnostics that describe a limit the request never hit send you looking for a setting that does not exist, and this cycle found several of those, listed in the technical section below.
+Every 429 carries the same `{detail, code, retry_after}` shape, and each one names the limit that actually refused the request. That last part is not decoration. Diagnostics that describe a limit the request never hit send you looking for a setting that does not exist, and this cycle found several of those, described in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
 
 ### Find out before you upgrade, not after
 
@@ -36,11 +36,11 @@ Every 429 carries the same `{detail, code, retry_after}` shape, and each one nam
 docker compose run --rm --no-deps emby-watchparty python -m backend.migration_preflight
 ```
 
-A read-only command that reads your existing `.env` and `config.json` and reports what 3.0 will make of them. It writes nothing, prints no secrets, and needs the container only to run, not to start the application.
+A read-only command that reads your existing configuration, whether it reaches 3.0 through the process environment, `.env` or `config.json`, and reports what 3.0 will make of it. It writes nothing, prints no secrets, and needs the container only to run, not to start the application. Under Compose your `.env` arrives as environment variables rather than as a file, so the report names `process environment` as the source and notes that no `.env` was found; mount it read-only as well if you want its lines checked directly.
 
-It resolves values with the same loader the application boots with and takes its verdict from the same startup validation, so **it cannot clear a configuration that then refuses to start**. It reports which of your settings are actually in effect and where each came from, whether your inherited rate limits are enabled at all, the proxy and HLS actions you need, what `SESSION_EXPIRY` will now do, the one-worker rule, the paths to preserve, the health and readiness URLs to check afterwards, and the backup and rollback steps that remain manual.
+It resolves values with the same loader the application boots with and takes its verdict from the same startup validation, so **it cannot clear a configuration that 3.0 would then refuse**. It reports the settings that decide a 2.1.x migration, the proxy, HLS, session-expiry and rate-limit values, saying which are in effect and where each came from; the rest of your configuration is deliberately kept out of the report so a secret cannot reach it. It also gives the one-worker rule, the paths to preserve, the health and readiness URLs to check afterwards, and the backup and rollback steps that stay manual.
 
-Run it **after** pointing your Compose file at a 3.0 image and pulling it. The command ships inside that image; a 2.1.x image has no such module. [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) carries the corrected step order along with Compose, appliance, plain Docker, source and Windows invocations.
+Run it **after** pointing your Compose file at a 3.0 image carrying this work and pulling it. The command ships inside that image, and no published image has it yet, `:3.0.0-beta1`, `:devel` and `:nightly` included; a 2.1.x image has no such module either. [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) carries the step order along with Compose, appliance, plain Docker, source and Windows invocations.
 
 ### One command that says whether playback works
 
@@ -48,20 +48,19 @@ Run it **after** pointing your Compose file at a 3.0 image and pulling it. The c
 
 ### Fixed
 
-- **A viewer's first attempt at joining could be refused as "too many join attempts."** Joining has no limit of its own; it shares the general API budget, which the party-list page spends by polling every five seconds while you sit on it. So the page you join from is what exhausts the allowance, and the message blamed you for the one thing you had not done yet.
-- **A retry delay could be longer than the limit it belonged to.** A three-second window reported four seconds.
-- **The chat "message not sent" warning never went away.** Only its countdown did, so the warning stayed on screen until your next successful message, which for anyone who stopped typing meant permanently.
-- **Two refused chat messages became one, backwards.** They were joined together in reverse order, producing a line you never wrote.
-- **Routine reconnections no longer look like failures.** A red alert reading `xhr poll error` was appearing for ordinary connection retries, which the browser does constantly and recovers from on its own.
-- **A proxy error page no longer replaces the explanation.** When a reverse proxy answered with its own HTML error page, that page was printed in the party banner where the guidance should be.
-- **Turning rate limiting off now turns off chat's limit too.** Chat was the one limiter ignoring the master switch in **Admin -> Security**, so with limiting disabled it was the only one still firing, and this release would have made it visibly block people.
-- **A stale party-list warning no longer blames rate limiting for a server outage.** It was set when limited and never cleared, so it survived every later failure.
+Three of these are defects a beta1 user can actually hit today.
+
+- **A proxy error page no longer replaces the explanation.** When a reverse proxy answered with its own HTML error page, that page was printed in the party banner where the guidance should be. The fixed sentence now leads and any upstream detail follows in bounded parentheses.
+- **Turning rate limiting off now turns off chat's limit too.** Chat is the one limiter that ignored the master switch in **Admin -> Security**, so with limiting disabled it was still the only one firing, silently dropping messages. This release would have made that visible by disabling the composer, which is what surfaced it.
+- **A retry delay could be longer than the limit it belonged to.** A three-second window reported four seconds in `Retry-After`.
+
+The rest of the rate-limit surfacing was written and corrected inside this cycle, so no published image ever carried these; they are listed because the code is on `3.0-dev` and reviewable, not because you are running them. A viewer's first join could be refused as "too many join attempts", the chat "message not sent" warning outlived its countdown, two refused chat messages merged into one reversed line, ordinary socket reconnects painted a red `xhr poll error` alert, and a stale party-list warning blamed rate limiting for the rest of a server outage. All are described with their causes in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
 
 ### Technical details
 
-The rate-limit work and the preflight are **[dnordel](https://github.com/dnordel)**'s, contributed as [#57](https://github.com/Oratorian/emby-watchparty/pull/57): 25 commits over 45 files. The fixes above came out of an audit of that work before it landed, which found 19 defects and is described, with its methodology and the two patterns worth carrying forward, in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+The rate-limit work and the preflight are **[dnordel](https://github.com/dnordel)**'s, contributed as [#57](https://github.com/Oratorian/emby-watchparty/pull/57): 25 commits over 45 files. The fixes above came out of an audit of that work before it landed, which found 20 defects and is described, with its methodology and the two patterns worth carrying forward, in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
 
-Test coverage since beta1: **147 backend tests** across 25 modules (was 116), **31 Vitest** (was 17), **16 Playwright** (was 14), with ruff, `ruff format` and `mypy` clean over 43 source files.
+Test coverage since beta1: **149 backend tests** across 25 modules (was 116), **31 Vitest** (was 17), **16 Playwright** (was 14), with `ruff check`, `ruff format` and `eslint` clean, and `mypy` clean over 43 source files.
 
 ---
 

@@ -215,7 +215,15 @@ def _startup_errors(
         environ=environ,
     )
     config = Config(replace(env, APP_ENV=target), runtime, load_errors=load_errors)
-    return config.startup_errors()
+    errors = config.startup_errors()
+    # Substituting the target hides one rule: `startup_errors` also checks that
+    # APP_ENV is a value 3.0 accepts at all, and the substituted value always
+    # is. So `APP_ENV=prod` would collect a clean report and then refuse to
+    # boot, which is precisely the false all-clear this module exists to
+    # prevent. The declared value is checked here instead of being lost.
+    if env.APP_ENV not in {"development", "production"}:
+        errors.setdefault("APP_ENV", "must be 'development' or 'production'")
+    return errors
 
 
 def _node_version() -> tuple[int, ...] | None:
