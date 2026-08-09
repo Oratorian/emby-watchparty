@@ -37,6 +37,9 @@ export default defineConfig({
         EMBY_SERVER_URL: 'http://127.0.0.1:5012',
         EMBY_API_KEY: 'e2e-key',
         SESSION_SECRET: 'playwright-session-secret-at-least-32-characters',
+        // E2E runs over plain loopback HTTP. Override any operator `.env`
+        // value so WebKit does not receive a Secure cookie it cannot send.
+        SESSION_COOKIE_SECURE: 'false',
         CORS_ALLOWED_ORIGINS: 'http://127.0.0.1:4173',
         E2E_BACKEND_PORT: '5011',
       },

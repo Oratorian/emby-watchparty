@@ -26,7 +26,12 @@ test('@playback-gate iPhone WebKit selects native HLS from fake Emby', async ({ 
   await page.goto('/')
   await page.getByRole('button', { name: 'Create Party', exact: true }).tap()
   await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  const joined = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && /\/api\/party\/[^/]+\/join$/.test(response.url()),
+  )
   await page.getByRole('button', { name: 'Join', exact: true }).tap()
+  expect((await joined).status()).toBe(200)
+  await expect(page.getByText('1 watching')).toBeVisible()
   await page.getByRole('main').getByRole(
     'button', { name: 'Login to Become Host', exact: true },
   ).tap()
