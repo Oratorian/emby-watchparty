@@ -1,8 +1,9 @@
 # TrueNAS SCALE 24.10+ deployment
 
-Use `deploy/truenas/custom-app.yml` through **Install via YAML**. Replace `POOL` with existing
-dataset path. TrueNAS performs basic YAML validation only; this is not a catalog app. Host-path
-datasets are outside catalog rollback protection.
+Use `deploy/truenas/custom-app.yml` through **Install via YAML**. Its service is derived from
+`docker-compose.yml.example`, with TrueNAS host paths added as a thin wrapper. Replace `POOL` with
+the existing dataset path. TrueNAS performs basic YAML validation only; this is not a catalog app.
+Host-path datasets are outside catalog rollback protection.
 
 ## Setup or 2.1.x migration
 

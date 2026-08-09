@@ -73,7 +73,7 @@ https://discord.gg/RWUpxq9xsA
 
 - **[Project wiki](https://github.com/Oratorian/emby-watchparty/wiki)** - hardware, deployment, troubleshooting, and FAQ
 - **[Migration guide](docs/Migration-HowTo.md)** - upgrade path from 2.1.x to 3.0
-- **[Appliance deployment](docs/deployment/appliance-migration.md)** - Compose, Unraid, CasaOS, Portainer, and TrueNAS setup, diagnosis, update, and rollback
+- **[Appliance deployment](docs/deployment/appliance-migration.md)** - Compose, CasaOS, Portainer, and TrueNAS setup, diagnosis, update, and rollback; Unraid remains owned by its Community Apps repository
 - **[Socket.IO API](docs/SOCKET_API.md)** - developer reference for the Socket.IO event protocol
 - **OpenAPI reference** - `GET /docs` (Swagger UI) or `GET /redoc` on a running instance
 - **[CHANGELOG.md](CHANGELOG.md)** - per-release details including every fix and the reasoning behind it
@@ -307,7 +307,7 @@ The failing fields are named on stderr in a framed banner, and again through the
 ========================================================================
 ```
 
-Fix the named variables where your deployment defines them and restart. On Unraid, CasaOS, Portainer or TrueNAS that is the container template; under Compose it is the `environment:` block or `.env`.
+Fix the named variables where your deployment defines them and restart. Unraid users edit the Community App through its WebUI. CasaOS, Portainer, and TrueNAS users edit the imported Compose-based app or stack; plain Compose uses the `environment:` block or `.env`.
 
 > **3.0 development builds** briefly shipped an interactive setup page at `/setup`, gated by a bootstrap token, that wrote `data/bootstrap.json`. Both are gone. Configuration is environment-only, as it was in 2.x. The page could not work on the platforms this is deployed to: every setting arrives as an environment variable there, and env-provided fields were short-circuited back to their current value, so the form silently discarded edits. Any leftover `bootstrap.json` or `setup-token` is ignored and removed on the next successful boot.
 

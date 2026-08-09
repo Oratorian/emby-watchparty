@@ -1,7 +1,11 @@
 # Appliance migration, diagnosis, and acceptance
 
-Platform guides: [Compose](compose.md), [Unraid](unraid.md), [CasaOS](casaos.md),
-[Portainer](portainer.md), and [TrueNAS SCALE](truenas.md).
+Platform guides: [Compose](compose.md), [CasaOS](casaos.md), [Portainer](portainer.md), and
+[TrueNAS SCALE](truenas.md).
+
+Unraid is deliberately outside this artifact set. Its Community Apps repository owns the
+container template and exposes its flags through the Unraid WebUI; review that packaging in its
+own repository instead of generating a second template here.
 
 ## Preflight interpretation
 

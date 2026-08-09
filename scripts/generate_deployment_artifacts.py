@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -120,9 +120,9 @@ def _yaml_document(value: dict[str, Any], schema: dict[str, Any]) -> str:
     return header + yaml.safe_dump(value, sort_keys=False, default_flow_style=False)
 
 
-def _compose(schema: dict[str, Any]) -> str:
+def _compose_model(schema: dict[str, Any]) -> dict[str, Any]:
     image = schema["image"]
-    model = {
+    return {
         "services": {
             "emby-watchparty": {
                 "image": f"{image['repository']}:{image['tag']}",
@@ -139,13 +139,16 @@ def _compose(schema: dict[str, Any]) -> str:
             }
         }
     }
+
+
+def _compose(schema: dict[str, Any]) -> str:
     preflight = (
         "# Preflight uses this service's environment and volumes:\n"
         "# docker compose -f docker-compose.yml.example run --rm --no-deps "
         "emby-watchparty python -m backend.migration_preflight "
         "--root /app --target production --deployment docker\n"
     )
-    return preflight + _yaml_document(model, schema)
+    return preflight + _yaml_document(_compose_model(schema), schema)
 
 
 def _env_example(schema: dict[str, Any]) -> str:
@@ -195,176 +198,50 @@ def _environment_reference(schema: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _unraid_choice_default(setting: dict[str, Any], value: str) -> str:
-    if setting["type"] == "boolean":
-        choices = ["true", "false"]
-        if value == "":
-            choices.insert(0, "")
-        elif value == "false":
-            choices.reverse()
-        return "|".join(choices)
-    allowed = setting["validation"].get("allowed")
-    if allowed:
-        choices = [str(item) for item in allowed]
-        if value in choices:
-            choices.remove(value)
-            choices.insert(0, value)
-        return "|".join(choices)
-    return value
-
-
-def _unraid(schema: dict[str, Any]) -> str:
-    root = ET.Element("Container", {"version": "2"})
-    root.append(ET.Comment(f" Schema-SHA256: {_schema_hash(schema)} "))
-    image = schema["image"]
-    metadata = {
-        "Name": "Emby-Watch-Party",
-        "Repository": f"{image['repository']}:{image['tag']}",
-        "Registry": "https://github.com/Oratorian/emby-watchparty/pkgs/container/emby-watchparty",
-        "Network": "bridge",
-        "Shell": "sh",
-        "Privileged": "false",
-        "Support": "https://github.com/Oratorian/emby-watchparty/issues",
-        "Project": "https://github.com/Oratorian/emby-watchparty",
-        "Overview": "Production-safe Emby Watch Party 3.0 appliance deployment.",
-        "Category": "MediaApp:Video",
-        "WebUI": "http://[IP]:[PORT:5000]/",
-        "Icon": "https://raw.githubusercontent.com/Oratorian/emby-watchparty/3.0-dev/frontend/public/favicon.ico",
-        "ExtraParams": "",
-        "PostArgs": "",
-    }
-    for name, value in metadata.items():
-        ET.SubElement(root, name).text = value
-
-    ET.SubElement(
-        root,
-        "Config",
-        {
-            "Name": "Web Port",
-            "Target": "5000",
-            "Default": "5000",
-            "Mode": "tcp",
-            "Description": "Host port for Emby Watch Party.",
-            "Type": "Port",
-            "Display": "always",
-            "Required": "true",
-            "Mask": "false",
-        },
-    ).text = "5000"
-    path_defaults = {
-        "data": "/mnt/user/appdata/emby-watchparty/data",
-        "avatars": "/mnt/user/appdata/emby-watchparty/images/avatars",
-        "logs": "/mnt/user/appdata/emby-watchparty/logs",
-        "config": "/mnt/user/appdata/emby-watchparty/config.json",
-    }
-    for storage in schema["storage"]:
-        ET.SubElement(
-            root,
-            "Config",
-            {
-                "Name": storage["id"].replace("_", " ").title(),
-                "Target": storage["target"],
-                "Default": path_defaults[storage["id"]],
-                "Mode": "rw",
-                "Description": f"Persistent {storage['id']} {storage['kind']}.",
-                "Type": "Path",
-                "Display": "always" if storage["required"] else "advanced",
-                "Required": "true" if storage["required"] else "false",
-                "Mask": "false",
-            },
-        ).text = path_defaults[storage["id"]]
-
-    environment = _environment(schema)
-    for setting in schema["settings"]:
-        value = environment[setting["name"]]
-        ET.SubElement(
-            root,
-            "Config",
-            {
-                "Name": setting["display"]["label"],
-                "Target": setting["name"],
-                "Default": _unraid_choice_default(setting, value),
-                "Mode": "",
-                "Description": setting["description"],
-                "Type": "Variable",
-                "Display": "advanced" if setting["display"]["advanced"] else "always",
-                "Required": "false" if setting["required"] == "optional" else "true",
-                "Mask": "true" if setting["secret"] else "false",
-            },
-        ).text = value
-    ET.indent(root, space="  ")
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>\n'
-        + ET.tostring(root, encoding="unicode", short_empty_elements=True)
-        + "\n"
-    )
-
-
 def _casaos(schema: dict[str, Any]) -> str:
-    image = schema["image"]
     data_root = "${APP_DATA_DIR:-/DATA/AppData/emby-watchparty}"
-    model = {
-        "name": "emby-watchparty",
-        "services": {
-            "emby-watchparty": {
-                "image": f"{image['repository']}:{image['tag']}",
-                "container_name": "emby-watchparty",
-                "environment": _environment(schema),
-                "ports": [{"target": 5000, "published": "5000", "protocol": "tcp"}],
-                "volumes": [
-                    f"{data_root}/data:/app/data",
-                    f"{data_root}/images/avatars:/app/images/avatars",
-                    f"{data_root}/logs:/app/logs",
-                    f"{data_root}/config.json:/app/config.json",
-                ],
-                "restart": "unless-stopped",
-            }
+    model = copy.deepcopy(_compose_model(schema))
+    service = model["services"]["emby-watchparty"]
+    service["environment"] = _environment(schema)
+    service["ports"] = [{"target": 5000, "published": "5000", "protocol": "tcp"}]
+    service["volumes"] = [
+        f"{data_root}/{volume.split(':', 1)[0].removeprefix('./')}:{volume.rsplit(':', 1)[1]}"
+        for volume in service["volumes"]
+    ]
+    model = {"name": "emby-watchparty", **model}
+    model["x-casaos"] = {
+        "id": "com.oratorian.emby-watchparty",
+        "main": "emby-watchparty",
+        "index": "/",
+        "port_map": "5000",
+        "scheme": "http",
+        "icon": "https://raw.githubusercontent.com/Oratorian/emby-watchparty/3.0-dev/frontend/public/favicon.ico",
+        "title": {"en_US": "Emby Watch Party"},
+        "tagline": {"en_US": "Synchronized Emby playback for remote parties"},
+        "description": {
+            "en_US": "Host synchronized watch parties backed by an existing Emby server."
         },
-        "x-casaos": {
-            "id": "com.oratorian.emby-watchparty",
-            "main": "emby-watchparty",
-            "index": "/",
-            "port_map": "5000",
-            "scheme": "http",
-            "icon": "https://raw.githubusercontent.com/Oratorian/emby-watchparty/3.0-dev/frontend/public/favicon.ico",
-            "title": {"en_US": "Emby Watch Party"},
-            "tagline": {"en_US": "Synchronized Emby playback for remote parties"},
-            "description": {
-                "en_US": "Host synchronized watch parties backed by an existing Emby server."
-            },
-            "author": "Oratorian",
-            "developer": "Oratorian",
-            "category": "Media",
-            "architectures": ["amd64", "arm64"],
-            "version": "3.0",
-            "repo": "https://github.com/Oratorian/emby-watchparty",
-            "support": "https://github.com/Oratorian/emby-watchparty/issues",
-        },
+        "author": "Oratorian",
+        "developer": "Oratorian",
+        "category": "Media",
+        "architectures": ["amd64", "arm64"],
+        "version": "3.0",
+        "repo": "https://github.com/Oratorian/emby-watchparty",
+        "support": "https://github.com/Oratorian/emby-watchparty/issues",
     }
     return _yaml_document(model, schema)
 
 
 def _truenas(schema: dict[str, Any]) -> str:
-    image = schema["image"]
     data_root = "/mnt/POOL/emby-watchparty"
-    model = {
-        "name": "emby-watchparty",
-        "services": {
-            "emby-watchparty": {
-                "image": f"{image['repository']}:{image['tag']}",
-                "container_name": "emby-watchparty",
-                "environment": _environment(schema),
-                "ports": ["5000:5000"],
-                "volumes": [
-                    f"{data_root}/data:/app/data",
-                    f"{data_root}/images/avatars:/app/images/avatars",
-                    f"{data_root}/logs:/app/logs",
-                    f"{data_root}/config.json:/app/config.json",
-                ],
-                "restart": "unless-stopped",
-            }
-        },
-    }
+    model = copy.deepcopy(_compose_model(schema))
+    service = model["services"]["emby-watchparty"]
+    service["environment"] = _environment(schema)
+    service["volumes"] = [
+        f"{data_root}/{volume.split(':', 1)[0].removeprefix('./')}:{volume.rsplit(':', 1)[1]}"
+        for volume in service["volumes"]
+    ]
+    model = {"name": "emby-watchparty", **model}
     warning = "# TrueNAS SCALE 24.10+ Custom App YAML. Replace POOL before deployment.\n"
     return warning + _yaml_document(model, schema)
 
@@ -375,7 +252,6 @@ def generate_artifacts(schema: dict[str, Any]) -> dict[Path, str]:
         Path(".env.example"): _env_example(schema),
         Path("docker-compose.yml.example"): _compose(schema),
         Path("docs/deployment/environment.md"): _environment_reference(schema),
-        Path("deploy/unraid/emby-watchparty.xml"): _unraid(schema),
         Path("deploy/casaos/docker-compose.yml"): _casaos(schema),
         Path("deploy/truenas/custom-app.yml"): _truenas(schema),
     }

@@ -1,5 +1,4 @@
 import re
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import yaml
@@ -51,23 +50,10 @@ def test_environment_reference_carries_schema_metadata() -> None:
     assert "BEHIND_PROXY=true requires TRUSTED_PROXY_CIDRS" in reference
 
 
-def test_unraid_template_exposes_schema_fields_and_persistent_paths() -> None:
+def test_unraid_is_owned_outside_the_canonical_artifact_set() -> None:
     artifacts = generate_artifacts(SCHEMA)
-    xml = artifacts[Path("deploy/unraid/emby-watchparty.xml")]
-    root = ET.fromstring(xml)  # noqa: S314 -- parser input is this generator's output
-    configs = root.findall("Config")
-    variables = [item for item in configs if item.attrib["Type"] == "Variable"]
-    paths = [item.attrib["Target"] for item in configs if item.attrib["Type"] == "Path"]
 
-    assert [item.attrib["Target"] for item in variables] == SETTING_NAMES
-    assert {item.attrib["Target"] for item in variables if item.attrib["Mask"] == "true"} == {
-        "EMBY_API_KEY",
-        "SESSION_SECRET",
-    }
-    assert paths == ["/app/data", "/app/images/avatars", "/app/logs", "/app/config.json"]
-    assert root.findtext("Repository") == "ghcr.io/oratorian/emby-watchparty:3.0"
-    assert "WEB_CONCURRENCY" not in xml
-    assert "Schema-SHA256:" in xml
+    assert Path("deploy/unraid/emby-watchparty.xml") not in artifacts
 
 
 def test_casaos_manifest_is_compose_with_current_top_level_metadata() -> None:
@@ -107,18 +93,10 @@ def test_all_platforms_share_vocabulary_and_schema_hash() -> None:
     compose = yaml.safe_load(artifacts[Path("docker-compose.yml.example")])
     casaos = yaml.safe_load(artifacts[Path("deploy/casaos/docker-compose.yml")])
     truenas = yaml.safe_load(artifacts[Path("deploy/truenas/custom-app.yml")])
-    unraid = ET.fromstring(  # noqa: S314 -- parser input is this generator's output
-        artifacts[Path("deploy/unraid/emby-watchparty.xml")]
-    )
     vocabularies = [
         list(compose["services"]["emby-watchparty"]["environment"]),
         list(casaos["services"]["emby-watchparty"]["environment"]),
         list(truenas["services"]["emby-watchparty"]["environment"]),
-        [
-            item.attrib["Target"]
-            for item in unraid.findall("Config")
-            if item.attrib["Type"] == "Variable"
-        ],
     ]
     hashes = {
         match.group(1)
@@ -126,9 +104,33 @@ def test_all_platforms_share_vocabulary_and_schema_hash() -> None:
         if (match := re.search(r"Schema-SHA256:\s*([0-9a-f]{64})", content))
     }
 
-    assert vocabularies == [SETTING_NAMES] * 4
+    assert vocabularies == [SETTING_NAMES] * 3
     assert len(hashes) == 1
-    assert len(artifacts) == 6
+    assert len(artifacts) == 5
+
+
+def test_appliance_wrappers_preserve_the_canonical_compose_service() -> None:
+    artifacts = generate_artifacts(SCHEMA)
+    models = [
+        yaml.safe_load(artifacts[path])
+        for path in (
+            Path("docker-compose.yml.example"),
+            Path("deploy/casaos/docker-compose.yml"),
+            Path("deploy/truenas/custom-app.yml"),
+        )
+    ]
+    services = [model["services"]["emby-watchparty"] for model in models]
+    canonical = services[0]
+
+    assert all(service["image"] == canonical["image"] for service in services)
+    assert all(service["container_name"] == canonical["container_name"] for service in services)
+    assert all(service["restart"] == canonical["restart"] for service in services)
+    assert all(list(service["environment"]) == SETTING_NAMES for service in services)
+    assert all(
+        [volume.rsplit(":", 1)[1] for volume in service["volumes"]]
+        == [volume.rsplit(":", 1)[1] for volume in canonical["volumes"]]
+        for service in services
+    )
 
 
 def test_check_mode_detects_missing_and_changed_artifacts(tmp_path: Path, capsys) -> None:
@@ -137,10 +139,10 @@ def test_check_mode_detects_missing_and_changed_artifacts(tmp_path: Path, capsys
 
     changed = tmp_path / "docker-compose.yml.example"
     changed.write_text("changed", encoding="utf-8")
-    missing = tmp_path / "deploy" / "unraid" / "emby-watchparty.xml"
+    missing = tmp_path / "deploy" / "casaos" / "docker-compose.yml"
     missing.unlink()
 
     assert main(["--output-dir", str(tmp_path), "--check"]) == 1
     output = capsys.readouterr().out
     assert "docker-compose.yml.example" in output
-    assert "deploy/unraid/emby-watchparty.xml" in output
+    assert "deploy/casaos/docker-compose.yml" in output

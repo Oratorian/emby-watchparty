@@ -1,8 +1,10 @@
 # CasaOS deployment
 
-Import `deploy/casaos/docker-compose.yml`. It follows CasaOS AppStore v2 Compose plus top-level
-`x-casaos`; publishing to an AppStore is outside this project change. CasaOS offers no protected
-secret primitive in this manifest. Host administrators can read saved environment values.
+Import `deploy/casaos/docker-compose.yml`. Its service is derived from
+`docker-compose.yml.example`, with CasaOS paths, environment entry, and top-level `x-casaos`
+metadata added as a thin wrapper. Publishing to an AppStore is outside this project change.
+CasaOS offers no protected secret primitive in this manifest. Host administrators can read saved
+environment values.
 
 ## Setup or 2.1.x migration
 
