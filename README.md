@@ -72,7 +72,8 @@ https://discord.gg/RWUpxq9xsA
 ## Documentation
 
 - **[Project wiki](https://github.com/Oratorian/emby-watchparty/wiki)** - hardware, deployment, troubleshooting, and FAQ
-- **[Migration guide](docs/Migration-HowTo.md)** - upgrade path for 1.x users moving to 2.0
+- **[Migration guide](docs/Migration-HowTo.md)** - upgrade path from 2.1.x to 3.0
+- **[Appliance deployment](docs/deployment/appliance-migration.md)** - Compose, CasaOS, Portainer, and TrueNAS setup, diagnosis, update, and rollback; Unraid remains owned by its Community Apps repository
 - **[Socket.IO API](docs/SOCKET_API.md)** - developer reference for the Socket.IO event protocol
 - **OpenAPI reference** - `GET /docs` (Swagger UI) or `GET /redoc` on a running instance
 - **[CHANGELOG.md](CHANGELOG.md)** - per-release details including every fix and the reasoning behind it
@@ -186,6 +187,9 @@ Keep the full 2.1.x backup and previous image until health, readiness, login,
 HLS, seeking, subtitles, reconnects, and rate-limit messages pass validation.
 Rollback restores that complete backup and image; do not delete legacy data.
 
+Platform-specific generated artifacts and workflows are indexed in the
+[appliance deployment guide](docs/deployment/appliance-migration.md).
+
 The pre-built multi-arch image is published to GitHub Container Registry:
 
 ```bash
@@ -202,6 +206,10 @@ touch config.json
 
 docker compose up -d
 ```
+
+The supplied container always listens on `0.0.0.0:5000`. To expose another host port, edit only
+the left side of the Compose `ports` mapping (for example, `8080:5000`). Keep the container target
+and its `WATCH_PARTY_BIND`/`WATCH_PARTY_PORT` values unchanged.
 
 The compose file mounts everything correctly out of the box. If you prefer `docker run`, the equivalent invocation is:
 
@@ -303,7 +311,7 @@ The failing fields are named on stderr in a framed banner, and again through the
 ========================================================================
 ```
 
-Fix the named variables where your deployment defines them and restart. On Unraid, CasaOS, Portainer or TrueNAS that is the container template; under Compose it is the `environment:` block or `.env`.
+Fix the named variables where your deployment defines them and restart. Unraid users edit the Community App through its WebUI. CasaOS, Portainer, and TrueNAS users edit the imported Compose-based app or stack; plain Compose uses the `environment:` block or `.env`.
 
 > **3.0 development builds** briefly shipped an interactive setup page at `/setup`, gated by a bootstrap token, that wrote `data/bootstrap.json`. Both are gone. Configuration is environment-only, as it was in 2.x. The page could not work on the platforms this is deployed to: every setting arrives as an environment variable there, and env-provided fields were short-circuited back to their current value, so the form silently discarded edits. Any leftover `bootstrap.json` or `setup-token` is ignored and removed on the next successful boot.
 
@@ -343,8 +351,8 @@ Boot-essential, restart required.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | **Application** | | |
-| `WATCH_PARTY_BIND` | IP address to bind to | `0.0.0.0` |
-| `WATCH_PARTY_PORT` | Port to run on | `5000` |
+| `WATCH_PARTY_BIND` | IP address to bind to. Supplied container artifacts pin this to `0.0.0.0`. | `0.0.0.0` |
+| `WATCH_PARTY_PORT` | Runtime listen port. Supplied container artifacts pin this to `5000`; edit only the published host port. | `5000` |
 | `APP_ENV` | `development` or strict startup-validated `production` mode | `development` |
 | `APP_PREFIX` | URL prefix for reverse proxy deployments (e.g. `/watchparty`) | (empty) |
 | `SESSION_EXPIRY` | Session expiry in seconds | `86400` |

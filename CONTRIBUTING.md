@@ -196,8 +196,16 @@ WIP
 
 ### Generated Files
 
-Two artefacts are generated and verified in CI. If you change their sources and
-do not regenerate, the build fails.
+Three artifact families are generated and verified in CI. If you change their
+sources and do not regenerate, the build fails.
+
+- **Deployment artifacts.** After editing `deploy/schema.json` or the deployment
+  generator, run `python scripts/generate_deployment_artifacts.py` and commit
+  `.env.example`, `docker-compose.yml.example`,
+  `docs/deployment/environment.md`, `deploy/casaos/docker-compose.yml`, and
+  `deploy/truenas/custom-app.yml`. To check changed, missing, or obsolete output
+  without writing, use
+  `python scripts/generate_deployment_artifacts.py --check`.
 
 - **Socket event types.** After editing socket event payloads, run
   `python scripts/generate_socket_types.py` and commit the updated

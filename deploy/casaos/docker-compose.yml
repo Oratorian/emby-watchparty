@@ -1,0 +1,54 @@
+# Generated from deploy/schema.json; do not edit.
+# Schema-Version: 1
+# Schema-SHA256: 04aa16e1188e664518f105a7a34036f0f290cf2ac13707de1318df5a33096c73
+name: emby-watchparty
+services:
+  emby-watchparty:
+    image: ghcr.io/oratorian/emby-watchparty:3.0
+    container_name: emby-watchparty
+    environment:
+      WATCH_PARTY_BIND: 0.0.0.0
+      WATCH_PARTY_PORT: '5000'
+      APP_PREFIX: ''
+      SESSION_EXPIRY: '86400'
+      EMBY_SERVER_URL: http://emby:8096
+      EMBY_API_KEY: ''
+      APP_ENV: production
+      SESSION_SECRET: ''
+      SESSION_COOKIE_SECURE: 'true'
+      CORS_ALLOWED_ORIGINS: ''
+      TRUSTED_PROXY_CIDRS: ''
+      ENABLE_HLS_TOKEN_VALIDATION: 'true'
+      BEHIND_PROXY: ''
+    ports:
+    - target: 5000
+      published: '5000'
+      protocol: tcp
+    volumes:
+    - ${APP_DATA_DIR:-/DATA/AppData/emby-watchparty}/data:/app/data
+    - ${APP_DATA_DIR:-/DATA/AppData/emby-watchparty}/images/avatars:/app/images/avatars
+    - ${APP_DATA_DIR:-/DATA/AppData/emby-watchparty}/logs:/app/logs
+    - ${APP_DATA_DIR:-/DATA/AppData/emby-watchparty}/config.json:/app/config.json
+    restart: unless-stopped
+x-casaos:
+  id: com.oratorian.emby-watchparty
+  main: emby-watchparty
+  index: /
+  port_map: '5000'
+  scheme: http
+  icon: https://raw.githubusercontent.com/Oratorian/emby-watchparty/3.0-dev/frontend/public/favicon.ico
+  title:
+    en_US: Emby Watch Party
+  tagline:
+    en_US: Synchronized Emby playback for remote parties
+  description:
+    en_US: Host synchronized watch parties backed by an existing Emby server.
+  author: Oratorian
+  developer: Oratorian
+  category: Media
+  architectures:
+  - amd64
+  - arm64
+  version: '3.0'
+  repo: https://github.com/Oratorian/emby-watchparty
+  support: https://github.com/Oratorian/emby-watchparty/issues
