@@ -41,9 +41,12 @@ async function loadParties() {
     parties.value = (data.parties || []).filter((p: ActiveParty) => !hidden.includes(p.code))
     partyListStatus.value = ''
   } catch (error: unknown) {
-    if (error instanceof ApiError && error.code === 'rate_limited') {
-      partyListStatus.value = error.message
-    }
+    // Assign on every failure path, not just the rate-limited one. Setting it
+    // only on 429 left the banner up for the rest of the session, so a later
+    // backend outage was reported to the user as rate limiting. The empty
+    // string keeps the base branch's "stay quiet, the next poll retries".
+    partyListStatus.value =
+      error instanceof ApiError && error.code === 'rate_limited' ? error.message : ''
   }
 }
 

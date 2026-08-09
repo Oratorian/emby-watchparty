@@ -50,4 +50,29 @@ describe('socket connection rate limits', () => {
     expect(store.connectionRetryAfter).toBe(0)
     vi.useRealTimers()
   })
+
+  it('does not surface raw engine.io text on an ordinary handshake failure', () => {
+    const store = useSocketStore()
+    store.connect()
+
+    // engine.io fires connect_error for every failed transport probe, with a
+    // library string as the message. Assigning it unconditionally put "xhr
+    // poll error" into an assertive red banner during routine churn.
+    socketHarness.handlers.get('connect_error')!(new Error('xhr poll error'))
+
+    expect(store.connectionError).toBeNull()
+    expect(store.connectionRetryAfter).toBe(0)
+    expect(socketHarness.socket.io.reconnection).not.toHaveBeenCalledWith(false)
+  })
+
+  it('reports a lost connection in its own words once the party was joined', () => {
+    const store = useSocketStore()
+    store.connect()
+    socketHarness.handlers.get('connect')!()
+
+    socketHarness.handlers.get('connect_error')!(new Error('websocket error'))
+
+    expect(store.connectionError).toBe('Lost connection to the party. Reconnecting…')
+    expect(store.connectionError).not.toContain('websocket error')
+  })
 })

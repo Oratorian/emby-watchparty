@@ -43,9 +43,19 @@ async function readResponseBody(resp: Response): Promise<JsonValue | undefined> 
 
 function responseError(resp: Response, body: JsonValue | undefined): ApiError {
   const record = isJsonObject(body) ? body : undefined
+  // A non-JSON body may be a short sentence from a proxy worth showing
+  // ("Upload too large" for an nginx client_max_body_size 413), or it may be
+  // an entire HTML error page. Promoting it unconditionally rendered the
+  // latter verbatim in the UI. Take it only when it reads like one line of
+  // prose; the full text stays on `ApiError.body` either way.
+  const rawBody = typeof body === 'string' ? body.trim() : ''
+  const readableBody =
+    rawBody && rawBody.length <= 200 && !rawBody.includes('\n') && !/[<>]/.test(rawBody)
+      ? rawBody
+      : ''
   const message = [record?.detail, record?.error, record?.message]
     .find((value): value is string => typeof value === 'string')
-    || (typeof body === 'string' && body)
+    || readableBody
     || resp.statusText
     || `Request failed (${resp.status})`
   const code = typeof record?.code === 'string' ? record.code : undefined

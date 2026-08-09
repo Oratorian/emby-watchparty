@@ -83,8 +83,20 @@ export const useSocketStore = defineStore('socket', () => {
       data?: { code?: string; retry_after?: number }
     }) => {
       console.warn('Socket connect_error:', err.message)
+      if (err.data?.code !== 'rate_limited') {
+        // engine.io fires this during ordinary handshake and reconnect churn,
+        // and err.message is a library string ("xhr poll error", "websocket
+        // error"). Assigning it unconditionally put raw transport text in an
+        // assertive red banner every time a transport probe failed. Only a
+        // server-authored refusal is worth interrupting the viewer for; the
+        // polite `reconnecting` banner, already gated on hasEverConnected,
+        // owns the rest.
+        if (hasEverConnected.value) {
+          connectionError.value = 'Lost connection to the party. Reconnecting…'
+        }
+        return
+      }
       connectionError.value = err.message || 'Could not connect to the party.'
-      if (err.data?.code !== 'rate_limited') return
 
       const retryAfter = Math.max(1, Math.ceil(err.data.retry_after || 1))
       clearConnectionRetry()

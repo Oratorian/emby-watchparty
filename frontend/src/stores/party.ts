@@ -223,8 +223,10 @@ export const usePartyStore = defineStore('party', () => {
           await new Promise((r) => setTimeout(r, 600))
           continue
         }
-        sessionError.value =
-          (e instanceof Error && e.message) || 'Could not authenticate with the server.'
+        // Only an ApiError carries a message the server wrote for a human.
+        // A fetch-layer failure gives "Failed to fetch", which explains
+        // nothing to a viewer and displaces the banner's own guidance.
+        sessionError.value = e instanceof ApiError ? e.message : 'Could not reach the server.'
       }
     }
     return false
