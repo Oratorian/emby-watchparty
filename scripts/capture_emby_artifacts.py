@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -81,7 +82,7 @@ def _canonical(payload: Any) -> bytes:
 
 
 def _request_provenance(response: httpx.Response, sanitizer: Sanitizer) -> dict[str, Any]:
-    query = {key: value for key, value in response.request.url.params.multi_items()}
+    query = dict(response.request.url.params.multi_items())
     body: Any = None
     if response.request.content:
         try:
@@ -315,11 +316,65 @@ def main() -> None:
                 ]
             )
 
+        user_data = movie.get("UserData") or {}
+        favorite_path = f"/emby/Users/{user_id}/FavoriteItems/{movie['Id']}"
+        favorite_add = client.post(favorite_path)
+        favorite_remove = client.delete(favorite_path)
+        if user_data.get("IsFavorite"):
+            # Restore the original favorite state after observing both methods.
+            client.post(favorite_path).raise_for_status()
+        captures.extend(
+            [
+                ("favorite-add", "POST", "/emby/Users/{user_id}/FavoriteItems/{item_id}", favorite_add),
+                ("favorite-remove", "DELETE", "/emby/Users/{user_id}/FavoriteItems/{item_id}", favorite_remove),
+            ]
+        )
+
+        played_path = f"/emby/Users/{user_id}/PlayedItems/{movie['Id']}"
+        played_add = client.post(played_path)
+        played_remove = client.delete(played_path)
+        if user_data.get("Played"):
+            # Restore the original played state after observing both methods.
+            client.post(played_path).raise_for_status()
+        captures.extend(
+            [
+                ("played-add", "POST", "/emby/Users/{user_id}/PlayedItems/{item_id}", played_add),
+                ("played-remove", "DELETE", "/emby/Users/{user_id}/PlayedItems/{item_id}", played_remove),
+            ]
+        )
+
+        temporary_name = f"contract-capture-{uuid.uuid4().hex}"
+        playlist_create = client.post(
+            "/emby/Playlists",
+            params={"Name": temporary_name, "UserId": user_id},
+        )
+        playlist_create.raise_for_status()
+        playlist_id = playlist_create.json()["Id"]
+        try:
+            playlist_add = client.post(
+                f"/emby/Playlists/{playlist_id}/Items",
+                params={"Ids": movie["Id"], "UserId": user_id},
+            )
+            playlist_add.raise_for_status()
+            captures.extend(
+                [
+                    ("playlist-create", "POST", "/emby/Playlists", playlist_create),
+                    (
+                        "playlist-add",
+                        "POST",
+                        "/emby/Playlists/{playlist_id}/Items",
+                        playlist_add,
+                    ),
+                ]
+            )
+        finally:
+            client.delete(f"/emby/Items/{playlist_id}").raise_for_status()
+
         OUTPUT.mkdir(parents=True, exist_ok=True)
         for boundary, method, path, response in captures:
             response.raise_for_status()
             raw = response.content
-            sanitized = sanitizer.value(response.json())
+            sanitized = sanitizer.value(response.json()) if raw else {}
             rendered = _canonical(sanitized)
             filename = f"{boundary}.json"
             (OUTPUT / filename).write_bytes(rendered)

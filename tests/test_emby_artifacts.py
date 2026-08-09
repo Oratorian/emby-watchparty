@@ -23,6 +23,12 @@ REQUIRED_BOUNDARIES = {
     "extras",
     "seasons",
     "episodes",
+    "favorite-add",
+    "favorite-remove",
+    "played-add",
+    "played-remove",
+    "playlist-create",
+    "playlist-add",
 }
 PRIVATE_MARKERS = ("api_key", "access_token", "password", "192.168.", "127.0.0.1")
 
@@ -41,7 +47,7 @@ def test_real_emby_artifacts_have_provenance_and_stable_sanitized_content() -> N
         assert hashlib.sha256(payload).hexdigest() == row["sanitized_sha256"]
         decoded = payload.decode("utf-8").lower()
         assert not any(marker in decoded for marker in PRIVATE_MARKERS)
-        assert row["method"] in {"GET", "POST"}
+        assert row["method"] in {"GET", "POST", "DELETE"}
         assert row["path"].startswith("/emby/")
         assert set(row["request"]) == {"query", "body"}
         assert row["raw_sha256"]
