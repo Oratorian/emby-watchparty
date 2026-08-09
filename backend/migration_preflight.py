@@ -1,17 +1,34 @@
-"""Read-only 2.1.x to 3.0 migration preflight."""
+"""Read-only 2.1.x to 3.0 migration preflight.
+
+The preflight predicts a 3.0 boot, so anything it decides must be decided the
+way 3.0 decides it. Values are read with the same `dotenv_values` loader
+`EnvConfig.from_env` uses, and the verdict comes from `Config.startup_errors`
+itself rather than a second opinion assembled here. A preflight that parses or
+validates independently is a twin path, and a twin path that drifts hands the
+operator a clean bill for a configuration that will not serve.
+
+Read-only is a hard constraint: this module never routes through
+`Config.from_env`, because that calls `RuntimeConfig.from_file`, which
+side-moves a corrupt `config.json` to `config.json.corrupt-<timestamp>`.
+"""
 
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from dotenv import dotenv_values
+
+from backend.src.config import Config, EnvConfig, RuntimeConfig
 from backend.src.rate_limit import parse_rate
 
 if TYPE_CHECKING:
@@ -64,7 +81,8 @@ def _read_dotenv(path: Path, report: _Report) -> dict[str, str]:
         report.error(".env could not be read", incomplete=True)
         return {}
 
-    values: dict[str, str] = {}
+    # Structural scan only: report lines the loader will silently ignore, so a
+    # setting the operator believes is applied does not vanish without comment.
     for number, original in enumerate(lines, start=1):
         line = original.strip()
         if not line or line.startswith("#"):
@@ -74,18 +92,25 @@ def _read_dotenv(path: Path, report: _Report) -> dict[str, str]:
         if "=" not in line:
             report.error(f".env line {number} is malformed", incomplete=True)
             continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if not _ENV_KEY.fullmatch(key):
+        if not _ENV_KEY.fullmatch(line.split("=", 1)[0].strip()):
             report.error(f".env line {number} has an invalid variable name", incomplete=True)
-            continue
-        if key not in _BOOT_FIELDS and key not in _WORKER_FIELDS:
-            continue
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-            value = value[1:-1]
-        values[key] = value
-    return values
+
+    # Values come from the loader the application itself uses. Splitting on '='
+    # here as well is what made the two disagree: this file's parser kept
+    # trailing ` # comment` text that python-dotenv strips, so a perfectly
+    # bootable `BEHIND_PROXY=true  # nginx` was reported as malformed, and an
+    # `ENABLE_HLS_TOKEN_VALIDATION=false  # disabled in 2.x` silently skipped
+    # the one required action a production upgrade depends on.
+    try:
+        loaded = dotenv_values(path)
+    except OSError:
+        report.error(".env could not be read", incomplete=True)
+        return {}
+    return {
+        key: value
+        for key, value in loaded.items()
+        if value is not None and key in _BOOT_FIELDS | set(_WORKER_FIELDS)
+    }
 
 
 def _read_legacy(path: Path, report: _Report) -> dict[str, object]:
@@ -137,6 +162,59 @@ def _effective(
     return default, "default"
 
 
+def _invalid_cidr_positions(raw: str) -> list[int]:
+    """1-based positions of entries `Config.startup_errors` would reject.
+
+    Split on commas only, exactly as `EnvConfig.from_env`'s `csv()` does, so a
+    space- or semicolon-separated list arrives here as the single invalid token
+    the application will also see. Reporting "is declared" for any non-empty
+    string is what let `TRUSTED_PROXY_CIDRS=172.16.0.0/12 10.0.0.0/8` clear the
+    preflight and then refuse to boot.
+    """
+    invalid: list[int] = []
+    for index, entry in enumerate(
+        (item.strip() for item in raw.split(",") if item.strip()), start=1
+    ):
+        try:
+            ipaddress.ip_network(entry, strict=False)
+        except ValueError:
+            invalid.append(index)
+    return invalid
+
+
+def _startup_errors(
+    root: Path,
+    legacy: Mapping[str, object],
+    environ: Mapping[str, str],
+    target: str,
+) -> dict[str, str]:
+    """Ask 3.0's own boot gate what it would reject, without touching disk.
+
+    `Config.from_env` is deliberately not used: it calls
+    `RuntimeConfig.from_file`, which copies a corrupt `config.json` aside.
+    The runtime half is therefore rebuilt from the JSON already parsed here,
+    and the env half comes from the real loader with the caller's environment
+    injected. Both are pure reads.
+
+    `startup_errors` gates its strictest rules on `APP_ENV`, so the config is
+    evaluated as the environment the operator says they are migrating *to*.
+    Asking "does your current APP_ENV pass" would answer the wrong question:
+    a 2.1.x deployment that never set it reads as development and sails
+    through every production rule it is about to meet.
+    """
+    runtime = RuntimeConfig()
+    runtime.update_from_dict(dict(legacy))
+    load_errors: dict[str, str] = {}
+    env = EnvConfig.from_env(
+        root,
+        legacy_hls_validation=runtime.ENABLE_HLS_TOKEN_VALIDATION,
+        errors=load_errors,
+        environ=environ,
+    )
+    config = Config(replace(env, APP_ENV=target), runtime, load_errors=load_errors)
+    return config.startup_errors()
+
+
 def _node_version() -> tuple[int, ...] | None:
     executable = shutil.which("node")
     if executable is None:
@@ -171,10 +249,15 @@ def run_preflight(
     env = dict(os.environ if environ is None else environ)
     dotenv = _read_dotenv(root / ".env", report)
     legacy = _read_legacy(root / "config.json", report)
+    # Fields this report already gives a specific, actionable instruction for.
+    # The boot gate below is authoritative but generic, so it only speaks for
+    # the fields nothing here has already explained.
+    handled: set[str] = set()
 
     behind_raw, behind_source = _effective("BEHIND_PROXY", env, dotenv, default="", legacy=None)
     behind = _boolean(behind_raw) if behind_source != "default" else None
     if behind is None:
+        handled.add("BEHIND_PROXY")
         if behind_source == "default":
             report.action("Set BEHIND_PROXY=true or BEHIND_PROXY=false before starting 3.0")
         else:
@@ -183,13 +266,32 @@ def run_preflight(
         report.info(f"BEHIND_PROXY={'true' if behind else 'false'} ({behind_source})")
 
     cidrs, cidr_source = _effective("TRUSTED_PROXY_CIDRS", env, dotenv, default="", legacy=None)
-    if behind and not str(cidrs).strip():
+    cidr_text = str(cidrs).strip()
+    if behind and not cidr_text:
+        handled.add("TRUSTED_PROXY_CIDRS")
         report.action(
             "Set TRUSTED_PROXY_CIDRS to the proxy network, for example "
             "TRUSTED_PROXY_CIDRS=172.16.0.0/12"
         )
-    elif str(cidrs).strip():
-        report.info(f"TRUSTED_PROXY_CIDRS is declared ({cidr_source})")
+    elif cidr_text:
+        # `Config.startup_errors` parses every entry with ip_network in EVERY
+        # environment, not just production, so an unparseable list is a boot
+        # failure the operator gets no warning about unless it is caught here.
+        invalid = _invalid_cidr_positions(cidr_text)
+        if invalid:
+            handled.add("TRUSTED_PROXY_CIDRS")
+            positions = ", ".join(str(position) for position in invalid)
+            report.error(
+                f"TRUSTED_PROXY_CIDRS entry {positions} is not a valid IP network "
+                f"(comma-separated position, {cidr_source})"
+            )
+            report.action(
+                "Set TRUSTED_PROXY_CIDRS to a comma-separated list of IP networks, "
+                "for example TRUSTED_PROXY_CIDRS=172.16.0.0/12,10.0.0.0/8; "
+                "spaces and semicolons are not separators"
+            )
+        else:
+            report.info(f"TRUSTED_PROXY_CIDRS is declared ({cidr_source})")
     elif behind is False:
         report.info("TRUSTED_PROXY_CIDRS is empty, correct for BEHIND_PROXY=false")
 
@@ -203,10 +305,12 @@ def run_preflight(
     )
     hls = _boolean(hls_raw)
     if hls is None:
+        handled.add("ENABLE_HLS_TOKEN_VALIDATION")
         report.error("ENABLE_HLS_TOKEN_VALIDATION must be true or false")
     else:
         report.info(f"ENABLE_HLS_TOKEN_VALIDATION={'true' if hls else 'false'} ({hls_source})")
         if target == "production" and not hls:
+            handled.add("ENABLE_HLS_TOKEN_VALIDATION")
             report.action(
                 "Set ENABLE_HLS_TOKEN_VALIDATION=true in the environment; "
                 "production otherwise fails closed"
@@ -218,11 +322,28 @@ def run_preflight(
     try:
         expiry = int(str(expiry_raw))
     except ValueError:
+        handled.add("SESSION_EXPIRY")
         report.error("SESSION_EXPIRY must be an integer number of seconds")
     else:
         report.info(f"SESSION_EXPIRY={expiry} ({expiry_source})")
         if expiry != 1_209_600:
             report.info("Set SESSION_EXPIRY=1209600 to retain the old 14-day cookie behavior")
+
+    # The authoritative verdict. Everything above explains one field in the
+    # operator's own terms; this asks 3.0's boot gate what it would actually
+    # refuse, so a field nobody thought to enumerate here cannot pass in
+    # silence. Enumerating a subset by hand is what let a stock 2.1.x
+    # production .env -- wildcard CORS, non-Secure cookies, no API key --
+    # collect a clean report and then serve 503 on every route.
+    # `startup_errors` returns field names and fixed messages only, never the
+    # submitted value, so nothing here can echo a secret.
+    boot_errors = _startup_errors(root, legacy, env, target)
+    for name in sorted(boot_errors):
+        if name in handled:
+            continue
+        report.action(f"{name} {boot_errors[name]} -- 3.0 will not start otherwise")
+    if not boot_errors:
+        report.info(f"3.0 boot validation passes for target={target}")
 
     for name, default in _RATE_DEFAULTS.items():
         raw = legacy.get(name, default)

@@ -13,6 +13,7 @@ import json
 import os
 import re
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import get_origin
@@ -135,8 +136,17 @@ class EnvConfig:
         *,
         legacy_hls_validation: bool = True,
         errors: dict[str, str] | None = None,
+        environ: Mapping[str, str] | None = None,
     ) -> "EnvConfig":
+        """Resolve boot settings from the process environment and .env.
+
+        `environ` overrides the process environment. It exists so callers
+        that only want to *predict* a boot -- the migration preflight --
+        can resolve exactly what this loader would resolve, instead of
+        re-implementing precedence and .env parsing and drifting from it.
+        """
         root = Path(project_root or Path(__file__).parent.parent.parent)
+        process_env: Mapping[str, str] = os.environ if environ is None else environ
         dot_env = {
             key: value for key, value in dotenv_values(root / ".env").items() if value is not None
         }
@@ -158,8 +168,8 @@ class EnvConfig:
         }
 
         def value(name: str) -> object:
-            if name in os.environ:
-                return os.environ[name]
+            if name in process_env:
+                return process_env[name]
             if name in dot_env:
                 return dot_env[name]
             return defaults[name]
@@ -193,7 +203,7 @@ class EnvConfig:
 
         def declared(name: str) -> bool:
             """True when a value was supplied rather than defaulted."""
-            return name in os.environ or name in dot_env
+            return name in process_env or name in dot_env
 
         return cls(
             WATCH_PARTY_BIND=str(value("WATCH_PARTY_BIND")),

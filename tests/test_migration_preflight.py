@@ -200,3 +200,142 @@ def test_non_file_legacy_config_is_an_inspection_error(tmp_path: Path) -> None:
 
     assert code == 1
     assert "ERROR: config.json is not a regular file" in output
+
+
+def test_inline_comments_are_read_the_way_the_application_reads_them(tmp_path: Path) -> None:
+    """The preflight must resolve values through the loader the app uses.
+
+    python-dotenv strips a trailing ` # comment`; a hand-rolled `split('=')`
+    does not. The divergence broke both directions: correct settings were
+    reported malformed, and `ENABLE_HLS_TOKEN_VALIDATION=false  # ...` parsed
+    to None, which skipped the one required action a production upgrade of a
+    2.x deployment with the HLS gate turned off actually depends on.
+    """
+    (tmp_path / ".env").write_text(
+        "BEHIND_PROXY=true            # traefik in front\n"
+        "TRUSTED_PROXY_CIDRS=172.16.0.0/12   # docker bridge\n"
+        "SESSION_EXPIRY=1209600       # keep the 2.x 14-day cookie\n"
+        "ENABLE_HLS_TOKEN_VALIDATION=false   # turned off in the 2.x admin panel\n",
+        encoding="utf-8",
+    )
+
+    code, output = run_preflight(tmp_path, target="production", environ={})
+
+    assert code == 0
+    assert "BEHIND_PROXY=true (.env)" in output
+    assert "SESSION_EXPIRY=1209600 (.env)" in output
+    assert "ERROR: BEHIND_PROXY must be true or false" not in output
+    assert "ERROR: SESSION_EXPIRY must be an integer number of seconds" not in output
+    assert "ENABLE_HLS_TOKEN_VALIDATION=false (.env)" in output
+    assert "REQUIRED ACTION: Set ENABLE_HLS_TOKEN_VALIDATION=true" in output
+
+
+def test_unparseable_trusted_proxy_cidrs_is_reported_not_blessed(tmp_path: Path) -> None:
+    """A non-empty CIDR list is not the same as a valid one.
+
+    `Config.startup_errors` parses every entry with `ipaddress.ip_network` in
+    every environment, so a space-separated list is one invalid token and 3.0
+    serves the setup app on every route. Reporting `is declared` gave the
+    operator positive evidence for the value that was about to stop the boot.
+    """
+    (tmp_path / ".env").write_text(
+        "BEHIND_PROXY=true\nTRUSTED_PROXY_CIDRS=172.16.0.0/12 10.0.0.0/8\n",
+        encoding="utf-8",
+    )
+
+    code, output = run_preflight(tmp_path, target="production", environ={})
+
+    assert code == 0
+    assert "TRUSTED_PROXY_CIDRS is declared" not in output
+    assert "ERROR: TRUSTED_PROXY_CIDRS entry 1 is not a valid IP network" in output
+    assert "REQUIRED ACTION: Set TRUSTED_PROXY_CIDRS to a comma-separated list" in output
+
+
+def test_valid_comma_separated_cidrs_still_pass(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text(
+        "BEHIND_PROXY=true\nTRUSTED_PROXY_CIDRS=172.16.0.0/12, 10.0.0.0/8\n",
+        encoding="utf-8",
+    )
+
+    code, output = run_preflight(tmp_path, target="production", environ={})
+
+    assert code == 0
+    assert "TRUSTED_PROXY_CIDRS is declared (.env)" in output
+    assert "is not a valid IP network" not in output
+
+
+def test_production_boot_blockers_outside_the_boot_field_list_are_reported(
+    tmp_path: Path,
+) -> None:
+    """The verdict comes from 3.0's boot gate, not from a hand-kept field list.
+
+    A stock 2.1.x production .env carries wildcard CORS, a non-Secure cookie
+    and no API key. Enumerating four boot fields by hand cleared it, and the
+    upgrade then served 503 on every route.
+    """
+    (tmp_path / ".env").write_text(
+        "APP_ENV=production\n"
+        "BEHIND_PROXY=false\n"
+        "CORS_ALLOWED_ORIGINS=*\n"
+        "SESSION_COOKIE_SECURE=false\n"
+        "SESSION_SECRET=SHORT_SENTINEL_SECRET\n",
+        encoding="utf-8",
+    )
+
+    code, output = run_preflight(tmp_path, target="production", environ={})
+
+    assert code == 0
+    assert "REQUIRED ACTION: CORS_ALLOWED_ORIGINS must be explicit in production" in output
+    assert "REQUIRED ACTION: SESSION_COOKIE_SECURE must be true in production" in output
+    assert "REQUIRED ACTION: EMBY_API_KEY is required in production" in output
+    assert "REQUIRED ACTION: SESSION_SECRET must be at least 32 characters in production" in output
+    assert "SHORT_SENTINEL_SECRET" not in output
+
+
+def test_a_valid_production_config_earns_an_explicit_all_clear(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text(
+        "APP_ENV=production\n"
+        "BEHIND_PROXY=true\n"
+        "TRUSTED_PROXY_CIDRS=172.16.0.0/12\n"
+        f"SESSION_SECRET={'a' * 40}\n"
+        "SESSION_COOKIE_SECURE=true\n"
+        "CORS_ALLOWED_ORIGINS=https://watchparty.example.com\n"
+        "EMBY_SERVER_URL=http://emby.example.com:8096\n"
+        "EMBY_API_KEY=an-api-key\n",
+        encoding="utf-8",
+    )
+
+    code, output = run_preflight(tmp_path, target="production", environ={})
+
+    assert code == 0
+    assert "INFO: 3.0 boot validation passes for target=production" in output
+    assert "3.0 will not start otherwise" not in output
+
+
+def test_development_target_is_not_judged_against_production_rules(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("BEHIND_PROXY=false\n", encoding="utf-8")
+
+    code, output = run_preflight(tmp_path, target="development", environ={})
+
+    assert code == 0
+    assert "3.0 will not start otherwise" not in output
+    assert "INFO: 3.0 boot validation passes for target=development" in output
+
+
+def test_corrupt_legacy_config_is_never_side_moved_by_the_preflight(tmp_path: Path) -> None:
+    """Read-only must hold on the failure path, not just the happy path.
+
+    `RuntimeConfig.from_file` copies a corrupt config.json to
+    `config.json.corrupt-<timestamp>`. Delegating the verdict to config.py
+    must not drag that write in, so the runtime half is rebuilt from the JSON
+    already parsed here instead.
+    """
+    (tmp_path / "config.json").write_text("{broken", encoding="utf-8")
+    before = _fingerprint(tmp_path)
+
+    code, output = run_preflight(tmp_path, target="production", environ={})
+
+    assert code == 1
+    assert "ERROR: config.json is not valid JSON" in output
+    assert _fingerprint(tmp_path) == before
+    assert list(tmp_path.glob("config.json.corrupt-*")) == []
