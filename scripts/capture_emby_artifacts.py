@@ -164,6 +164,15 @@ def main() -> None:
                 ),
             ),
             (
+                "upstream-error",
+                "GET",
+                "/emby/Items/Filters",
+                client.get(
+                    "/emby/Items/Filters",
+                    params={"UserId": user_id, "ParentId": movie_view["Id"]},
+                ),
+            ),
+            (
                 "movie-items",
                 "GET",
                 "/emby/Users/{user_id}/Items",
@@ -405,9 +414,18 @@ def main() -> None:
 
         OUTPUT.mkdir(parents=True, exist_ok=True)
         for boundary, method, path, response in captures:
-            response.raise_for_status()
             raw = response.content
-            sanitized = sanitizer.value(response.json()) if raw else {}
+            if raw:
+                try:
+                    response_payload = response.json()
+                except json.JSONDecodeError:
+                    response_payload = {
+                        "NonJsonBody": True,
+                        "ContentType": response.headers.get("Content-Type", ""),
+                    }
+            else:
+                response_payload = {}
+            sanitized = sanitizer.value(response_payload)
             rendered = _canonical(sanitized)
             filename = f"{boundary}.json"
             (OUTPUT / filename).write_bytes(rendered)
@@ -417,6 +435,7 @@ def main() -> None:
                     "file": filename,
                     "method": method,
                     "path": path,
+                    "status": response.status_code,
                     "request": _request_provenance(response, sanitizer),
                     "raw_sha256": hashlib.sha256(raw).hexdigest(),
                     "sanitized_sha256": hashlib.sha256(rendered).hexdigest(),

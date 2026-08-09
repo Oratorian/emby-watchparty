@@ -14,6 +14,7 @@ REQUIRED_BOUNDARIES = {
     "movie-items",
     "resolution-filter",
     "filtered-prefixes",
+    "upstream-error",
     "movie-detail",
     "series-detail",
     "episode-detail",
@@ -53,3 +54,6 @@ def test_real_emby_artifacts_have_provenance_and_stable_sanitized_content() -> N
         assert row["path"].startswith("/emby/")
         assert set(row["request"]) == {"query", "body"}
         assert row["raw_sha256"]
+
+    errors = [row for row in manifest["artifacts"] if row["status"] >= 400]
+    assert {row["boundary"] for row in errors} >= {"upstream-error"}
