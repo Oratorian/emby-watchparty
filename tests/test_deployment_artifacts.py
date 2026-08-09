@@ -173,6 +173,20 @@ def test_check_mode_detects_missing_and_changed_artifacts(tmp_path: Path, capsys
     assert "deploy/casaos/docker-compose.yml" in output
 
 
+def test_check_mode_ignores_operator_copies_of_top_level_examples(tmp_path: Path, capsys) -> None:
+    assert main(["--output-dir", str(tmp_path)]) == 0
+    (tmp_path / ".env").write_text(
+        (tmp_path / ".env.example").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    (tmp_path / "docker-compose.yml").write_text(
+        (tmp_path / "docker-compose.yml.example").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    assert main(["--output-dir", str(tmp_path), "--check"]) == 0
+    assert "extra deployment artifact" not in capsys.readouterr().out
+
+
 def test_check_mode_detects_obsolete_generated_artifact(tmp_path: Path, capsys) -> None:
     assert main(["--output-dir", str(tmp_path)]) == 0
     obsolete = tmp_path / "deploy" / "obsolete.yml"
