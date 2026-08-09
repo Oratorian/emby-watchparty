@@ -39,6 +39,37 @@ def test_compose_uses_production_safe_schema_defaults() -> None:
     assert len(compose["services"]) == 1
 
 
+def test_checked_in_platform_artifacts_match_the_schema_contract() -> None:
+    paths = (
+        Path("docker-compose.yml.example"),
+        Path("deploy/casaos/docker-compose.yml"),
+        Path("deploy/truenas/custom-app.yml"),
+    )
+    expected_image = f"{SCHEMA['image']['repository']}:{SCHEMA['image']['tag']}"
+    expected_targets = [item["target"] for item in SCHEMA["storage"]]
+    container_port = SCHEMA["application"]["container_port"]
+
+    for path in paths:
+        model = yaml.safe_load((ROOT / path).read_text(encoding="utf-8"))
+        service = model["services"]["emby-watchparty"]
+        mounted_targets = [entry.rsplit(":", 1)[1] for entry in service["volumes"]]
+
+        assert service["image"] == expected_image, path
+        assert list(service["environment"]) == EMITTED_NAMES, path
+        assert service["environment"]["WATCH_PARTY_BIND"] == "0.0.0.0", path
+        assert service["environment"]["WATCH_PARTY_PORT"] == str(container_port), path
+        assert mounted_targets == expected_targets, path
+        assert "WEB_CONCURRENCY" not in service["environment"], path
+        assert "command" not in service, path
+
+        if path == Path("deploy/casaos/docker-compose.yml"):
+            assert service["ports"] == [
+                {"target": container_port, "published": str(container_port), "protocol": "tcp"}
+            ]
+        else:
+            assert service["ports"] == [f"{container_port}:{container_port}"], path
+
+
 def test_generated_examples_never_contain_secret_values() -> None:
     artifacts = generate_artifacts(SCHEMA)
     combined = "\n".join(artifacts.values())
