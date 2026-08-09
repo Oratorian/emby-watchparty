@@ -516,6 +516,48 @@ class EmbyClient:
         payload = response.json()
         return payload.get("Items", []) if isinstance(payload, dict) else payload
 
+    async def set_favorite(
+        self, item_id, favorite, access_token=None, user_id=None
+    ):
+        path = f"/emby/Users/{user_id}/FavoriteItems/{item_id}"
+        method = self.gateway.post if favorite else self.gateway.delete
+        response = await method(path, headers=self._headers(access_token, user_id))
+        response.raise_for_status()
+
+    async def set_played(self, item_id, played, access_token=None, user_id=None):
+        path = f"/emby/Users/{user_id}/PlayedItems/{item_id}"
+        method = self.gateway.post if played else self.gateway.delete
+        response = await method(path, headers=self._headers(access_token, user_id))
+        response.raise_for_status()
+
+    async def get_playlists(self, access_token=None, user_id=None):
+        response = await self.gateway.get(
+            f"/emby/Users/{user_id}/Items",
+            headers=self._headers(access_token, user_id),
+            params={"Recursive": "true", "IncludeItemTypes": "Playlist"},
+        )
+        response.raise_for_status()
+        return response.json().get("Items", [])
+
+    async def create_playlist(self, name, access_token=None, user_id=None):
+        response = await self.gateway.post(
+            "/emby/Playlists",
+            headers=self._headers(access_token, user_id),
+            params={"Name": name, "UserId": user_id},
+        )
+        response.raise_for_status()
+        return response.json()["Id"]
+
+    async def add_to_playlist(
+        self, playlist_id, item_id, access_token=None, user_id=None
+    ):
+        response = await self.gateway.post(
+            f"/emby/Playlists/{playlist_id}/Items",
+            headers=self._headers(access_token, user_id),
+            params={"Ids": item_id, "UserId": user_id},
+        )
+        response.raise_for_status()
+
     def get_image_url(
         self,
         item_id,

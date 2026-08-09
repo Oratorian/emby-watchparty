@@ -16,9 +16,13 @@ from backend.src.dependencies import (
     PartySession,
     get_emby_client,
     get_logger,
+    require_party_host,
     require_party_unlocked,
 )
 from backend.src.schemas import (
+    ActionSuccessResponse,
+    FavoriteRequest,
+    FavoriteResponse,
     FilterOptionsResponse,
     GroupedSearchResponse,
     ItemDetailsResponse,
@@ -26,6 +30,12 @@ from backend.src.schemas import (
     LibraryItemsResponse,
     LibraryPrefixesResponse,
     LibraryQueryRequest,
+    PlayedRequest,
+    PlayedResponse,
+    PlaylistAddRequest,
+    PlaylistCreateRequest,
+    PlaylistCreateResponse,
+    PlaylistListResponse,
     StreamsResponse,
 )
 
@@ -390,6 +400,74 @@ async def api_item_section(
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"{section.title()} unavailable") from exc
     return {"section": section, "items": items}
+
+
+@router.put("/item/{item_id}/favorite", response_model=FavoriteResponse)
+async def api_set_favorite(
+    item_id: str,
+    body: FavoriteRequest,
+    party_session: PartySession = Depends(require_party_host),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    await emby_client.set_favorite(
+        item_id, body.favorite, access_token=access_token, user_id=user_id
+    )
+    return {"success": True, "favorite": body.favorite}
+
+
+@router.put("/item/{item_id}/played", response_model=PlayedResponse)
+async def api_set_played(
+    item_id: str,
+    body: PlayedRequest,
+    party_session: PartySession = Depends(require_party_host),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    await emby_client.set_played(
+        item_id, body.played, access_token=access_token, user_id=user_id
+    )
+    return {"success": True, "played": body.played}
+
+
+@router.get("/playlists", response_model=PlaylistListResponse)
+async def api_playlists(
+    party_session: PartySession = Depends(require_party_host),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    items = await emby_client.get_playlists(access_token=access_token, user_id=user_id)
+    return {"items": items}
+
+
+@router.post("/playlists", response_model=PlaylistCreateResponse)
+async def api_create_playlist(
+    body: PlaylistCreateRequest,
+    party_session: PartySession = Depends(require_party_host),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    playlist_id = await emby_client.create_playlist(
+        body.name, access_token=access_token, user_id=user_id
+    )
+    return {"id": playlist_id, "name": body.name}
+
+
+@router.post("/playlists/{playlist_id}/items", response_model=ActionSuccessResponse)
+async def api_add_playlist_item(
+    playlist_id: str,
+    body: PlaylistAddRequest,
+    party_session: PartySession = Depends(require_party_host),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    await emby_client.add_to_playlist(
+        playlist_id,
+        body.item_id,
+        access_token=access_token,
+        user_id=user_id,
+    )
+    return {"success": True}
 
 
 @router.get(

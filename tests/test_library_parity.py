@@ -201,3 +201,57 @@ def test_detail_sections_proxy_artifact_observed_boundaries(live_watchparty) -> 
     assert "/emby/Items/movie-1/Similar" in paths
     assert "/emby/Users/user-1/Items/movie-1/LocalTrailers" in paths
     assert "/emby/Users/user-1/Items/movie-1/SpecialFeatures" in paths
+
+
+def test_personal_actions_are_host_only_and_match_real_requests(live_watchparty) -> None:
+    host = httpx.Client(base_url=live_watchparty.url)
+    party_id = host.post("/api/party/create", json={}).json()["party_id"]
+    host.post(
+        f"/api/party/{party_id}/join",
+        json={"client_id": "host-client", "display_name": "Host"},
+    ).raise_for_status()
+    host.post(
+        "/api/auth/login", json={"username": "Host", "password": "password"}
+    ).raise_for_status()
+    guest = httpx.Client(base_url=live_watchparty.url)
+    guest.post(
+        f"/api/party/{party_id}/join",
+        json={"client_id": "guest-client", "display_name": "Guest"},
+    ).raise_for_status()
+    try:
+        assert host.put("/api/item/movie-1/favorite", json={"favorite": True}).json() == {
+            "success": True,
+            "favorite": True,
+        }
+        assert host.put("/api/item/movie-1/played", json={"played": False}).json() == {
+            "success": True,
+            "played": False,
+        }
+        assert host.get("/api/playlists").json()["items"][0]["Id"] == "playlist-1"
+        created = host.post("/api/playlists", json={"name": "Party picks"})
+        assert created.json() == {"id": "playlist-2", "name": "Party picks"}
+        added = host.post(
+            "/api/playlists/playlist-2/items", json={"item_id": "movie-1"}
+        )
+        assert added.json() == {"success": True}
+        assert guest.put(
+            "/api/item/movie-1/favorite", json={"favorite": True}
+        ).status_code == 403
+    finally:
+        host.close()
+        guest.close()
+
+    requests = live_watchparty.fake.state.requests
+    assert any(row["method"] == "POST" and row["path"].endswith("/FavoriteItems/movie-1") for row in requests)
+    assert any(row["method"] == "DELETE" and row["path"].endswith("/PlayedItems/movie-1") for row in requests)
+    assert any(
+        row["path"] == "/emby/Playlists"
+        and ("Name", "Party picks") in row["query"]
+        and ("UserId", "user-1") in row["query"]
+        for row in requests
+    )
+    assert any(
+        row["path"] == "/emby/Playlists/playlist-2/Items"
+        and ("Ids", "movie-1") in row["query"]
+        for row in requests
+    )

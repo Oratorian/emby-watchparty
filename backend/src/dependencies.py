@@ -186,6 +186,19 @@ def require_host_token(
     return party_session
 
 
+def require_party_host(
+    party_session: PartySession = Depends(require_party_unlocked),
+) -> PartySession:
+    """Require the current caller to hold the party's opaque host grant."""
+    if not party_host_session_matches(
+        party_session.party,
+        party_session.client_id,
+        party_session.host_session_grant,
+    ):
+        raise HTTPException(status_code=403, detail="Host only")
+    return party_session
+
+
 def require_admin(
     party_session: PartySession = Depends(require_party_session),
 ) -> PartySession:

@@ -158,6 +158,7 @@ export interface SearchGroup {
 export interface GroupedSearchResponse { query: string; groups: SearchGroup[] }
 export type ItemSection = 'related' | 'trailers' | 'extras'
 export interface ItemSectionResponse { section: ItemSection; items: LibraryItem[] }
+export interface PlaylistListResponse { items: LibraryItem[] }
 export interface PartyResponse extends SuccessResponse {
   party_id?: string
   url?: string
@@ -349,6 +350,23 @@ export const api = {
   ),
   itemSection: (id: string, section: ItemSection, signal?: AbortSignal) =>
     apiFetch<ItemSectionResponse>(`/api/item/${id}/sections/${section}`, { signal }),
+  setFavorite: (id: string, favorite: boolean, signal?: AbortSignal) =>
+    apiFetch<{ success: boolean; favorite: boolean }>(`/api/item/${id}/favorite`, {
+      method: 'PUT', body: JSON.stringify({ favorite }), signal,
+    }),
+  setPlayed: (id: string, played: boolean, signal?: AbortSignal) =>
+    apiFetch<{ success: boolean; played: boolean }>(`/api/item/${id}/played`, {
+      method: 'PUT', body: JSON.stringify({ played }), signal,
+    }),
+  playlists: (signal?: AbortSignal) => apiFetch<PlaylistListResponse>('/api/playlists', { signal }),
+  createPlaylist: (name: string, signal?: AbortSignal) =>
+    apiFetch<{ id: string; name: string }>('/api/playlists', {
+      method: 'POST', body: JSON.stringify({ name }), signal,
+    }),
+  addPlaylistItem: (playlistId: string, itemId: string, signal?: AbortSignal) =>
+    apiFetch<{ success: boolean }>(`/api/playlists/${playlistId}/items`, {
+      method: 'POST', body: JSON.stringify({ item_id: itemId }), signal,
+    }),
   // mediaSourceId optionally scopes the response to one alternate
   // version. When omitted, the audio/subtitle arrays describe Emby's
   // default source and `versions` still lists every alternate.

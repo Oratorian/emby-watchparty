@@ -49,4 +49,36 @@ describe('TitleDetails', () => {
     await wrapper.get('button.back-to-library').trigger('click')
     expect(wrapper.emitted('back')).toHaveLength(1)
   })
+
+  it('optimistically updates host state, locks duplicates, and rolls back inline', async () => {
+    vi.spyOn(api, 'itemDetails').mockResolvedValue({
+      Id: 'movie-1',
+      Name: 'Artifact Movie',
+      Type: 'Movie',
+      UserData: { IsFavorite: false, Played: false },
+    })
+    let rejectFavorite!: (reason: Error) => void
+    const setFavorite = vi.spyOn(api, 'setFavorite').mockReturnValue(new Promise((_, reject) => {
+      rejectFavorite = reject
+    }))
+    const wrapper = mount(TitleDetails, {
+      props: {
+        item: { Id: 'movie-1', Name: 'Artifact Movie', Type: 'Movie' },
+        isHost: true,
+      },
+    })
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Favorite'))
+
+    const favorite = wrapper.get('button.favorite-action')
+    await favorite.trigger('click')
+    expect(favorite.text()).toContain('Remove favorite')
+    expect((favorite.element as HTMLButtonElement).disabled).toBe(true)
+    await favorite.trigger('click')
+    expect(setFavorite).toHaveBeenCalledTimes(1)
+
+    rejectFavorite(new Error('Emby rejected favorite'))
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Emby rejected favorite'))
+    expect(favorite.text()).toBe('Favorite')
+    expect((favorite.element as HTMLButtonElement).disabled).toBe(false)
+  })
 })

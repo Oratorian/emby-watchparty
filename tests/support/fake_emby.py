@@ -286,6 +286,11 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     @app.get("/emby/Users/{user_id}/Items")
     async def user_items(request: Request, user_id: str):
         state.record(request)
+        if request.query_params.get("IncludeItemTypes") == "Playlist":
+            return {
+                "Items": [{"Id": "playlist-1", "Name": "Watch later", "Type": "Playlist"}],
+                "TotalRecordCount": 1,
+            }
         if request.query_params.get("SearchTerm") and state.search_items is not None:
             return {
                 "Items": copy.deepcopy(state.search_items),
@@ -342,6 +347,33 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     async def items(request: Request):
         state.record(request)
         return {"Items": [MOVIE], "TotalRecordCount": 1}
+
+    @app.api_route(
+        "/emby/Users/{user_id}/FavoriteItems/{item_id}", methods=["POST", "DELETE"]
+    )
+    async def favorite_item(request: Request, user_id: str, item_id: str):
+        del user_id, item_id
+        state.record(request)
+        return {"IsFavorite": request.method == "POST"}
+
+    @app.api_route(
+        "/emby/Users/{user_id}/PlayedItems/{item_id}", methods=["POST", "DELETE"]
+    )
+    async def played_item(request: Request, user_id: str, item_id: str):
+        del user_id, item_id
+        state.record(request)
+        return {"Played": request.method == "POST"}
+
+    @app.post("/emby/Playlists")
+    async def create_playlist(request: Request):
+        state.record(request)
+        return {"Id": "playlist-2"}
+
+    @app.post("/emby/Playlists/{playlist_id}/Items")
+    async def add_playlist_item(request: Request, playlist_id: str):
+        del playlist_id
+        state.record(request)
+        return {}
 
     @app.get("/emby/Items/{item_id}/Similar")
     async def similar_items(request: Request, item_id: str):

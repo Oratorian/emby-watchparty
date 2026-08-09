@@ -274,6 +274,45 @@ class ItemSectionResponse(StrictApiModel):
     items: list[LibraryItem] = Field(default_factory=list)
 
 
+class FavoriteRequest(StrictApiModel):
+    favorite: bool
+
+
+class FavoriteResponse(StrictApiModel):
+    success: bool
+    favorite: bool
+
+
+class PlayedRequest(StrictApiModel):
+    played: bool
+
+
+class PlayedResponse(StrictApiModel):
+    success: bool
+    played: bool
+
+
+class PlaylistListResponse(StrictApiModel):
+    items: list[LibraryItem] = Field(default_factory=list)
+
+
+class PlaylistCreateRequest(StrictApiModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class PlaylistCreateResponse(StrictApiModel):
+    id: str
+    name: str
+
+
+class PlaylistAddRequest(StrictApiModel):
+    item_id: str = Field(min_length=1, max_length=200)
+
+
+class ActionSuccessResponse(StrictApiModel):
+    success: bool
+
+
 class ItemDetailsResponse(BaseModel):
     """Single item with extended details. Wraps a LibraryItem plus any
     additional fields Emby returns for that item type."""

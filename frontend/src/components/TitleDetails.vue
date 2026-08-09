@@ -39,13 +39,47 @@
             </button>
           </div>
           <div v-if="isHost" aria-label="Personal actions" class="personal-actions">
-            <button type="button" @click="$emit('favorite', details)">
+            <button
+              class="favorite-action"
+              type="button"
+              :disabled="busyActions.has('favorite')"
+              @click="toggleFavorite"
+            >
               {{ details.UserData?.IsFavorite ? 'Remove favorite' : 'Favorite' }}
             </button>
-            <button type="button" @click="$emit('played', details)">
+            <button
+              class="played-action"
+              type="button"
+              :disabled="busyActions.has('played')"
+              @click="togglePlayed"
+            >
               Mark {{ details.UserData?.Played ? 'unplayed' : 'played' }}
             </button>
-            <button type="button" @click="$emit('playlist', details)">Add to playlist</button>
+            <button type="button" :disabled="busyActions.has('playlists')" @click="openPlaylists">
+              Add to playlist
+            </button>
+          </div>
+          <p v-if="mutationError" class="inline-error" role="alert">{{ mutationError }}</p>
+          <div v-if="showPlaylists" class="playlist-picker">
+            <label>
+              Playlist
+              <select v-model="selectedPlaylist" aria-label="Playlist">
+                <option value="">Choose…</option>
+                <option v-for="playlist in playlists" :key="playlist.Id" :value="playlist.Id">
+                  {{ playlist.Name }}
+                </option>
+              </select>
+            </label>
+            <button type="button" :disabled="!selectedPlaylist || busyActions.has('playlist-add')" @click="addToPlaylist">
+              Add
+            </button>
+            <label>
+              New playlist
+              <input v-model="newPlaylistName" aria-label="New playlist name" />
+            </label>
+            <button type="button" :disabled="!newPlaylistName.trim() || busyActions.has('playlist-create')" @click="createAndAddPlaylist">
+              Create and add
+            </button>
           </div>
         </div>
       </header>
@@ -90,9 +124,6 @@ defineEmits<{
   back: []
   play: [item: LibraryItem]
   browse: [item: LibraryItem]
-  favorite: [item: LibraryItem]
-  played: [item: LibraryItem]
-  playlist: [item: LibraryItem]
 }>()
 
 const details = ref<LibraryItem | null>(null)
@@ -108,6 +139,97 @@ const optionalSections: Array<{ id: ItemSection; label: string }> = [
 const sectionItems = ref<Partial<Record<ItemSection, LibraryItem[]>>>({})
 const sectionErrors = ref<Partial<Record<ItemSection, string>>>({})
 const sectionLoading = ref<ItemSection | null>(null)
+const busyActions = ref(new Set<string>())
+const mutationError = ref('')
+const showPlaylists = ref(false)
+const playlists = ref<LibraryItem[]>([])
+const selectedPlaylist = ref('')
+const newPlaylistName = ref('')
+
+function setBusy(action: string, busy: boolean) {
+  const next = new Set(busyActions.value)
+  if (busy) next.add(action)
+  else next.delete(action)
+  busyActions.value = next
+}
+
+async function toggleFavorite() {
+  if (!details.value || busyActions.value.has('favorite')) return
+  const previous = !!details.value.UserData?.IsFavorite
+  details.value.UserData ??= {}
+  details.value.UserData.IsFavorite = !previous
+  mutationError.value = ''
+  setBusy('favorite', true)
+  try {
+    await api.setFavorite(details.value.Id, !previous)
+  } catch (cause) {
+    details.value.UserData.IsFavorite = previous
+    mutationError.value = cause instanceof Error ? cause.message : 'Favorite update failed.'
+  } finally {
+    setBusy('favorite', false)
+  }
+}
+
+async function togglePlayed() {
+  if (!details.value || busyActions.value.has('played')) return
+  const previous = !!details.value.UserData?.Played
+  details.value.UserData ??= {}
+  details.value.UserData.Played = !previous
+  mutationError.value = ''
+  setBusy('played', true)
+  try {
+    await api.setPlayed(details.value.Id, !previous)
+  } catch (cause) {
+    details.value.UserData.Played = previous
+    mutationError.value = cause instanceof Error ? cause.message : 'Played update failed.'
+  } finally {
+    setBusy('played', false)
+  }
+}
+
+async function openPlaylists() {
+  if (busyActions.value.has('playlists')) return
+  showPlaylists.value = true
+  mutationError.value = ''
+  setBusy('playlists', true)
+  try {
+    playlists.value = (await api.playlists()).items
+  } catch (cause) {
+    mutationError.value = cause instanceof Error ? cause.message : 'Playlists unavailable.'
+  } finally {
+    setBusy('playlists', false)
+  }
+}
+
+async function addToPlaylist() {
+  if (!details.value || !selectedPlaylist.value || busyActions.value.has('playlist-add')) return
+  mutationError.value = ''
+  setBusy('playlist-add', true)
+  try {
+    await api.addPlaylistItem(selectedPlaylist.value, details.value.Id)
+    showPlaylists.value = false
+  } catch (cause) {
+    mutationError.value = cause instanceof Error ? cause.message : 'Playlist add failed.'
+  } finally {
+    setBusy('playlist-add', false)
+  }
+}
+
+async function createAndAddPlaylist() {
+  if (!details.value || !newPlaylistName.value.trim() || busyActions.value.has('playlist-create')) return
+  mutationError.value = ''
+  setBusy('playlist-create', true)
+  try {
+    const created = await api.createPlaylist(newPlaylistName.value.trim())
+    await api.addPlaylistItem(created.id, details.value.Id)
+    showPlaylists.value = false
+    newPlaylistName.value = ''
+  } catch (cause) {
+    mutationError.value = cause instanceof Error ? cause.message : 'Playlist creation failed.'
+  } finally {
+    setBusy('playlist-create', false)
+  }
+}
 
 const playable = computed(() => ['Movie', 'Episode', 'Video'].includes(details.value?.Type || ''))
 const browsable = computed(() => ['Series', 'Season', 'BoxSet'].includes(details.value?.Type || ''))
