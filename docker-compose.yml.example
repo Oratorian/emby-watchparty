@@ -1,125 +1,31 @@
-# Emby Watch Party 3.0 -- docker-compose example
-#
-# Two volume mounts are required for avatars to survive container
-# replacement: /app/data holds the SQLite avatar DB, /app/images/avatars
-# holds the uploaded image files. Without them every restart wipes every
-# member's chosen avatar.
-#
-# 3.0 writes no bootstrap or setup state. Configuration is environment-only,
-# so /app/data carries the avatar database and nothing else.
-#
-# `version:` is omitted intentionally -- modern Docker Compose v2
-# ignores it and warns on its presence.
-#
-# 2.1.x upgrade preflight (read-only; back up every listed mount first):
-# docker compose run --rm --no-deps emby-watchparty python -m backend.migration_preflight
-
+# Preflight uses this service's environment and volumes:
+# docker compose -f docker-compose.yml.example run --rm --no-deps emby-watchparty python -m backend.migration_preflight --root /app --target production --deployment docker
+# Generated from deploy/schema.json; do not edit.
+# Schema-Version: 1
+# Schema-SHA256: 6da4b3538b883f26e2e26b1337045b2b28a8d05c01033454cf64d58b7e881d4c
 services:
   emby-watchparty:
-    # Recommended: pull the pre-built multi-arch image from GHCR.
-    # `:latest` tracks the latest stable release. `:3` and `:3.0` are
-    # rolling major and major.minor tags, published for stable releases
-    # only. `:devel` and `:nightly` both track the current prerelease
-    # build, and `:3.0.0-betaN` pins one exact build. A prerelease never
-    # moves `:latest` or the rolling tags. Comment this line and uncomment
-    # `build: .` below to build from local source instead.
-    image: ghcr.io/oratorian/emby-watchparty:latest
-    # build: .
-
+    image: ghcr.io/oratorian/emby-watchparty:3.0
     container_name: emby-watchparty
-
-    # Map the container port to the host. Bump the right-hand side if
-    # WATCH_PARTY_PORT is changed in .env (or in the environment
-    # overrides below); both sides must match the configured port.
+    environment:
+      WATCH_PARTY_BIND: ${WATCH_PARTY_BIND:-0.0.0.0}
+      WATCH_PARTY_PORT: ${WATCH_PARTY_PORT:-5000}
+      APP_PREFIX: ${APP_PREFIX:-}
+      SESSION_EXPIRY: ${SESSION_EXPIRY:-86400}
+      EMBY_SERVER_URL: ${EMBY_SERVER_URL:-http://emby:8096}
+      EMBY_API_KEY: ${EMBY_API_KEY:-}
+      APP_ENV: ${APP_ENV:-production}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+      ENABLE_HLS_TOKEN_VALIDATION: ${ENABLE_HLS_TOKEN_VALIDATION:-true}
+      BEHIND_PROXY: ${BEHIND_PROXY:-}
     ports:
-      - "5000:5000"
-
-    # Load boot-essential config from .env (created from .env.example).
-    # All mutable runtime settings live in config.json (mounted below)
-    # and are edited via /admin -- they are NOT environment overrides.
-    env_file:
-      - .env
-
-    # Uncomment to override .env values without touching the file
-    # (e.g. driven by an external secrets store). Only the boot
-    # values from .env.example belong here; everything else is in
-    # config.json via /admin.
-    # environment:
-    #   # Set this FIRST. It decides whether the strict boot checks below
-    #   # are enforced at all. The default is `development`, which permits
-    #   # an empty SESSION_SECRET, wildcard CORS, non-Secure cookies and a
-    #   # disabled HLS token gate. A deployment that never sets it runs in
-    #   # that posture without complaint, so an appliance template that
-    #   # omits the field silently ships the weaker configuration.
-    #   - APP_ENV=production
-    #   - WATCH_PARTY_BIND=0.0.0.0
-    #   - WATCH_PARTY_PORT=5000
-    #   - SESSION_EXPIRY=86400
-    #   # Leave empty unless the app is served under a subpath. Setting
-    #   # this to a path you are not actually proxying makes every URL 404.
-    #   # For a subpath deployment: APP_PREFIX=/watchparty
-    #   - APP_PREFIX=
-    #   - EMBY_SERVER_URL=http://your-emby-server:8096
-    #   - EMBY_API_KEY=your_api_key_here
-    #   # Session cookie hardening (new in 2.0.0-beta18). See
-    #   # .env.example for detailed notes. Generate SESSION_SECRET
-    #   # ONCE with `openssl rand -hex 32` -- an ephemeral fallback
-    #   # is used if empty, which kicks every user out on every
-    #   # restart. Turn SESSION_COOKIE_SECURE=true for HTTPS
-    #   # deployments. CORS_ALLOWED_ORIGINS pins the Socket.IO
-    #   # origin allowlist (default `*` for backwards compat).
-    #   - SESSION_SECRET=change-me-openssl-rand-hex-32
-    #   - SESSION_COOKIE_SECURE=true
-    #   - CORS_ALLOWED_ORIGINS=https://watchparty.example.com
-    #   # Proxy topology (new in 3.0). Required in production; the
-    #   # server refuses to boot rather than guess, because guessing
-    #   # wrong is silent. Rate limiting keys on the connecting
-    #   # address, so behind a proxy that is the proxy for every
-    #   # viewer and they all share one bucket: 5 party creations per
-    #   # hour and 30 socket connects per minute for the whole
-    #   # deployment. BEHIND_PROXY=true makes TRUSTED_PROXY_CIDRS
-    #   # mandatory, which is what restores per-viewer limits.
-    #   #
-    #   # 172.16.0.0/12 covers the default Docker bridge networks,
-    #   # which is where a proxy container connects from. Use
-    #   # 127.0.0.1/32 for a proxy running on the host instead.
-    #   - BEHIND_PROXY=true
-    #   - TRUSTED_PROXY_CIDRS=172.16.0.0/12
-    #   # Boot security control. Production mode requires this to stay true.
-    #   # Changes require restart and are not available in the runtime admin panel.
-    #   - ENABLE_HLS_TOKEN_VALIDATION=true
-
+    - 5000:5000
     volumes:
-      # Required: persist the avatar database and uploaded images. ./data
-      # and ./images are created next to this compose file on first run.
-      - ./data:/app/data                     # avatar DB
-      - ./images/avatars:/app/images/avatars # uploaded avatar images
-      # Optional: persist application logs to the host (only useful if
-      # LOG_TO_FILE is enabled via /admin; default is console only).
-      - ./logs:/app/logs
-      # Optional: persist the runtime admin config across container
-      # rebuilds. Without this mount, changes made via /admin survive
-      # restarts of the same container but are wiped if the container
-      # is recreated. IMPORTANT: `touch config.json` on the host BEFORE
-      # the first `docker compose up`, otherwise Docker silently
-      # creates `config.json` as an empty directory and the backend
-      # fails to write its settings.
-      - ./config.json:/app/config.json
-
-    # The baked /api/health probe is a liveness check. Invalid configuration returns
-    # HTTP 200 with status=setup_required so Compose does not restart-loop.
-    # Use /api/ready instead if dependants must wait for normal app service.
-    # Uncomment to tighten the liveness cadence:
-    # healthcheck:
-    #   test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/api/health"]
-    #   interval: 30s
-    #   timeout: 5s
-    #   retries: 3
-
+    - ./data:/app/data
+    - ./images/avatars:/app/images/avatars
+    - ./logs:/app/logs
+    - ./config.json:/app/config.json
     restart: unless-stopped
-    networks:
-      - emby-network
-
-networks:
-  emby-network:
-    driver: bridge
