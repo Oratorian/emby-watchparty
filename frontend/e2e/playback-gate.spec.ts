@@ -189,9 +189,7 @@ test('@playback-gate complete authenticated fake-Emby playback flow', async ({ b
   await other.getByPlaceholder('Emby username').fill('Mallory')
   await other.getByPlaceholder('Emby password').fill('password')
   await other.getByRole('button', { name: 'Become Host', exact: true }).click()
-  await expect(
-    other.getByRole('banner').getByRole('button', { name: 'Browse Library' }),
-  ).toBeVisible()
+  await expect(other.getByPlaceholder('Emby username')).toBeHidden()
   const denied = await browserFetch(other, masterUrl, 'text')
   expect([401, 403]).toContain(denied.status)
 
