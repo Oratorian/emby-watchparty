@@ -154,3 +154,32 @@ def test_filter_options_are_capability_driven_from_emby(live_watchparty) -> None
         "/emby/AudioLayouts",
         "/emby/SubtitleCodecs",
     } <= option_paths
+
+
+def test_grouped_search_normalizes_supported_emby_item_types(live_watchparty) -> None:
+    live_watchparty.fake.state.search_items = [
+        {"Id": "movie-1", "Name": "Matrix", "Type": "Movie"},
+        {"Id": "series-1", "Name": "Matrix TV", "Type": "Series"},
+        {"Id": "episode-1", "Name": "Pilot", "Type": "Episode"},
+        {"Id": "person-1", "Name": "Actor", "Type": "Person"},
+        {"Id": "box-1", "Name": "Matrix Collection", "Type": "BoxSet"},
+    ]
+    client = _unlocked_client(live_watchparty)
+    try:
+        response = client.get("/api/search/grouped", params={"q": "matrix"})
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    groups = {group["id"]: group["items"] for group in response.json()["groups"]}
+    assert [item["Id"] for item in groups["movies"]] == ["movie-1"]
+    assert [item["Id"] for item in groups["series"]] == ["series-1"]
+    assert [item["Id"] for item in groups["episodes"]] == ["episode-1"]
+    assert [item["Id"] for item in groups["people"]] == ["person-1"]
+    assert [item["Id"] for item in groups["collections"]] == ["box-1"]
+    upstream = live_watchparty.fake.state.requests[-1]
+    assert ("SearchTerm", "matrix") in upstream["query"]
+    assert (
+        "IncludeItemTypes",
+        "Movie,Series,Episode,Person,BoxSet",
+    ) in upstream["query"]

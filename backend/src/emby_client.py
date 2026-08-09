@@ -465,7 +465,13 @@ class EmbyClient:
             self.logger.error("Error fetching item details: error=%s", type(exc).__name__)
             return None
 
-    async def search_items(self, query, access_token=None, user_id=None):
+    async def search_items(
+        self,
+        query,
+        access_token=None,
+        user_id=None,
+        include_item_types="Movie,Series",
+    ):
         if not user_id:
             return {"Items": []}
         params = {
@@ -476,7 +482,7 @@ class EmbyClient:
                 "RunTimeTicks,MediaSourceCount,IndexNumber,ParentIndexNumber,"
                 "SeriesId,SeasonId"
             ),
-            "IncludeItemTypes": "Movie,Series",
+            "IncludeItemTypes": include_item_types,
             "api_key": self._auth_param(access_token),
         }
         try:

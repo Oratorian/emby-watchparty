@@ -258,6 +258,17 @@ class FilterOptionsResponse(StrictApiModel):
     controls: list[FilterControl]
 
 
+class SearchGroup(StrictApiModel):
+    id: Literal["movies", "series", "episodes", "people", "collections", "other"]
+    label: str
+    items: list[LibraryItem] = Field(default_factory=list)
+
+
+class GroupedSearchResponse(StrictApiModel):
+    query: str
+    groups: list[SearchGroup] = Field(default_factory=list)
+
+
 class ItemDetailsResponse(BaseModel):
     """Single item with extended details. Wraps a LibraryItem plus any
     additional fields Emby returns for that item type."""

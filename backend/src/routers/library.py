@@ -18,6 +18,7 @@ from backend.src.dependencies import (
 )
 from backend.src.schemas import (
     FilterOptionsResponse,
+    GroupedSearchResponse,
     ItemDetailsResponse,
     LibraryItemsResponse,
     LibraryPrefixesResponse,
@@ -295,6 +296,48 @@ async def api_search(
         return {"Items": []}
     access_token, user_id = _host_creds(party_session)
     return await emby_client.search_items(q.strip(), access_token=access_token, user_id=user_id)
+
+
+@router.get(
+    "/search/grouped",
+    response_model=GroupedSearchResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
+async def api_grouped_search(
+    q: str = Query("", min_length=0, max_length=200),
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    query = q.strip()
+    if len(query) < 2:
+        return {"query": query, "groups": []}
+    access_token, user_id = _host_creds(party_session)
+    result = await emby_client.search_items(
+        query,
+        access_token=access_token,
+        user_id=user_id,
+        include_item_types="Movie,Series,Episode,Person,BoxSet",
+    )
+    definitions = (
+        ("movies", "Movies", {"Movie"}),
+        ("series", "Series", {"Series"}),
+        ("episodes", "Episodes", {"Episode"}),
+        ("people", "People", {"Person"}),
+        ("collections", "Collections", {"BoxSet"}),
+    )
+    items = result.get("Items", [])
+    return {
+        "query": query,
+        "groups": [
+            {
+                "id": group_id,
+                "label": label,
+                "items": [item for item in items if item.get("Type") in types],
+            }
+            for group_id, label, types in definitions
+            if any(item.get("Type") in types for item in items)
+        ],
+    }
 
 
 @router.get(

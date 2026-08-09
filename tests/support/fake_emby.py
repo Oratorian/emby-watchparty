@@ -119,6 +119,7 @@ class FakeEmbyBehavior:
 class FakeEmbyState:
     behavior: FakeEmbyBehavior = field(default_factory=FakeEmbyBehavior)
     requests: list[dict[str, Any]] = field(default_factory=list)
+    search_items: list[dict[str, Any]] | None = None
     stream_closed: asyncio.Event = field(default_factory=asyncio.Event)
 
     def record(self, request: Request, *, body: Any = None) -> None:
@@ -285,6 +286,11 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     @app.get("/emby/Users/{user_id}/Items")
     async def user_items(request: Request, user_id: str):
         state.record(request)
+        if request.query_params.get("SearchTerm") and state.search_items is not None:
+            return {
+                "Items": copy.deepcopy(state.search_items),
+                "TotalRecordCount": len(state.search_items),
+            }
         if user_id not in {"user-large", "user-alphabet"}:
             return {"Items": [MOVIE], "TotalRecordCount": 1}
 

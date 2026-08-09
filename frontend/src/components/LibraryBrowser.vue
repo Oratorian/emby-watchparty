@@ -15,16 +15,7 @@
           </template>
         </div>
 
-        <div class="search-bar">
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Search..."
-            @keydown.enter="doSearch"
-          />
-          <button @click="doSearch">Search</button>
-          <button v-if="isSearching" @click="clearSearch">Clear</button>
-        </div>
+        <GlobalLibrarySearch @select="handleItemClick" />
       </div>
 
       <div v-if="currentParentId" class="library-tools">
@@ -145,6 +136,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { api, type FilterControl, type LibraryFilterState, type LibraryQueryRequest } from '@/api/client'
 import { usePartyStore } from '@/stores/party'
 import LibraryFilters from './LibraryFilters.vue'
+import GlobalLibrarySearch from './GlobalLibrarySearch.vue'
 
 const party = usePartyStore()
 // Drives the LIVE badge + EQ animation overlay on the currently-playing
@@ -257,8 +249,6 @@ const loadingMore = ref(false)
 const loadingPrevious = ref(false)
 const items = ref<EmbyItem[]>([])
 const breadcrumbs = ref<Breadcrumb[]>([])
-const searchQuery = ref('')
-const isSearching = ref(false)
 const hasMore = ref(false)
 const hasPrevious = ref(false)
 const loadedStartIndex = ref(0)
@@ -375,7 +365,7 @@ function navigationSignal(): AbortSignal {
   return navigationController.signal
 }
 
-const browsableTypes = new Set(['CollectionFolder', 'Folder', 'Series', 'Season'])
+const browsableTypes = new Set(['CollectionFolder', 'Folder', 'Series', 'Season', 'BoxSet'])
 const playableTypes = new Set(['Movie', 'Episode'])
 
 // Persist the user's browsing position so they don't have to
@@ -505,8 +495,6 @@ function posterStyle(item: EmbyItem): Record<string, string> {
 async function goToRoot() {
   bumpNavToken('goToRoot')
   breadcrumbs.value = []
-  isSearching.value = false
-  searchQuery.value = ''
   hasMore.value = false
   hasPrevious.value = false
   loadedStartIndex.value = 0
@@ -523,8 +511,6 @@ async function goToCrumb(index: number) {
   const crumb = breadcrumbs.value[index]
   breadcrumbs.value = breadcrumbs.value.slice(0, index + 1)
   currentParentType.value = crumb?.type ?? null
-  isSearching.value = false
-  searchQuery.value = ''
   emit('navigation-change', crumb?.name ?? 'Libraries')
   await fetchItems(crumb!.id)
 }
@@ -680,7 +666,7 @@ async function fetchItems(
     // empty grid on every reload until the user manually navigates
     // elsewhere. In-session navigation into an empty folder still
     // works -- it just doesn't get persisted.
-    if (!append && !prepend && !isSearching.value && newItems.length > 0) saveLibraryState()
+    if (!append && !prepend && newItems.length > 0) saveLibraryState()
     if (!append && !prepend && !anchorPrefix) await fetchPrefixes(parentId)
   } catch {
     if (myToken !== navToken) return 'stale'
@@ -704,42 +690,6 @@ function loadMore() {
 function loadPrevious() {
   if (loadingPrevious.value || !hasPrevious.value || !currentParentId.value) return
   fetchItems(currentParentId.value, false, true)
-}
-
-async function doSearch() {
-  const q = searchQuery.value.trim()
-  if (!q) return
-  const myToken = bumpNavToken(`doSearch:${q}`)
-  loading.value = true
-  isSearching.value = true
-  breadcrumbs.value = []
-  hasMore.value = false
-  hasPrevious.value = false
-  availablePrefixes.value = new Set()
-  currentParentId.value = null
-  currentParentType.value = null
-  emit('navigation-change', 'Search results')
-  try {
-    const data = await api.search(q, navigationSignal())
-    if (myToken !== navToken) {
-      console.debug('[LibraryBrowser] doSearch STALE — dropping result', { startedAt: myToken, current: navToken, q })
-      return
-    }
-    items.value = data.Items ?? data ?? []
-    totalRecordCount.value = data.TotalRecordCount ?? items.value.length
-    loadedStartIndex.value = 0
-  } catch {
-    if (myToken !== navToken) return
-    items.value = []
-  } finally {
-    if (myToken === navToken) loading.value = false
-  }
-}
-
-function clearSearch() {
-  isSearching.value = false
-  searchQuery.value = ''
-  goToRoot()
 }
 
 async function handleItemClick(item: EmbyItem) {

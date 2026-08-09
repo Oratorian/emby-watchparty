@@ -133,6 +133,12 @@ export interface LibraryQueryRequest {
   filters: Record<string, string | string[] | number[] | boolean | null>
   search_term?: string | null
 }
+export interface SearchGroup {
+  id: 'movies' | 'series' | 'episodes' | 'people' | 'collections' | 'other'
+  label: string
+  items: LibraryItem[]
+}
+export interface GroupedSearchResponse { query: string; groups: SearchGroup[] }
 export interface PartyResponse extends SuccessResponse {
   party_id?: string
   url?: string
@@ -315,6 +321,9 @@ export const api = {
   ),
   search: (q: string, signal?: AbortSignal) => apiFetch<LibraryResponse>(
     `/api/search?q=${encodeURIComponent(q)}`, { signal },
+  ),
+  groupedSearch: (q: string, signal?: AbortSignal) => apiFetch<GroupedSearchResponse>(
+    `/api/search/grouped?q=${encodeURIComponent(q)}`, { signal },
   ),
   itemDetails: (id: string, signal?: AbortSignal) => apiFetch<LibraryItem>(
     `/api/item/${id}`, { signal },
