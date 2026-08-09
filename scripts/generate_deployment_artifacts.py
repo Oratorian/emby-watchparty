@@ -39,6 +39,23 @@ _SETTING_FIELDS = (
     "display",
     "preflight",
 )
+_APPLICATION_FIELDS = ("id", "name", "configuration_mode", "container_port")
+_IMAGE_FIELDS = ("repository", "tag", "platforms")
+_ENDPOINT_FIELDS = ("health", "readiness")
+_STORAGE_FIELDS = ("id", "target", "kind", "required", "writable")
+_DISPLAY_FIELDS = ("label", "group", "order", "advanced")
+_PREFLIGHT_FIELDS = ("relevant", "legacy_source")
+_SETTING_TYPES = {
+    "boolean",
+    "csv_cidr",
+    "csv_http_origins",
+    "enum",
+    "http_url",
+    "integer",
+    "path_prefix",
+    "string",
+}
+_REQUIRED_MODES = {"always", "optional", "production", "when_proxy"}
 
 
 class SchemaError(ValueError):
@@ -49,6 +66,95 @@ def _require_fields(value: dict[str, Any], fields: tuple[str, ...], path: str) -
     for field in fields:
         if field not in value:
             raise SchemaError(f"{path}.{field}: is required")
+
+
+def _require_object(value: Any, path: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise SchemaError(f"{path}: must be an object")
+    return value
+
+
+def _require_array(value: Any, path: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise SchemaError(f"{path}: must be an array")
+    return value
+
+
+def _require_value_type(value: Any, expected: type[Any], label: str, path: str) -> None:
+    if type(value) is not expected:
+        raise SchemaError(f"{path}: must be {label}")
+
+
+def _require_string(value: Any, path: str) -> None:
+    _require_value_type(value, str, "a string", path)
+
+
+def _require_integer(value: Any, path: str) -> None:
+    _require_value_type(value, int, "an integer", path)
+
+
+def _require_boolean(value: Any, path: str) -> None:
+    _require_value_type(value, bool, "a boolean", path)
+
+
+def _require_string_array(value: Any, path: str) -> None:
+    values = _require_array(value, path)
+    for index, item in enumerate(values):
+        _require_string(item, f"{path}[{index}]")
+
+
+def _validate_rule_types(rules: dict[str, Any], path: str) -> None:
+    integer_rules = {
+        "maximum",
+        "maximum_length",
+        "minimum",
+        "minimum_length",
+        "minimum_length_in_production",
+    }
+    string_rules = {"format", "items", "pattern"}
+    string_array_rules = {"allowed_strings", "item_schemes", "schemes"}
+    for name, value in rules.items():
+        rule_path = f"{path}.{name}"
+        if name in integer_rules:
+            _require_integer(value, rule_path)
+        elif name in string_rules:
+            _require_string(value, rule_path)
+        elif name in string_array_rules:
+            _require_string_array(value, rule_path)
+        elif name == "allowed":
+            _require_array(value, rule_path)
+        else:
+            raise SchemaError(f"{rule_path}: is not supported")
+
+
+def _validate_production(production: dict[str, Any], path: str) -> None:
+    for name, value in production.items():
+        rule_path = f"{path}.{name}"
+        if name == "required":
+            _require_boolean(value, rule_path)
+        elif name == "minimum_length":
+            _require_integer(value, rule_path)
+        elif name == "forbidden_values":
+            _require_array(value, rule_path)
+        elif name == "required_when":
+            condition = _require_object(value, rule_path)
+            _require_fields(condition, ("field", "equals"), rule_path)
+            _require_string(condition["field"], f"{rule_path}.field")
+        elif name != "required_value":
+            raise SchemaError(f"{rule_path}: is not supported")
+
+
+def _validate_setting_value(
+    value: Any, setting_type: str, path: str, *, allow_blank: bool = False
+) -> None:
+    if value is None or (allow_blank and value == ""):
+        return
+    if setting_type == "integer":
+        _require_integer(value, path)
+    elif setting_type == "boolean":
+        _require_boolean(value, path)
+    else:
+        _require_string(value, path)
 
 
 def load_schema(path: Path = DEFAULT_SCHEMA) -> dict[str, Any]:
@@ -62,6 +168,35 @@ def load_schema(path: Path = DEFAULT_SCHEMA) -> dict[str, Any]:
     _require_fields(raw, _TOP_LEVEL_FIELDS, "schema")
     if raw["schema_version"] != 1:
         raise SchemaError("schema.schema_version: must equal 1")
+    application = _require_object(raw["application"], "schema.application")
+    _require_fields(application, _APPLICATION_FIELDS, "schema.application")
+    for field in ("id", "name", "configuration_mode"):
+        _require_string(application[field], f"schema.application.{field}")
+    _require_integer(application["container_port"], "schema.application.container_port")
+    if application["container_port"] != 5000:
+        raise SchemaError("schema.application.container_port: must equal 5000")
+    image = _require_object(raw["image"], "schema.image")
+    _require_fields(image, _IMAGE_FIELDS, "schema.image")
+    _require_string(image["repository"], "schema.image.repository")
+    _require_string(image["tag"], "schema.image.tag")
+    _require_string_array(image["platforms"], "schema.image.platforms")
+    process = _require_object(raw["process"], "schema.process")
+    _require_fields(process, ("workers",), "schema.process")
+    if process["workers"] != 1:
+        raise SchemaError("schema.process.workers: must equal 1")
+    endpoints = _require_object(raw["endpoints"], "schema.endpoints")
+    _require_fields(endpoints, _ENDPOINT_FIELDS, "schema.endpoints")
+    for field in _ENDPOINT_FIELDS:
+        _require_string(endpoints[field], f"schema.endpoints.{field}")
+    storage_items = _require_array(raw["storage"], "schema.storage")
+    for index, storage in enumerate(storage_items):
+        storage_path = f"schema.storage[{index}]"
+        storage = _require_object(storage, storage_path)
+        _require_fields(storage, _STORAGE_FIELDS, storage_path)
+        for field in ("id", "target", "kind"):
+            _require_string(storage[field], f"{storage_path}.{field}")
+        for field in ("required", "writable"):
+            _require_boolean(storage[field], f"{storage_path}.{field}")
     if not isinstance(raw["settings"], list):
         raise SchemaError("schema.settings: must be an array")
 
@@ -77,8 +212,38 @@ def load_schema(path: Path = DEFAULT_SCHEMA) -> dict[str, Any]:
         if name in names:
             raise SchemaError(f"settings: duplicate name {name}")
         names.add(name)
-        if not isinstance(setting["secret"], bool):
-            raise SchemaError(f"{path_name}.secret: must be a boolean")
+        for field in ("description", "type", "required", "proxy_relevance"):
+            _require_string(setting[field], f"{path_name}.{field}")
+        setting_type = setting["type"]
+        if setting_type not in _SETTING_TYPES:
+            raise SchemaError(f"{path_name}.type: is not supported")
+        if setting["required"] not in _REQUIRED_MODES:
+            raise SchemaError(f"{path_name}.required: is not supported")
+        for field in ("runtime_default", "artifact_default", "safe_example"):
+            _validate_setting_value(
+                setting[field],
+                setting_type,
+                f"{path_name}.{field}",
+                allow_blank=field == "artifact_default",
+            )
+        for field in ("secret", "restart_required"):
+            _require_boolean(setting[field], f"{path_name}.{field}")
+        validation = _require_object(setting["validation"], f"{path_name}.validation")
+        _validate_rule_types(validation, f"{path_name}.validation")
+        display = _require_object(setting["display"], f"{path_name}.display")
+        _require_fields(display, _DISPLAY_FIELDS, f"{path_name}.display")
+        for field in ("label", "group"):
+            _require_string(display[field], f"{path_name}.display.{field}")
+        _require_integer(display["order"], f"{path_name}.display.order")
+        _require_boolean(display["advanced"], f"{path_name}.display.advanced")
+        production = _require_object(setting["production"], f"{path_name}.production")
+        _validate_production(production, f"{path_name}.production")
+        preflight = _require_object(setting["preflight"], f"{path_name}.preflight")
+        _require_fields(preflight, _PREFLIGHT_FIELDS, f"{path_name}.preflight")
+        _require_boolean(preflight["relevant"], f"{path_name}.preflight.relevant")
+        legacy_source = preflight["legacy_source"]
+        if legacy_source is not None:
+            _require_string(legacy_source, f"{path_name}.preflight.legacy_source")
         if setting["secret"] and setting["safe_example"] not in (None, ""):
             raise SchemaError(f"{path_name}.safe_example: secret examples must be empty")
         if setting["secret"] and (
@@ -86,6 +251,14 @@ def load_schema(path: Path = DEFAULT_SCHEMA) -> dict[str, Any]:
             or setting["artifact_default"] not in (None, "")
         ):
             raise SchemaError(f"{name}: secret defaults must be empty")
+    settings_by_name = {setting["name"]: setting for setting in raw["settings"]}
+    for required_name in ("WATCH_PARTY_BIND", "WATCH_PARTY_PORT"):
+        if required_name not in settings_by_name:
+            raise SchemaError(f"settings: {required_name} is required")
+    if settings_by_name["WATCH_PARTY_BIND"]["artifact_default"] != "0.0.0.0":  # noqa: S104 -- containers must accept published-port traffic.
+        raise SchemaError("WATCH_PARTY_BIND.artifact_default: must equal 0.0.0.0")
+    if settings_by_name["WATCH_PARTY_PORT"]["artifact_default"] != 5000:
+        raise SchemaError("WATCH_PARTY_PORT.artifact_default: must equal 5000")
     return raw
 
 
@@ -215,9 +388,7 @@ def _appliance_compose_model(schema: dict[str, Any], data_root: str) -> dict[str
 
 
 def _casaos(schema: dict[str, Any]) -> str:
-    model = _appliance_compose_model(
-        schema, "${APP_DATA_DIR:-/DATA/AppData/emby-watchparty}"
-    )
+    model = _appliance_compose_model(schema, "${APP_DATA_DIR:-/DATA/AppData/emby-watchparty}")
     container_port = schema["application"]["container_port"]
     service = model["services"]["emby-watchparty"]
     service["ports"] = [
