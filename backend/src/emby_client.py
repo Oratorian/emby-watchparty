@@ -277,6 +277,104 @@ class EmbyClient:
         response.raise_for_status()
         return response.json()
 
+    async def query_items(self, query, access_token=None, user_id=None):
+        """Run a strict watchparty library query through Emby's allowlisted API."""
+        if not user_id:
+            return {"Items": [], "TotalRecordCount": 0, "StartIndex": 0}
+
+        scope = query["scope"]
+        page = query["page"]
+        sort = query["sort"]
+        filters = query["filters"]
+        params: dict[str, str | int] = {
+            "Recursive": str(scope["recursive"]).lower(),
+            "Fields": (
+                "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,"
+                "ParentIndexNumber,SeriesId,SeasonId,UserData,MediaSourceCount"
+            ),
+            "SortBy": sort["field"],
+            "SortOrder": sort["direction"],
+            "StartIndex": page["start_index"],
+            "Limit": page["limit"],
+        }
+
+        scalar_values = {
+            "ParentId": scope["parent_id"],
+            "IncludeItemTypes": ",".join(scope["include_item_types"]),
+            "MediaTypes": ",".join(scope["media_types"]),
+            "SearchTerm": query.get("search_term"),
+        }
+        params.update({key: value for key, value in scalar_values.items() if value})
+
+        playstate = {
+            "played": "IsPlayed",
+            "unplayed": "IsUnplayed",
+            "resumable": "IsResumable",
+        }.get(filters["playstate"])
+        if playstate:
+            params["Filters"] = playstate
+
+        boolean_values = {
+            "IsFavorite": filters["favorite"],
+            "IsDuplicate": filters["duplicates"],
+            "Is3D": filters["is_3d"],
+        }
+        params.update(
+            {
+                key: str(value).lower()
+                for key, value in boolean_values.items()
+                if value is not None
+            }
+        )
+
+        list_values = {
+            "Genres": (filters["genres"], "|"),
+            "OfficialRatings": (filters["official_ratings"], "|"),
+            "Studios": (filters["studios"], "|"),
+            "Tags": (filters["tags"], "|"),
+            "Years": (filters["years"], ","),
+            "Containers": (filters["containers"], ","),
+            "VideoCodecs": (filters["video_codecs"], ","),
+            "VideoTypes": (filters["video_types"], ","),
+            "AudioCodecs": (filters["audio_codecs"], ","),
+            "AudioLayouts": (filters["audio_layouts"], ","),
+            "AudioLanguages": (filters["audio_languages"], ","),
+            "SubtitleCodecs": (filters["subtitle_codecs"], ","),
+            "SubtitleLanguages": (filters["subtitle_languages"], ","),
+        }
+        for key, (values, separator) in list_values.items():
+            if values:
+                params[key] = separator.join(str(value) for value in values)
+
+        truth_values = {
+            "HasSubtitles": filters["subtitles"],
+            "HasTrailer": filters["trailers"],
+            "HasSpecialFeature": filters["extras"],
+            "HasThemeSong": filters["theme_songs"],
+            "HasThemeVideo": filters["theme_videos"],
+            "IsLocked": filters["locked"],
+            "HasOverview": filters["overview"],
+        }
+        for key, value in truth_values.items():
+            if value in {"with", "yes"}:
+                params[key] = "true"
+            elif value in {"without", "no"}:
+                params[key] = "false"
+
+        provider_params = {"imdb": "HasImdbId", "tmdb": "HasTmdbId", "tvdb": "HasTvdbId"}
+        for provider in filters["missing_provider_ids"]:
+            params[provider_params[provider]] = "false"
+
+        response = await self.gateway.get(
+            f"/emby/Users/{user_id}/Items",
+            headers=self._headers(access_token, user_id),
+            params=params,
+        )
+        response.raise_for_status()
+        result = response.json()
+        result["StartIndex"] = page["start_index"]
+        return result
+
     async def get_season_episodes(self, season_id, access_token=None, user_id=None):
         path = f"/emby/Users/{user_id}/Items" if user_id else "/emby/Items"
         params = {

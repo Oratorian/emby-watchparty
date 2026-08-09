@@ -20,6 +20,7 @@ from backend.src.schemas import (
     ItemDetailsResponse,
     LibraryItemsResponse,
     LibraryPrefixesResponse,
+    LibraryQueryRequest,
     StreamsResponse,
 )
 
@@ -109,6 +110,30 @@ async def api_items(
             status_code=502,
             detail="Emby upstream unavailable",
         ) from exc
+
+
+@router.post(
+    "/items/query",
+    response_model=LibraryItemsResponse,
+    responses={
+        **PARTY_UNLOCKED_RESPONSES,
+        502: {"description": "Emby upstream unavailable"},
+    },
+)
+async def api_query_items(
+    query: LibraryQueryRequest,
+    response: Response,
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return await emby_client.query_items(
+            query.model_dump(), access_token=access_token, user_id=user_id
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Emby upstream unavailable") from exc
 
 
 @router.get(
