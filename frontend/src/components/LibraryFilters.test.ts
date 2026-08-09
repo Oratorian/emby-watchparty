@@ -4,6 +4,26 @@ import { describe, expect, it } from 'vitest'
 import LibraryFilters from './LibraryFilters.vue'
 
 describe('LibraryFilters', () => {
+  it('shows a readable Any choice for select controls with no upstream default', async () => {
+    const wrapper = mount(LibraryFilters, {
+      props: {
+        controls: [{
+          id: 'resolution',
+          label: 'Resolution',
+          kind: 'select',
+          values: [{ value: '4k', label: '4K' }],
+        }],
+        modelValue: {},
+      },
+    })
+
+    await wrapper.get('button[aria-expanded="false"]').trigger('click')
+
+    const options = wrapper.get('select[aria-label="Resolution"]').findAll('option')
+    expect(options.map((option) => option.text())).toEqual(['Any', '4K'])
+    expect((wrapper.get('select[aria-label="Resolution"]').element as HTMLSelectElement).value).toBe('')
+  })
+
   it('applies available controls immediately and resets active filters', async () => {
     const wrapper = mount(LibraryFilters, {
       props: {

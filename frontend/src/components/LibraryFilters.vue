@@ -18,6 +18,7 @@
             :value="selectedScalar(control.id)"
             @change="setScalar(control.id, ($event.target as HTMLSelectElement).value)"
           >
+            <option v-if="needsAnyOption(control)" value="">Any</option>
             <option v-for="option in control.values" :key="option.value" :value="option.value">
               {{ option.label }}
             </option>
@@ -82,6 +83,10 @@ function selectedList(id: string): string[] {
   return Array.isArray(value) ? value : []
 }
 
+function needsAnyOption(control: FilterControl): boolean {
+  return !control.values.some((option) => option.value === '' || option.value === 'any')
+}
+
 function publish(next: LibraryFilterState) {
   selected.value = next
   emit('update:modelValue', next)
@@ -132,7 +137,18 @@ function reset() {
 
 <style scoped>
 .library-filters { display: grid; gap: .6rem; }
-.filter-toggle, .reset-all { justify-self: start; }
+.filter-toggle, .reset-all {
+  justify-self: start;
+  padding: .45rem .75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: 600 .8rem var(--font-sans);
+  cursor: pointer;
+}
+.filter-toggle:hover, .reset-all:hover { background: var(--bg-surface-hover); border-color: var(--border-hover); }
+.filter-toggle:focus-visible, .reset-all:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 .filter-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .75rem; }
 .filter-control fieldset { border: 0; padding: 0; margin: 0; }
 .filter-control label { display: block; margin: .25rem 0; }

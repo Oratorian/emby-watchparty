@@ -102,14 +102,14 @@
               <label v-if="streams.audio.length">
                 Audio
                 <select v-model.number="selectedAudio" aria-label="Audio">
-                  <option v-for="track in streams.audio" :key="track.index" :value="track.index">{{ track.title }}</option>
+                  <option v-for="track in streams.audio" :key="track.index" :value="track.index">{{ streamLabel(track) }}</option>
                 </select>
               </label>
               <label>
                 Subtitles
                 <select v-model.number="selectedSubtitle" aria-label="Subtitles">
                   <option :value="-1">Off</option>
-                  <option v-for="track in streams.subtitles" :key="track.index" :value="track.index">{{ track.title }}</option>
+                  <option v-for="track in streams.subtitles" :key="track.index" :value="track.index">{{ streamLabel(track) }}</option>
                 </select>
               </label>
               <label v-if="resumeSeconds > 0">
@@ -207,7 +207,12 @@ const details = ref<LibraryItem | null>(null)
 const loading = ref(false)
 const error = ref('')
 let controller: AbortController | null = null
-let sectionController: AbortController | null = null
+const sectionControllers = new Map<ItemSection, AbortController>()
+
+function streamLabel(track: { title: string; displayLanguage: string; language: string }): string {
+  const base = track.displayLanguage || track.language || 'Unknown'
+  return track.title && track.title !== base ? `${base} (${track.title})` : track.title || base
+}
 const optionalSections: Array<{ id: ItemSection; label: string }> = [
   { id: 'related', label: 'Related titles' },
   { id: 'extras', label: 'Extras' },
@@ -445,9 +450,9 @@ async function selectSeason(seasonId: string) {
 }
 
 async function loadSection(section: ItemSection) {
-  if (sectionItems.value[section] || sectionLoading.value === section) return
-  sectionController?.abort()
-  sectionController = new AbortController()
+  if (sectionItems.value[section] || sectionControllers.has(section)) return
+  const sectionController = new AbortController()
+  sectionControllers.set(section, sectionController)
   sectionLoading.value = section
   delete sectionErrors.value[section]
   try {
@@ -457,23 +462,41 @@ async function loadSection(section: ItemSection) {
     if (sectionController.signal.aborted) return
     sectionErrors.value[section] = cause instanceof Error ? cause.message : `${section} unavailable.`
   } finally {
-    if (!sectionController.signal.aborted) sectionLoading.value = null
+    sectionControllers.delete(section)
+    if (sectionLoading.value === section) sectionLoading.value = null
   }
 }
 
 watch(() => props.item.Id, () => void load(), { immediate: true })
 onUnmounted(() => {
   controller?.abort()
-  sectionController?.abort()
+  sectionControllers.forEach((sectionController) => sectionController.abort())
+  sectionControllers.clear()
 })
 </script>
 
 <style scoped>
 .title-details { display: grid; gap: 1rem; }
+.title-details button {
+  padding: .5rem .8rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: 600 .8rem var(--font-sans);
+  cursor: pointer;
+}
+.title-details button:hover:not(:disabled) { background: var(--bg-surface-hover); border-color: var(--border-hover); }
+.title-details button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.title-details button:disabled { cursor: wait; opacity: .6; }
 .back-to-library { justify-self: start; }
 .detail-hero { display: grid; grid-template-columns: minmax(9rem, 15rem) 1fr; gap: 1.5rem; padding: 1.5rem; border-radius: 12px; background-size: cover; background-position: center; background-color: var(--bg-surface); background-blend-mode: multiply; }
 .detail-poster { width: 100%; border-radius: 8px; }
 .facts, .primary-actions, .personal-actions { display: flex; gap: .65rem; flex-wrap: wrap; }
+.play-title, .start-playback { background: var(--accent-primary) !important; border-color: transparent !important; color: var(--bg-deep) !important; }
+.playlist-picker, .playback-options { display: flex; align-items: end; gap: .65rem; flex-wrap: wrap; margin-top: .85rem; }
+.playlist-picker label, .playback-options label { display: grid; gap: .25rem; color: var(--text-secondary); font-size: .8rem; }
+.optional-sections > button { margin: 0 .4rem .4rem 0; }
 .tagline { font-style: italic; }
 @media (max-width: 640px) { .detail-hero { grid-template-columns: 1fr; } .detail-poster { max-width: 14rem; } }
 </style>

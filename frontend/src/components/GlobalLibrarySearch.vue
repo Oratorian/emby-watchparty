@@ -106,6 +106,17 @@ onUnmounted(cancel)
 <style scoped>
 .global-search { position: relative; display: flex; gap: .5rem; flex-wrap: wrap; }
 .global-search input { flex: 1 1 18rem; }
+.global-search button {
+  padding: .45rem .75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: 600 .8rem var(--font-sans);
+  cursor: pointer;
+}
+.global-search button:hover { background: var(--bg-surface-hover); border-color: var(--border-hover); }
+.global-search button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 .search-results { flex-basis: 100%; display: grid; gap: .75rem; padding: .75rem; background: var(--bg-surface); border-radius: 8px; }
 .search-results section { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
 .search-results h3 { width: 7rem; margin: 0; font-size: .9rem; }

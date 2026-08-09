@@ -25,8 +25,8 @@ describe('TitleDetails', () => {
       items: [{ Id: 'movie-2', Name: 'Related Movie', Type: 'Movie' }],
     })
     vi.spyOn(api, 'itemStreams').mockResolvedValue({
-      audio: [{ index: 1, language: 'eng', displayLanguage: 'English', codec: 'aac', channels: 2, isDefault: true, title: 'English' }],
-      subtitles: [{ index: 2, language: 'eng', displayLanguage: 'English', codec: 'subrip', isDefault: false, isForced: false, isExternal: true, isPGS: false, isTextSubtitleStream: true, title: 'English' }],
+      audio: [{ index: 1, language: 'eng', displayLanguage: 'English AAC', codec: 'aac', channels: 2, isDefault: true, title: '' }],
+      subtitles: [{ index: 2, language: 'eng', displayLanguage: 'English SRT', codec: 'subrip', isDefault: false, isForced: false, isExternal: true, isPGS: false, isTextSubtitleStream: true, title: '' }],
       media_source_id: 'source-1',
       versions: [{ id: 'source-1', name: '1080p', container: 'mkv', run_time_ticks: 7_200_000_000 }],
     })
@@ -56,6 +56,8 @@ describe('TitleDetails', () => {
 
     await wrapper.get('button.play-title').trigger('click')
     await vi.waitFor(() => expect(wrapper.text()).toContain('Start watch party'))
+    expect(wrapper.get('select[aria-label="Audio"]').text()).toContain('English AAC')
+    expect(wrapper.get('select[aria-label="Subtitles"]').text()).toContain('English SRT')
     await wrapper.get('button.start-playback').trigger('click')
     expect(wrapper.emitted('play')?.[0]?.[0]).toMatchObject({
       item: { Id: 'movie-1' },
@@ -67,6 +69,30 @@ describe('TitleDetails', () => {
     })
     await wrapper.get('button.back-to-library').trigger('click')
     expect(wrapper.emitted('back')).toHaveLength(1)
+  })
+
+  it('loads independent optional sections without aborting an earlier section', async () => {
+    vi.spyOn(api, 'itemDetails').mockResolvedValue({
+      Id: 'movie-1', Name: 'Artifact Movie', Type: 'Movie',
+    })
+    const signals = new Map<string, AbortSignal>()
+    vi.spyOn(api, 'itemSection').mockImplementation(async (_id, section, signal) => {
+      signals.set(section, signal as AbortSignal)
+      return { section, items: [] }
+    })
+    const wrapper = mount(TitleDetails, {
+      props: {
+        item: { Id: 'movie-1', Name: 'Artifact Movie', Type: 'Movie' },
+        isHost: false,
+      },
+    })
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Artifact Movie'))
+
+    await wrapper.get('button[data-section="related"]').trigger('click')
+    await wrapper.get('button[data-section="extras"]').trigger('click')
+
+    expect(signals.get('related')?.aborted).toBe(false)
+    expect(signals.get('extras')?.aborted).toBe(false)
   })
 
   it('optimistically updates host state, locks duplicates, and rolls back inline', async () => {
