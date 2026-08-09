@@ -26,6 +26,9 @@ async function loginAndSelectMovie(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Become Host', exact: true }).click()
   await page.getByText('Movies', { exact: true }).click()
   await page.getByText('Fake Movie', { exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Fake Movie', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Play', exact: true }).click()
+  await page.getByRole('button', { name: 'Start watch party', exact: true }).click()
   await expect(page.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
 }
 

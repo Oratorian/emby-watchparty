@@ -1,4 +1,12 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+async function startFakeMovie(page: Page): Promise<void> {
+  await page.getByText('Fake Movie', { exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Fake Movie', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Play', exact: true }).click()
+  await page.getByRole('button', { name: 'Start watch party', exact: true }).click()
+  await expect(page.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
+}
 
 test('party host login shows backend rate-limit detail', async ({ page }) => {
   await page.goto('/')
@@ -41,8 +49,57 @@ test('host authenticates and browses the fake Emby library', async ({ page }) =>
   await page.getByText('Movies', { exact: true }).click()
   const movie = page.getByText('Fake Movie', { exact: true })
   await expect(movie).toBeVisible()
-  await movie.click()
-  await expect(page.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
+  await startFakeMovie(page)
+})
+
+test('host filters, opens details, configures playback, and restores library state', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+  await page.getByRole('main').getByRole(
+    'button', { name: 'Login to Become Host', exact: true },
+  ).click()
+  await page.getByPlaceholder('Emby username').fill('Alice')
+  await page.getByPlaceholder('Emby password').fill('password')
+  await page.getByRole('button', { name: 'Become Host', exact: true }).click()
+  await page.getByText('Movies', { exact: true }).click()
+
+  await page.getByRole('button', { name: 'Filters', exact: true }).click()
+  await page.getByLabel('Drama', { exact: true }).check()
+  await expect(page.getByText('Genre: Drama', { exact: true })).toBeVisible()
+
+  const movieCard = page.getByRole('button', { name: 'Open Fake Movie', exact: true })
+  await movieCard.focus()
+  await movieCard.press('Enter')
+  await expect(page.getByRole('heading', { name: 'Fake Movie', exact: true })).toBeVisible()
+  await expect(page.getByText('A deterministic movie served by fake Emby.')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Favorite', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Remove favorite', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Mark played', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Mark unplayed', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Add to playlist', exact: true }).click()
+  await page.getByLabel('Playlist', { exact: true }).selectOption('playlist-1')
+  await page.getByRole('button', { name: 'Add', exact: true }).click()
+  await expect(page.getByLabel('Playlist', { exact: true })).toBeHidden()
+
+  await page.getByRole('button', { name: 'Play', exact: true }).click()
+  await expect(page.getByLabel('Quality', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Audio', { exact: true }).locator('option')).toHaveCount(2)
+  await expect(page.getByLabel('Subtitles', { exact: true }).locator('option')).toHaveCount(2)
+
+  await page.getByRole('button', { name: '← Back', exact: true }).click()
+  await expect(page.getByText('Genre: Drama', { exact: true })).toBeVisible()
+  await expect(movieCard).toBeFocused()
+
+  const search = page.getByLabel('Search all libraries')
+  await search.fill('Fake Movie')
+  await search.press('Enter')
+  await expect(page.getByRole('heading', { name: 'Movies', exact: true })).toBeVisible()
+  await expect(page.locator('.search-results').getByRole('button', { name: 'Fake Movie' }).first()).toBeVisible()
+  await page.getByRole('button', { name: 'Reset All', exact: true }).click()
+  await expect(page.getByText('Genre: Drama', { exact: true })).toBeHidden()
 })
 
 test('large library stays bounded and search remains responsive', async ({ page }) => {
@@ -159,7 +216,7 @@ test('compact desktop gives video full width and moves chat into a drawer', asyn
   await page.getByPlaceholder('Emby password').fill('password')
   await page.getByRole('button', { name: 'Become Host', exact: true }).click()
   await page.getByText('Movies', { exact: true }).click()
-  await page.getByText('Fake Movie', { exact: true }).click()
+  await startFakeMovie(page)
 
   const chatToggle = page.getByRole('button', { name: 'Chat', exact: true })
   await expect(chatToggle).toBeVisible()
@@ -201,7 +258,7 @@ test('two browsers receive selection and synchronized controls', async ({ browse
   await page.getByPlaceholder('Emby password').fill('password')
   await page.getByRole('button', { name: 'Become Host', exact: true }).click()
   await page.getByText('Movies', { exact: true }).click()
-  await page.getByText('Fake Movie', { exact: true }).click()
+  await startFakeMovie(page)
 
   await expect(guest.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
   await page.waitForFunction(() => {
@@ -262,7 +319,7 @@ test('playback changes are announced to assistive technology', async ({ browser,
   await page.getByPlaceholder('Emby password').fill('password')
   await page.getByRole('button', { name: 'Become Host', exact: true }).click()
   await page.getByText('Movies', { exact: true }).click()
-  await page.getByText('Fake Movie', { exact: true }).click()
+  await startFakeMovie(page)
   await expect(guest.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
 
   await page.waitForFunction(() => {
@@ -298,7 +355,7 @@ test('active viewers can approve a late joiner', async ({ browser, page }) => {
   await page.getByPlaceholder('Emby password').fill('password')
   await page.getByRole('button', { name: 'Become Host', exact: true }).click()
   await page.getByText('Movies', { exact: true }).click()
-  await page.getByText('Fake Movie', { exact: true }).click()
+  await startFakeMovie(page)
   await expect(bob.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
 
   const charlieContext = await browser.newContext()
@@ -347,7 +404,7 @@ test('active viewers can reject a late joiner without stopping playback', async 
   await page.getByPlaceholder('Emby password').fill('password')
   await page.getByRole('button', { name: 'Become Host', exact: true }).click()
   await page.getByText('Movies', { exact: true }).click()
-  await page.getByText('Fake Movie', { exact: true }).click()
+  await startFakeMovie(page)
   await expect(bob.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
 
   const charlieContext = await browser.newContext()
@@ -388,7 +445,7 @@ test('guest reload restores membership and a fresh HLS stream', async ({ browser
   await page.getByPlaceholder('Emby password').fill('password')
   await page.getByRole('button', { name: 'Become Host', exact: true }).click()
   await page.getByText('Movies', { exact: true }).click()
-  await page.getByText('Fake Movie', { exact: true }).click()
+  await startFakeMovie(page)
   await expect(guest.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
 
   const oldSource = await guest.locator('video#videoElement').getAttribute('src')

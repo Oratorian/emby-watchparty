@@ -74,6 +74,9 @@ test('@playback-gate iPhone WebKit selects native HLS from fake Emby', async ({ 
   await page.getByRole('button', { name: 'Become Host', exact: true }).tap()
   await page.getByText('Movies', { exact: true }).tap()
   await page.getByText('Fake Movie', { exact: true }).tap()
+  await expect(page.getByRole('heading', { name: 'Fake Movie', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Play', exact: true }).tap()
+  await page.getByRole('button', { name: 'Start watch party', exact: true }).tap()
 
   const video = page.locator('video#videoElement')
   await expect(video).toHaveAttribute('playsinline', '')

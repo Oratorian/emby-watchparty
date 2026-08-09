@@ -68,6 +68,8 @@
             :key="item.Id"
             :data-item-id="item.Id"
             class="item-card"
+            role="button"
+            :aria-label="`Open ${item.Name}`"
             tabindex="0"
             :class="{
               'item-card-live': item.Id === playingItemId,
