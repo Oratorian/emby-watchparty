@@ -130,9 +130,7 @@ def test_failed_config_save_does_not_enable_static_session_in_memory(
             )
 
             assert saved.json()["success"] is False
-            assert (await client.get("/api/party/static-session")).json() == {
-                "party_id": None
-            }
+            assert (await client.get("/api/party/static-session")).json() == {"party_id": None}
             assert application.state.party_manager.get("PARTY") is None
 
     asyncio.run(exercise())
@@ -155,9 +153,7 @@ def test_enabling_static_session_creates_static_party(
             )
 
             assert saved.json()["success"] is True
-            assert (await client.get("/api/party/static-session")).json() == {
-                "party_id": "PARTY"
-            }
+            assert (await client.get("/api/party/static-session")).json() == {"party_id": "PARTY"}
             assert application.state.party_manager.get("PARTY") is not None
 
     asyncio.run(exercise())
