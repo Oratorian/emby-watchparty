@@ -2417,6 +2417,71 @@ async function submitBecomeHost(payload: { username: string; password: string })
   display: none;
 }
 
+/* Browser zoom and compact desktop windows can leave fewer than 1,100
+   CSS pixels even on a physically large monitor. A permanent 320px chat
+   column then starves the player and makes the controls wrap vertically.
+   Use the existing chat drawer at this intermediate breakpoint while
+   retaining the normal desktop library layout. */
+@media (max-width: 1280px) {
+  .brand-name {
+    display: none;
+  }
+
+  .party-header,
+  .header-left,
+  .header-actions {
+    gap: var(--space-sm);
+  }
+
+  .mobile-chat-toggle {
+    display: inline-flex;
+  }
+
+  .chat-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(92vw, 360px);
+    max-width: 100vw;
+    z-index: 1001;
+    transform: translateX(100%);
+    transition: transform var(--transition-fast);
+    box-shadow: var(--shadow-lg);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .chat-panel.chat-mobile-open {
+    transform: translateX(0);
+  }
+
+  .chat-close-btn {
+    display: inline-flex;
+  }
+
+  .chat-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.45);
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1280px) {
+  .video-wrapper {
+    overflow-y: auto;
+  }
+
+  .video-wrapper :deep(.video-player) {
+    flex: 0 0 100%;
+    min-height: 100%;
+  }
+}
+
 @media (max-width: 760px) {
   .party-container.library-open .party-header {
     display: none;

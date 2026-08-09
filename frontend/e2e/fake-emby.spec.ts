@@ -146,6 +146,39 @@ test('legacy saved library state still enables alphabet navigation', async ({ pa
   expect(await lastPrefix.evaluate((button) => button.getBoundingClientRect().bottom)).toBeLessThanOrEqual(427)
 })
 
+test('compact desktop gives video full width and moves chat into a drawer', async ({ page }) => {
+  await page.setViewportSize({ width: 1138, height: 534 })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+  await page.getByRole('main').getByRole(
+    'button', { name: 'Login to Become Host', exact: true },
+  ).click()
+  await page.getByPlaceholder('Emby username').fill('Alice')
+  await page.getByPlaceholder('Emby password').fill('password')
+  await page.getByRole('button', { name: 'Become Host', exact: true }).click()
+  await page.getByText('Movies', { exact: true }).click()
+  await page.getByText('Fake Movie', { exact: true }).click()
+
+  const chatToggle = page.getByRole('button', { name: 'Chat', exact: true })
+  await expect(chatToggle).toBeVisible()
+  await expect(page.locator('.chat-panel')).not.toBeInViewport()
+  expect(await page.locator('.video-area').evaluate((area) => area.getBoundingClientRect().width)).toBeGreaterThan(1120)
+  const videoSizing = await page.locator('.party-content').evaluate((content) => ({
+    contentHeight: content.getBoundingClientRect().height,
+    videoHeight: content.querySelector('video')?.getBoundingClientRect().height ?? 0,
+  }))
+  expect(videoSizing.videoHeight).toBeGreaterThan(videoSizing.contentHeight * 0.9)
+  expect(await page.getByRole('button', { name: 'Leave', exact: true }).evaluate(
+    (button) => button.getBoundingClientRect().right <= window.innerWidth,
+  )).toBe(true)
+
+  await chatToggle.click()
+  await expect(page.locator('.chat-panel')).toBeInViewport()
+  await expect(page.getByRole('button', { name: 'Close chat', exact: true })).toBeVisible()
+})
+
 test('two browsers receive selection and synchronized controls', async ({ browser, page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Create Party', exact: true }).click()
