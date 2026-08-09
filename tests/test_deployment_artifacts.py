@@ -85,3 +85,18 @@ def test_casaos_manifest_is_compose_with_current_top_level_metadata() -> None:
     assert metadata["port_map"] == "5000"
     assert metadata["architectures"] == ["amd64", "arm64"]
     assert "Schema-SHA256:" in manifest
+
+
+def test_truenas_custom_app_uses_host_paths_without_privilege() -> None:
+    manifest = generate_artifacts(SCHEMA)[Path("deploy/truenas/custom-app.yml")]
+    model = yaml.safe_load(manifest)
+    service = model["services"]["emby-watchparty"]
+
+    assert list(service["environment"]) == SETTING_NAMES
+    assert service["environment"]["EMBY_API_KEY"] == ""
+    assert service["environment"]["SESSION_SECRET"] == ""
+    assert all(volume.startswith("/mnt/") for volume in service["volumes"])
+    assert "privileged" not in service
+    assert "cap_add" not in service
+    assert "WEB_CONCURRENCY" not in manifest
+    assert "Schema-SHA256:" in manifest

@@ -339,6 +339,31 @@ def _casaos(schema: dict[str, Any]) -> str:
     return _yaml_document(model, schema)
 
 
+def _truenas(schema: dict[str, Any]) -> str:
+    image = schema["image"]
+    data_root = "/mnt/POOL/emby-watchparty"
+    model = {
+        "name": "emby-watchparty",
+        "services": {
+            "emby-watchparty": {
+                "image": f"{image['repository']}:{image['tag']}",
+                "container_name": "emby-watchparty",
+                "environment": _environment(schema),
+                "ports": ["5000:5000"],
+                "volumes": [
+                    f"{data_root}/data:/app/data",
+                    f"{data_root}/images/avatars:/app/images/avatars",
+                    f"{data_root}/logs:/app/logs",
+                    f"{data_root}/config.json:/app/config.json",
+                ],
+                "restart": "unless-stopped",
+            }
+        },
+    }
+    warning = "# TrueNAS SCALE 24.10+ Custom App YAML. Replace POOL before deployment.\n"
+    return warning + _yaml_document(model, schema)
+
+
 def generate_artifacts(schema: dict[str, Any]) -> dict[Path, str]:
     """Render every deterministic artifact from validated schema data."""
     return {
@@ -347,6 +372,7 @@ def generate_artifacts(schema: dict[str, Any]) -> dict[Path, str]:
         Path("docs/deployment/environment.md"): _environment_reference(schema),
         Path("deploy/unraid/emby-watchparty.xml"): _unraid(schema),
         Path("deploy/casaos/docker-compose.yml"): _casaos(schema),
+        Path("deploy/truenas/custom-app.yml"): _truenas(schema),
     }
 
 
