@@ -33,6 +33,12 @@ jobs:
         run: python -m mypy
       - name: pytest
         run: python -m pytest
+      - name: Deployment artifact drift and Compose validation
+        run: |
+          python scripts/generate_deployment_artifacts.py --check
+          docker compose -f docker-compose.yml.example config -q
+          docker compose -f deploy/casaos/docker-compose.yml config -q
+          docker compose -f deploy/truenas/custom-app.yml config -q
       - name: Frontend install
         run: npm ci
         working-directory: frontend
