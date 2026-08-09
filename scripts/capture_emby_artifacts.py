@@ -80,6 +80,20 @@ def _canonical(payload: Any) -> bytes:
     return (json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True) + "\n").encode()
 
 
+def _request_provenance(response: httpx.Response, sanitizer: Sanitizer) -> dict[str, Any]:
+    query = {key: value for key, value in response.request.url.params.multi_items()}
+    body: Any = None
+    if response.request.content:
+        try:
+            body = json.loads(response.request.content)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            body = "<non-json-body>"
+    return {
+        "query": sanitizer.value(query),
+        "body": sanitizer.value(body),
+    }
+
+
 def main() -> None:
     env = _dotenv()
     server = env.get("EMBY_SERVER_URL", "http://127.0.0.1:8096").rstrip("/")
@@ -315,6 +329,7 @@ def main() -> None:
                     "file": filename,
                     "method": method,
                     "path": path,
+                    "request": _request_provenance(response, sanitizer),
                     "raw_sha256": hashlib.sha256(raw).hexdigest(),
                     "sanitized_sha256": hashlib.sha256(rendered).hexdigest(),
                 }

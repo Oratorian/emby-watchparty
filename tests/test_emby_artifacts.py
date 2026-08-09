@@ -43,4 +43,5 @@ def test_real_emby_artifacts_have_provenance_and_stable_sanitized_content() -> N
         assert not any(marker in decoded for marker in PRIVATE_MARKERS)
         assert row["method"] in {"GET", "POST"}
         assert row["path"].startswith("/emby/")
+        assert set(row["request"]) == {"query", "body"}
         assert row["raw_sha256"]
