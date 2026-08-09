@@ -151,3 +151,12 @@ def test_check_mode_detects_missing_and_changed_artifacts(tmp_path: Path, capsys
     output = capsys.readouterr().out
     assert "docker-compose.yml.example" in output
     assert "deploy/casaos/docker-compose.yml" in output
+
+
+def test_check_mode_detects_obsolete_generated_artifact(tmp_path: Path, capsys) -> None:
+    assert main(["--output-dir", str(tmp_path)]) == 0
+    obsolete = tmp_path / "deploy" / "obsolete.yml"
+    obsolete.write_text("# Schema-SHA256: " + "0" * 64 + "\n", encoding="utf-8")
+
+    assert main(["--output-dir", str(tmp_path), "--check"]) == 1
+    assert "extra deployment artifact: deploy/obsolete.yml" in capsys.readouterr().out

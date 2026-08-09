@@ -441,6 +441,25 @@ def _write_artifacts(output_dir: Path, artifacts: dict[Path, str]) -> None:
         destination.write_text(content, encoding="utf-8", newline="\n")
 
 
+def _marked_artifact_paths(output_dir: Path) -> set[Path]:
+    candidates: set[Path] = set()
+    if output_dir.is_dir():
+        candidates.update(path for path in output_dir.iterdir() if path.is_file())
+    for owned_root in (output_dir / "deploy", output_dir / "docs" / "deployment"):
+        if owned_root.is_dir():
+            candidates.update(path for path in owned_root.rglob("*") if path.is_file())
+
+    marked: set[Path] = set()
+    for candidate in candidates:
+        try:
+            content = candidate.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            continue
+        if "Schema-SHA256:" in content:
+            marked.add(candidate.relative_to(output_dir))
+    return marked
+
+
 def _check_artifacts(output_dir: Path, artifacts: dict[Path, str]) -> int:
     stale: list[Path] = []
     for relative, expected in artifacts.items():
@@ -453,7 +472,10 @@ def _check_artifacts(output_dir: Path, artifacts: dict[Path, str]) -> int:
             stale.append(relative)
     for relative in stale:
         print(f"stale deployment artifact: {relative.as_posix()}")
-    return 1 if stale else 0
+    extra = sorted(_marked_artifact_paths(output_dir) - artifacts.keys())
+    for relative in extra:
+        print(f"extra deployment artifact: {relative.as_posix()}")
+    return 1 if stale or extra else 0
 
 
 def main(argv: list[str] | None = None) -> int:
