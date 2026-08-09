@@ -322,6 +322,83 @@ def test_development_target_is_not_judged_against_production_rules(tmp_path: Pat
     assert "INFO: 3.0 boot validation passes for target=development" in output
 
 
+def test_disabled_rate_limiting_is_not_reported_as_enforced(tmp_path: Path) -> None:
+    """ENABLE_RATE_LIMITING is the master switch and it carries over verbatim.
+
+    Reporting six limits as "enforced in 3.0" without reading it tells an
+    operator who switched rate limiting off in the 2.1.x admin panel that they
+    are protected while nothing is throttled.
+    """
+    (tmp_path / "config.json").write_text(
+        '{"ENABLE_RATE_LIMITING": false, "RATE_LIMIT_CHAT": "4 per 3 seconds"}',
+        encoding="utf-8",
+    )
+
+    code, output = run_preflight(tmp_path, environ={})
+
+    assert code == 0
+    assert output.count("this limit is enforced in 3.0") == 0
+    assert output.count("not enforced: ENABLE_RATE_LIMITING=false in config.json") == 6
+    assert "REQUIRED ACTION: ENABLE_RATE_LIMITING=false carries into 3.0" in output
+
+
+def test_enabled_rate_limiting_still_reports_every_limit_as_enforced(tmp_path: Path) -> None:
+    (tmp_path / "config.json").write_text('{"ENABLE_RATE_LIMITING": true}', encoding="utf-8")
+
+    code, output = run_preflight(tmp_path, environ={})
+
+    assert code == 0
+    assert output.count("this limit is enforced in 3.0") == 6
+    assert "ENABLE_RATE_LIMITING=false carries into 3.0" not in output
+
+
+def test_health_probe_urls_carry_the_application_prefix(tmp_path: Path) -> None:
+    """Both probes are mounted under APP_PREFIX, so bare paths invert the signal.
+
+    Against a healthy subpath deployment the unprefixed URL 404s, which reads
+    as a failed upgrade; against a broken one it falls to the unprefixed 503
+    catch-all and reports "dead" exactly where these lines promise to
+    distinguish "misconfigured" from "dead".
+    """
+    (tmp_path / ".env").write_text("APP_PREFIX=/watchparty\n", encoding="utf-8")
+
+    code, output = run_preflight(tmp_path, environ={})
+
+    assert code == 0
+    assert "Healthy 3.0: /watchparty/api/health returns 200 ok" in output
+    assert "/watchparty/api/ready returns 200" in output
+    assert "Invalid production config: /watchparty/api/health returns 200 setup_required" in output
+
+
+def test_health_probe_urls_drop_a_prefix_the_boot_gate_rejects(tmp_path: Path) -> None:
+    """app.py serves unprefixed when APP_PREFIX fails validation; mirror that."""
+    (tmp_path / ".env").write_text("APP_PREFIX=not-a-valid-prefix\n", encoding="utf-8")
+
+    code, output = run_preflight(tmp_path, environ={})
+
+    assert code == 0
+    assert "Healthy 3.0: /api/health returns 200 ok" in output
+    assert "not-a-valid-prefix/api/health" not in output
+
+
+def test_json_null_legacy_hls_flag_reports_what_the_runtime_resolves(tmp_path: Path) -> None:
+    """`legacy.get()` cannot tell an absent key from an explicit JSON null.
+
+    RuntimeConfig coerces null to False, so reporting the default `true` put an
+    INFO claiming the gate was on beside the action saying it must be turned on.
+    """
+    (tmp_path / "config.json").write_text(
+        '{"ENABLE_HLS_TOKEN_VALIDATION": null}', encoding="utf-8"
+    )
+
+    code, output = run_preflight(tmp_path, target="production", environ={})
+
+    assert code == 0
+    assert "ENABLE_HLS_TOKEN_VALIDATION=false (legacy config.json)" in output
+    assert "ENABLE_HLS_TOKEN_VALIDATION=true (default)" not in output
+    assert "REQUIRED ACTION: Set ENABLE_HLS_TOKEN_VALIDATION=true" in output
+
+
 def test_corrupt_legacy_config_is_never_side_moved_by_the_preflight(tmp_path: Path) -> None:
     """Read-only must hold on the failure path, not just the happy path.
 

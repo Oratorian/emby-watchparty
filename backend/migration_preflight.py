@@ -34,7 +34,12 @@ from backend.src.rate_limit import parse_rate
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+# Fields this report resolves and echoes by name. Kept narrow on purpose: the
+# .env values it selects are the only ones that can reach the output, so a
+# secret cannot be printed by accident. The boot verdict does NOT come from
+# this set -- `Config.startup_errors` sees every field regardless.
 _BOOT_FIELDS = {
+    "APP_PREFIX",
     "BEHIND_PROXY",
     "TRUSTED_PROXY_CIDRS",
     "ENABLE_HLS_TOKEN_VALIDATION",
@@ -184,7 +189,7 @@ def _invalid_cidr_positions(raw: str) -> list[int]:
 
 def _startup_errors(
     root: Path,
-    legacy: Mapping[str, object],
+    runtime: RuntimeConfig,
     environ: Mapping[str, str],
     target: str,
 ) -> dict[str, str]:
@@ -192,9 +197,9 @@ def _startup_errors(
 
     `Config.from_env` is deliberately not used: it calls
     `RuntimeConfig.from_file`, which copies a corrupt `config.json` aside.
-    The runtime half is therefore rebuilt from the JSON already parsed here,
-    and the env half comes from the real loader with the caller's environment
-    injected. Both are pure reads.
+    The caller therefore passes a `RuntimeConfig` already built from the JSON
+    parsed here, and the env half comes from the real loader with the caller's
+    environment injected. Both are pure reads.
 
     `startup_errors` gates its strictest rules on `APP_ENV`, so the config is
     evaluated as the environment the operator says they are migrating *to*.
@@ -202,8 +207,6 @@ def _startup_errors(
     a 2.1.x deployment that never set it reads as development and sails
     through every production rule it is about to meet.
     """
-    runtime = RuntimeConfig()
-    runtime.update_from_dict(dict(legacy))
     load_errors: dict[str, str] = {}
     env = EnvConfig.from_env(
         root,
@@ -254,6 +257,13 @@ def run_preflight(
     # the fields nothing here has already explained.
     handled: set[str] = set()
 
+    # Built once, from the JSON already parsed above, and reused for both the
+    # legacy value lookups and the boot gate. Applying config.json twice would
+    # let the two copies answer differently, which is the whole failure mode
+    # this module keeps running into.
+    runtime = RuntimeConfig()
+    runtime.update_from_dict(dict(legacy))
+
     behind_raw, behind_source = _effective("BEHIND_PROXY", env, dotenv, default="", legacy=None)
     behind = _boolean(behind_raw) if behind_source != "default" else None
     if behind is None:
@@ -295,7 +305,15 @@ def run_preflight(
     elif behind is False:
         report.info("TRUSTED_PROXY_CIDRS is empty, correct for BEHIND_PROXY=false")
 
-    legacy_hls = legacy.get("ENABLE_HLS_TOKEN_VALIDATION")
+    # Resolve the legacy value the way RuntimeConfig resolves it, not with a
+    # local coercion. `legacy.get(...)` returns None both for an absent key and
+    # for an explicit JSON null, and `_effective` reads None as "not present",
+    # so a null was reported as the default `true` while the runtime coerces it
+    # to False. Presence is therefore tested on the key, and the value comes
+    # from the same object the boot gate uses.
+    legacy_hls = (
+        runtime.ENABLE_HLS_TOKEN_VALIDATION if "ENABLE_HLS_TOKEN_VALIDATION" in legacy else None
+    )
     hls_raw, hls_source = _effective(
         "ENABLE_HLS_TOKEN_VALIDATION",
         env,
@@ -337,7 +355,7 @@ def run_preflight(
     # collect a clean report and then serve 503 on every route.
     # `startup_errors` returns field names and fixed messages only, never the
     # submitted value, so nothing here can echo a secret.
-    boot_errors = _startup_errors(root, legacy, env, target)
+    boot_errors = _startup_errors(root, runtime, env, target)
     for name in sorted(boot_errors):
         if name in handled:
             continue
@@ -345,6 +363,16 @@ def run_preflight(
     if not boot_errors:
         report.info(f"3.0 boot validation passes for target={target}")
 
+    # ENABLE_RATE_LIMITING is the master switch, and it carries over from
+    # config.json untouched. Reporting six limits as "enforced in 3.0" without
+    # reading it tells an operator who turned rate limiting off in the 2.1.x
+    # admin panel that they are protected when nothing is throttled.
+    rate_limiting = runtime.ENABLE_RATE_LIMITING
+    if not rate_limiting:
+        report.action(
+            "ENABLE_RATE_LIMITING=false carries into 3.0; turn it on under "
+            "Admin -> Security for any of the limits below to apply"
+        )
     for name, default in _RATE_DEFAULTS.items():
         raw = legacy.get(name, default)
         source = "legacy config.json" if name in legacy else "default"
@@ -356,7 +384,12 @@ def run_preflight(
         except ValueError:
             report.error(f"{name} has a malformed legacy value")
             continue
-        report.info(f"{name}={raw} ({source}); this limit is enforced in 3.0")
+        state = (
+            "this limit is enforced in 3.0"
+            if rate_limiting
+            else "not enforced: ENABLE_RATE_LIMITING=false in config.json"
+        )
+        report.info(f"{name}={raw} ({source}); {state}")
 
     worker_declared = False
     worker_valid = True
@@ -408,10 +441,21 @@ def run_preflight(
         "and volume mappings before upgrade"
     )
     report.info("Keep the 2.1.x image and configuration until real playback validation passes")
-    report.info("Healthy 3.0: /api/health returns 200 ok and /api/ready returns 200")
+    # Both probes live under APP_PREFIX: the healthy factory mounts every router
+    # with prefix=prefix, and the setup app registers the prefixed paths behind
+    # an unprefixed 503 catch-all. Printing them bare inverts the signal on a
+    # subpath deployment -- the documented curl 404s against a perfectly healthy
+    # upgrade, and against a broken one it hits the catch-all and reports 503,
+    # "dead", exactly where these two lines promise to say "misconfigured".
+    # app.py drops the prefix when the boot gate rejected it, so mirror that.
+    raw_prefix, _ = _effective("APP_PREFIX", env, dotenv, default="", legacy=None)
+    prefix = "" if "APP_PREFIX" in boot_errors else str(raw_prefix).rstrip("/")
     report.info(
-        "Invalid production config: /api/health returns 200 setup_required, "
-        "/api/ready returns 503, and other routes remain unavailable"
+        f"Healthy 3.0: {prefix}/api/health returns 200 ok and {prefix}/api/ready returns 200"
+    )
+    report.info(
+        f"Invalid production config: {prefix}/api/health returns 200 setup_required, "
+        f"{prefix}/api/ready returns 503, and other routes remain unavailable"
     )
     report.action(
         "Prepare rollback by restoring the full backup and previous image/configuration; "
