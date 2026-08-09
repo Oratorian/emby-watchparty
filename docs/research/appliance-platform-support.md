@@ -32,8 +32,9 @@ support, not native compatibility test results.
   boot/appliance environment only. `config.json` remains mounted and backed up.
 - No TrueNAS catalog package: Custom App YAML is supported first; catalog maintenance ownership is
   unresolved.
-- No generated Unraid template: its Community Apps repository owns the template and WebUI-driven
-  flags. That packaging is reviewed separately instead of being duplicated by this schema.
+- No generated Unraid template: the maintainer owns the separate templates repository, which
+  Community Apps indexes through `TemplateURL`. Its WebUI-driven packaging is reviewed there
+  instead of being duplicated by this schema.
 - No universal `TRUSTED_PROXY_CIDRS` default: topology must be explicit and deployment-specific.
 - No CasaOS protected-secret or transactional-rollback claim: primary protocol defines packaging,
   not those guarantees.

@@ -54,8 +54,8 @@ Run it **after** pointing your Compose file at a 3.0 image carrying this work an
 `scripts/generate_deployment_artifacts.py` renders it into the Compose example, `.env.example`,
 the environment reference, a CasaOS v2 manifest and a TrueNAS SCALE 24.10+ Custom App YAML.
 Each carries a schema hash, and CI fails the build if any of them drifts from the schema or
-stops parsing as Compose. Portainer imports the Compose file directly; Unraid keeps its
-separately maintained Community Apps template.
+stops parsing as Compose. Portainer imports the Compose file directly; the maintainer keeps
+Unraid's template in a separate repository, which Community Apps indexes through `TemplateURL`.
 
 The generated files are examples to copy, not files to run in place. They ship
 `APP_ENV=production` and leave `BEHIND_PROXY` and `SESSION_COOKIE_SECURE` commented out,
