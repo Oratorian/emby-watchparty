@@ -149,11 +149,18 @@ Emby Watch Party works best with the following browsers:
    pip install -r requirements.txt
    ```
 
-3. **Configure your settings.** Copy `.env.example` to `.env` and fill in at least `EMBY_SERVER_URL`, `EMBY_API_KEY`, and `SESSION_SECRET` (generate with `openssl rand -hex 32`):
+3. **Configure your settings.** Copy `.env.example` to `.env`:
 
    ```bash
    cp .env.example .env
    ```
+
+   `.env.example` is a **production** template and 3.0 starts fail-closed, so it will not
+   serve until every production field is set: `EMBY_SERVER_URL`, `EMBY_API_KEY`,
+   `SESSION_SECRET` (`openssl rand -hex 32`), `CORS_ALLOWED_ORIGINS`, and
+   `SESSION_COOKIE_SECURE` plus `BEHIND_PROXY`, which ship commented out because there is
+   no safe default for either. For a local development run, set `APP_ENV=development`
+   instead and none of the rest is required.
 
    Only boot-essential settings live in `.env` - see [`.env.example`](.env.example) for the full annotated list (bind/port, `APP_PREFIX`, `SESSION_SECRET`, `SESSION_COOKIE_SECURE`, `CORS_ALLOWED_ORIGINS`, `EMBY_SERVER_URL`, `EMBY_API_KEY`). All other runtime options (logging, rate limits, late-join vote, `FORCE_TRANSCODE`, `REQUIRE_LOGIN`, etc.) are managed live from the Admin Panel at `/admin` and persisted to `config.json`.
 
@@ -200,12 +207,19 @@ docker pull ghcr.io/oratorian/emby-watchparty:latest
 
 ```bash
 # One-time: pre-create config.json so Docker does not create it as a
-# directory on first `up`. Skip this and the backend will crash trying
-# to write its settings.
-touch config.json
+# directory on first `up`. Skip this and the backend cannot write its
+# settings. Use `echo {}` rather than `touch`: an empty file is not valid
+# JSON and gets quarantined as config.json.corrupt-<timestamp> on every
+# boot. Upgrading from 2.1.x? Keep your existing file; do not recreate it.
+[ -f config.json ] || echo {} > config.json
 
 docker compose up -d
 ```
+
+The template is production-shaped, so fill in `.env` before starting: Emby URL and API key,
+`SESSION_SECRET`, `CORS_ALLOWED_ORIGINS`, and the commented-out `SESSION_COOKIE_SECURE` and
+`BEHIND_PROXY`. If any required field is missing the container stays up and answers
+`setup_required` on `/api/health`, naming the fields on stderr rather than starting.
 
 The supplied container always listens on `0.0.0.0:5000`. To expose another host port, edit only
 the left side of the Compose `ports` mapping (for example, `8080:5000`). Keep the container target
@@ -214,7 +228,7 @@ and its `WATCH_PARTY_BIND`/`WATCH_PARTY_PORT` values unchanged.
 The compose file mounts everything correctly out of the box. If you prefer `docker run`, the equivalent invocation is:
 
 ```bash
-touch config.json
+[ -f config.json ] || echo {} > config.json
 
 docker run -d \
   --name emby-watchparty \

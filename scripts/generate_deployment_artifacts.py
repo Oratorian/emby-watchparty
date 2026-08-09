@@ -395,6 +395,20 @@ def _yaml_document(value: dict[str, Any], schema: dict[str, Any]) -> str:
     return header + _annotate(body, schema)
 
 
+def _volumes(schema: dict[str, Any]) -> list[str]:
+    """Derive the mount list from schema.storage rather than repeating it.
+
+    The list used to be a literal here, which made schema.storage decoration:
+    adding a required mount to the schema changed the hash, so --check and the
+    drift tests went green while no artifact gained the volume. The schema
+    described one deployment and the artifacts shipped another, silently, which
+    is the whole failure this generator exists to prevent.
+    """
+    return [
+        f".{item['target'].removeprefix('/app')}:{item['target']}" for item in schema["storage"]
+    ]
+
+
 def _compose_model(schema: dict[str, Any]) -> dict[str, Any]:
     image = schema["image"]
     container_port = schema["application"]["container_port"]
@@ -409,12 +423,7 @@ def _compose_model(schema: dict[str, Any]) -> dict[str, Any]:
                 "container_name": "emby-watchparty",
                 "environment": environment,
                 "ports": [f"{container_port}:{container_port}"],
-                "volumes": [
-                    "./data:/app/data",
-                    "./images/avatars:/app/images/avatars",
-                    "./logs:/app/logs",
-                    "./config.json:/app/config.json",
-                ],
+                "volumes": _volumes(schema),
                 "restart": "unless-stopped",
             }
         }
@@ -561,10 +570,26 @@ def _write_artifacts(output_dir: Path, artifacts: dict[Path, str]) -> None:
         destination.write_text(content, encoding="utf-8", newline="\n")
 
 
-def _marked_artifact_paths(output_dir: Path) -> set[Path]:
+def _marked_artifact_paths(output_dir: Path, artifacts: dict[Path, str]) -> set[Path]:
+    """Find generated files, without mistaking an operator's copy for one.
+
+    The sweep looks for the generated header, which is exactly what a working
+    deployment copies: `cp .env.example .env` and `cp docker-compose.yml.example
+    docker-compose.yml` both carry it. Reporting those as obsolete artifacts
+    made `--check` fail for anyone who had ever run the app, on a clean tree
+    with no drift, and CONTRIBUTING makes that check a required pre-PR step. A
+    gate that is red for everyone teaches people to ignore it.
+
+    Only the top-level names this generator actually owns are considered;
+    everything under the directories it owns is still swept, so a stale file
+    there is still caught.
+    """
+    owned_top_level = {path.name for path in artifacts if len(path.parts) == 1}
     candidates: set[Path] = set()
     if output_dir.is_dir():
-        candidates.update(path for path in output_dir.iterdir() if path.is_file())
+        candidates.update(
+            path for path in output_dir.iterdir() if path.is_file() and path.name in owned_top_level
+        )
     for owned_root in (output_dir / "deploy", output_dir / "docs" / "deployment"):
         if owned_root.is_dir():
             candidates.update(path for path in owned_root.rglob("*") if path.is_file())
@@ -592,7 +617,7 @@ def _check_artifacts(output_dir: Path, artifacts: dict[Path, str]) -> int:
             stale.append(relative)
     for relative in stale:
         print(f"stale deployment artifact: {relative.as_posix()}")
-    extra = sorted(_marked_artifact_paths(output_dir) - artifacts.keys())
+    extra = sorted(_marked_artifact_paths(output_dir, artifacts) - artifacts.keys())
     for relative in extra:
         print(f"extra deployment artifact: {relative.as_posix()}")
     return 1 if stale or extra else 0

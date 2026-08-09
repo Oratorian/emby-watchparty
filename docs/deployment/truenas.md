@@ -14,7 +14,10 @@ side of the TrueNAS port mapping; keep its container target and `WATCH_PARTY_POR
    storage mappings.
 2. Back up YAML and environment securely. Snapshot datasets containing `config.json`, data,
    avatars, and logs. Preserve old 2.1.x image/configuration.
-3. Create host-path directories and `config.json` containing `{}`. Replace every `/mnt/POOL`
+3. Create host-path directories, and `config.json` containing `{}` **only if it does not
+   already exist**. A 2.1.x upgrade must keep its existing file: overwriting it discards
+   every admin setting and blinds the preflight below. Use `echo {}` rather than
+   `touch`, since an empty file is quarantined as invalid JSON on every boot. Replace every `/mnt/POOL`
    placeholder before deployment.
 4. Paste YAML and fill blank required environment values, leaving container bind/port fixed. Keep
    production security defaults. Declare proxy topology using actual source CIDRs only.

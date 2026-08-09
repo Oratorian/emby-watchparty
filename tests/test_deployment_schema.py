@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import json
 import re
@@ -306,3 +307,37 @@ def test_validation_patterns_agree_with_the_loader_they_describe() -> None:
     for value in refused_by_boot_gate:
         assert not _APP_PREFIX_RE.fullmatch(value), value
         assert not compiled.fullmatch(value), f"schema admits what the loader refuses: {value}"
+
+
+def test_storage_drives_the_generated_volume_mounts() -> None:
+    """schema.storage must reach the artifacts, not just the validator.
+
+    It was decoration: the mount list was a literal in the generator, so adding
+    a required mount to the schema changed the hash, satisfied --check and the
+    drift tests, and produced no volume anywhere. The schema described one
+    deployment while the artifacts shipped another.
+    """
+    targets = {item["target"] for item in SCHEMA["storage"]}
+    for path in (
+        Path("docker-compose.yml.example"),
+        Path("deploy/casaos/docker-compose.yml"),
+        Path("deploy/truenas/custom-app.yml"),
+    ):
+        service = yaml.safe_load(generate_artifacts(SCHEMA)[path])["services"]["emby-watchparty"]
+        # rsplit: appliance host paths are ${VAR:-default}, so the first colon
+        # belongs to the interpolation, not the mount separator.
+        mounted = {entry.rsplit(":", 1)[1] for entry in service["volumes"]}
+        assert mounted == targets, path
+
+    extended = copy.deepcopy(SCHEMA)
+    extended["storage"].append(
+        {
+            "id": "cache",
+            "target": "/app/cache",
+            "kind": "directory",
+            "required": True,
+            "writable": True,
+        }
+    )
+    rendered = generate_artifacts(extended)[Path("docker-compose.yml.example")]
+    assert "/app/cache" in rendered

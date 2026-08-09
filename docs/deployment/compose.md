@@ -13,13 +13,20 @@ the left side of `HOST_PORT:5000` under `ports`; do not change `WATCH_PARTY_BIND
    ports, networks, and every volume mapping.
 2. Back up `.env`, Compose configuration, `config.json`, `data/`, `images/avatars/`, and
    optional logs. Keep old 2.1.x image and complete configuration.
-3. Copy examples to `docker-compose.yml` and `.env`. Create directories and an empty JSON
-   object before Compose can turn the file path into a directory:
+3. Copy examples to `docker-compose.yml` and `.env`. Create the directories, and
+   `config.json` **only if it does not already exist**, so Compose cannot turn that path
+   into a directory:
 
    ```sh
    mkdir -p data images/avatars logs
-   printf '{}\n' > config.json
+   [ -f config.json ] || echo {} > config.json
    ```
+
+   **A 2.1.x upgrade must keep its existing `config.json`.** Overwriting it discards every
+   admin setting, including the `ENABLE_HLS_TOKEN_VALIDATION=false` that makes production
+   refuse to boot, which is the one thing the preflight in step 5 exists to warn you about.
+   Use `echo {}` rather than `touch`: an empty file is not valid JSON, so it is quarantined
+   as `config.json.corrupt-<timestamp>` on every boot.
 
 4. Fill every required `.env` field except the pinned container bind/port. Generate
    `SESSION_SECRET` once. Set `BEHIND_PROXY` explicitly. If true, use only actual proxy source

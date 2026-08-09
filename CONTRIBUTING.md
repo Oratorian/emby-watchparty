@@ -78,8 +78,13 @@ By participating in this project, you agree to maintain a respectful and inclusi
 
    ```bash
    cp .env.example .env
-   # Edit .env with your Emby server details
+   # Edit .env with your Emby server details, then set APP_ENV=development
    ```
+
+   `.env.example` is generated from `deploy/schema.json` as a **production**
+   template, so it ships `APP_ENV=production` and will not serve until every
+   production field is filled. For local work set `APP_ENV=development`, which
+   is the only line you need to change to get a running server.
 
    As of 3.0 configuration is environment-only; there is no first-run setup
    page. If boot configuration is invalid the server does not crash and does not

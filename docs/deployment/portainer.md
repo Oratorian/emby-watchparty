@@ -14,7 +14,10 @@ change only Portainer's published host port; keep `WATCH_PARTY_BIND=0.0.0.0`,
    endpoint, network, ports, and volumes.
 2. Back up stack configuration, separately export environment values securely, and back up
    `config.json`, data, avatars, logs, and all host paths. Preserve old image/configuration.
-3. Use absolute Docker-host paths; create directories and `config.json` containing `{}`.
+3. Use absolute Docker-host paths; create directories, and `config.json` containing `{}`
+   **only if it does not already exist**. A 2.1.x upgrade must keep its existing file:
+   overwriting it discards every admin setting and blinds the preflight below. Use
+   `echo {}` rather than `touch`, since an empty file is quarantined as invalid JSON.
 4. Upload/paste generated Compose. Enter all non-network stack variables. Set production security
    fields and declare proxy topology without a universal CIDR.
 5. Before normal start, temporarily add to service:

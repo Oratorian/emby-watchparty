@@ -46,6 +46,26 @@ Run it **after** pointing your Compose file at a 3.0 image carrying this work an
 
 `npm run test:playback-gate` drives a complete session against a fake Emby: authenticated master and media playlists, segments and byte ranges, pause and resume, seeking in both directions, audio and subtitle selection, reconnect, host reload, session-bind retry, cross-party denial, and the iPhone WebKit native-HLS path. It is the check to run before calling a change safe, and the one this cycle's fixes were held to.
 
+### Appliance deployment comes from one schema
+
+`deploy/schema.json` is now the single description of a deployment, and
+`scripts/generate_deployment_artifacts.py` renders it into the Compose example, `.env.example`,
+the environment reference, a CasaOS v2 manifest and a TrueNAS SCALE 24.10+ Custom App YAML.
+Each carries a schema hash, and CI fails the build if any of them drifts from the schema or
+stops parsing as Compose. Portainer imports the Compose file directly; Unraid keeps its
+separately maintained Community Apps template.
+
+The generated files are examples to copy, not files to run in place. They ship
+`APP_ENV=production` and leave `BEHIND_PROXY` and `SESSION_COOKIE_SECURE` commented out,
+because neither has a safe default: production refuses to boot until you declare the proxy
+topology, and a Secure cookie is silently discarded over plain HTTP. Both are explained
+inline, along with the `config.json` mount, the `APP_PREFIX` subpath trap and what each image
+tag tracks.
+
+New platform guides under [`docs/deployment/`](docs/deployment/) cover Compose, CasaOS,
+TrueNAS and Portainer, each with the read-only preflight, fail-closed health and readiness
+diagnosis, updates, playback acceptance and full rollback, without ever deleting legacy data.
+
 ### Fixed
 
 Three of these are defects a beta1 user can actually hit today.
@@ -153,7 +173,6 @@ Nothing you have to configure, no `.env` changes, no migration. Upgrade, restart
 
 ### Added
 
-- **Schema-driven appliance deployment.** Production-safe examples now come from one checked configuration schema: Compose and `.env`, CasaOS v2 Compose metadata, and TrueNAS SCALE 24.10+ Custom App YAML. CasaOS and TrueNAS are thin wrappers around the Compose service; Portainer imports Compose directly. Supplied containers pin their internal bind/port to `0.0.0.0:5000` while appliance UIs remain free to change the published host port. Unraid stays with its separately maintained Community Apps template and WebUI. Platform runbooks cover read-only preflight, fail-closed health/readiness diagnosis, updates, playback acceptance, full rollback, and explicit manual compatibility gaps without ever deleting legacy data.
 - **A tab tells you when another tab takes over the party.** The session cookie holds exactly one party id and cookies are shared across every tab in a browser profile, so a second tab joining a *different* party silently repoints it and the first tab's playback stops. Each tab now announces its party over a `BroadcastChannel` and a superseded tab says so, naming the other party, rather than stalling silently. Two tabs on the *same* party stay quiet, since both point the cookie at the same place. The banner leads with the no-action path (switch to the other tab) and puts the consequence in the button itself, because resuming here stops the other tab in turn: only one party can hold the cookie at a time.
 - **Test coverage for both gaps** (`tests/test_admin_session.py`, plus expansion of `tests/test_hls_proxy.py` to 8 tests). The admin tests decode the `Set-Cookie` header exactly the way an attacker would and assert the token never appears in it. The HLS tests cover a missing cookie, a cleared host token, and a cookie/token party mismatch, the first automated coverage of the 423 the docstring has claimed since it was written. Both guards were checked for vacuousness by reintroducing the original bugs and confirming the suite fails.
 
