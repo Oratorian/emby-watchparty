@@ -120,11 +120,14 @@ test('large library stays bounded and search remains responsive', async ({ page 
   await page.waitForTimeout(500)
   expect(await page.locator('.item-card').count()).toBeLessThanOrEqual(100)
 
-  await page.getByPlaceholder('Search...').fill('Large Movie 0420')
-  await page.getByRole('button', { name: 'Search', exact: true }).click()
+  const search = page.getByLabel('Search all libraries')
+  await search.fill('Large Movie 0420')
+  await search.press('Enter')
   await expect(page.getByRole('button', { name: 'Clear', exact: true })).toBeVisible()
-  await expect(page.locator('.item-card')).toHaveCount(1)
-  await expect(page.getByText('Large Movie 0420', { exact: true })).toBeVisible()
+  await expect(page.locator('.search-results').getByRole(
+    'button', { name: 'Large Movie 0420', exact: true },
+  ).first()).toBeVisible()
+  expect(await page.locator('.item-card').count()).toBeLessThanOrEqual(100)
 })
 
 test('alphabet bar jumps across an unloaded library and can scroll back', async ({ page }) => {
@@ -184,6 +187,7 @@ test('legacy saved library state still enables alphabet navigation', async ({ pa
   await page.getByPlaceholder('Emby username').fill('AlphabetLibrary')
   await page.getByPlaceholder('Emby password').fill('password')
   await page.getByRole('button', { name: 'Become Host', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Open Movies', exact: true })).toBeVisible()
 
   await page.evaluate(() => localStorage.setItem(
     'emby-watchparty-library-state',

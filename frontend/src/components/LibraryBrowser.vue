@@ -1233,6 +1233,12 @@ onUnmounted(() => {
 
 .library-tools select { margin-left: .35rem; }
 
+@media (min-width: 761px) and (max-height: 600px) {
+  .alphabet-bar {
+    height: min(467px, calc(100dvh - 240px));
+  }
+}
+
 @media (max-width: 700px) {
   .library-tools { grid-template-columns: 1fr; }
 }

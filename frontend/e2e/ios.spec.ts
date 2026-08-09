@@ -42,7 +42,7 @@ test('mobile library uses compact navigation and keeps alphabet controls visible
   const middle = page.getByRole('button', { name: 'Jump to M', exact: true })
   await expect(middle).toBeEnabled()
   await expect(middle).toBeInViewport()
-  await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeInViewport()
+  await expect(page.getByLabel('Search all libraries')).toBeInViewport()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
     await page.evaluate(() => document.documentElement.clientWidth),
   )
