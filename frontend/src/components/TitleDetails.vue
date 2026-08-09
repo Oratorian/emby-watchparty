@@ -155,6 +155,31 @@
           </ul>
         </div>
       </section>
+      <section v-if="details.Type === 'Series'" class="series-browser">
+        <h3>Seasons & episodes</h3>
+        <button v-if="!seasonsLoaded" type="button" data-section="seasons" @click="loadSeasons()">
+          Load seasons
+        </button>
+        <div v-else>
+          <button
+            v-for="season in seasons"
+            :key="season.Id"
+            type="button"
+            :class="{ active: selectedSeason === season.Id }"
+            @click="selectSeason(season.Id)"
+          >
+            {{ season.Name }}
+          </button>
+          <p v-if="seriesError" role="alert">{{ seriesError }}</p>
+          <ul v-else>
+            <li v-for="episode in episodes" :key="episode.Id">
+              <button type="button" :data-episode-id="episode.Id" @click="$emit('open', episode)">
+                {{ episode.Name }}
+              </button>
+            </li>
+          </ul>
+        </div>
+      </section>
     </template>
   </article>
 </template>
@@ -170,11 +195,12 @@ import {
   type StreamsResponse,
 } from '@/api/client'
 
-const props = defineProps<{ item: LibraryItem; isHost: boolean }>()
+const props = defineProps<{ item: LibraryItem; isHost: boolean; selectedSeasonId?: string | null }>()
 const emit = defineEmits<{
   back: []
   play: [selection: PlaybackSelection]
   browse: [item: LibraryItem]
+  open: [item: LibraryItem]
 }>()
 
 const details = ref<LibraryItem | null>(null)
@@ -208,6 +234,11 @@ const selectedSubtitle = ref<number | null>(-1)
 const resumeMode = ref<'resume' | 'start_over'>('start_over')
 const binge = ref(false)
 const resumeSeconds = computed(() => Number(details.value?.UserData?.PlaybackPositionTicks ?? 0) / 10_000_000)
+const seasons = ref<LibraryItem[]>([])
+const episodes = ref<LibraryItem[]>([])
+const seasonsLoaded = ref(false)
+const selectedSeason = ref('')
+const seriesError = ref('')
 
 function setBusy(action: string, busy: boolean) {
   const next = new Set(busyActions.value)
@@ -377,11 +408,39 @@ async function load() {
   error.value = ''
   try {
     details.value = await api.itemDetails(props.item.Id, controller.signal)
+    if (details.value.Type === 'Series' && props.selectedSeasonId) {
+      await loadSeasons(props.selectedSeasonId)
+    }
   } catch (cause) {
     if (controller.signal.aborted) return
     error.value = cause instanceof Error ? cause.message : 'Title details unavailable.'
   } finally {
     if (!controller.signal.aborted) loading.value = false
+  }
+}
+
+async function loadSeasons(initialSeason?: string) {
+  if (!details.value) return
+  seriesError.value = ''
+  try {
+    seasons.value = (await api.seriesSeasons(details.value.Id)).items
+    seasonsLoaded.value = true
+    const seasonId = initialSeason || selectedSeason.value || seasons.value[0]?.Id
+    if (seasonId) await selectSeason(seasonId)
+  } catch (cause) {
+    seriesError.value = cause instanceof Error ? cause.message : 'Seasons unavailable.'
+  }
+}
+
+async function selectSeason(seasonId: string) {
+  if (!details.value) return
+  selectedSeason.value = seasonId
+  seriesError.value = ''
+  try {
+    episodes.value = (await api.seriesEpisodes(details.value.Id, seasonId)).items
+  } catch (cause) {
+    episodes.value = []
+    seriesError.value = cause instanceof Error ? cause.message : 'Episodes unavailable.'
   }
 }
 

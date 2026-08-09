@@ -25,6 +25,7 @@ from backend.src.schemas import (
     FavoriteResponse,
     FilterOptionsResponse,
     GroupedSearchResponse,
+    ItemChildrenResponse,
     ItemDetailsResponse,
     ItemSectionResponse,
     LibraryItemsResponse,
@@ -400,6 +401,36 @@ async def api_item_section(
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"{section.title()} unavailable") from exc
     return {"section": section, "items": items}
+
+
+@router.get("/item/{series_id}/seasons", response_model=ItemChildrenResponse)
+async def api_series_seasons(
+    series_id: str,
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    items = await emby_client.get_series_seasons(
+        series_id, access_token=access_token, user_id=user_id
+    )
+    return {"items": items}
+
+
+@router.get("/item/{series_id}/episodes", response_model=ItemChildrenResponse)
+async def api_series_episodes(
+    series_id: str,
+    season_id: str | None = Query(None, alias="seasonId"),
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    items = await emby_client.get_series_episodes(
+        series_id,
+        season_id,
+        access_token=access_token,
+        user_id=user_id,
+    )
+    return {"items": items}
 
 
 @router.put("/item/{item_id}/favorite", response_model=FavoriteResponse)

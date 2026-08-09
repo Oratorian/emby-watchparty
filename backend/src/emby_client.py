@@ -516,6 +516,31 @@ class EmbyClient:
         payload = response.json()
         return payload.get("Items", []) if isinstance(payload, dict) else payload
 
+    async def get_series_seasons(
+        self, series_id, access_token=None, user_id=None
+    ):
+        response = await self.gateway.get(
+            f"/emby/Shows/{series_id}/Seasons",
+            headers=self._headers(access_token, user_id),
+            params={"UserId": user_id},
+        )
+        response.raise_for_status()
+        return response.json().get("Items", [])
+
+    async def get_series_episodes(
+        self, series_id, season_id=None, access_token=None, user_id=None
+    ):
+        params = {"UserId": user_id}
+        if season_id:
+            params["SeasonId"] = season_id
+        response = await self.gateway.get(
+            f"/emby/Shows/{series_id}/Episodes",
+            headers=self._headers(access_token, user_id),
+            params=params,
+        )
+        response.raise_for_status()
+        return response.json().get("Items", [])
+
     async def set_favorite(
         self, item_id, favorite, access_token=None, user_id=None
     ):

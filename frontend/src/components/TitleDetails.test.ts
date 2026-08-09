@@ -100,4 +100,27 @@ describe('TitleDetails', () => {
     expect(favorite.text()).toBe('Favorite')
     expect((favorite.element as HTMLButtonElement).disabled).toBe(false)
   })
+
+  it('opens a selected season inside its parent series and routes episode details', async () => {
+    vi.spyOn(api, 'itemDetails').mockResolvedValue({
+      Id: 'series-1', Name: 'Artifact Series', Type: 'Series',
+    })
+    vi.spyOn(api, 'seriesSeasons').mockResolvedValue({
+      items: [{ Id: 'season-1', Name: 'Season 1', Type: 'Season' }],
+    })
+    vi.spyOn(api, 'seriesEpisodes').mockResolvedValue({
+      items: [{ Id: 'episode-1', Name: 'Pilot', Type: 'Episode' }],
+    })
+    const wrapper = mount(TitleDetails, {
+      props: {
+        item: { Id: 'series-1', Name: 'Artifact Series', Type: 'Series' },
+        isHost: false,
+        selectedSeasonId: 'season-1',
+      },
+    })
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Pilot'))
+    await wrapper.get('button[data-episode-id="episode-1"]').trigger('click')
+    expect(wrapper.emitted('open')?.[0]?.[0]).toMatchObject({ Id: 'episode-1' })
+  })
 })

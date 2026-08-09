@@ -255,3 +255,26 @@ def test_personal_actions_are_host_only_and_match_real_requests(live_watchparty)
         and ("Ids", "movie-1") in row["query"]
         for row in requests
     )
+
+
+def test_series_sections_use_observed_season_and_episode_endpoints(live_watchparty) -> None:
+    client = _unlocked_client(live_watchparty)
+    try:
+        seasons = client.get("/api/item/series-1/seasons")
+        episodes = client.get(
+            "/api/item/series-1/episodes", params={"seasonId": "season-1"}
+        )
+    finally:
+        client.close()
+
+    assert seasons.status_code == 200
+    assert episodes.status_code == 200
+    assert "items" in seasons.json()
+    assert "items" in episodes.json()
+    requests = live_watchparty.fake.state.requests
+    assert any(row["path"] == "/emby/Shows/series-1/Seasons" for row in requests)
+    assert any(
+        row["path"] == "/emby/Shows/series-1/Episodes"
+        and ("SeasonId", "season-1") in row["query"]
+        for row in requests
+    )

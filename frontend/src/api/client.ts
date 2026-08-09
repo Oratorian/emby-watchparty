@@ -159,6 +159,7 @@ export interface GroupedSearchResponse { query: string; groups: SearchGroup[] }
 export type ItemSection = 'related' | 'trailers' | 'extras'
 export interface ItemSectionResponse { section: ItemSection; items: LibraryItem[] }
 export interface PlaylistListResponse { items: LibraryItem[] }
+export interface ItemChildrenResponse { items: LibraryItem[] }
 export interface PlaybackSelection {
   item: LibraryItem
   mediaSourceId?: string
@@ -360,6 +361,12 @@ export const api = {
   ),
   itemSection: (id: string, section: ItemSection, signal?: AbortSignal) =>
     apiFetch<ItemSectionResponse>(`/api/item/${id}/sections/${section}`, { signal }),
+  seriesSeasons: (id: string, signal?: AbortSignal) =>
+    apiFetch<ItemChildrenResponse>(`/api/item/${id}/seasons`, { signal }),
+  seriesEpisodes: (id: string, seasonId?: string, signal?: AbortSignal) => {
+    const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
+    return apiFetch<ItemChildrenResponse>(`/api/item/${id}/episodes${query}`, { signal })
+  },
   setFavorite: (id: string, favorite: boolean, signal?: AbortSignal) =>
     apiFetch<{ success: boolean; favorite: boolean }>(`/api/item/${id}/favorite`, {
       method: 'PUT', body: JSON.stringify({ favorite }), signal,

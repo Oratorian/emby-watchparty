@@ -381,6 +381,18 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         state.record(request)
         return json.loads((_ARTIFACT_ROOT / "related-items.json").read_text(encoding="utf-8"))
 
+    @app.get("/emby/Shows/{series_id}/Seasons")
+    async def show_seasons(request: Request, series_id: str):
+        del series_id
+        state.record(request)
+        return json.loads((_ARTIFACT_ROOT / "seasons.json").read_text(encoding="utf-8"))
+
+    @app.get("/emby/Shows/{series_id}/Episodes")
+    async def show_episodes(request: Request, series_id: str):
+        del series_id
+        state.record(request)
+        return json.loads((_ARTIFACT_ROOT / "episodes.json").read_text(encoding="utf-8"))
+
     @app.get("/emby/Users/{user_id}/Items/{item_id}/LocalTrailers")
     async def local_trailers(request: Request, user_id: str, item_id: str):
         del user_id, item_id

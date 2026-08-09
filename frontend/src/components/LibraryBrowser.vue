@@ -4,9 +4,11 @@
       v-if="detailItem"
       :item="detailItem"
       :is-host="auth.isHost"
+      :selected-season-id="selectedSeasonId"
       @back="closeDetails"
       @play="emit('select-video', $event)"
       @browse="browseDetail"
+      @open="openDetails($event)"
     />
     <template v-else>
       <div class="panel-header">
@@ -274,19 +276,22 @@ const currentParentId = ref<string | null>(null)
 const currentParentType = ref<string | null>(null)
 const PAGE_SIZE = 50
 const detailItem = ref<LibraryItem | null>(null)
+const selectedSeasonId = ref<string | null>(null)
 let detailScrollTop = 0
 let detailFocusId: string | null = null
 
-function openDetails(item: EmbyItem) {
+function openDetails(item: EmbyItem, seasonId?: string) {
   const panel = browserRoot.value?.closest<HTMLElement>('.library-panel')
   detailScrollTop = panel?.scrollTop ?? 0
   detailFocusId = item.Id
   detailItem.value = item
+  selectedSeasonId.value = seasonId || null
   emit('navigation-change', item.Name)
 }
 
 async function closeDetails() {
   detailItem.value = null
+  selectedSeasonId.value = null
   emit('navigation-change', breadcrumbs.value.at(-1)?.name ?? 'Libraries')
   await nextTick()
   const panel = browserRoot.value?.closest<HTMLElement>('.library-panel')
@@ -739,6 +744,13 @@ function loadPrevious() {
 }
 
 async function handleItemClick(item: EmbyItem, browse = false) {
+  if (!browse && item.Type === 'Season' && item.SeriesId) {
+    openDetails(
+      { Id: item.SeriesId, Name: item.SeriesName || item.Name, Type: 'Series' },
+      item.Id,
+    )
+    return
+  }
   if (!browse && (playableTypes.has(item.Type) || item.Type === 'Series')) {
     openDetails(item)
     return

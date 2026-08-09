@@ -274,6 +274,10 @@ class ItemSectionResponse(StrictApiModel):
     items: list[LibraryItem] = Field(default_factory=list)
 
 
+class ItemChildrenResponse(StrictApiModel):
+    items: list[LibraryItem] = Field(default_factory=list)
+
+
 class FavoriteRequest(StrictApiModel):
     favorite: bool
 

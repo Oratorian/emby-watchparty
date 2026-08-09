@@ -21,6 +21,7 @@ export type GroupedSearchResponse = { "query": string; "groups"?: SearchGroup[] 
 export type HTTPValidationError = { "detail"?: ValidationError[] }
 export type HealthResponse = { "status"?: string; "version": string; "codename": string }
 export type IntroResponse = { "hasIntro": boolean; "start"?: number | null; "end"?: number | null; "duration"?: number | null }
+export type ItemChildrenResponse = { "items"?: LibraryItem[] }
 export type ItemDetailsResponse = { "Id": string; "Name": string; "Type"?: string | null; "Overview"?: string | null; "ProductionYear"?: number | null; "RunTimeTicks"?: number | null; "People"?: Record<string, unknown>[] | null; "Genres"?: string[] | null; "Studios"?: Record<string, unknown>[] | null; "MediaSources"?: Record<string, unknown>[] | null; "MediaStreams"?: Record<string, unknown>[] | null; "UserData"?: Record<string, unknown> | null }
 export type ItemSectionResponse = { "section": "related" | "trailers" | "extras"; "items"?: LibraryItem[] }
 export type JoinPartyRequest = { "client_id": string; "display_name": string; "avatar_uuid"?: string | null }
