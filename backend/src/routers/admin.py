@@ -26,6 +26,7 @@ from backend.src.dependencies import (
     is_admin_authenticated,
     scrub_legacy_admin_session,
 )
+from backend.src.emby_client import EmbyUnavailableError
 from backend.src.log_levels import apply_log_levels
 from backend.src.rate_limit import parse_rate, rate_limit_response
 from backend.src.schemas import (
@@ -78,7 +79,13 @@ async def admin_login(
                 f"Admin login rate-limited for IP {ip} (retry in {decision.retry_after}s)"
             )
             return rate_limit_response("login attempts", decision.retry_after)
-    auth = await emby_client.authenticate(body.username, body.password)
+    try:
+        auth = await emby_client.authenticate(body.username, body.password)
+    except EmbyUnavailableError:
+        return {
+            "success": False,
+            "message": "Emby server unavailable; verify EMBY_SERVER_URL",
+        }
     if not auth:
         return {"success": False, "message": "Invalid credentials"}
     try:

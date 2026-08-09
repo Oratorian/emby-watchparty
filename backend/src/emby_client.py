@@ -11,6 +11,10 @@ if TYPE_CHECKING:
     from backend.src.emby_gateway import EmbyGateway
 
 
+class EmbyUnavailableError(Exception):
+    """The configured Emby endpoint could not be reached."""
+
+
 class EmbyClient:
     def __init__(self, server_url: str, api_key: str, logger, gateway: EmbyGateway):
         self.server_url = server_url.rstrip("/")
@@ -66,7 +70,13 @@ class EmbyClient:
                 "username": user.get("Name", username),
                 "is_admin": bool((user.get("Policy") or {}).get("IsAdministrator")),
             }
-        except httpx.HTTPError as exc:
+        except httpx.RequestError as exc:
+            self.logger.error(
+                "Emby authentication failed: error=%s",
+                type(exc).__name__,
+            )
+            raise EmbyUnavailableError from exc
+        except httpx.HTTPStatusError as exc:
             self.logger.error(
                 "Emby authentication failed: error=%s",
                 type(exc).__name__,

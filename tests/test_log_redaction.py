@@ -72,6 +72,41 @@ def test_admin_login_logs_redact_upstream_credentials(
     assert "ConnectError" in caplog.text
 
 
+def test_party_login_reports_unreachable_emby_without_blending_with_credentials(
+    tmp_path: Path,
+) -> None:
+    async def exercise() -> None:
+        app = create_app(
+            config=_config(),
+            project_root=tmp_path,
+            enable_update_check=False,
+            http_transport=SensitiveFailureTransport(),
+        )
+        async with asgi_client(app) as client:
+            party_id = (await client.post("/api/party/create", json={})).json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "unreachable-emby", "display_name": "Operator"},
+            )
+
+            response = await client.post(
+                "/api/auth/login",
+                json={"username": "operator", "password": "submitted-password"},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "success": False,
+            "message": "Emby server unavailable; ask the operator to verify EMBY_SERVER_URL",
+            "username": None,
+            "is_admin": False,
+            "is_host": False,
+            "host_username": None,
+        }
+
+    asyncio.run(exercise())
+
+
 def test_uvicorn_access_logger_is_silenced_for_every_entrypoint(tmp_path: Path) -> None:
     """uvicorn's own access logger must never run.
 
