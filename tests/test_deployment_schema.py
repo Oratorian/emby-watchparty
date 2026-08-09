@@ -361,5 +361,12 @@ def test_storage_drives_the_generated_volume_mounts() -> None:
             "writable": True,
         }
     )
-    rendered = generate_artifacts(extended)[Path("docker-compose.yml.example")]
-    assert "/app/cache" in rendered
+    extended_artifacts = generate_artifacts(extended)
+    for path in (
+        Path("docker-compose.yml.example"),
+        Path("deploy/casaos/docker-compose.yml"),
+        Path("deploy/truenas/custom-app.yml"),
+    ):
+        service = yaml.safe_load(extended_artifacts[path])["services"]["emby-watchparty"]
+        mounted = {entry.rsplit(":", 1)[1] for entry in service["volumes"]}
+        assert "/app/cache" in mounted, path
