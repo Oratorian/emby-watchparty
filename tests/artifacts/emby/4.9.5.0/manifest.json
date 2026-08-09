@@ -1,0 +1,591 @@
+{
+  "artifacts": [
+    {
+      "boundary": "system-info",
+      "file": "system-info.json",
+      "method": "GET",
+      "path": "/emby/System/Info/Public",
+      "raw_sha256": "89fd23a4e9b122c81810917237b666fc06fe3cc5068e5abaa1820cc87d6ccbad",
+      "request": {
+        "body": null,
+        "query": {}
+      },
+      "sanitized_sha256": "4627ce98c1d1a0fcd8e2d7c1037695b13cea818a8ea90f1dc2f6dfe4571e95f0",
+      "status": 200
+    },
+    {
+      "boundary": "libraries",
+      "file": "libraries.json",
+      "method": "GET",
+      "path": "/emby/Users/{user_id}/Views",
+      "raw_sha256": "1425cbd1894db429792735b73f0ad02d36c0c347a3fcc5811daf5a83f7bbc00b",
+      "request": {
+        "body": null,
+        "query": {}
+      },
+      "sanitized_sha256": "a8f469d3d247f25d4c46d43b99d55040592ae579b5a8858e06ce9f31011425c0",
+      "status": 200
+    },
+    {
+      "boundary": "filter-options",
+      "file": "filter-options.json",
+      "method": "GET",
+      "path": "/emby/Genres",
+      "raw_sha256": "02bc47e13858f0297988d5bed0c06c764f27889725e39b5b085d6f80264314af",
+      "request": {
+        "body": null,
+        "query": {
+          "IncludeItemTypes": "Movie",
+          "Limit": "50",
+          "ParentId": "<id-006>",
+          "Recursive": "true",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "419a106ae824492f97fe9da113a410089b489d6830c1c9584159c521f12143ef",
+      "status": 200
+    },
+    {
+      "boundary": "upstream-error",
+      "file": "upstream-error.json",
+      "method": "GET",
+      "path": "/emby/Items/Filters",
+      "raw_sha256": "64b337816b5c005aefffc77875e462232896e12d7f25385b2cb9ac9b30a27d62",
+      "request": {
+        "body": null,
+        "query": {
+          "ParentId": "<id-006>",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "de72259ca152a1f4aef0f8a082fbe3ec099557add7a877e9e7f26b8d47e3a972",
+      "status": 404
+    },
+    {
+      "boundary": "movie-items",
+      "file": "movie-items.json",
+      "method": "GET",
+      "path": "/emby/Users/{user_id}/Items",
+      "raw_sha256": "6f5e5706ccbe7920220ba3af29fa30fc46936ecb7a679a51782c7e0e13a8f91c",
+      "request": {
+        "body": null,
+        "query": {
+          "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,UserData,RunTimeTicks,MediaSources,MediaStreams,People,Genres,Studios,Tags,ProviderIds,Taglines,BackdropImageTags,LogoImageTag,CommunityRating,CriticRating,OfficialRating",
+          "IncludeItemTypes": "Movie",
+          "Limit": "3",
+          "ParentId": "<id-006>",
+          "Recursive": "true"
+        }
+      },
+      "sanitized_sha256": "03feae8dfd5249fa671c2766f1ff0935dcb67cd9558eb9ab7b0baa74a4e22a1c",
+      "status": 200
+    },
+    {
+      "boundary": "resolution-filter",
+      "file": "resolution-filter.json",
+      "method": "GET",
+      "path": "/emby/Users/{user_id}/Items?MinHeight=1080&MaxHeight=2159",
+      "raw_sha256": "a33c99b87d18971eccaf32decf4a1ee890fa15323ae95f574fc4c53814d990f7",
+      "request": {
+        "body": null,
+        "query": {
+          "IncludeItemTypes": "Movie",
+          "Limit": "3",
+          "MaxHeight": "2159",
+          "MinHeight": "1080",
+          "ParentId": "<id-006>",
+          "Recursive": "true"
+        }
+      },
+      "sanitized_sha256": "e783da9713a78a707b0081b38ce6670479a838f8943dc09b1980bf80eefba8e6",
+      "status": 200
+    },
+    {
+      "boundary": "filtered-prefixes",
+      "file": "filtered-prefixes.json",
+      "method": "GET",
+      "path": "/emby/Items/Prefixes?Filters=IsResumable",
+      "raw_sha256": "21a45de87533b4c3298f3cd88a0c230affb31911e9c16db6d47eee80b3c8645b",
+      "request": {
+        "body": null,
+        "query": {
+          "Filters": "IsResumable",
+          "IncludeItemTypes": "Movie",
+          "ParentId": "<id-006>",
+          "Recursive": "true",
+          "SortBy": "SortName",
+          "SortOrder": "Ascending",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "ea86a35c5b6bbee87fb0286f83477fd617bde63a372e050c6806e689b55b995e",
+      "status": 200
+    },
+    {
+      "boundary": "movie-detail",
+      "file": "movie-detail.json",
+      "method": "GET",
+      "path": "/emby/Users/{user_id}/Items/{item_id}",
+      "raw_sha256": "c1d0d588fb7f4b2943d8e79d902a7c12f7907130892ec8a9ed1c7037a6969d7e",
+      "request": {
+        "body": null,
+        "query": {
+          "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,UserData,RunTimeTicks,MediaSources,MediaStreams,People,Genres,Studios,Tags,ProviderIds,Taglines,BackdropImageTags,LogoImageTag,CommunityRating,CriticRating,OfficialRating"
+        }
+      },
+      "sanitized_sha256": "512323441a95537080b67803a0c954eb7f552aabbd9fd3627894645488d574ba",
+      "status": 200
+    },
+    {
+      "boundary": "playback-selection",
+      "file": "playback-selection.json",
+      "method": "POST",
+      "path": "/emby/Items/{item_id}/PlaybackInfo",
+      "raw_sha256": "229d9800c6707a53f2c6827e26b3f04fde7b3905d833e2bee8dc869bf5bdaa54",
+      "request": {
+        "body": {},
+        "query": {
+          "AutoOpenLiveStream": "true",
+          "IsPlayback": "true",
+          "StartTimeTicks": "0",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "b5872104330bf99bb5986d420a766e56f5ffa4a54914628f48d44ff553fcdb77",
+      "status": 200
+    },
+    {
+      "boundary": "related-items",
+      "file": "related-items.json",
+      "method": "GET",
+      "path": "/emby/Items/{item_id}/Similar",
+      "raw_sha256": "2351eedd0f90341add3a6fa47b310bf4681a1bb13ba50c6f31e028282b5f34a7",
+      "request": {
+        "body": null,
+        "query": {
+          "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,UserData,RunTimeTicks,MediaSources,MediaStreams,People,Genres,Studios,Tags,ProviderIds,Taglines,BackdropImageTags,LogoImageTag,CommunityRating,CriticRating,OfficialRating",
+          "Limit": "12",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "fca813a2896ccc5bd0ce4a093406215185c68d7a31e1a2ec9920516c5ccc09a3",
+      "status": 200
+    },
+    {
+      "boundary": "trailers",
+      "file": "trailers.json",
+      "method": "GET",
+      "path": "/emby/Users/{user_id}/Items/{item_id}/LocalTrailers",
+      "raw_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "request": {
+        "body": null,
+        "query": {}
+      },
+      "sanitized_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "status": 200
+    },
+    {
+      "boundary": "extras",
+      "file": "extras.json",
+      "method": "GET",
+      "path": "/emby/Users/{user_id}/Items/{item_id}/SpecialFeatures",
+      "raw_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "request": {
+        "body": null,
+        "query": {}
+      },
+      "sanitized_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "status": 200
+    },
+    {
+      "boundary": "grouped-search-source",
+      "file": "grouped-search-source.json",
+      "method": "GET",
+      "path": "/emby/Users/{user_id}/Items?SearchTerm=<sanitized>",
+      "raw_sha256": "e2ca470227afa9148a689c851bbdebecb28add5887ab39631c2cf3c31a78b5dc",
+      "request": {
+        "body": null,
+        "query": {
+          "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,UserData,RunTimeTicks,MediaSources,MediaStreams,People,Genres,Studios,Tags,ProviderIds,Taglines,BackdropImageTags,LogoImageTag,CommunityRating,CriticRating,OfficialRating",
+          "IncludeItemTypes": "Movie,Series,Episode,Person,BoxSet",
+          "Limit": "20",
+          "Recursive": "true",
+          "SearchTerm": "…And Justice for All"
+        }
+      },
+      "sanitized_sha256": "b0ca55731dfdd92b3bffa3ca1bd73260bdaea1e4d42847446c905e20c13bc974",
+      "status": 200
+    },
+    {
+      "boundary": "playlists",
+      "file": "playlists.json",
+      "method": "GET",
+      "path": "/emby/Users/{user_id}/Items?IncludeItemTypes=Playlist",
+      "raw_sha256": "ce30cbed34daf1e56bab3e26c6c778459ee6caeb4a906a0332167583416e09b3",
+      "request": {
+        "body": null,
+        "query": {
+          "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,UserData,RunTimeTicks,MediaSources,MediaStreams,People,Genres,Studios,Tags,ProviderIds,Taglines,BackdropImageTags,LogoImageTag,CommunityRating,CriticRating,OfficialRating",
+          "IncludeItemTypes": "Playlist",
+          "Recursive": "true"
+        }
+      },
+      "sanitized_sha256": "cd15f0d8c863eb6a1ddca67d90c45a0b4ba1bba8a9603479cb9df1337f2425a5",
+      "status": 200
+    },
+    {
+      "boundary": "genres",
+      "file": "genres.json",
+      "method": "GET",
+      "path": "/emby/Genres",
+      "raw_sha256": "02bc47e13858f0297988d5bed0c06c764f27889725e39b5b085d6f80264314af",
+      "request": {
+        "body": null,
+        "query": {
+          "IncludeItemTypes": "Movie",
+          "Limit": "50",
+          "ParentId": "<id-006>",
+          "Recursive": "true",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "419a106ae824492f97fe9da113a410089b489d6830c1c9584159c521f12143ef",
+      "status": 200
+    },
+    {
+      "boundary": "studios",
+      "file": "studios.json",
+      "method": "GET",
+      "path": "/emby/Studios",
+      "raw_sha256": "2dcc8b9b316e8e4b7ec43fbd23ff31910ed8ba8ddbfe8b44ecb81fb4bb6f295f",
+      "request": {
+        "body": null,
+        "query": {
+          "IncludeItemTypes": "Movie",
+          "Limit": "50",
+          "ParentId": "<id-006>",
+          "Recursive": "true",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "2fc4fd19bd77c4f21e208080e37101b3d3e63088e06a2f7a5aa76a7b301e062e",
+      "status": 200
+    },
+    {
+      "boundary": "tags",
+      "file": "tags.json",
+      "method": "GET",
+      "path": "/emby/Tags",
+      "raw_sha256": "43426200ee05162c77c96c3465f6569cdbf772c3871d65dd48e21b560ee7c3df",
+      "request": {
+        "body": null,
+        "query": {
+          "IncludeItemTypes": "Movie",
+          "Limit": "50",
+          "ParentId": "<id-006>",
+          "Recursive": "true",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "d507107c192528649ab8811b9f67a8b0a9d2b03d83b43911d2a867d06cf61e9a",
+      "status": 200
+    },
+    {
+      "boundary": "years",
+      "file": "years.json",
+      "method": "GET",
+      "path": "/emby/Years",
+      "raw_sha256": "6190d2db0367169ce2e1c3c286a882ae067803e5345b4a2dd816f61bc4c33e61",
+      "request": {
+        "body": null,
+        "query": {
+          "IncludeItemTypes": "Movie",
+          "Limit": "50",
+          "ParentId": "<id-006>",
+          "Recursive": "true",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "f5acec222ab6470e476dbabcccbaeb369d3e256dc04f1e55fe54be14ae2ef264",
+      "status": 200
+    },
+    {
+      "boundary": "video-codecs",
+      "file": "video-codecs.json",
+      "method": "GET",
+      "path": "/emby/VideoCodecs",
+      "raw_sha256": "446e811ac18a8c57e325d14f0b03f20d19da479a9cc86f26c1e929853aaa5d4a",
+      "request": {
+        "body": null,
+        "query": {
+          "IncludeItemTypes": "Movie",
+          "Limit": "50",
+          "ParentId": "<id-006>",
+          "Recursive": "true",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "a3d99132faf2e0f210db824ff9d53299d6eaee8b59274adf3b8ea88b0b0292bf",
+      "status": 200
+    },
+    {
+      "boundary": "audio-codecs",
+      "file": "audio-codecs.json",
+      "method": "GET",
+      "path": "/emby/AudioCodecs",
+      "raw_sha256": "18ac360b840574804d137edaa77f2d580fb1c16d2dade4eee82bc7c81530e64c",
+      "request": {
+        "body": null,
+        "query": {
+          "IncludeItemTypes": "Movie",
+          "Limit": "50",
+          "ParentId": "<id-006>",
+          "Recursive": "true",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "150e132c781ff4339e650d4a6e252c88ea100e4cb1aa65d0a5501579a9981913",
+      "status": 200
+    },
+    {
+      "boundary": "containers",
+      "file": "containers.json",
+      "method": "GET",
+      "path": "/emby/Containers",
+      "raw_sha256": "fd87cf52cb599ba854be913d672c420f52b01f1c4d8f929e1bce55c603faee23",
+      "request": {
+        "body": null,
+        "query": {
+          "IncludeItemTypes": "Movie",
+          "Limit": "50",
+          "ParentId": "<id-006>",
+          "Recursive": "true",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "9770056a6de49f4c60400305300c8b40c173f9225b8ac6911b4ecf4ce2032dd5",
+      "status": 200
+    },
+    {
+      "boundary": "audio-layouts",
+      "file": "audio-layouts.json",
+      "method": "GET",
+      "path": "/emby/AudioLayouts",
+      "raw_sha256": "eff8e9b9e1ba859e6034564bfbed5818341ebe775824bd051a46983f2ef36c59",
+      "request": {
+        "body": null,
+        "query": {
+          "IncludeItemTypes": "Movie",
+          "Limit": "50",
+          "ParentId": "<id-006>",
+          "Recursive": "true",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "e1c5c0549b2cc10d5e08edb7c2c92c6fb7bf2ec8c5c63fd278885b88b2599b44",
+      "status": 200
+    },
+    {
+      "boundary": "subtitle-codecs",
+      "file": "subtitle-codecs.json",
+      "method": "GET",
+      "path": "/emby/SubtitleCodecs",
+      "raw_sha256": "c14f46c0a202139ccd11712a673f3cf7d648d4f4342496e6a2b1ebbac1b5a072",
+      "request": {
+        "body": null,
+        "query": {
+          "IncludeItemTypes": "Movie",
+          "Limit": "50",
+          "ParentId": "<id-006>",
+          "Recursive": "true",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "a08e4303c05c01466184cb5ce574b40dbe1d240f62273cddba39abe716cab143",
+      "status": 200
+    },
+    {
+      "boundary": "official-ratings",
+      "file": "official-ratings.json",
+      "method": "GET",
+      "path": "/emby/OfficialRatings",
+      "raw_sha256": "a4463dd14de7438cf211cb3dec5ebba65602888b81663835d4794b86feb8cd5a",
+      "request": {
+        "body": null,
+        "query": {
+          "IncludeItemTypes": "Movie",
+          "Limit": "50",
+          "ParentId": "<id-006>",
+          "Recursive": "true",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "689f0a132271c7a0b8ee88264a2bd9dca6a5a2dd9e44c8d98481517f6ed206e1",
+      "status": 200
+    },
+    {
+      "boundary": "series-detail",
+      "file": "series-detail.json",
+      "method": "GET",
+      "path": "/emby/Users/{user_id}/Items/{series_id}",
+      "raw_sha256": "3513cb135cfabb0424ddd70aa842a2de6cd1075627d2c5cb168e246cd0ff1d3b",
+      "request": {
+        "body": null,
+        "query": {
+          "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,UserData,RunTimeTicks,MediaSources,MediaStreams,People,Genres,Studios,Tags,ProviderIds,Taglines,BackdropImageTags,LogoImageTag,CommunityRating,CriticRating,OfficialRating"
+        }
+      },
+      "sanitized_sha256": "ccd7c2eecf283c5bf8576f3c79548973e18f93429113aff34bd29fb3a403f135",
+      "status": 200
+    },
+    {
+      "boundary": "seasons",
+      "file": "seasons.json",
+      "method": "GET",
+      "path": "/emby/Shows/{series_id}/Seasons",
+      "raw_sha256": "64b077f71bbfe5e68c0ecac220a6c1ab67249c7701badd60fbcc8bc4097ec903",
+      "request": {
+        "body": null,
+        "query": {
+          "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,UserData,RunTimeTicks,MediaSources,MediaStreams,People,Genres,Studios,Tags,ProviderIds,Taglines,BackdropImageTags,LogoImageTag,CommunityRating,CriticRating,OfficialRating",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "f2082d5eb17534ab0df94671b4d30637730c77b7901d9af23462c5669384d1fc",
+      "status": 200
+    },
+    {
+      "boundary": "episodes",
+      "file": "episodes.json",
+      "method": "GET",
+      "path": "/emby/Shows/{series_id}/Episodes",
+      "raw_sha256": "03a9b5d3e0926398b08a61e5507fa483358a72fb403c33051fa157f4e07cb8c1",
+      "request": {
+        "body": null,
+        "query": {
+          "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,UserData,RunTimeTicks,MediaSources,MediaStreams,People,Genres,Studios,Tags,ProviderIds,Taglines,BackdropImageTags,LogoImageTag,CommunityRating,CriticRating,OfficialRating",
+          "Limit": "1",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "12179e6bd587142ff37e8dec6bdda366d60e44a2f1171259694ffbd25974f91a",
+      "status": 200
+    },
+    {
+      "boundary": "episode-detail",
+      "file": "episode-detail.json",
+      "method": "GET",
+      "path": "/emby/Users/{user_id}/Items/{episode_id}",
+      "raw_sha256": "52ce1b72b8c6785448504c41d6d8490e305dbefedd2028ad53a9e15151f05f0c",
+      "request": {
+        "body": null,
+        "query": {
+          "Fields": "Overview,PrimaryImageAspectRatio,ProductionYear,UserData,RunTimeTicks,MediaSources,MediaStreams,People,Genres,Studios,Tags,ProviderIds,Taglines,BackdropImageTags,LogoImageTag,CommunityRating,CriticRating,OfficialRating"
+        }
+      },
+      "sanitized_sha256": "e0ac203fde6fdfbc2b621acd432b5311509dfbf35b5fc3e947ae158a55146d1a",
+      "status": 200
+    },
+    {
+      "boundary": "favorite-add",
+      "file": "favorite-add.json",
+      "method": "POST",
+      "path": "/emby/Users/{user_id}/FavoriteItems/{item_id}",
+      "raw_sha256": "68a17fdc244a54fa12f39a44de9460686e2db001a9aa4e73dd8dd9cae4f87e23",
+      "request": {
+        "body": null,
+        "query": {}
+      },
+      "sanitized_sha256": "eaee6828c9b469138cf8bc31bb2c54b809d521c88ba326b84e96cf82e2b7adc8",
+      "status": 200
+    },
+    {
+      "boundary": "favorite-remove",
+      "file": "favorite-remove.json",
+      "method": "DELETE",
+      "path": "/emby/Users/{user_id}/FavoriteItems/{item_id}",
+      "raw_sha256": "de2bab9f1995b593a86b27f7828e275fae3968b604ff07290fcf91370b3f83f3",
+      "request": {
+        "body": null,
+        "query": {}
+      },
+      "sanitized_sha256": "170c741aeb8d026a38504a37932795138c33e114586894f0965f2c8a4c6a438d",
+      "status": 200
+    },
+    {
+      "boundary": "played-add",
+      "file": "played-add.json",
+      "method": "POST",
+      "path": "/emby/Users/{user_id}/PlayedItems/{item_id}",
+      "raw_sha256": "de2bab9f1995b593a86b27f7828e275fae3968b604ff07290fcf91370b3f83f3",
+      "request": {
+        "body": null,
+        "query": {}
+      },
+      "sanitized_sha256": "170c741aeb8d026a38504a37932795138c33e114586894f0965f2c8a4c6a438d",
+      "status": 200
+    },
+    {
+      "boundary": "played-remove",
+      "file": "played-remove.json",
+      "method": "DELETE",
+      "path": "/emby/Users/{user_id}/PlayedItems/{item_id}",
+      "raw_sha256": "5a647c1900373a9854808bbb7bb7f2945fadda6dfdec4fd2ad5ff17d7df0e971",
+      "request": {
+        "body": null,
+        "query": {}
+      },
+      "sanitized_sha256": "498a07b6b17c4e4fe23481397a45a277003bc02dbc99083b7a93bf5d6e198f87",
+      "status": 200
+    },
+    {
+      "boundary": "playlist-create",
+      "file": "playlist-create.json",
+      "method": "POST",
+      "path": "/emby/Playlists",
+      "raw_sha256": "ceca13c233c73aa802f81b6e9a5f2051f6385c204f0315e9eeb229e5075d44f1",
+      "request": {
+        "body": null,
+        "query": {
+          "Name": "<text-1248>",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "3bca4388edf97744c4c23c9baaed25ef9c9e3017cc82caebc6a8cc507e58ea77",
+      "status": 200
+    },
+    {
+      "boundary": "playlist-add",
+      "file": "playlist-add.json",
+      "method": "POST",
+      "path": "/emby/Playlists/{playlist_id}/Items",
+      "raw_sha256": "fc08789a798823334f97b842e9383db3f83fcfe0ac7a27f4509f5cd3129dee87",
+      "request": {
+        "body": null,
+        "query": {
+          "Ids": "<id-048>",
+          "UserId": "<id-047>"
+        }
+      },
+      "sanitized_sha256": "4f9157ddf1b4f169f145445f41194da2c4f5bf167d1b3d86e72c714d44e802bf",
+      "status": 200
+    },
+    {
+      "boundary": "filtered-query-unnamed-folder",
+      "captured_at": "2026-08-11T19:44:15.703000+00:00",
+      "file": "filtered-unnamed-folder.json",
+      "method": "GET",
+      "path": "/emby/Users/{user_id}/Items",
+      "raw_sha256": "d737109892624594e3f9f2a4d5dc617eec5c8f5668323ec6d93359986ac2a799",
+      "request": {
+        "body": null,
+        "query": "<not-logged; response-validation item fragment only>"
+      },
+      "sanitized_sha256": "1f4460b5d0d19b888b0d9eb8d095b27d33a71c4606fac8ceeb891ee9532e5bff",
+      "status": 200
+    }
+  ],
+  "captured_at": "2026-08-09T23:16:49.911909+00:00",
+  "emby_version": "4.9.5.0",
+  "sanitization": "shape-preserving-v2"
+}

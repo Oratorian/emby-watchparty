@@ -1,0 +1,383 @@
+{
+  "Items": [
+    {
+      "BackdropImageTags": [],
+      "GenreItems": [],
+      "Genres": [],
+      "Id": "<id-1016>",
+      "ImageTags": {
+        "Primary": "dba4330a95c61f4f0e4f2b1a0e287c3a"
+      },
+      "IndexNumber": 1,
+      "IsFolder": true,
+      "Name": "<text-1220>",
+      "Overview": "<text-1221>",
+      "ParentBackdropImageTags": [
+        "26121b723613b46ec7f0475e8e0c9ebf"
+      ],
+      "ParentBackdropItemId": "<id-959>",
+      "ParentLogoImageTag": "f9b986b27e3452c050facee97e792f89",
+      "ParentLogoItemId": "<id-959>",
+      "ParentThumbImageTag": "b0e63db64c7cf4d543a05641b57a2fa3",
+      "ParentThumbItemId": "<id-959>",
+      "People": [],
+      "PrimaryImageAspectRatio": 0.6920415224913494,
+      "ProductionYear": 2001,
+      "ProviderIds": {
+        "Tvdb": "<tvdb>"
+      },
+      "SeriesId": "<id-959>",
+      "SeriesName": "<text-1162>",
+      "SeriesPrimaryImageTag": "3845636e9a41c4f9712fe00e3075074c",
+      "ServerId": "<id-001>",
+      "Studios": [],
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Season",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false,
+        "UnplayedItemCount": 18
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "GenreItems": [],
+      "Genres": [],
+      "Id": "<id-1017>",
+      "ImageTags": {
+        "Primary": "3071747b060179db2a481cde615b6a07"
+      },
+      "IndexNumber": 2,
+      "IsFolder": true,
+      "Name": "<text-1222>",
+      "Overview": "<text-1223>",
+      "ParentBackdropImageTags": [
+        "26121b723613b46ec7f0475e8e0c9ebf"
+      ],
+      "ParentBackdropItemId": "<id-959>",
+      "ParentLogoImageTag": "f9b986b27e3452c050facee97e792f89",
+      "ParentLogoItemId": "<id-959>",
+      "ParentThumbImageTag": "b0e63db64c7cf4d543a05641b57a2fa3",
+      "ParentThumbItemId": "<id-959>",
+      "People": [],
+      "PrimaryImageAspectRatio": 0.6920415224913494,
+      "ProductionYear": 2002,
+      "ProviderIds": {
+        "Tvdb": "<tvdb>"
+      },
+      "SeriesId": "<id-959>",
+      "SeriesName": "<text-1162>",
+      "SeriesPrimaryImageTag": "3845636e9a41c4f9712fe00e3075074c",
+      "ServerId": "<id-001>",
+      "Studios": [],
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Season",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false,
+        "UnplayedItemCount": 24
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "GenreItems": [],
+      "Genres": [],
+      "Id": "<id-1018>",
+      "ImageTags": {
+        "Primary": "acfa58160b6a8d0d35d617d45578aaa7"
+      },
+      "IndexNumber": 3,
+      "IsFolder": true,
+      "Name": "<text-1224>",
+      "Overview": "<text-1225>",
+      "ParentBackdropImageTags": [
+        "26121b723613b46ec7f0475e8e0c9ebf"
+      ],
+      "ParentBackdropItemId": "<id-959>",
+      "ParentLogoImageTag": "f9b986b27e3452c050facee97e792f89",
+      "ParentLogoItemId": "<id-959>",
+      "ParentThumbImageTag": "b0e63db64c7cf4d543a05641b57a2fa3",
+      "ParentThumbItemId": "<id-959>",
+      "People": [],
+      "PrimaryImageAspectRatio": 0.6920415224913494,
+      "ProductionYear": 2003,
+      "ProviderIds": {
+        "Tvdb": "<tvdb>"
+      },
+      "SeriesId": "<id-959>",
+      "SeriesName": "<text-1162>",
+      "SeriesPrimaryImageTag": "3845636e9a41c4f9712fe00e3075074c",
+      "ServerId": "<id-001>",
+      "Studios": [],
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Season",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false,
+        "UnplayedItemCount": 24
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "GenreItems": [],
+      "Genres": [],
+      "Id": "<id-1019>",
+      "ImageTags": {
+        "Primary": "eb4066d593d0dc529df0bca5c85012a7"
+      },
+      "IndexNumber": 4,
+      "IsFolder": true,
+      "Name": "<text-1226>",
+      "Overview": "<text-1227>",
+      "ParentBackdropImageTags": [
+        "26121b723613b46ec7f0475e8e0c9ebf"
+      ],
+      "ParentBackdropItemId": "<id-959>",
+      "ParentLogoImageTag": "f9b986b27e3452c050facee97e792f89",
+      "ParentLogoItemId": "<id-959>",
+      "ParentThumbImageTag": "b0e63db64c7cf4d543a05641b57a2fa3",
+      "ParentThumbItemId": "<id-959>",
+      "People": [],
+      "PrimaryImageAspectRatio": 0.6920415224913494,
+      "ProductionYear": 2005,
+      "ProviderIds": {
+        "Tvdb": "<tvdb>"
+      },
+      "SeriesId": "<id-959>",
+      "SeriesName": "<text-1162>",
+      "SeriesPrimaryImageTag": "3845636e9a41c4f9712fe00e3075074c",
+      "ServerId": "<id-001>",
+      "Studios": [],
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Season",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false,
+        "UnplayedItemCount": 24
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "GenreItems": [],
+      "Genres": [],
+      "Id": "<id-1020>",
+      "ImageTags": {
+        "Primary": "1613b864dfc9911bd1ef1efb909e187f"
+      },
+      "IndexNumber": 5,
+      "IsFolder": true,
+      "Name": "<text-1228>",
+      "Overview": "<text-1229>",
+      "ParentBackdropImageTags": [
+        "26121b723613b46ec7f0475e8e0c9ebf"
+      ],
+      "ParentBackdropItemId": "<id-959>",
+      "ParentLogoImageTag": "f9b986b27e3452c050facee97e792f89",
+      "ParentLogoItemId": "<id-959>",
+      "ParentThumbImageTag": "b0e63db64c7cf4d543a05641b57a2fa3",
+      "ParentThumbItemId": "<id-959>",
+      "People": [],
+      "PrimaryImageAspectRatio": 0.6920415224913494,
+      "ProductionYear": 2006,
+      "ProviderIds": {
+        "Tvdb": "<tvdb>"
+      },
+      "SeriesId": "<id-959>",
+      "SeriesName": "<text-1162>",
+      "SeriesPrimaryImageTag": "3845636e9a41c4f9712fe00e3075074c",
+      "ServerId": "<id-001>",
+      "Studios": [],
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Season",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false,
+        "UnplayedItemCount": 24
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "GenreItems": [],
+      "Genres": [],
+      "Id": "<id-1021>",
+      "ImageTags": {
+        "Primary": "58f468c0c7d2fea30c716ebd2f018bdb"
+      },
+      "IndexNumber": 6,
+      "IsFolder": true,
+      "Name": "<text-1230>",
+      "Overview": "<text-1231>",
+      "ParentBackdropImageTags": [
+        "26121b723613b46ec7f0475e8e0c9ebf"
+      ],
+      "ParentBackdropItemId": "<id-959>",
+      "ParentLogoImageTag": "f9b986b27e3452c050facee97e792f89",
+      "ParentLogoItemId": "<id-959>",
+      "ParentThumbImageTag": "b0e63db64c7cf4d543a05641b57a2fa3",
+      "ParentThumbItemId": "<id-959>",
+      "People": [],
+      "PrimaryImageAspectRatio": 0.6920415224913494,
+      "ProductionYear": 2007,
+      "ProviderIds": {
+        "Tvdb": "<tvdb>"
+      },
+      "SeriesId": "<id-959>",
+      "SeriesName": "<text-1162>",
+      "SeriesPrimaryImageTag": "3845636e9a41c4f9712fe00e3075074c",
+      "ServerId": "<id-001>",
+      "Studios": [],
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Season",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false,
+        "UnplayedItemCount": 24
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "GenreItems": [],
+      "Genres": [],
+      "Id": "<id-1022>",
+      "ImageTags": {
+        "Primary": "d59a2602f601465c717328312eb0da21"
+      },
+      "IndexNumber": 7,
+      "IsFolder": true,
+      "Name": "<text-1232>",
+      "Overview": "<text-1233>",
+      "ParentBackdropImageTags": [
+        "26121b723613b46ec7f0475e8e0c9ebf"
+      ],
+      "ParentBackdropItemId": "<id-959>",
+      "ParentLogoImageTag": "f9b986b27e3452c050facee97e792f89",
+      "ParentLogoItemId": "<id-959>",
+      "ParentThumbImageTag": "b0e63db64c7cf4d543a05641b57a2fa3",
+      "ParentThumbItemId": "<id-959>",
+      "People": [],
+      "PrimaryImageAspectRatio": 0.6920415224913494,
+      "ProductionYear": 2009,
+      "ProviderIds": {
+        "Tvdb": "<tvdb>"
+      },
+      "SeriesId": "<id-959>",
+      "SeriesName": "<text-1162>",
+      "SeriesPrimaryImageTag": "3845636e9a41c4f9712fe00e3075074c",
+      "ServerId": "<id-001>",
+      "Studios": [],
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Season",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false,
+        "UnplayedItemCount": 24
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "GenreItems": [],
+      "Genres": [],
+      "Id": "<id-1023>",
+      "ImageTags": {
+        "Primary": "3f3b16a6cfa8df13ecd51bb0a2687155"
+      },
+      "IndexNumber": 8,
+      "IsFolder": true,
+      "Name": "<text-1234>",
+      "Overview": "<text-1235>",
+      "ParentBackdropImageTags": [
+        "26121b723613b46ec7f0475e8e0c9ebf"
+      ],
+      "ParentBackdropItemId": "<id-959>",
+      "ParentLogoImageTag": "f9b986b27e3452c050facee97e792f89",
+      "ParentLogoItemId": "<id-959>",
+      "ParentThumbImageTag": "b0e63db64c7cf4d543a05641b57a2fa3",
+      "ParentThumbItemId": "<id-959>",
+      "People": [],
+      "PrimaryImageAspectRatio": 0.6920415224913494,
+      "ProductionYear": 2010,
+      "ProviderIds": {
+        "Tvdb": "<tvdb>"
+      },
+      "SeriesId": "<id-959>",
+      "SeriesName": "<text-1162>",
+      "SeriesPrimaryImageTag": "3845636e9a41c4f9712fe00e3075074c",
+      "ServerId": "<id-001>",
+      "Studios": [],
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Season",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false,
+        "UnplayedItemCount": 24
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "GenreItems": [],
+      "Genres": [],
+      "Id": "<id-1024>",
+      "ImageTags": {
+        "Primary": "6ed65b1a06d29b8c27d9bb7bd5a5fff5"
+      },
+      "IndexNumber": 9,
+      "IsFolder": true,
+      "Name": "<text-1236>",
+      "Overview": "<text-1237>",
+      "ParentBackdropImageTags": [
+        "26121b723613b46ec7f0475e8e0c9ebf"
+      ],
+      "ParentBackdropItemId": "<id-959>",
+      "ParentLogoImageTag": "f9b986b27e3452c050facee97e792f89",
+      "ParentLogoItemId": "<id-959>",
+      "ParentThumbImageTag": "b0e63db64c7cf4d543a05641b57a2fa3",
+      "ParentThumbItemId": "<id-959>",
+      "People": [],
+      "PrimaryImageAspectRatio": 0.6920415224913494,
+      "ProductionYear": 2014,
+      "ProviderIds": {
+        "Tvdb": "<tvdb>"
+      },
+      "SeriesId": "<id-959>",
+      "SeriesName": "<text-1162>",
+      "SeriesPrimaryImageTag": "3845636e9a41c4f9712fe00e3075074c",
+      "ServerId": "<id-001>",
+      "Studios": [],
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Season",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false,
+        "UnplayedItemCount": 12
+      }
+    }
+  ],
+  "TotalRecordCount": 9
+}

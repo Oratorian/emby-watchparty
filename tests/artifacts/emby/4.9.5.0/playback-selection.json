@@ -1,0 +1,288 @@
+{
+  "MediaSources": [
+    {
+      "AddApiKeyToDirectStreamUrl": false,
+      "Bitrate": 2106540,
+      "Chapters": [
+        {
+          "ChapterIndex": 0,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-128>",
+          "StartPositionTicks": 0
+        },
+        {
+          "ChapterIndex": 1,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-129>",
+          "StartPositionTicks": 3000000000
+        },
+        {
+          "ChapterIndex": 2,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-130>",
+          "StartPositionTicks": 6000000000
+        },
+        {
+          "ChapterIndex": 3,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-131>",
+          "StartPositionTicks": 9000000000
+        },
+        {
+          "ChapterIndex": 4,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-132>",
+          "StartPositionTicks": 12000000000
+        },
+        {
+          "ChapterIndex": 5,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-133>",
+          "StartPositionTicks": 15000000000
+        },
+        {
+          "ChapterIndex": 6,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-134>",
+          "StartPositionTicks": 18000000000
+        },
+        {
+          "ChapterIndex": 7,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-135>",
+          "StartPositionTicks": 21000000000
+        },
+        {
+          "ChapterIndex": 8,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-136>",
+          "StartPositionTicks": 24000000000
+        },
+        {
+          "ChapterIndex": 9,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-137>",
+          "StartPositionTicks": 27000000000
+        },
+        {
+          "ChapterIndex": 10,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-138>",
+          "StartPositionTicks": 30000000000
+        },
+        {
+          "ChapterIndex": 11,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-139>",
+          "StartPositionTicks": 33000000000
+        },
+        {
+          "ChapterIndex": 12,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-140>",
+          "StartPositionTicks": 36000000000
+        },
+        {
+          "ChapterIndex": 13,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-141>",
+          "StartPositionTicks": 39000000000
+        },
+        {
+          "ChapterIndex": 14,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-142>",
+          "StartPositionTicks": 42000000000
+        },
+        {
+          "ChapterIndex": 15,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-143>",
+          "StartPositionTicks": 45000000000
+        },
+        {
+          "ChapterIndex": 16,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-144>",
+          "StartPositionTicks": 48000000000
+        },
+        {
+          "ChapterIndex": 17,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-145>",
+          "StartPositionTicks": 51000000000
+        },
+        {
+          "ChapterIndex": 18,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-146>",
+          "StartPositionTicks": 54000000000
+        },
+        {
+          "ChapterIndex": 19,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-147>",
+          "StartPositionTicks": 57000000000
+        },
+        {
+          "ChapterIndex": 20,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-148>",
+          "StartPositionTicks": 60000000000
+        },
+        {
+          "ChapterIndex": 21,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-149>",
+          "StartPositionTicks": 63000000000
+        },
+        {
+          "ChapterIndex": 22,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-150>",
+          "StartPositionTicks": 66000000000
+        },
+        {
+          "ChapterIndex": 23,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-151>",
+          "StartPositionTicks": 69000000000
+        }
+      ],
+      "Container": "mp4",
+      "DefaultAudioStreamIndex": 1,
+      "Formats": [],
+      "HasMixedProtocols": false,
+      "Id": "<id-049>",
+      "IsInfiniteStream": false,
+      "IsRemote": false,
+      "ItemId": "<id-048>",
+      "MediaStreams": [
+        {
+          "AspectRatio": "16:9",
+          "AttachmentSize": 0,
+          "AverageFrameRate": 23.976025,
+          "BitDepth": 8,
+          "BitRate": 2009026,
+          "Codec": "h264",
+          "CodecTag": "avc1",
+          "ColorPrimaries": "bt709",
+          "ColorSpace": "bt709",
+          "DisplayTitle": "1080p H264",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Height": 1080,
+          "Index": 0,
+          "IsAnamorphic": false,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Language": "und",
+          "Level": 41,
+          "NalLengthSize": "4",
+          "PixelFormat": "yuv420p",
+          "Profile": "High",
+          "Protocol": "File",
+          "RealFrameRate": 23.976025,
+          "RefFrames": 1,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/24000",
+          "Type": "Video",
+          "VideoRange": "SDR",
+          "Width": 1920
+        },
+        {
+          "AttachmentSize": 0,
+          "BitRate": 93371,
+          "ChannelLayout": "stereo",
+          "Channels": 2,
+          "Codec": "aac",
+          "CodecTag": "mp4a",
+          "DisplayTitle": "AAC stereo (Default)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 1,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Language": "und",
+          "Profile": "LC",
+          "Protocol": "File",
+          "SampleRate": 48000,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/48000",
+          "Type": "Audio"
+        },
+        {
+          "AttachmentSize": 0,
+          "Codec": "srt",
+          "DisplayLanguage": "English",
+          "DisplayTitle": "English (SRT)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 2,
+          "IsDefault": false,
+          "IsExternal": true,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": true,
+          "Language": "en",
+          "Path": "<path>",
+          "Protocol": "File",
+          "SupportsExternalStream": true,
+          "Type": "Subtitle"
+        }
+      ],
+      "Name": "<text-037>",
+      "Path": "<path>",
+      "Protocol": "File",
+      "ReadAtNativeFramerate": false,
+      "RequiredHttpHeaders": {},
+      "RequiresClosing": false,
+      "RequiresLooping": false,
+      "RequiresOpening": false,
+      "RunTimeTicks": 71441366670,
+      "Size": 1881176278,
+      "SupportsDirectPlay": true,
+      "SupportsDirectStream": true,
+      "SupportsProbing": true,
+      "SupportsTranscoding": true,
+      "Type": "Default"
+    }
+  ],
+  "PlaySessionId": "<id-117>"
+}

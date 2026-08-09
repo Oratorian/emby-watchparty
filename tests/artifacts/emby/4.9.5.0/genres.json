@@ -1,0 +1,435 @@
+{
+  "Items": [
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-017>",
+      "ImageTags": {},
+      "Name": "<text-007>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-018>",
+      "ImageTags": {},
+      "Name": "<text-008>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-019>",
+      "ImageTags": {},
+      "Name": "<text-009>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-020>",
+      "ImageTags": {},
+      "Name": "<text-010>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-021>",
+      "ImageTags": {},
+      "Name": "<text-011>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-022>",
+      "ImageTags": {},
+      "Name": "<text-012>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-023>",
+      "ImageTags": {},
+      "Name": "<text-013>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-024>",
+      "ImageTags": {},
+      "Name": "<text-014>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-025>",
+      "ImageTags": {},
+      "Name": "<text-015>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-026>",
+      "ImageTags": {},
+      "Name": "<text-016>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-027>",
+      "ImageTags": {},
+      "Name": "<text-017>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-028>",
+      "ImageTags": {},
+      "Name": "<text-018>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-029>",
+      "ImageTags": {},
+      "Name": "<text-019>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-030>",
+      "ImageTags": {},
+      "Name": "<text-020>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-031>",
+      "ImageTags": {},
+      "Name": "<text-021>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-032>",
+      "ImageTags": {},
+      "Name": "<text-022>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-033>",
+      "ImageTags": {},
+      "Name": "<text-023>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-034>",
+      "ImageTags": {},
+      "Name": "<text-024>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-035>",
+      "ImageTags": {},
+      "Name": "<text-025>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-036>",
+      "ImageTags": {},
+      "Name": "<text-026>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-037>",
+      "ImageTags": {},
+      "Name": "<text-027>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-038>",
+      "ImageTags": {},
+      "Name": "<text-028>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-039>",
+      "ImageTags": {},
+      "Name": "<text-029>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-040>",
+      "ImageTags": {},
+      "Name": "<text-030>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-041>",
+      "ImageTags": {},
+      "Name": "<text-031>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-042>",
+      "ImageTags": {
+        "Primary": "c31ae170a7e9f1640ae5f390e9a763fa"
+      },
+      "Name": "<text-032>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-043>",
+      "ImageTags": {
+        "Primary": "ae2c3aea5bc16fd7ec095c3fb0d32616"
+      },
+      "Name": "<text-033>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-044>",
+      "ImageTags": {
+        "Primary": "73e0efdba5498f0b314f4f2013e93011"
+      },
+      "Name": "<text-034>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-045>",
+      "ImageTags": {
+        "Primary": "1365b285b7aa3d511b7a20aa4ddd8d17"
+      },
+      "Name": "<text-035>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-046>",
+      "ImageTags": {
+        "Primary": "fb2945f6dfa0fc98a24f747fd1fa95d0"
+      },
+      "Name": "<text-036>",
+      "ServerId": "<id-001>",
+      "Type": "Genre",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    }
+  ],
+  "TotalRecordCount": 30
+}

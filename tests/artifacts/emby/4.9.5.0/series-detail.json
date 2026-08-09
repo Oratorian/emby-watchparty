@@ -1,0 +1,516 @@
+{
+  "AirDays": [],
+  "BackdropImageTags": [
+    "26121b723613b46ec7f0475e8e0c9ebf"
+  ],
+  "CanDelete": true,
+  "CanDownload": false,
+  "ChildCount": 9,
+  "CommunityRating": 8.4,
+  "DateCreated": "2022-12-21T00:59:01.0000000Z",
+  "DateModified": "2026-02-10T16:34:55.0000000Z",
+  "DisplayOrder": "Aired",
+  "DisplayPreferencesId": "<id-1015>",
+  "EndDate": "2014-07-14T07:00:00.0000000Z",
+  "Etag": "07044ceb44a67b4293bc444e11ddfabe",
+  "ExternalUrls": [
+    {
+      "Name": "<text-124>",
+      "Url": "<url>"
+    },
+    {
+      "Name": "<text-125>",
+      "Url": "<url>"
+    },
+    {
+      "Name": "<text-126>",
+      "Url": "<url>"
+    },
+    {
+      "Name": "<text-1163>",
+      "Url": "<url>"
+    },
+    {
+      "Name": "<text-127>",
+      "Url": "<url>"
+    }
+  ],
+  "FileName": "<filename>",
+  "ForcedSortName": "<forcedsortname>",
+  "GenreItems": [
+    {
+      "Id": 17143,
+      "Name": "<text-007>"
+    },
+    {
+      "Id": 17144,
+      "Name": "<text-008>"
+    },
+    {
+      "Id": 17145,
+      "Name": "<text-009>"
+    },
+    {
+      "Id": 17146,
+      "Name": "<text-010>"
+    }
+  ],
+  "Genres": [
+    "Drama",
+    "Crime",
+    "Action",
+    "Thriller"
+  ],
+  "Id": "<id-959>",
+  "ImageTags": {
+    "Logo": "f9b986b27e3452c050facee97e792f89",
+    "Primary": "3845636e9a41c4f9712fe00e3075074c",
+    "Thumb": "b0e63db64c7cf4d543a05641b57a2fa3"
+  },
+  "IsFolder": true,
+  "LocalTrailerCount": 0,
+  "LockData": false,
+  "LockedFields": [],
+  "Name": "<text-1162>",
+  "OfficialRating": "TV-14",
+  "OriginalTitle": "<text-1162>",
+  "Overview": "<text-1164>",
+  "ParentId": "<id-960>",
+  "Path": "<path>",
+  "People": [
+    {
+      "Id": "<id-961>",
+      "Name": "<text-1165>",
+      "PrimaryImageTag": "aa1f06437274da9bb8ae55b8e1b61960",
+      "Role": "Jack Bauer",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-962>",
+      "Name": "<text-1166>",
+      "PrimaryImageTag": "a86a7d88695ca4b8484f911a99c51229",
+      "Role": "Kate Warner",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-963>",
+      "Name": "<text-1167>",
+      "PrimaryImageTag": "5f32e445f53d5ae8591111b449f61012",
+      "Role": "Chase Edmunds",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-891>",
+      "Name": "<text-971>",
+      "PrimaryImageTag": "3956558e0bc393daf25b4662fb236e59",
+      "Role": "George Mason",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-964>",
+      "Name": "<text-1168>",
+      "PrimaryImageTag": "a9d3caac19c5f4a07e7fdae39583998c",
+      "Role": "Teri Bauer",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-965>",
+      "Name": "<text-1169>",
+      "PrimaryImageTag": "0b171907563f8e0a4ea177e7b2c470a6",
+      "Role": "President David Palmer",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-966>",
+      "Name": "<text-1170>",
+      "PrimaryImageTag": "d9f7f56596dd2a2f8d4fc0ef81a9dc8f",
+      "Role": "Audrey Raines",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-967>",
+      "Name": "<text-1171>",
+      "PrimaryImageTag": "daf5d700743f6e3915a48393e8b82c68",
+      "Role": "Sarah Gavin",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-968>",
+      "Name": "<text-1172>",
+      "PrimaryImageTag": "8e92765447c0c51cf1719a80b6618a1b",
+      "Role": "Kim Bauer",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-969>",
+      "Name": "<text-1173>",
+      "PrimaryImageTag": "fe85a6cad43834dfcdd26c28b08c7093",
+      "Role": "Michelle Dessler",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-970>",
+      "Name": "<text-1174>",
+      "PrimaryImageTag": "c609ba844f4ce50ec65d2a9153120e9a",
+      "Role": "Curtis Manning",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-971>",
+      "Name": "<text-1175>",
+      "PrimaryImageTag": "ef85f5d79ec137bc20933ded962e1512",
+      "Role": "Nina Myers",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-972>",
+      "Name": "<text-1176>",
+      "PrimaryImageTag": "22090522f44cc2ae99f344141de63295",
+      "Role": "Edgar Stiles",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-973>",
+      "Name": "<text-1177>",
+      "PrimaryImageTag": "30fe15ab7020dc1bf90c75100c36be4e",
+      "Role": "Martha Logan",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-974>",
+      "Name": "<text-1178>",
+      "PrimaryImageTag": "51d454ec6b046c55abb3874185c7977e",
+      "Role": "President Charles Logan",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-975>",
+      "Name": "<text-1179>",
+      "PrimaryImageTag": "afcd60476f9742b8d1a0aefed9d6208d",
+      "Role": "Bill Buchanan",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-976>",
+      "Name": "<text-1180>",
+      "PrimaryImageTag": "64943f6699f4e38566d0c017ff00ec77",
+      "Role": "Wayne Palmer",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-977>",
+      "Name": "<text-1181>",
+      "PrimaryImageTag": "da4cdc2f7af092d0c92e0c0c87e1cf53",
+      "Role": "Tony Almeida",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-978>",
+      "Name": "<text-1182>",
+      "PrimaryImageTag": "a0ae7c254ce29b8fe199c7062310a63b",
+      "Role": "President Allison Taylor",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-979>",
+      "Name": "<text-1183>",
+      "PrimaryImageTag": "5c903f565578d324b6703a53f1a0f2f8",
+      "Role": "Renee Walker",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-980>",
+      "Name": "<text-1184>",
+      "PrimaryImageTag": "80bf8ad5addcd706703f78bb770ae523",
+      "Role": "Henry Taylor",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-981>",
+      "Name": "<text-1185>",
+      "PrimaryImageTag": "370507b424d393062ab451311e567684",
+      "Role": "Ethan Kanin",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-982>",
+      "Name": "<text-1186>",
+      "PrimaryImageTag": "1a9fe13776bddc97d1b5d21a603fc90b",
+      "Role": "Larry Moss",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-983>",
+      "Name": "<text-1187>",
+      "PrimaryImageTag": "09188695854f45146beb6ae4a8db5f5a",
+      "Role": "Sean Hillinger",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-984>",
+      "Name": "<text-1188>",
+      "PrimaryImageTag": "55723ecd05cc7d969faf48a518f7ab90",
+      "Role": "Janis Gold",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-985>",
+      "Name": "<text-1189>",
+      "PrimaryImageTag": "c3c1453262b225810c6b4bfc8613437c",
+      "Role": "Morris O'Brian",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-986>",
+      "Name": "<text-1190>",
+      "PrimaryImageTag": "cd01e92eebd8557f6e76a4046bd1d9e0",
+      "Role": "Karen Hayes",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-987>",
+      "Name": "<text-1191>",
+      "PrimaryImageTag": "fd4f482885e852d1a5e55b71d53f6640",
+      "Role": "Nadia Yassir ",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-988>",
+      "Name": "<text-1192>",
+      "PrimaryImageTag": "8ae2009531874dd0cdf69cf2667b54ae",
+      "Role": "Tom Lennox",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-989>",
+      "Name": "<text-1193>",
+      "PrimaryImageTag": "6fd7bd1a799e9b6afc97a2318d52b59f",
+      "Role": "Sandra Palmer",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-990>",
+      "Name": "<text-1194>",
+      "PrimaryImageTag": "c8f9a4a46af6cdd78d926de8ea71d251",
+      "Role": "Milo Pressman",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-991>",
+      "Name": "<text-1195>",
+      "PrimaryImageTag": "16238c684a668d6357633eaf9b22da29",
+      "Role": "Erin Driscoll",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-992>",
+      "Name": "<text-1196>",
+      "PrimaryImageTag": "d3e80588229f62a9a5f9629230159878",
+      "Role": "Patty Brooks",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-993>",
+      "Name": "<text-1197>",
+      "PrimaryImageTag": "29d3c34a7e91929aa33fc4c4fef1a8c0",
+      "Role": "Aaron Pierce",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-994>",
+      "Name": "<text-1198>",
+      "PrimaryImageTag": "07a7b8dcfc53dc394b4305df810b3c66",
+      "Role": "Mike Novick",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-995>",
+      "Name": "<text-1199>",
+      "PrimaryImageTag": "39195019e17d9791fa19bfb7751b3488",
+      "Role": "Cole Ortiz",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-996>",
+      "Name": "<text-1200>",
+      "PrimaryImageTag": "601f15f7c02dfc70273ecce9bbe6fbd7",
+      "Role": "Arlo Glass",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-997>",
+      "Name": "<text-1201>",
+      "PrimaryImageTag": "d76221ea564abace9cb87a94ef2796c4",
+      "Role": "Rob Weiss",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-998>",
+      "Name": "<text-1202>",
+      "PrimaryImageTag": "fb335467cf1635b0f924db1b7890afeb",
+      "Role": "Omar Hassan",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-999>",
+      "Name": "<text-1203>",
+      "PrimaryImageTag": "7edf159310254fd8bf3558970391f88a",
+      "Role": "Brian Hastings",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1000>",
+      "Name": "<text-1204>",
+      "PrimaryImageTag": "b91d93c4c63f81748b060e73487735a0",
+      "Role": "Dana Walsh",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1001>",
+      "Name": "<text-1205>",
+      "PrimaryImageTag": "e574e1ef0398355203170ab0019b9938",
+      "Role": "Marie Warner",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1002>",
+      "Name": "<text-1206>",
+      "PrimaryImageTag": "20bfd69400f4775d1e378b8c2ab8ebc6",
+      "Role": "Dina Araz",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1003>",
+      "Name": "<text-1207>",
+      "PrimaryImageTag": "920637299c8e614575551b456d57987b",
+      "Role": "Kate Morgan",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1004>",
+      "Name": "<text-1208>",
+      "PrimaryImageTag": "ac954f454fca1c88f740bb27c9083935",
+      "Role": "James Heller",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1005>",
+      "Name": "<text-1209>",
+      "PrimaryImageTag": "ffabe865a0db4374903d393d5041b480",
+      "Role": "Steve Navarro",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1006>",
+      "Name": "<text-1210>",
+      "PrimaryImageTag": "dda73b5b4f462dc1e5b956deaca2d1aa",
+      "Role": "Mark Boudreau",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1007>",
+      "Name": "<text-1211>",
+      "PrimaryImageTag": "fb9eb6d1689349b8fa07ca6550910a60",
+      "Role": "Chloe O'Brian",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1008>",
+      "Name": "<text-1212>",
+      "PrimaryImageTag": "3c880e4ee20218c493af066e49d5ae10",
+      "Role": "Dr. Nicole Duncan",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1009>",
+      "Name": "<text-1213>",
+      "PrimaryImageTag": "68a6f751ac90b1e34a5b203e0a25c3c1",
+      "Role": "Sherry Palmer ",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1010>",
+      "Name": "<text-1214>",
+      "PrimaryImageTag": "86fe20339b61b4194f549f4c19457cdf",
+      "Role": "Ira Gaines",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1011>",
+      "Name": "<text-1215>",
+      "PrimaryImageTag": "387ecc794e2e2fa2cd525b05d3dfb05d",
+      "Role": " Vice President Jim Prescott",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-473>",
+      "Name": "<text-523>",
+      "PrimaryImageTag": "b2a90a8751bdb36c71b10651f6358a73",
+      "Role": "Adam Kaufman",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1012>",
+      "Name": "<text-1216>",
+      "PrimaryImageTag": "1ac14a19aabc3eb078bbdab887842645",
+      "Role": "Diane Huxley",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1013>",
+      "Name": "<text-1217>",
+      "PrimaryImageTag": "6df0aa35d10555d4c00a66978e79d68b",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-1014>",
+      "Name": "<text-1218>",
+      "PrimaryImageTag": "08165cc3df5f11b49283bfa7e9ce8b07",
+      "Role": "Stephen",
+      "Type": "Actor"
+    }
+  ],
+  "PremiereDate": "2001-11-06T08:00:00.0000000Z",
+  "PresentationUniqueKey": "76290-en-a88110906b804beab597ba7feec233f6",
+  "PrimaryImageAspectRatio": 0.68,
+  "ProductionYear": 2001,
+  "ProviderIds": {
+    "Imdb": "<imdb>",
+    "Tmdb": "<tmdb>",
+    "TvRage": "<tvrage>",
+    "Tvdb": "<tvdb>",
+    "Zap2It": "<zap2it>",
+    "eidr": "<eidr>",
+    "official website": "<url>",
+    "tv maze": "<tv-maze>",
+    "wikipedia": "<wikipedia>"
+  },
+  "RemoteTrailers": [
+    {
+      "Url": "<url>"
+    }
+  ],
+  "RunTimeTicks": 27000000000,
+  "ServerId": "<id-001>",
+  "SortName": "<sortname>",
+  "Status": "Ended",
+  "Studios": [
+    {
+      "Id": 17147,
+      "Name": "<text-1219>"
+    }
+  ],
+  "SupportsSync": true,
+  "TagItems": [],
+  "Taglines": [
+    "<taglines>"
+  ],
+  "Type": "Series",
+  "UserData": {
+    "IsFavorite": false,
+    "PlayCount": 0,
+    "PlaybackPositionTicks": 0,
+    "Played": false,
+    "UnplayedItemCount": 198
+  }
+}

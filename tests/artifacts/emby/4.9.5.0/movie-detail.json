@@ -1,0 +1,788 @@
+{
+  "BackdropImageTags": [
+    "53fe854596a541e6c22c24c12a6cbb74"
+  ],
+  "Bitrate": 2106540,
+  "CanDelete": true,
+  "CanDownload": true,
+  "Chapters": [
+    {
+      "ChapterIndex": 0,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-128>",
+      "StartPositionTicks": 0
+    },
+    {
+      "ChapterIndex": 1,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-129>",
+      "StartPositionTicks": 3000000000
+    },
+    {
+      "ChapterIndex": 2,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-130>",
+      "StartPositionTicks": 6000000000
+    },
+    {
+      "ChapterIndex": 3,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-131>",
+      "StartPositionTicks": 9000000000
+    },
+    {
+      "ChapterIndex": 4,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-132>",
+      "StartPositionTicks": 12000000000
+    },
+    {
+      "ChapterIndex": 5,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-133>",
+      "StartPositionTicks": 15000000000
+    },
+    {
+      "ChapterIndex": 6,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-134>",
+      "StartPositionTicks": 18000000000
+    },
+    {
+      "ChapterIndex": 7,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-135>",
+      "StartPositionTicks": 21000000000
+    },
+    {
+      "ChapterIndex": 8,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-136>",
+      "StartPositionTicks": 24000000000
+    },
+    {
+      "ChapterIndex": 9,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-137>",
+      "StartPositionTicks": 27000000000
+    },
+    {
+      "ChapterIndex": 10,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-138>",
+      "StartPositionTicks": 30000000000
+    },
+    {
+      "ChapterIndex": 11,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-139>",
+      "StartPositionTicks": 33000000000
+    },
+    {
+      "ChapterIndex": 12,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-140>",
+      "StartPositionTicks": 36000000000
+    },
+    {
+      "ChapterIndex": 13,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-141>",
+      "StartPositionTicks": 39000000000
+    },
+    {
+      "ChapterIndex": 14,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-142>",
+      "StartPositionTicks": 42000000000
+    },
+    {
+      "ChapterIndex": 15,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-143>",
+      "StartPositionTicks": 45000000000
+    },
+    {
+      "ChapterIndex": 16,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-144>",
+      "StartPositionTicks": 48000000000
+    },
+    {
+      "ChapterIndex": 17,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-145>",
+      "StartPositionTicks": 51000000000
+    },
+    {
+      "ChapterIndex": 18,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-146>",
+      "StartPositionTicks": 54000000000
+    },
+    {
+      "ChapterIndex": 19,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-147>",
+      "StartPositionTicks": 57000000000
+    },
+    {
+      "ChapterIndex": 20,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-148>",
+      "StartPositionTicks": 60000000000
+    },
+    {
+      "ChapterIndex": 21,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-149>",
+      "StartPositionTicks": 63000000000
+    },
+    {
+      "ChapterIndex": 22,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-150>",
+      "StartPositionTicks": 66000000000
+    },
+    {
+      "ChapterIndex": 23,
+      "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+      "MarkerType": "Chapter",
+      "Name": "<text-151>",
+      "StartPositionTicks": 69000000000
+    }
+  ],
+  "CommunityRating": 7.4,
+  "Container": "mp4",
+  "CriticRating": 78,
+  "DateCreated": "2025-04-18T16:12:52.0000000Z",
+  "DateModified": "2025-04-18T16:12:51.0000000Z",
+  "DisplayPreferencesId": "<id-116>",
+  "Etag": "e7d3d5e3ac6fdc0d3e35d381df74cbd7",
+  "ExternalUrls": [
+    {
+      "Name": "<text-124>",
+      "Url": "<url>"
+    },
+    {
+      "Name": "<text-125>",
+      "Url": "<url>"
+    },
+    {
+      "Name": "<text-126>",
+      "Url": "<url>"
+    },
+    {
+      "Name": "<text-127>",
+      "Url": "<url>"
+    }
+  ],
+  "FileName": "<filename>",
+  "ForcedSortName": "<forcedsortname>",
+  "GenreItems": [
+    {
+      "Id": 17144,
+      "Name": "<text-008>"
+    },
+    {
+      "Id": 17143,
+      "Name": "<text-007>"
+    },
+    {
+      "Id": 17146,
+      "Name": "<text-010>"
+    }
+  ],
+  "Genres": [
+    "Crime",
+    "Drama",
+    "Thriller"
+  ],
+  "Height": 1080,
+  "Id": "<id-048>",
+  "ImageTags": {
+    "Logo": "323a7fec6af93fc0c15a618f65195de7",
+    "Primary": "3b91c0e5d140a497917af453de3c9dc4",
+    "Thumb": "196c4d65e2c22459e28cd5f092b39b2f"
+  },
+  "IsFolder": false,
+  "LocalTrailerCount": 0,
+  "LockData": false,
+  "LockedFields": [],
+  "MediaSources": [
+    {
+      "AddApiKeyToDirectStreamUrl": false,
+      "Bitrate": 2106540,
+      "Chapters": [
+        {
+          "ChapterIndex": 0,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-128>",
+          "StartPositionTicks": 0
+        },
+        {
+          "ChapterIndex": 1,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-129>",
+          "StartPositionTicks": 3000000000
+        },
+        {
+          "ChapterIndex": 2,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-130>",
+          "StartPositionTicks": 6000000000
+        },
+        {
+          "ChapterIndex": 3,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-131>",
+          "StartPositionTicks": 9000000000
+        },
+        {
+          "ChapterIndex": 4,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-132>",
+          "StartPositionTicks": 12000000000
+        },
+        {
+          "ChapterIndex": 5,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-133>",
+          "StartPositionTicks": 15000000000
+        },
+        {
+          "ChapterIndex": 6,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-134>",
+          "StartPositionTicks": 18000000000
+        },
+        {
+          "ChapterIndex": 7,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-135>",
+          "StartPositionTicks": 21000000000
+        },
+        {
+          "ChapterIndex": 8,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-136>",
+          "StartPositionTicks": 24000000000
+        },
+        {
+          "ChapterIndex": 9,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-137>",
+          "StartPositionTicks": 27000000000
+        },
+        {
+          "ChapterIndex": 10,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-138>",
+          "StartPositionTicks": 30000000000
+        },
+        {
+          "ChapterIndex": 11,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-139>",
+          "StartPositionTicks": 33000000000
+        },
+        {
+          "ChapterIndex": 12,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-140>",
+          "StartPositionTicks": 36000000000
+        },
+        {
+          "ChapterIndex": 13,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-141>",
+          "StartPositionTicks": 39000000000
+        },
+        {
+          "ChapterIndex": 14,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-142>",
+          "StartPositionTicks": 42000000000
+        },
+        {
+          "ChapterIndex": 15,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-143>",
+          "StartPositionTicks": 45000000000
+        },
+        {
+          "ChapterIndex": 16,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-144>",
+          "StartPositionTicks": 48000000000
+        },
+        {
+          "ChapterIndex": 17,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-145>",
+          "StartPositionTicks": 51000000000
+        },
+        {
+          "ChapterIndex": 18,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-146>",
+          "StartPositionTicks": 54000000000
+        },
+        {
+          "ChapterIndex": 19,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-147>",
+          "StartPositionTicks": 57000000000
+        },
+        {
+          "ChapterIndex": 20,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-148>",
+          "StartPositionTicks": 60000000000
+        },
+        {
+          "ChapterIndex": 21,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-149>",
+          "StartPositionTicks": 63000000000
+        },
+        {
+          "ChapterIndex": 22,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-150>",
+          "StartPositionTicks": 66000000000
+        },
+        {
+          "ChapterIndex": 23,
+          "ImageTag": "b366e6f9a52e01ef9c314758fc4c9e00",
+          "MarkerType": "Chapter",
+          "Name": "<text-151>",
+          "StartPositionTicks": 69000000000
+        }
+      ],
+      "Container": "mp4",
+      "DefaultAudioStreamIndex": 1,
+      "Formats": [],
+      "HasMixedProtocols": false,
+      "Id": "<id-049>",
+      "IsInfiniteStream": false,
+      "IsRemote": false,
+      "ItemId": "<id-048>",
+      "MediaStreams": [
+        {
+          "AspectRatio": "16:9",
+          "AttachmentSize": 0,
+          "AverageFrameRate": 23.976025,
+          "BitDepth": 8,
+          "BitRate": 2009026,
+          "Codec": "h264",
+          "CodecTag": "avc1",
+          "ColorPrimaries": "bt709",
+          "ColorSpace": "bt709",
+          "DisplayTitle": "1080p H264",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Height": 1080,
+          "Index": 0,
+          "IsAnamorphic": false,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Language": "und",
+          "Level": 41,
+          "NalLengthSize": "4",
+          "PixelFormat": "yuv420p",
+          "Profile": "High",
+          "Protocol": "File",
+          "RealFrameRate": 23.976025,
+          "RefFrames": 1,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/24000",
+          "Type": "Video",
+          "VideoRange": "SDR",
+          "Width": 1920
+        },
+        {
+          "AttachmentSize": 0,
+          "BitRate": 93371,
+          "ChannelLayout": "stereo",
+          "Channels": 2,
+          "Codec": "aac",
+          "CodecTag": "mp4a",
+          "DisplayTitle": "AAC stereo (Default)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 1,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Language": "und",
+          "Profile": "LC",
+          "Protocol": "File",
+          "SampleRate": 48000,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/48000",
+          "Type": "Audio"
+        },
+        {
+          "AttachmentSize": 0,
+          "Codec": "srt",
+          "DisplayLanguage": "English",
+          "DisplayTitle": "English (SRT)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 2,
+          "IsDefault": false,
+          "IsExternal": true,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": true,
+          "Language": "en",
+          "Path": "<path>",
+          "Protocol": "File",
+          "SupportsExternalStream": true,
+          "Type": "Subtitle"
+        }
+      ],
+      "Name": "<text-037>",
+      "Path": "<path>",
+      "Protocol": "File",
+      "ReadAtNativeFramerate": false,
+      "RequiredHttpHeaders": {},
+      "RequiresClosing": false,
+      "RequiresLooping": false,
+      "RequiresOpening": false,
+      "RunTimeTicks": 71441366670,
+      "Size": 1881176278,
+      "SupportsDirectPlay": true,
+      "SupportsDirectStream": true,
+      "SupportsProbing": true,
+      "SupportsTranscoding": true,
+      "Type": "Default"
+    }
+  ],
+  "MediaStreams": [
+    {
+      "AspectRatio": "16:9",
+      "AttachmentSize": 0,
+      "AverageFrameRate": 23.976025,
+      "BitDepth": 8,
+      "BitRate": 2009026,
+      "Codec": "h264",
+      "CodecTag": "avc1",
+      "ColorPrimaries": "bt709",
+      "ColorSpace": "bt709",
+      "DisplayTitle": "1080p H264",
+      "ExtendedVideoSubType": "None",
+      "ExtendedVideoSubTypeDescription": "None",
+      "ExtendedVideoType": "None",
+      "Height": 1080,
+      "Index": 0,
+      "IsAnamorphic": false,
+      "IsDefault": true,
+      "IsExternal": false,
+      "IsForced": false,
+      "IsHearingImpaired": false,
+      "IsInterlaced": false,
+      "IsTextSubtitleStream": false,
+      "Language": "und",
+      "Level": 41,
+      "NalLengthSize": "4",
+      "PixelFormat": "yuv420p",
+      "Profile": "High",
+      "Protocol": "File",
+      "RealFrameRate": 23.976025,
+      "RefFrames": 1,
+      "SupportsExternalStream": false,
+      "TimeBase": "1/24000",
+      "Type": "Video",
+      "VideoRange": "SDR",
+      "Width": 1920
+    },
+    {
+      "AttachmentSize": 0,
+      "BitRate": 93371,
+      "ChannelLayout": "stereo",
+      "Channels": 2,
+      "Codec": "aac",
+      "CodecTag": "mp4a",
+      "DisplayTitle": "AAC stereo (Default)",
+      "ExtendedVideoSubType": "None",
+      "ExtendedVideoSubTypeDescription": "None",
+      "ExtendedVideoType": "None",
+      "Index": 1,
+      "IsDefault": true,
+      "IsExternal": false,
+      "IsForced": false,
+      "IsHearingImpaired": false,
+      "IsInterlaced": false,
+      "IsTextSubtitleStream": false,
+      "Language": "und",
+      "Profile": "LC",
+      "Protocol": "File",
+      "SampleRate": 48000,
+      "SupportsExternalStream": false,
+      "TimeBase": "1/48000",
+      "Type": "Audio"
+    },
+    {
+      "AttachmentSize": 0,
+      "Codec": "srt",
+      "DisplayLanguage": "English",
+      "DisplayTitle": "English (SRT)",
+      "ExtendedVideoSubType": "None",
+      "ExtendedVideoSubTypeDescription": "None",
+      "ExtendedVideoType": "None",
+      "Index": 2,
+      "IsDefault": false,
+      "IsExternal": true,
+      "IsForced": false,
+      "IsHearingImpaired": false,
+      "IsInterlaced": false,
+      "IsTextSubtitleStream": true,
+      "Language": "en",
+      "Path": "<path>",
+      "Protocol": "File",
+      "SupportsExternalStream": true,
+      "Type": "Subtitle"
+    }
+  ],
+  "MediaType": "Video",
+  "Name": "<text-037>",
+  "OfficialRating": "R",
+  "OriginalTitle": "<text-123>",
+  "Overview": "<text-038>",
+  "ParentId": "<id-115>",
+  "PartCount": 1,
+  "Path": "<path>",
+  "People": [
+    {
+      "Id": "<id-050>",
+      "Name": "<text-039>",
+      "PrimaryImageTag": "89bba9470a3ae1fa76cbb48057eb01f1",
+      "Role": "Gail Packer",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-051>",
+      "Name": "<text-040>",
+      "PrimaryImageTag": "ee8fb73d0db9bc840f244ae09871b12f",
+      "Role": "Ralph Agee",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-052>",
+      "Name": "<text-041>",
+      "PrimaryImageTag": "fd510a68ff521ee3daa8529757b4e717",
+      "Role": "Jeff McCullaugh",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-053>",
+      "Name": "<text-042>",
+      "PrimaryImageTag": "2f00f54475fc4dfc7cf54c0fffa5376d",
+      "Role": "Warren Fresnell",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-054>",
+      "Name": "<text-043>",
+      "PrimaryImageTag": "c15a85db8c37999f894ea61cff2c99a8",
+      "Role": "Carl Travers",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-055>",
+      "Name": "<text-044>",
+      "PrimaryImageTag": "88c2f94dea03790d01881ac24d9b9996",
+      "Role": "Officer Leary",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-056>",
+      "Name": "<text-045>",
+      "PrimaryImageTag": "69f35cf625379e8bdf8d67fbf95ddd5d",
+      "Role": "Elderly Man",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-057>",
+      "Name": "<text-046>",
+      "PrimaryImageTag": "5b4968e033c2c59e0c459ca0782cca4d",
+      "Role": "Prison Doctor",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-058>",
+      "Name": "<text-047>",
+      "PrimaryImageTag": "a202c435fe3ed0e8c8456086c62f72d7",
+      "Role": "Grandpa Sam",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-059>",
+      "Name": "<text-048>",
+      "PrimaryImageTag": "745142c51d469a248fbaee9543e092ea",
+      "Role": "Arthur Kirkland",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-060>",
+      "Name": "<text-049>",
+      "PrimaryImageTag": "9c3b1bcb649e14c163162b68647b755d",
+      "Role": "Judge Francis Rayford",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-061>",
+      "Name": "<text-050>",
+      "PrimaryImageTag": "35b0e0d00a2608b609618fe3511ada86",
+      "Role": "Judge Henry T. Fleming",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-062>",
+      "Name": "<text-051>",
+      "PrimaryImageTag": "c08a0ded20ea0407d91596ed5e4dc7f2",
+      "Role": "Jay Porter",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-063>",
+      "Name": "<text-052>",
+      "PrimaryImageTag": "b76a39fcfafe37271e77da9533631519",
+      "Role": "Arnie",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-064>",
+      "Name": "<text-053>",
+      "PrimaryImageTag": "915a2ac87d36634c27bd44c168f74e86",
+      "Role": "Frank Bowers",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-065>",
+      "Name": "<text-054>",
+      "PrimaryImageTag": "0169d8ed88b6274afb1a1c24f77a2c01",
+      "Role": "Leo Fauci",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-066>",
+      "Name": "<text-055>",
+      "Role": "Larry",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-067>",
+      "Name": "<text-056>",
+      "PrimaryImageTag": "274280d096322dc3a7511b388bac1785",
+      "Role": "Deputy Sheriff",
+      "Type": "Actor"
+    },
+    {
+      "Id": "<id-068>",
+      "Name": "<text-057>",
+      "PrimaryImageTag": "89f6298d7e21d67b7080de1ba0d49e99",
+      "Type": "Director"
+    }
+  ],
+  "PremiereDate": "1979-10-19T07:00:00.0000000Z",
+  "PresentationUniqueKey": "p-tmdb-Movie-17443-8c3a3589283e4a03bd3dd7257b0f9806",
+  "PrimaryImageAspectRatio": 0.6666666666666666,
+  "ProductionLocations": [
+    "United States of America"
+  ],
+  "ProductionYear": 1979,
+  "ProviderIds": {
+    "Imdb": "<imdb>",
+    "Tmdb": "<tmdb>",
+    "Tvdb": "<tvdb>"
+  },
+  "RemoteTrailers": [
+    {
+      "Url": "<url>"
+    }
+  ],
+  "RunTimeTicks": 71441366670,
+  "ServerId": "<id-001>",
+  "Size": 1881176278,
+  "SortName": "<sortname>",
+  "Studios": [
+    {
+      "Id": 27753,
+      "Name": "<text-058>"
+    }
+  ],
+  "SupportsSync": true,
+  "TagItems": [],
+  "Taglines": [
+    "<taglines>"
+  ],
+  "Type": "Movie",
+  "UserData": {
+    "IsFavorite": false,
+    "LastPlayedDate": "2026-08-09T23:16:33.0000000Z",
+    "PlayCount": 1,
+    "PlaybackPositionTicks": 0,
+    "Played": true
+  },
+  "Width": 1920
+}

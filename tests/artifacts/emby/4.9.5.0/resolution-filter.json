@@ -1,0 +1,73 @@
+{
+  "Items": [
+    {
+      "BackdropImageTags": [
+        "53fe854596a541e6c22c24c12a6cbb74"
+      ],
+      "Id": "<id-048>",
+      "ImageTags": {
+        "Logo": "323a7fec6af93fc0c15a618f65195de7",
+        "Primary": "3b91c0e5d140a497917af453de3c9dc4",
+        "Thumb": "196c4d65e2c22459e28cd5f092b39b2f"
+      },
+      "IsFolder": false,
+      "MediaType": "Video",
+      "Name": "<text-037>",
+      "RunTimeTicks": 71441366670,
+      "ServerId": "<id-001>",
+      "Type": "Movie",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": true
+      }
+    },
+    {
+      "BackdropImageTags": [
+        "37464204539dd1b03c91b46fe6ef8304"
+      ],
+      "Id": "<id-113>",
+      "ImageTags": {
+        "Logo": "1ade74cd9644576ad15b32114addf914",
+        "Primary": "0014a96d465056ae7e9840c0adc36afe",
+        "Thumb": "31dca7b5c0585c354ed225735a7e482b"
+      },
+      "IsFolder": false,
+      "MediaType": "Video",
+      "Name": "<text-106>",
+      "RunTimeTicks": 63739950000,
+      "ServerId": "<id-001>",
+      "Type": "Movie",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [
+        "42d66b1caca98f5e6c027a7225e51e0d"
+      ],
+      "Id": "<id-114>",
+      "ImageTags": {
+        "Logo": "6a9ca667a38f3e61df0c541a916445cc",
+        "Primary": "9f868228c039579db1b9f777d09b192d"
+      },
+      "IsFolder": false,
+      "MediaType": "Video",
+      "Name": "<text-107>",
+      "RunTimeTicks": 47542483330,
+      "ServerId": "<id-001>",
+      "Type": "Movie",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": true
+      }
+    }
+  ],
+  "TotalRecordCount": 874
+}
