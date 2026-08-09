@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 import yaml
 
 from backend.src.config import Config, EnvConfig, RuntimeConfig

@@ -441,8 +441,7 @@ def _env_example(schema: dict[str, Any]) -> str:
     ]
     for setting in schema["settings"]:
         lines.append(f"# {setting['description']}")
-        for note in _artifact_notes(setting):
-            lines.append(f"# {note}")
+        lines.extend(f"# {note}" for note in _artifact_notes(setting))
         if _omitted(setting):
             # Commented out, not blank. The operator can see the variable
             # exists and what it is for, while the file still hands the
