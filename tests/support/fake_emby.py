@@ -49,6 +49,27 @@ MOVIE: dict[str, Any] = {
                     "Codec": "aac",
                     "Language": "eng",
                     "DisplayTitle": "English AAC",
+                    "Channels": 2,
+                    "IsDefault": True,
+                },
+                {
+                    "Index": 2,
+                    "Type": "Audio",
+                    "Codec": "aac",
+                    "Language": "spa",
+                    "DisplayTitle": "Spanish AAC",
+                    "Channels": 2,
+                    "IsDefault": False,
+                },
+                {
+                    "Index": 3,
+                    "Type": "Subtitle",
+                    "Codec": "subrip",
+                    "Language": "eng",
+                    "DisplayTitle": "English SRT",
+                    "IsDefault": False,
+                    "IsExternal": True,
+                    "IsTextSubtitleStream": True,
                 },
             ],
         }
@@ -259,6 +280,28 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
             "PlaySessionId": "play-session-1",
             "MediaSources": [{**MOVIE["MediaSources"][0], "ItemId": item_id}],
         }
+
+    @app.get("/emby/Videos/{item_id}/{source_id}/Subtitles/{index}/Stream.vtt")
+    async def subtitle_stream(request: Request, item_id: str, source_id: str, index: int):
+        state.record(request)
+        # Discarding the path parameters made this endpoint answer WEBVTT to
+        # any item, any source and any stream index, so a proxy that dropped
+        # or mangled them still looked correct. Real Emby 404s instead.
+        subtitle_indices = {
+            stream["Index"]
+            for stream in MOVIE["MediaSources"][0]["MediaStreams"]
+            if stream["Type"] == "Subtitle"
+        }
+        if (
+            item_id != MOVIE["Id"]
+            or source_id != MOVIE["MediaSources"][0]["Id"]
+            or index not in subtitle_indices
+        ):
+            return Response(status_code=404)
+        return Response(
+            content="WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nFake subtitle\n",
+            media_type="text/vtt",
+        )
 
     @app.api_route("/emby/Sessions/Playing{suffix:path}", methods=["POST"])
     async def playback_report(request: Request, suffix: str):

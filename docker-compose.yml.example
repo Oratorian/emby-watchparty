@@ -10,6 +10,11 @@
 #
 # `version:` is omitted intentionally -- modern Docker Compose v2
 # ignores it and warns on its presence.
+#
+# 2.1.x upgrade preflight (read-only). Point `image:` below at a 3.0 tag
+# first -- the preflight ships in the 3.0 image, and `:latest` is still
+# 2.1.x, which has no such module. Back up every listed mount before running:
+# docker compose run --rm --no-deps emby-watchparty python -m backend.migration_preflight
 
 services:
   emby-watchparty:
@@ -103,7 +108,7 @@ services:
       # fails to write its settings.
       - ./config.json:/app/config.json
 
-    # The baked /api/health probe is a liveness check. Setup mode returns
+    # The baked /api/health probe is a liveness check. Invalid configuration returns
     # HTTP 200 with status=setup_required so Compose does not restart-loop.
     # Use /api/ready instead if dependants must wait for normal app service.
     # Uncomment to tighten the liveness cadence:

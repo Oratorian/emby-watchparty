@@ -16,7 +16,7 @@ import asyncio
 import contextlib
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -30,7 +30,7 @@ from backend.src.dependencies import (
     get_logger,
     get_party_manager,
 )
-from backend.src.rate_limit import parse_rate
+from backend.src.rate_limit import parse_rate, rate_limit_response
 
 router = APIRouter(prefix="/api/avatar", tags=["avatar"])
 
@@ -166,11 +166,7 @@ def recover(
         decision = request.app.state.rate_limiter.check(f"avatar-recover:{ip}", limit, window)
         if not decision.allowed:
             logger.warning(f"Avatar recover rate-limited for ip={ip}")
-            raise HTTPException(
-                status_code=429,
-                detail="Too many recovery attempts. Try again later.",
-                headers={"Retry-After": str(decision.retry_after)},
-            )
+            return rate_limit_response("avatar recovery attempts", decision.retry_after)
 
     code = (body.code or "").strip().lower()
     if not code:

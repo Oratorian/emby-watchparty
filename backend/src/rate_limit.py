@@ -1,5 +1,6 @@
 """Bounded in-memory rate limiting for single-process deployments."""
 
+import math
 import re
 import threading
 import time
@@ -42,6 +43,20 @@ def parse_rate(spec: str) -> tuple[int, int]:
 class RateLimitDecision:
     allowed: bool
     retry_after: int = 0
+
+
+def rate_limit_response(action: str, retry_after: int) -> JSONResponse:
+    """Return one safe, typed HTTP 429 contract."""
+    detail = f"Too many {action}. Try again in {retry_after} seconds."
+    return JSONResponse(
+        {
+            "detail": detail,
+            "code": "rate_limited",
+            "retry_after": retry_after,
+        },
+        status_code=429,
+        headers={"Retry-After": str(retry_after)},
+    )
 
 
 class SlidingWindowRateLimiter:
@@ -87,7 +102,14 @@ class SlidingWindowRateLimiter:
                 bucket.popleft()
             self._expires_at[key] = now + window_seconds
             if len(bucket) >= limit:
-                retry_after = max(1, int(window_seconds - (now - bucket[0])) + 1)
+                # ceil, not int()+1: the eviction above leaves bucket[0] as the
+                # oldest hit still inside the window, so this expression IS the
+                # exact wait. Truncating and adding a second overshot every
+                # non-integral remainder and could name a delay longer than the
+                # whole window. The max(1) floor stays, so a sub-second
+                # remainder cannot become Retry-After 0 and invite an immediate
+                # retry that is refused again.
+                retry_after = max(1, math.ceil(window_seconds - (now - bucket[0])))
                 return RateLimitDecision(False, retry_after)
             bucket.append(now)
             self._evict_if_needed_locked()
@@ -142,19 +164,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         is_party_create = path == f"{api_root}/party/create" and request.method == "POST"
-        spec = config.RATE_LIMIT_PARTY_CREATION if is_party_create else config.RATE_LIMIT_API_CALLS
+        # Bucket, spec and label are picked together, so the 429 can only ever
+        # name the limit that actually refused the request. Deriving the label
+        # from the request path lets it drift from the bucket: everything that
+        # is not party creation shares one `api` bucket, so a path-derived
+        # "too many join attempts" fires on a viewer's FIRST join once other
+        # traffic has drained it -- and the index page polls /api/party/list
+        # through that same bucket every 5s while they sit there.
+        if is_party_create:
+            scope = "party-create"
+            spec = config.RATE_LIMIT_PARTY_CREATION
+            action = "party creation attempts"
+        else:
+            scope = "api"
+            spec = config.RATE_LIMIT_API_CALLS
+            action = "requests"
         try:
             limit, window = parse_rate(spec)
         except ValueError:
             return await call_next(request)
 
         client_ip = request_client_ip(request, config.TRUSTED_PROXY_CIDRS)
-        scope = "party-create" if is_party_create else "api"
         decision = request.app.state.rate_limiter.check(f"{scope}:{client_ip}", limit, window)
         if not decision.allowed:
-            return JSONResponse(
-                {"detail": "Rate limit exceeded"},
-                status_code=429,
-                headers={"Retry-After": str(decision.retry_after)},
-            )
+            return rate_limit_response(action, decision.retry_after)
         return await call_next(request)

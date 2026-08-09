@@ -172,6 +172,20 @@ Emby Watch Party works best with the following browsers:
 
 ### Docker installation
 
+Upgrading from 2.1.x is not a drop-in image swap. Back up `.env`, the effective
+Compose/container configuration, `config.json`, `data/`, `images/avatars/`, and
+all volume mappings, then read [the 3.0 migration guide](docs/Migration-HowTo.md).
+With the 3.0 Compose service configured, run its read-only preflight before
+starting the upgrade:
+
+```bash
+docker compose run --rm --no-deps emby-watchparty python -m backend.migration_preflight
+```
+
+Keep the full 2.1.x backup and previous image until health, readiness, login,
+HLS, seeking, subtitles, reconnects, and rate-limit messages pass validation.
+Rollback restores that complete backup and image; do not delete legacy data.
+
 The pre-built multi-arch image is published to GitHub Container Registry:
 
 ```bash

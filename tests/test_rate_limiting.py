@@ -72,7 +72,12 @@ def test_avatar_recovery_uses_shared_limiter_and_retry_after(tmp_path: Path):
 
     limited = asyncio.run(exercise())
     assert limited.status_code == 429
-    assert int(limited.headers["retry-after"]) > 0
+    retry_after = int(limited.headers["retry-after"])
+    assert limited.json() == {
+        "detail": f"Too many avatar recovery attempts. Try again in {retry_after} seconds.",
+        "code": "rate_limited",
+        "retry_after": retry_after,
+    }
     assert app.state.rate_limiter.active_bucket_count == 1
 
 
@@ -201,7 +206,12 @@ def test_general_api_limit_returns_429_with_retry_after():
 
     limited = asyncio.run(exercise())
     assert limited.status_code == 429
-    assert int(limited.headers["retry-after"]) > 0
+    retry_after = int(limited.headers["retry-after"])
+    assert limited.json() == {
+        "detail": f"Too many requests. Try again in {retry_after} seconds.",
+        "code": "rate_limited",
+        "retry_after": retry_after,
+    }
 
 
 def test_party_creation_uses_stricter_limit():
@@ -211,12 +221,88 @@ def test_party_creation_uses_stricter_limit():
     def create():
         return {"ok": True}
 
-    async def exercise() -> None:
+    async def exercise() -> httpx.Response:
         async with asgi_client(app) as client:
             assert (await client.post("/api/party/create")).status_code == 200
-            assert (await client.post("/api/party/create")).status_code == 429
+            return await client.post("/api/party/create")
 
-    asyncio.run(exercise())
+    limited = asyncio.run(exercise())
+    retry_after = int(limited.headers["retry-after"])
+    assert limited.json() == {
+        "detail": f"Too many party creation attempts. Try again in {retry_after} seconds.",
+        "code": "rate_limited",
+        "retry_after": retry_after,
+    }
+
+
+def test_retry_after_never_exceeds_the_configured_window():
+    """`int(...) + 1` overshot every non-integral remainder.
+
+    A frozen clock is the only way to reach the divergence deterministically:
+    with the bucket filled at t and the window untouched, the true wait is the
+    whole window, so the reported delay must equal it and never exceed it.
+    """
+    limiter = SlidingWindowRateLimiter(clock=lambda: 1000.0)
+    for _ in range(5):
+        assert limiter.check("key", 5, 3).allowed
+
+    decision = limiter.check("key", 5, 3)
+
+    assert not decision.allowed
+    assert decision.retry_after == 3
+
+
+def test_retry_after_rounds_a_partial_second_up_not_to_zero():
+    """Guard on the max(1) floor, which the ceil change must not remove."""
+    now = [1000.0]
+    limiter = SlidingWindowRateLimiter(clock=lambda: now[0])
+    assert limiter.check("key", 1, 3).allowed
+    now[0] = 1002.5
+
+    decision = limiter.check("key", 1, 3)
+
+    assert not decision.allowed
+    # 0.5s of window left: rounds up to 1, never down to 0, which would invite
+    # an immediate retry that is refused again.
+    assert decision.retry_after == 1
+
+
+def test_429_names_the_bucket_it_was_refused_by_not_the_path():
+    """A 429 must describe the limit that actually refused the request.
+
+    `/api/party/{id}/join` has no bucket of its own; it shares the general
+    `api` bucket with every other route. Deriving the label from the request
+    path instead of the bucket reports a viewer's FIRST join as "too many
+    join attempts" once unrelated traffic has drained that shared bucket --
+    and IndexView polls `/api/party/list` every 5s through the same bucket,
+    so the page the viewer joins from is what exhausts it.
+    """
+    app = _limited_app()
+
+    @app.get("/api/party/list")
+    def party_list():
+        return {"ok": True}
+
+    @app.post("/api/party/ABC123/join")
+    def join():
+        return {"ok": True}
+
+    async def exercise() -> httpx.Response:
+        async with asgi_client(app) as client:
+            # Background polling drains the shared bucket. No joins yet.
+            assert (await client.get("/api/party/list")).status_code == 200
+            assert (await client.get("/api/party/list")).status_code == 200
+            # The viewer's first and only join attempt.
+            return await client.post("/api/party/ABC123/join")
+
+    limited = asyncio.run(exercise())
+    assert limited.status_code == 429
+    retry_after = int(limited.headers["retry-after"])
+    assert limited.json() == {
+        "detail": f"Too many requests. Try again in {retry_after} seconds.",
+        "code": "rate_limited",
+        "retry_after": retry_after,
+    }
 
 
 def test_rate_limit_honors_application_prefix():

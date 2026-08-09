@@ -14,7 +14,19 @@ export const useSocketStore = defineStore('socket', () => {
   // only fires on the reconnect edge.
   const hasEverConnected = ref(false)
   const reconnecting = ref(false)
+  const connectionError = ref<string | null>(null)
+  const connectionRetryAfter = ref(0)
   let networkListenersInstalled = false
+  let connectionRetryTimer: ReturnType<typeof setInterval> | null = null
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+  function clearConnectionRetry() {
+    if (connectionRetryTimer) clearInterval(connectionRetryTimer)
+    if (reconnectTimer) clearTimeout(reconnectTimer)
+    connectionRetryTimer = null
+    reconnectTimer = null
+    connectionRetryAfter.value = 0
+  }
 
   function connect() {
     // Skip if a socket already exists for this Pinia singleton, even
@@ -48,6 +60,8 @@ export const useSocketStore = defineStore('socket', () => {
     })
 
     s.on('connect', () => {
+      clearConnectionRetry()
+      connectionError.value = null
       connected.value = true
       hasEverConnected.value = true
       reconnecting.value = false
@@ -65,18 +79,52 @@ export const useSocketStore = defineStore('socket', () => {
 
     // Surface handshake failures so the UI does not silently hang when
     // the backend rejects the connection or the WS upgrade fails.
-    s.on('connect_error', (err: Error) => {
+    s.on('connect_error', (err: Error & {
+      data?: { code?: string; retry_after?: number }
+    }) => {
       console.warn('Socket connect_error:', err.message)
+      if (err.data?.code !== 'rate_limited') {
+        // engine.io fires this during ordinary handshake and reconnect churn,
+        // and err.message is a library string ("xhr poll error", "websocket
+        // error"). Assigning it unconditionally put raw transport text in an
+        // assertive red banner every time a transport probe failed. Only a
+        // server-authored refusal is worth interrupting the viewer for; the
+        // polite `reconnecting` banner, already gated on hasEverConnected,
+        // owns the rest.
+        if (hasEverConnected.value) {
+          connectionError.value = 'Lost connection to the party. Reconnecting…'
+        }
+        return
+      }
+      connectionError.value = err.message || 'Could not connect to the party.'
+
+      const retryAfter = Math.max(1, Math.ceil(err.data.retry_after || 1))
+      clearConnectionRetry()
+      connectionRetryAfter.value = retryAfter
+      s.io.reconnection(false)
+      connectionRetryTimer = setInterval(() => {
+        connectionRetryAfter.value = Math.max(0, connectionRetryAfter.value - 1)
+      }, 1000)
+      reconnectTimer = setTimeout(() => {
+        if (connectionRetryTimer) clearInterval(connectionRetryTimer)
+        connectionRetryTimer = null
+        reconnectTimer = null
+        connectionRetryAfter.value = 0
+        s.io.reconnection(true)
+        s.connect()
+      }, retryAfter * 1000)
     })
 
     socket.value = s
   }
 
   function disconnect() {
+    clearConnectionRetry()
     socket.value?.disconnect()
     socket.value = null
     connected.value = false
     reconnecting.value = false
+    connectionError.value = null
     sid.value = null
   }
 
@@ -107,6 +155,8 @@ export const useSocketStore = defineStore('socket', () => {
     sid,
     hasEverConnected,
     reconnecting,
+    connectionError,
+    connectionRetryAfter,
     connect,
     disconnect,
     emit,

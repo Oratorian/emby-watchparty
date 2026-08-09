@@ -34,11 +34,31 @@ def register(ctx):
         party = party_manager.get(party_id)
 
         if party and party.has_sid(sid):
-            limit, window = parse_rate(getattr(config, "RATE_LIMIT_CHAT", "5 per 3 seconds"))
-            decision = rate_limiter.check(f"chat:{sid}", limit, window)
-            if not decision.allowed:
-                logger.debug(f"Chat message dropped: sid={sid} rate-limited in {party_id}")
-                return
+            # Every other limiter honours the master switch -- rate_limit.py:155,
+            # admin.py:68, avatar.py:163, connection.py:208. Chat was the one
+            # site that did not, which mattered little while the limit dropped
+            # messages silently, and matters now: the notice below disables the
+            # composer, so an operator with ENABLE_RATE_LIMITING off would watch
+            # a limit they had switched off block their users.
+            if rate_limiter and config and config.ENABLE_RATE_LIMITING:
+                limit, window = parse_rate(getattr(config, "RATE_LIMIT_CHAT", "5 per 3 seconds"))
+                decision = rate_limiter.check(f"chat:{sid}", limit, window)
+                if not decision.allowed:
+                    logger.debug(f"Chat message dropped: sid={sid} rate-limited in {party_id}")
+                    await sio.emit(
+                        "rate_limited",
+                        {
+                            "action": "chat",
+                            "message": (
+                                "Message not sent: chat limit reached. "
+                                f"Try again in {decision.retry_after} seconds."
+                            ),
+                            "retry_after": decision.retry_after,
+                            "request_id": data.get("request_id"),
+                        },
+                        to=sid,
+                    )
+                    return
             username = party.username_for_sid(sid)
             # Look up the sender's persistent avatar identity so the
             # client can render their chosen avatar instead of the

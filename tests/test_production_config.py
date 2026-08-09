@@ -133,6 +133,27 @@ class ProxyTopologyGateTests(unittest.TestCase):
         _config(APP_ENV="development", BEHIND_PROXY=None).validate_for_startup()
 
 
+class LegacyBootPrecedenceTests(unittest.TestCase):
+    def test_hls_validation_uses_environment_then_dotenv_then_legacy_then_default(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            config_path = root / "config.json"
+
+            with mock.patch.dict(os.environ, {}, clear=True):
+                assert Config.from_env(root).ENABLE_HLS_TOKEN_VALIDATION is True
+
+                config_path.write_text('{"ENABLE_HLS_TOKEN_VALIDATION": false}', encoding="utf-8")
+                assert Config.from_env(root).ENABLE_HLS_TOKEN_VALIDATION is False
+
+                (root / ".env").write_text("ENABLE_HLS_TOKEN_VALIDATION=true\n", encoding="utf-8")
+                assert Config.from_env(root).ENABLE_HLS_TOKEN_VALIDATION is True
+
+                with mock.patch.dict(os.environ, {"ENABLE_HLS_TOKEN_VALIDATION": "false"}):
+                    assert Config.from_env(root).ENABLE_HLS_TOKEN_VALIDATION is False
+
+
 class ProductionConfigTests(unittest.TestCase):
     def test_production_rejects_missing_session_secret(self):
         with pytest.raises(ValueError, match="SESSION_SECRET"):

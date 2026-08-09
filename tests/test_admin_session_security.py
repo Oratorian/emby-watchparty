@@ -206,7 +206,12 @@ def test_admin_login_limit_expires_and_returns_retry_after(tmp_path: Path) -> No
             assert (await _login(client)).status_code == 200
             limited = await _login(client)
             assert limited.status_code == 429
-            assert int(limited.headers["retry-after"]) > 0
+            retry_after = int(limited.headers["retry-after"])
+            assert limited.json() == {
+                "detail": f"Too many login attempts. Try again in {retry_after} seconds.",
+                "code": "rate_limited",
+                "retry_after": retry_after,
+            }
             await asyncio.sleep(1.05)
             assert (await _login(client)).status_code == 200
 

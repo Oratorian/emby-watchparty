@@ -1,4 +1,5 @@
 import asyncio
+import sqlite3
 from pathlib import Path
 
 import httpx
@@ -60,3 +61,27 @@ def test_partial_startup_closes_lifespan_http_transport(tmp_path: Path) -> None:
     transport = asyncio.run(_start_with_invalid_storage(root_file))
 
     assert transport.closed is True
+
+
+def test_failed_startup_keeps_stale_setup_artifacts_for_recovery(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "avatars.db").mkdir()
+    stale_paths = [data / "bootstrap.json", data / "setup-token"]
+    for path in stale_paths:
+        path.write_text("recoverable", encoding="utf-8")
+
+    app = create_app(
+        config=_config(),
+        project_root=tmp_path,
+        enable_update_check=False,
+    )
+
+    async def fail_startup() -> None:
+        with pytest.raises(sqlite3.OperationalError):
+            async with app.router.lifespan_context(app):
+                pass
+
+    asyncio.run(fail_startup())
+
+    assert all(path.read_text(encoding="utf-8") == "recoverable" for path in stale_paths)

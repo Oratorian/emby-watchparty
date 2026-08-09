@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
-import { api } from '@/api/client'
+import { ApiError, api } from '@/api/client'
 import { withPrefix } from '@/utils/appPrefix'
 import { useAuthStore } from '@/stores/auth'
 import { getHiddenParties } from '@/utils/hiddenParties'
@@ -27,6 +27,7 @@ interface ActiveParty {
   locked: boolean
 }
 const parties = ref<ActiveParty[]>([])
+const partyListStatus = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 async function loadParties() {
@@ -38,8 +39,14 @@ async function loadParties() {
     const data = await api.listParties()
     const hidden = getHiddenParties()
     parties.value = (data.parties || []).filter((p: ActiveParty) => !hidden.includes(p.code))
-  } catch {
-    /* ignore transient errors; the next poll retries */
+    partyListStatus.value = ''
+  } catch (error: unknown) {
+    // Assign on every failure path, not just the rate-limited one. Setting it
+    // only on 429 left the banner up for the rest of the session, so a later
+    // backend outage was reported to the user as rate limiting. The empty
+    // string keeps the base branch's "stay quiet, the next poll retries".
+    partyListStatus.value =
+      error instanceof ApiError && error.code === 'rate_limited' ? error.message : ''
   }
 }
 
@@ -93,11 +100,15 @@ async function createParty() {
     return
   }
   status.value = 'Creating party...'
-  const data = await api.createParty({ client_id: getClientId() })
-  if (data.party_id) {
-    router.push(`/party/${data.party_id}`)
-  } else {
-    status.value = data.message || 'Error creating party'
+  try {
+    const data = await api.createParty({ client_id: getClientId() })
+    if (data.party_id) {
+      router.push(`/party/${data.party_id}`)
+    } else {
+      status.value = data.message || 'Error creating party'
+    }
+  } catch (error: unknown) {
+    status.value = error instanceof Error ? error.message : 'Error creating party'
   }
 }
 
@@ -105,17 +116,21 @@ async function submitCreateLogin(payload: { username: string; password: string }
   createBusy.value = true
   createError.value = null
   try {
-    const data = await api.createParty({
-      client_id: getClientId(),
-      display_name: payload.username,
-      username: payload.username,
-      password: payload.password,
-    })
-    if (data.party_id) {
-      showCreateModal.value = false
-      router.push(`/party/${data.party_id}`)
-    } else {
-      createError.value = data.message || 'Could not create the party'
+    try {
+      const data = await api.createParty({
+        client_id: getClientId(),
+        display_name: payload.username,
+        username: payload.username,
+        password: payload.password,
+      })
+      if (data.party_id) {
+        showCreateModal.value = false
+        router.push(`/party/${data.party_id}`)
+      } else {
+        createError.value = data.message || 'Could not create the party'
+      }
+    } catch (error: unknown) {
+      createError.value = error instanceof Error ? error.message : 'Could not create the party'
     }
   } finally {
     createBusy.value = false
@@ -164,6 +179,15 @@ function joinParty() {
         </div>
       </div>
     </main>
+
+    <div
+      v-if="partyListStatus"
+      class="status-msg"
+      data-testid="party-list-status"
+      role="status"
+    >
+      {{ partyListStatus }}
+    </div>
 
     <section v-if="!auth.requireLogin && parties.length" class="active-parties">
       <h2 class="ap-heading">Active parties</h2>

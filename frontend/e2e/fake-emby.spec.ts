@@ -1,5 +1,30 @@
 import { expect, test } from '@playwright/test'
 
+test('party host login shows backend rate-limit detail', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+  await page.getByRole('main').getByRole(
+    'button', { name: 'Login to Become Host', exact: true },
+  ).click()
+  await page.getByPlaceholder('Emby username').fill('Alice')
+  await page.getByPlaceholder('Emby password').fill('password')
+  await page.route('**/api/auth/login', (route) => route.fulfill({
+    status: 429,
+    headers: { 'content-type': 'application/json', 'retry-after': '7' },
+    body: JSON.stringify({
+      detail: 'Too many login attempts. Try again in 7 seconds.',
+      code: 'rate_limited',
+      retry_after: 7,
+    }),
+  }))
+
+  await page.getByRole('button', { name: 'Become Host', exact: true }).click()
+
+  await expect(page.getByText('Too many login attempts. Try again in 7 seconds.')).toBeVisible()
+})
+
 test('host authenticates and browses the fake Emby library', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Create Party', exact: true }).click()

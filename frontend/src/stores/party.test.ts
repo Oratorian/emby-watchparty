@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError, api } from '@/api/client'
 import { usePartyStore } from './party'
 import { useSocketStore } from './socket'
 
@@ -26,5 +27,58 @@ describe('party socket listeners', () => {
     party.setupListeners()
 
     expect(handlers.get('members_update')?.size).toBe(1)
+  })
+
+  it('surfaces a limited session bind without retrying the mutating request', async () => {
+    vi.useFakeTimers()
+    const socket = useSocketStore()
+    vi.spyOn(socket, 'emit').mockImplementation(() => undefined)
+    const join = vi.spyOn(api, 'joinParty').mockRejectedValue(new ApiError(
+      429,
+      'Too many party join attempts. Try again in 42 seconds.',
+      { code: 'rate_limited', retry_after: 42 },
+      'rate_limited',
+      42,
+    ))
+
+    const party = usePartyStore()
+    await party.join('ABC123', 'Alice')
+
+    expect(join).toHaveBeenCalledTimes(1)
+    expect(party.sessionError).toBe(
+      'Too many party join attempts. Try again in 42 seconds.',
+    )
+    expect(party.sessionRetryAfter).toBe(42)
+    vi.useRealTimers()
+  })
+
+  it('identifies a different-party binding from another tab', async () => {
+    const channels: Array<{
+      onmessage: ((event: { data: { partyId: string } }) => void) | null
+      postMessage: ReturnType<typeof vi.fn>
+    }> = []
+    vi.stubGlobal('BroadcastChannel', class {
+      onmessage: ((event: { data: { partyId: string } }) => void) | null = null
+      postMessage = vi.fn()
+
+      constructor() {
+        channels.push(this)
+      }
+    })
+    const socket = useSocketStore()
+    vi.spyOn(socket, 'emit').mockImplementation(() => undefined)
+    vi.spyOn(api, 'joinParty').mockResolvedValue({ success: true })
+    vi.spyOn(api, 'authStatus').mockRejectedValue(new Error('not needed'))
+
+    const party = usePartyStore()
+    await party.join('ABC123', 'Alice')
+
+    expect(channels).toHaveLength(1)
+    expect(channels[0]?.postMessage).toHaveBeenCalledWith({ partyId: 'ABC123' })
+    channels[0]?.onmessage?.({ data: { partyId: 'ABC123' } })
+    expect(party.supersededBy).toBeNull()
+    channels[0]?.onmessage?.({ data: { partyId: 'XYZ789' } })
+    expect(party.supersededBy).toBe('XYZ789')
+    vi.unstubAllGlobals()
   })
 })

@@ -73,9 +73,13 @@ const {
   input: chatInput,
   showParticipants,
   showMobileChat,
+  rateLimitError: chatRateLimitError,
+  rateLimitRetryAfter: chatRateLimitRetryAfter,
+  unsentDrafts: chatUnsentDrafts,
   attach: attachChat,
   dispose: disposeChat,
   send: sendChat,
+  restoreDraft: restoreChatDraft,
   insertEmoji,
   addSystemMessage,
 } = usePartyChat(socket, party)
@@ -998,6 +1002,10 @@ async function submitBecomeHost(payload: { username: string; password: string })
     } else {
       becomeHostError.value = data.message || 'Login failed'
     }
+  } catch (error: unknown) {
+    becomeHostError.value = error instanceof Error && error.message
+      ? error.message
+      : 'Login failed'
   } finally {
     becomeHostBusy.value = false
   }
@@ -1005,6 +1013,17 @@ async function submitBecomeHost(payload: { username: string; password: string })
 </script>
 
 <template>
+  <div
+    v-if="socket.connectionError"
+    class="session-banner"
+    role="alert"
+    aria-live="assertive"
+  >
+    <span>{{ socket.connectionError }}</span>
+    <span v-if="socket.connectionRetryAfter > 0">
+      Reconnecting in {{ socket.connectionRetryAfter }}s.
+    </span>
+  </div>
   <!-- Auto-join spinner: shown when we have a saved username and are
        waiting on the socket to confirm the join. Suppresses the name
        modal flash-of-stale-UI on every mount / refresh. -->
@@ -1074,16 +1093,26 @@ async function submitBecomeHost(payload: { username: string; password: string })
       role="alert"
       aria-live="assertive"
     >
+      <!-- Lead with the fixed sentence. `sessionError` may hold whatever the
+           upstream returned, and a proxy's 502 is an entire HTML page, which
+           previously replaced this guidance rather than accompanying it. -->
       <span>
         Could not authenticate with the server, so video will not load.
         Chat and the participant list still work.
+        <span v-if="party.sessionError" class="session-detail">
+          ({{ party.sessionError }})
+        </span>
       </span>
       <button
         class="session-retry"
-        :disabled="party.sessionRetrying"
+        :disabled="party.sessionRetrying || party.sessionRetryAfter > 0"
         @click="party.retrySession()"
       >
-        {{ party.sessionRetrying ? 'Retrying…' : 'Retry' }}
+        {{ party.sessionRetrying
+          ? 'Retrying…'
+          : party.sessionRetryAfter > 0
+            ? `Retry in ${party.sessionRetryAfter}s`
+            : 'Retry' }}
       </button>
     </div>
     <header class="party-header">
@@ -1299,8 +1328,34 @@ async function submitBecomeHost(payload: { username: string; password: string })
               placeholder="Type a message..."
               class="chat-composer-input"
             />
-            <button @click="sendChat" class="chat-composer-send" title="Send" aria-label="Send message">
+            <button
+              @click="sendChat"
+              class="chat-composer-send"
+              title="Send"
+              aria-label="Send message"
+              :disabled="chatRateLimitRetryAfter > 0"
+            >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+          <p v-if="chatRateLimitError" class="form-error" role="alert">
+            {{ chatRateLimitError }}
+            <span v-if="chatRateLimitRetryAfter > 0">
+              Retry in {{ chatRateLimitRetryAfter }}s.
+            </span>
+          </p>
+          <div v-if="chatUnsentDrafts.length" class="chat-unsent">
+            <span class="chat-unsent-label">Not sent, tap to restore:</span>
+            <button
+              v-for="(draft, index) in chatUnsentDrafts"
+              :key="`${index}-${draft}`"
+              type="button"
+              class="chat-unsent-chip"
+              :disabled="!!chatInput"
+              :title="draft"
+              @click="restoreChatDraft(index)"
+            >
+              {{ draft }}
             </button>
           </div>
         </div>
@@ -1520,6 +1575,48 @@ async function submitBecomeHost(payload: { username: string; password: string })
   font-size: 0.9rem;
   font-weight: 500;
   z-index: 100;
+}
+
+/* Bounded so a surprise long upstream message cannot wreck the banner. */
+.session-detail {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  opacity: 0.85;
+}
+
+.chat-unsent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+  font-size: 0.78rem;
+}
+
+.chat-unsent-label {
+  color: var(--text-dim);
+}
+
+.chat-unsent-chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  cursor: pointer;
+}
+
+.chat-unsent-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .session-retry {

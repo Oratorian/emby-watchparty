@@ -210,7 +210,13 @@ def register(ctx):
             limit, window = parse_rate(config.RATE_LIMIT_SOCKET_CONNECTIONS)
             decision = rate_limiter.check(f"socket-connect:{client_ip}", limit, window)
             if not decision.allowed:
-                raise SocketConnectionRefusedError("rate_limited")
+                message = (
+                    f"Too many connection attempts. Try again in {decision.retry_after} seconds."
+                )
+                raise SocketConnectionRefusedError(
+                    message,
+                    {"code": "rate_limited", "retry_after": decision.retry_after},
+                )
         # The connect step is best-effort. We log what the cookie looks
         # like for diagnostics but never refuse the socket: party-bound
         # routing happens via the `join_party` event which carries an

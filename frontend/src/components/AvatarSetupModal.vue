@@ -20,6 +20,10 @@ const email = ref('')
 const recoverCode = ref('')
 const copyLabel = ref('Copy')
 
+function readableError(value: unknown, fallback: string): string {
+  return value instanceof Error ? value.message : fallback
+}
+
 function pickFile(ev: Event) {
   const input = ev.target as HTMLInputElement
   const f = input.files?.[0] || null
@@ -39,6 +43,8 @@ async function submitUpload() {
     if (!res.success) {
       error.value = res.message || 'Upload failed'
     }
+  } catch (reason: unknown) {
+    error.value = readableError(reason, 'Upload failed')
   } finally {
     busy.value = false
   }
@@ -56,6 +62,8 @@ async function submitGravatar() {
     if (!res.success) {
       error.value = res.message || 'Could not register Gravatar'
     }
+  } catch (reason: unknown) {
+    error.value = readableError(reason, 'Could not register Gravatar')
   } finally {
     busy.value = false
   }
@@ -75,6 +83,8 @@ async function submitRecover() {
     } else {
       error.value = res.message || 'Code not recognised'
     }
+  } catch (reason: unknown) {
+    error.value = readableError(reason, 'Code not recognised')
   } finally {
     busy.value = false
   }

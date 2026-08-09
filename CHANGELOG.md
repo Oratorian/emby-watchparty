@@ -16,6 +16,18 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [Unreleased]
+
+Work on the 3.0 line since beta1. Not in any published image yet, so nothing here is available by pulling `:3.0.0-beta1`.
+
+A blocked action now says so. Rate-limited HTTP requests, socket connections, session binding, chat, admin login and avatar recovery name the limit and show a safe retry delay, instead of failing silently or, in the admin login case, doing nothing visible at all. Chat text refused by the limit is handed back for manual resend rather than discarded. Every 429 carries the same `{detail, code, retry_after}` shape, and each one names the bucket that actually refused it, so the message cannot describe a limit the request never hit.
+
+A read-only `python -m backend.migration_preflight` command inventories the effective 2.1.x inputs without writing files or printing secrets. It resolves values through the same loader the application boots with and takes its verdict from the same startup validation, so it cannot clear a configuration that then refuses to start. It reports proxy and HLS actions, inherited rate limits and whether the master switch leaves them enforced, session-expiry behaviour, runtime versions, the one-worker requirement, preserved paths, prefix-aware health and readiness expectations, and the manual backup and rollback work. The migration guide includes Compose, appliance, plain Docker, source and Windows invocations.
+
+The named `npm run test:playback-gate` acceptance command drives authenticated master and media playlists, segments and byte ranges; pause/resume and bidirectional seeking; audio and subtitle selection; reconnect, host reload and session-bind retry; cross-party denial; plus the iPhone WebKit native-HLS selection path against fake Emby.
+
+---
+
 ## [3.0.0-beta1] - 2026-08-05 - Director's Cut
 
 **First beta of the 3.0 line.** Published to GHCR as `:3.0.0-beta1`, and tracked by `:devel` and `:nightly`. It does **not** move `:latest`, which stays on the 2.1.x stable line, so a deployment pinned to `:latest` will not pick this up by accident.

@@ -16,10 +16,15 @@ async def _exercise_chat_limit(live_watchparty) -> None:
 
         realtime = socketio.AsyncClient()
         messages: list[str] = []
+        limited: list[dict] = []
 
         @realtime.on("chat_message")
         async def receive_chat(data):
             messages.append(data["message"])
+
+        @realtime.on("rate_limited")
+        async def receive_rate_limit(data):
+            limited.append(data)
 
         await realtime.connect(live_watchparty.url, headers={"Cookie": cookie})
         await realtime.emit(
@@ -38,10 +43,16 @@ async def _exercise_chat_limit(live_watchparty) -> None:
                 {
                     "party_id": party_id,
                     "message": f"burst-{index}",
+                    "request_id": f"chat-{index}",
                 },
             )
         await asyncio.sleep(0.15)
         assert messages == [f"burst-{index}" for index in range(5)]
+        assert len(limited) == 1
+        assert limited[0]["action"] == "chat"
+        assert limited[0]["request_id"] == "chat-5"
+        assert limited[0]["retry_after"] >= 1
+        assert "not sent" in limited[0]["message"].lower()
 
         await asyncio.sleep(3.05)
         await realtime.emit(
