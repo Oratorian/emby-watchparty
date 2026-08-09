@@ -72,7 +72,8 @@ https://discord.gg/RWUpxq9xsA
 ## Documentation
 
 - **[Project wiki](https://github.com/Oratorian/emby-watchparty/wiki)** - hardware, deployment, troubleshooting, and FAQ
-- **[Migration guide](docs/Migration-HowTo.md)** - upgrade path for 1.x users moving to 2.0
+- **[Migration guide](docs/Migration-HowTo.md)** - upgrade path from 2.1.x to 3.0
+- **[Appliance deployment](docs/deployment/appliance-migration.md)** - Compose, CasaOS, Portainer, and TrueNAS setup, diagnosis, update, and rollback; Unraid remains owned by its Community Apps repository
 - **[Socket.IO API](docs/SOCKET_API.md)** - developer reference for the Socket.IO event protocol
 - **OpenAPI reference** - `GET /docs` (Swagger UI) or `GET /redoc` on a running instance
 - **[CHANGELOG.md](CHANGELOG.md)** - per-release details including every fix and the reasoning behind it
@@ -148,11 +149,18 @@ Emby Watch Party works best with the following browsers:
    pip install -r requirements.txt
    ```
 
-3. **Configure your settings.** Copy `.env.example` to `.env` and fill in at least `EMBY_SERVER_URL`, `EMBY_API_KEY`, and `SESSION_SECRET` (generate with `openssl rand -hex 32`):
+3. **Configure your settings.** Copy `.env.example` to `.env`:
 
    ```bash
    cp .env.example .env
    ```
+
+   `.env.example` is a **production** template and 3.0 starts fail-closed, so it will not
+   serve until every production field is set: `EMBY_SERVER_URL`, `EMBY_API_KEY`,
+   `SESSION_SECRET` (`openssl rand -hex 32`), `CORS_ALLOWED_ORIGINS`, and
+   `SESSION_COOKIE_SECURE` plus `BEHIND_PROXY`, which ship commented out because there is
+   no safe default for either. For a local development run, set `APP_ENV=development`
+   instead and none of the rest is required.
 
    Only boot-essential settings live in `.env` - see [`.env.example`](.env.example) for the full annotated list (bind/port, `APP_PREFIX`, `SESSION_SECRET`, `SESSION_COOKIE_SECURE`, `CORS_ALLOWED_ORIGINS`, `EMBY_SERVER_URL`, `EMBY_API_KEY`). All other runtime options (logging, rate limits, late-join vote, `FORCE_TRANSCODE`, `REQUIRE_LOGIN`, etc.) are managed live from the Admin Panel at `/admin` and persisted to `config.json`.
 
@@ -186,6 +194,9 @@ Keep the full 2.1.x backup and previous image until health, readiness, login,
 HLS, seeking, subtitles, reconnects, and rate-limit messages pass validation.
 Rollback restores that complete backup and image; do not delete legacy data.
 
+Platform-specific generated artifacts and workflows are indexed in the
+[appliance deployment guide](docs/deployment/appliance-migration.md).
+
 The pre-built multi-arch image is published to GitHub Container Registry:
 
 ```bash
@@ -196,17 +207,28 @@ docker pull ghcr.io/oratorian/emby-watchparty:latest
 
 ```bash
 # One-time: pre-create config.json so Docker does not create it as a
-# directory on first `up`. Skip this and the backend will crash trying
-# to write its settings.
-touch config.json
+# directory on first `up`. Skip this and the backend cannot write its
+# settings. Use `echo {}` rather than `touch`: an empty file is not valid
+# JSON and gets quarantined as config.json.corrupt-<timestamp> on every
+# boot. Upgrading from 2.1.x? Keep your existing file; do not recreate it.
+[ -f config.json ] || echo {} > config.json
 
 docker compose up -d
 ```
 
+The template is production-shaped, so fill in `.env` before starting: Emby URL and API key,
+`SESSION_SECRET`, `CORS_ALLOWED_ORIGINS`, and the commented-out `SESSION_COOKIE_SECURE` and
+`BEHIND_PROXY`. If any required field is missing the container stays up and answers
+`setup_required` on `/api/health`, naming the fields on stderr rather than starting.
+
+The supplied container always listens on `0.0.0.0:5000`. To expose another host port, edit only
+the left side of the Compose `ports` mapping (for example, `8080:5000`). Keep the container target
+and its `WATCH_PARTY_BIND`/`WATCH_PARTY_PORT` values unchanged.
+
 The compose file mounts everything correctly out of the box. If you prefer `docker run`, the equivalent invocation is:
 
 ```bash
-touch config.json
+[ -f config.json ] || echo {} > config.json
 
 docker run -d \
   --name emby-watchparty \
@@ -303,7 +325,7 @@ The failing fields are named on stderr in a framed banner, and again through the
 ========================================================================
 ```
 
-Fix the named variables where your deployment defines them and restart. On Unraid, CasaOS, Portainer or TrueNAS that is the container template; under Compose it is the `environment:` block or `.env`.
+Fix the named variables where your deployment defines them and restart. Unraid users edit the Community App through its WebUI. CasaOS, Portainer, and TrueNAS users edit the imported Compose-based app or stack; plain Compose uses the `environment:` block or `.env`.
 
 > **3.0 development builds** briefly shipped an interactive setup page at `/setup`, gated by a bootstrap token, that wrote `data/bootstrap.json`. Both are gone. Configuration is environment-only, as it was in 2.x. The page could not work on the platforms this is deployed to: every setting arrives as an environment variable there, and env-provided fields were short-circuited back to their current value, so the form silently discarded edits. Any leftover `bootstrap.json` or `setup-token` is ignored and removed on the next successful boot.
 
@@ -343,8 +365,8 @@ Boot-essential, restart required.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | **Application** | | |
-| `WATCH_PARTY_BIND` | IP address to bind to | `0.0.0.0` |
-| `WATCH_PARTY_PORT` | Port to run on | `5000` |
+| `WATCH_PARTY_BIND` | IP address to bind to. Supplied container artifacts pin this to `0.0.0.0`. | `0.0.0.0` |
+| `WATCH_PARTY_PORT` | Runtime listen port. Supplied container artifacts pin this to `5000`; edit only the published host port. | `5000` |
 | `APP_ENV` | `development` or strict startup-validated `production` mode | `development` |
 | `APP_PREFIX` | URL prefix for reverse proxy deployments (e.g. `/watchparty`) | (empty) |
 | `SESSION_EXPIRY` | Session expiry in seconds | `86400` |

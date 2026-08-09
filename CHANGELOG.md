@@ -46,6 +46,26 @@ Run it **after** pointing your Compose file at a 3.0 image carrying this work an
 
 `npm run test:playback-gate` drives a complete session against a fake Emby: authenticated master and media playlists, segments and byte ranges, pause and resume, seeking in both directions, audio and subtitle selection, reconnect, host reload, session-bind retry, cross-party denial, and the iPhone WebKit native-HLS path. It is the check to run before calling a change safe, and the one this cycle's fixes were held to.
 
+### Appliance deployment comes from one schema
+
+`deploy/schema.json` is now the single description of a deployment, and
+`scripts/generate_deployment_artifacts.py` renders it into the Compose example, `.env.example`,
+the environment reference, a CasaOS v2 manifest and a TrueNAS SCALE 24.10+ Custom App YAML.
+Each carries a schema hash, and CI fails the build if any of them drifts from the schema or
+stops parsing as Compose. Portainer imports the Compose file directly; Unraid keeps its
+separately maintained Community Apps template.
+
+The generated files are examples to copy, not files to run in place. They ship
+`APP_ENV=production` and leave `BEHIND_PROXY` and `SESSION_COOKIE_SECURE` commented out,
+because neither has a safe default: production refuses to boot until you declare the proxy
+topology, and a Secure cookie is silently discarded over plain HTTP. Both are explained
+inline, along with the `config.json` mount, the `APP_PREFIX` subpath trap and what each image
+tag tracks.
+
+New platform guides under [`docs/deployment/`](docs/deployment/) cover Compose, CasaOS,
+TrueNAS and Portainer, each with the read-only preflight, fail-closed health and readiness
+diagnosis, updates, playback acceptance and full rollback, without ever deleting legacy data.
+
 ### Fixed
 
 Three of these are defects a beta1 user can actually hit today.

@@ -33,6 +33,21 @@ jobs:
         run: python -m mypy
       - name: pytest
         run: python -m pytest
+      - name: Deployment artifact drift and Compose validation
+        run: |
+          python scripts/generate_deployment_artifacts.py --check
+          docker compose -f docker-compose.yml.example config -q
+          docker compose -f deploy/casaos/docker-compose.yml config -q
+          docker compose -f deploy/truenas/custom-app.yml config -q
+
+      # `compose config` never contacts a registry, so it happily validated
+      # artifacts pinned to a tag that does not exist. Every documented
+      # deployment path then failed at the first `up` with manifest unknown.
+      - name: Deployment image tag resolves
+        run: |
+          IMAGE=$(python -c "import json; s = json.load(open('deploy/schema.json'))['image']; print(s['repository'] + ':' + s['tag'])")
+          echo "Resolving $IMAGE"
+          docker manifest inspect "$IMAGE" > /dev/null
       - name: Frontend install
         run: npm ci
         working-directory: frontend

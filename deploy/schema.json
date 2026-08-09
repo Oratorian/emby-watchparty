@@ -1,0 +1,498 @@
+{
+  "schema_version": 1,
+  "application": {
+    "id": "emby-watchparty",
+    "name": "Emby Watch Party",
+    "configuration_mode": "environment",
+    "container_port": 5000
+  },
+  "image": {
+    "repository": "ghcr.io/oratorian/emby-watchparty",
+    "tag": "devel",
+    "platforms": [
+      "linux/amd64",
+      "linux/arm64"
+    ]
+  },
+  "process": {
+    "workers": 1
+  },
+  "endpoints": {
+    "health": "/api/health",
+    "readiness": "/api/ready"
+  },
+  "storage": [
+    {
+      "id": "data",
+      "target": "/app/data",
+      "kind": "directory",
+      "required": true,
+      "writable": true
+    },
+    {
+      "id": "avatars",
+      "target": "/app/images/avatars",
+      "kind": "directory",
+      "required": true,
+      "writable": true
+    },
+    {
+      "id": "logs",
+      "target": "/app/logs",
+      "kind": "directory",
+      "required": false,
+      "writable": true
+    },
+    {
+      "id": "config",
+      "target": "/app/config.json",
+      "kind": "file",
+      "required": true,
+      "writable": true
+    }
+  ],
+  "settings": [
+    {
+      "name": "WATCH_PARTY_BIND",
+      "description": "Address listened on inside the container. Supplied container artifacts pin this to 0.0.0.0.",
+      "type": "string",
+      "runtime_default": "0.0.0.0",
+      "artifact_default": "0.0.0.0",
+      "required": "always",
+      "safe_example": "0.0.0.0",
+      "secret": false,
+      "production": {
+        "required": true
+      },
+      "restart_required": true,
+      "proxy_relevance": "none",
+      "validation": {
+        "format": "ip_or_hostname"
+      },
+      "display": {
+        "label": "Bind Address",
+        "group": "Application",
+        "order": 10,
+        "advanced": true
+      },
+      "preflight": {
+        "relevant": false,
+        "legacy_source": null
+      },
+      "artifact_omit": false,
+      "artifact_note": null
+    },
+    {
+      "name": "WATCH_PARTY_PORT",
+      "description": "Port listened on inside the container. Supplied container artifacts pin this to 5000; change only the published host port.",
+      "type": "integer",
+      "runtime_default": 5000,
+      "artifact_default": 5000,
+      "required": "always",
+      "safe_example": 5000,
+      "secret": false,
+      "production": {
+        "required": true
+      },
+      "restart_required": true,
+      "proxy_relevance": "upstream_port",
+      "validation": {
+        "minimum": 1,
+        "maximum": 65535
+      },
+      "display": {
+        "label": "Container Port",
+        "group": "Application",
+        "order": 20,
+        "advanced": false
+      },
+      "preflight": {
+        "relevant": false,
+        "legacy_source": null
+      },
+      "artifact_omit": false,
+      "artifact_note": null
+    },
+    {
+      "name": "APP_PREFIX",
+      "description": "Optional slash-prefixed reverse-proxy subpath.",
+      "type": "path_prefix",
+      "runtime_default": "",
+      "artifact_default": "",
+      "required": "optional",
+      "safe_example": "/watchparty",
+      "secret": false,
+      "production": {
+        "required": false
+      },
+      "restart_required": true,
+      "proxy_relevance": "public_path",
+      "validation": {
+        "maximum_length": 256,
+        "pattern": "^$|^(?:/[A-Za-z0-9][A-Za-z0-9._~-]*)+$"
+      },
+      "display": {
+        "label": "URL Prefix",
+        "group": "Proxy",
+        "order": 90,
+        "advanced": true
+      },
+      "preflight": {
+        "relevant": false,
+        "legacy_source": null
+      },
+      "artifact_omit": false,
+      "artifact_note": "Leave unset unless the app is served under a subpath. Setting this to a\npath you are not actually proxying makes every URL 404."
+    },
+    {
+      "name": "SESSION_EXPIRY",
+      "description": "Signed session-cookie lifetime in seconds.",
+      "type": "integer",
+      "runtime_default": 86400,
+      "artifact_default": 86400,
+      "required": "always",
+      "safe_example": 86400,
+      "secret": false,
+      "production": {
+        "required": true
+      },
+      "restart_required": true,
+      "proxy_relevance": "none",
+      "validation": {
+        "minimum": 1
+      },
+      "display": {
+        "label": "Session Lifetime",
+        "group": "Security",
+        "order": 70,
+        "advanced": true
+      },
+      "preflight": {
+        "relevant": true,
+        "legacy_source": null
+      },
+      "artifact_omit": false,
+      "artifact_note": "Now genuinely governs the session cookie lifetime. The default 86400 asks\npeople to rejoin after 24h idle; set 1209600 to keep 2.x's 14 days."
+    },
+    {
+      "name": "EMBY_SERVER_URL",
+      "description": "HTTP(S) URL reachable from the container to Emby.",
+      "type": "http_url",
+      "runtime_default": "http://localhost:8096",
+      "artifact_default": "http://emby:8096",
+      "required": "production",
+      "safe_example": "http://emby:8096",
+      "secret": false,
+      "production": {
+        "required": true
+      },
+      "restart_required": true,
+      "proxy_relevance": "none",
+      "validation": {
+        "schemes": [
+          "http",
+          "https"
+        ]
+      },
+      "display": {
+        "label": "Emby Server URL",
+        "group": "Emby",
+        "order": 30,
+        "advanced": false
+      },
+      "preflight": {
+        "relevant": true,
+        "legacy_source": null
+      },
+      "artifact_omit": false,
+      "artifact_note": null
+    },
+    {
+      "name": "EMBY_API_KEY",
+      "description": "Dedicated Emby administrative API key.",
+      "type": "string",
+      "runtime_default": "",
+      "artifact_default": "",
+      "required": "production",
+      "safe_example": null,
+      "secret": true,
+      "production": {
+        "required": true
+      },
+      "restart_required": true,
+      "proxy_relevance": "none",
+      "validation": {
+        "minimum_length": 1
+      },
+      "display": {
+        "label": "Emby API Key",
+        "group": "Emby",
+        "order": 40,
+        "advanced": false
+      },
+      "preflight": {
+        "relevant": false,
+        "legacy_source": null
+      },
+      "artifact_omit": false,
+      "artifact_note": null
+    },
+    {
+      "name": "APP_ENV",
+      "description": "Security validation mode; appliances use production.",
+      "type": "enum",
+      "runtime_default": "development",
+      "artifact_default": "production",
+      "required": "always",
+      "safe_example": "production",
+      "secret": false,
+      "production": {
+        "required_value": "production"
+      },
+      "restart_required": true,
+      "proxy_relevance": "none",
+      "validation": {
+        "allowed": [
+          "development",
+          "production"
+        ]
+      },
+      "display": {
+        "label": "Application Environment",
+        "group": "Application",
+        "order": 5,
+        "advanced": false
+      },
+      "preflight": {
+        "relevant": true,
+        "legacy_source": null
+      },
+      "artifact_omit": false,
+      "artifact_note": null
+    },
+    {
+      "name": "SESSION_SECRET",
+      "description": "Stable signing secret generated once and retained across updates.",
+      "type": "string",
+      "runtime_default": "",
+      "artifact_default": "",
+      "required": "production",
+      "safe_example": null,
+      "secret": true,
+      "production": {
+        "required": true,
+        "minimum_length": 32
+      },
+      "restart_required": true,
+      "proxy_relevance": "none",
+      "validation": {
+        "minimum_length_in_production": 32
+      },
+      "display": {
+        "label": "Session Secret",
+        "group": "Security",
+        "order": 50,
+        "advanced": false
+      },
+      "preflight": {
+        "relevant": false,
+        "legacy_source": null
+      },
+      "artifact_omit": false,
+      "artifact_note": "Generate ONCE with `openssl rand -hex 32` and keep it. An ephemeral key is\nused when empty, which kicks every user out on every restart."
+    },
+    {
+      "name": "SESSION_COOKIE_SECURE",
+      "description": "Restrict session cookies to HTTPS.",
+      "type": "boolean",
+      "runtime_default": false,
+      "artifact_default": "",
+      "required": "always",
+      "safe_example": true,
+      "secret": false,
+      "production": {
+        "required_value": true
+      },
+      "restart_required": true,
+      "proxy_relevance": "public_scheme",
+      "validation": {
+        "allowed_strings": [
+          "true",
+          "false",
+          "1",
+          "0",
+          "yes",
+          "no"
+        ]
+      },
+      "display": {
+        "label": "Secure Session Cookie",
+        "group": "Security",
+        "order": 60,
+        "advanced": false
+      },
+      "preflight": {
+        "relevant": false,
+        "legacy_source": null
+      },
+      "artifact_omit": true,
+      "artifact_note": "Set true when the app is reached over HTTPS, false for a plain-HTTP LAN\naddress. A Secure cookie is silently discarded by the browser over http://,\nwhich logs everyone out on the next request rather than failing loudly.\nProduction also requires true, so a plain-HTTP deployment needs a TLS\nterminator in front."
+    },
+    {
+      "name": "CORS_ALLOWED_ORIGINS",
+      "description": "Comma-separated public HTTP(S) origins allowed by Socket.IO.",
+      "type": "csv_http_origins",
+      "runtime_default": "*",
+      "artifact_default": "",
+      "required": "production",
+      "safe_example": "https://watchparty.example.com",
+      "secret": false,
+      "production": {
+        "required": true,
+        "forbidden_values": [
+          "*"
+        ]
+      },
+      "restart_required": true,
+      "proxy_relevance": "public_origin",
+      "validation": {
+        "item_schemes": [
+          "http",
+          "https"
+        ]
+      },
+      "display": {
+        "label": "Allowed Origins",
+        "group": "Proxy",
+        "order": 80,
+        "advanced": false
+      },
+      "preflight": {
+        "relevant": false,
+        "legacy_source": null
+      },
+      "artifact_omit": false,
+      "artifact_note": "Comma-separated origin allowlist for Socket.IO. Production rejects '*'."
+    },
+    {
+      "name": "TRUSTED_PROXY_CIDRS",
+      "description": "Comma-separated proxy source networks trusted for forwarded client IPs.",
+      "type": "csv_cidr",
+      "runtime_default": "",
+      "artifact_default": "",
+      "required": "when_proxy",
+      "safe_example": "192.0.2.0/24",
+      "secret": false,
+      "production": {
+        "required_when": {
+          "field": "BEHIND_PROXY",
+          "equals": true
+        }
+      },
+      "restart_required": true,
+      "proxy_relevance": "trusted_source",
+      "validation": {
+        "items": "cidr"
+      },
+      "display": {
+        "label": "Trusted Proxy CIDRs",
+        "group": "Proxy",
+        "order": 110,
+        "advanced": false
+      },
+      "preflight": {
+        "relevant": true,
+        "legacy_source": null
+      },
+      "artifact_omit": false,
+      "artifact_note": "Mandatory when BEHIND_PROXY=true; this is what restores per-viewer limits.\nComma separated. 172.16.0.0/12 covers the default Docker bridge networks,\nwhich is where a proxy container connects from; use 127.0.0.1/32 for a\nproxy running on the host."
+    },
+    {
+      "name": "ENABLE_HLS_TOKEN_VALIDATION",
+      "description": "Validate signed HLS playlist and segment tokens.",
+      "type": "boolean",
+      "runtime_default": true,
+      "artifact_default": true,
+      "required": "always",
+      "safe_example": true,
+      "secret": false,
+      "production": {
+        "required_value": true
+      },
+      "restart_required": true,
+      "proxy_relevance": "none",
+      "validation": {
+        "allowed_strings": [
+          "true",
+          "false",
+          "1",
+          "0",
+          "yes",
+          "no"
+        ]
+      },
+      "display": {
+        "label": "HLS Token Validation",
+        "group": "Security",
+        "order": 120,
+        "advanced": true
+      },
+      "preflight": {
+        "relevant": true,
+        "legacy_source": "ENABLE_HLS_TOKEN_VALIDATION"
+      },
+      "artifact_omit": false,
+      "artifact_note": "Boot setting; changes need a restart and it is not in the admin panel.\nProduction requires it enabled. If you turned it off in 2.x Admin ->\nSecurity, that value carries over and you must set true here."
+    },
+    {
+      "name": "BEHIND_PROXY",
+      "description": "Declare whether a reverse proxy terminates client connections.",
+      "type": "boolean",
+      "runtime_default": null,
+      "artifact_default": "",
+      "required": "production",
+      "safe_example": false,
+      "secret": false,
+      "production": {
+        "required": true
+      },
+      "restart_required": true,
+      "proxy_relevance": "topology",
+      "validation": {
+        "allowed_strings": [
+          "true",
+          "false",
+          "1",
+          "0",
+          "yes",
+          "no"
+        ]
+      },
+      "display": {
+        "label": "Behind Reverse Proxy",
+        "group": "Proxy",
+        "order": 100,
+        "advanced": false
+      },
+      "preflight": {
+        "relevant": true,
+        "legacy_source": null
+      },
+      "artifact_omit": true,
+      "artifact_note": "Required in production, and deliberately has no default: rate limiting keys\non the connecting address, so behind a proxy that is the proxy for every\nviewer and they all share one bucket. Guessing wrong is silent, so 3.0\nrefuses to boot rather than guess. Set true or false explicitly."
+    }
+  ],
+  "artifact_notes": [
+    "Image tags: :devel and :nightly track the current 3.0 prerelease. :latest is",
+    "still the 2.1.x stable line, and :3 / :3.0 are published for stable releases",
+    "only, so they do not exist yet on the 3.0 line.",
+    "Before the first start, create config.json as a FILE, containing an empty JSON",
+    "object. Docker otherwise creates the mount point as a directory and the backend",
+    "cannot write its settings, and an empty file is not valid JSON so it is",
+    "quarantined as config.json.corrupt-<timestamp> on every boot:",
+    "  [ -f config.json ] || echo {} > config.json",
+    "Upgrading from 2.1.x? Keep your existing config.json; do not create a new one.",
+    "Change only the left side of the ports mapping to publish a different host",
+    "port. The container always binds 0.0.0.0:5000."
+  ]
+}

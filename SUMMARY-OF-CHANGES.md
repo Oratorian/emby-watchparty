@@ -6,6 +6,42 @@ The 2.0 "Midnight Premiere" log (beta1 through beta18, every Added / Changed / F
 
 ---
 
+## [Unreleased] - appliance deployment
+
+**[dnordel](https://github.com/dnordel)**'s, contributed as [#58](https://github.com/Oratorian/emby-watchparty/pull/58): 16 commits over 20 files, +1627 / -204, making `deploy/schema.json` the single description of a deployment and rendering five artifacts from it with a hash stamp and a CI drift gate.
+
+The design is right and the two largest commits in the PR are the author hardening his own guarantees, `+181` of schema validation and a drift check taught to notice deleted artifacts. The audit found nothing wrong with the architecture. It found that the *values* it shipped did not work.
+
+### The audit
+
+Six lenses over the 20-file diff, then severity-scaled adversarial verification. 36 candidates, 16 verified, **13 confirmed and all fixed here**, 2 refuted, 1 split.
+
+**Nothing it generated could be deployed.** Three layers, each hiding the next:
+
+1. Every artifact pinned `:3.0`, which this project publishes for stable releases only. Verified against GHCR directly: `:3.0` is a 404 while `:devel`, `:nightly`, `:latest` and `:3.0.0-beta1` resolve. All four documented paths failed at the first `up` with `manifest unknown`, and the new CI gate could not catch it because `docker compose config` never contacts a registry.
+2. Fix the tag and none of them boot. Every artifact shipped `BEHIND_PROXY=""`, and `EnvConfig.declared()` is a membership test, so an empty value counts as declared, gets parsed, and fails with `Must be true or false` *unconditionally*, development included. The tri-state `None` the setting exists for became unreachable from any shipped file, and its purpose-written guidance was replaced by a generic parse error. The base branch shipped `BEHIND_PROXY=false` and booted.
+3. Fix that and CasaOS and TrueNAS still cannot hold a session: both forced `SESSION_COOKIE_SECURE=true` while their own metadata advertises a plain-HTTP tile, so the browser discards the cookie and every request after party creation returns 401.
+
+The schema can now say *emit no assignment* rather than *emit empty*, which is the only encoding of "the operator has not chosen yet". `BEHIND_PROXY` and `SESSION_COOKIE_SECURE` use it and ship commented out rather than dropped, because Compose passes only what the environment mapping names.
+
+**Documentation that destroyed data.** All four platform guides told a 2.1.x migrator to create `config.json` containing `{}` as an unconditional step, *before* running the preflight. On an in-place upgrade that truncates the operator's file, discarding every admin setting, and then blinds the preflight to the one case it exists to catch: with the real file it emits `REQUIRED ACTION: Set ENABLE_HLS_TOKEN_VALIDATION=true`; after the truncation that action is gone and every rate limit reports as `(default)`.
+
+Relatedly, `README.md` still said `touch config.json` in two places, which predates this PR by a long way. An empty file is not valid JSON, so `RuntimeConfig` quarantines it as `config.json.corrupt-<timestamp>` on every boot: a brand-new install following the project's own instructions saw a corruption warning. Both are now conditional `echo {}`.
+
+**The schema was a third description of the same configuration**, after `config.py` and `.env.example`, which is the twin-path shape that produced four preflight defects in the previous cycle. It held here in two places. `schema.storage` was decoration, since the mount list was a literal in the generator, so adding a required mount changed the hash, satisfied `--check` and the drift tests, and produced no volume anywhere. And the published `APP_PREFIX` pattern admitted `/_media`, `/-wp`, `/.hidden` and `/~user`, which the boot gate refuses with a message contradicting the docs the operator just read.
+
+**A gate that was red for everyone.** `--check` swept for the generated header to find obsolete artifacts, and that header is exactly what `cp .env.example .env` copies, so the check `CONTRIBUTING.md` makes a required pre-PR step failed for anyone who had ever run the app, on a clean tree with no drift. A gate everyone must ignore is worse than no gate.
+
+### What the tests could not have caught
+
+The 44 tests shipped with the PR all passed against artifacts that could not be pulled, could not boot, and could not hold a session, because none of them asked the real loader what it made of the output, and the image was asserted as a literal rather than derived. Five tests added: omitted settings ship absent and commented, a deployment built from `.env.example` actually boots, published validation patterns agree with the loader they describe, `schema.storage` reaches every artifact, and the image derives from the schema. CI additionally resolves the schema's image against the registry.
+
+### Provenance note
+
+`397ed2f` removed `deploy/unraid/emby-watchparty.xml` citing "platform ownership". The outcome is correct, Unraid templates are published from a separate repository, but the stated reason is not: that repository is the maintainer's own, and Unraid Community Apps only indexes it via `TemplateURL`. `schema.json` still carries the `display` metadata that existed to generate the XML, so the capability survives if it is ever wanted.
+
+---
+
 ## [Unreleased] - migration diagnostics
 
 Not published. `:3.0.0-beta1`, `:devel` and `:nightly` all still point at beta1.
