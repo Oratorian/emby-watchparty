@@ -138,6 +138,13 @@
           "default": "",
           "title": "Username",
           "type": "string"
+        },
+        "video_codecs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Video Codecs",
+          "type": "array"
         }
       },
       "required": [

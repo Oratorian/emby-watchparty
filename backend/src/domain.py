@@ -180,6 +180,13 @@ class Party:
     created_at: str = field(default_factory=_now)
     participants: dict[str, Participant] = field(default_factory=dict)
     sid_client_ids: dict[str, str] = field(default_factory=dict)
+    # Video codecs each viewer reported it can decode, keyed on client_id
+    # rather than sid so it survives a reload for the same reason
+    # selected_by does. Streams are built per viewer, so two people in one
+    # party can legitimately be served different codecs (#61). A client_id
+    # absent from this map never reported, which the stream builder reads
+    # as h264-only.
+    client_codecs: dict[str, set[str]] = field(default_factory=dict)
     current_video: SelectedMedia | None = None
     user_streams: dict[str, UserStream] = field(default_factory=dict)
     playback_state: PlaybackState = field(default_factory=PlaybackState)
