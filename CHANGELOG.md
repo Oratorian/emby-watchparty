@@ -16,6 +16,54 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [2.1.2] - 2026-08-10 - Midnight Premiere
+
+**HEVC sources stop being transcoded for viewers who can already play them.**
+
+Until now every stream was requested as H.264, whatever the source was. That is the safe answer when you have no idea what the viewer's browser can decode, and it was the only answer available, because nothing ever asked. So an HEVC file was re-encoded on your Emby server for everybody, including people whose browser would have played the original untouched.
+
+Watch Party now asks. Each viewer's browser reports what it can decode when they join, and the server keeps the source codec for the ones that can handle it. Anyone else still gets H.264, automatically, so nobody is left staring at a black video. Because streams are already built per viewer, **two people in the same party can be served different codecs**, which is the only thing that works when one is on a Mac and one is on a Windows box without the codec.
+
+Nothing to configure, no `.env` changes, no migration. Upgrade, restart, done.
+
+When it applies, the difference is not subtle. Measured on an 8K HEVC file, same machine, same browser, the only variable being whether the viewer could decode HEVC:
+
+| | encoder on your server | work per 3s of video |
+|---|---|---|
+| viewer can decode HEVC | **none**, stream copied | **~50 ms** |
+| viewer cannot | libx264 at 1080p | ~1750 ms |
+
+### Whether you actually get this
+
+It depends on the viewer's machine, not just their browser, and that is worth knowing before anyone reports it as a bug:
+
+- **macOS, iOS and Safari** decode HEVC natively.
+- **Chrome, Edge, Opera and other Chromium browsers on Windows** use the GPU directly, but only while **hardware acceleration is enabled** in the browser's settings. Chromium ships no software HEVC decoder, so turning acceleration off removes HEVC entirely.
+- **Firefox on Windows** goes through Windows Media Foundation and needs a codec from the Microsoft Store. Windows 11 22H2 and later include it; most Windows 10 installs do not. Try the free [HEVC Video Extensions from Device Manufacturer](https://apps.microsoft.com/detail/9n4wgh0z6vhq) first, which installs on many prebuilt machines; the [paid package](https://apps.microsoft.com/detail/9NMZLZ57R3T7) works everywhere. Third-party codec packs such as K-Lite do **not** help, because they install DirectShow filters and browsers do not use those.
+
+All of that was confirmed on real machines rather than assumed, including installing and then removing the Store codec and watching the server switch between a stream copy and a transcode with nothing else changed.
+
+Support is detected when you join a party, so if you install a codec or change your hardware-acceleration setting with Watch Party open, reload the page before rejoining.
+
+One practical note that predates this release but matters more now: **Auto** quality means "do not downscale". That is exactly what you want when the source can be copied, and the worst case when it cannot, because a large source is then re-encoded at full resolution. If a viewer cannot decode HEVC, a capped quality will reach them far sooner than Auto will.
+
+### Fixed
+
+- **HEVC and other non-H.264 sources are no longer transcoded unconditionally.** `VideoCodec=h264` was hardcoded into every stream URL. It is now chosen per viewer from what that viewer's browser reported. Reported by **[miakkia](https://github.com/miakkia)** in [#61](https://github.com/Oratorian/emby-watchparty/issues/61), including a measurement showing Emby reporting Direct Play once the source codec was preserved.
+- **The transcode log line no longer goes stale.** "Source is hevc, transcoding to h264" was written independently of the parameter that actually decides, so it kept claiming a transcode that was no longer being requested. Both now come from the same decision, and the message says whether the client could decode the source.
+
+### Technical details
+
+`TranscodeReasons` was not the cause, despite being the obvious suspect. Emby treats it as informational, for logging and telemetry, not as the copy-or-transcode decision, so removing `VideoCodecNotSupported` alone changes nothing. The forcing was the hardcoded `VideoCodec=h264` parameter.
+
+The client probes with `MediaSource.isTypeSupported` for the hls.js path and `canPlayType` for native HLS, accepting only `probably`, since `maybe` is the browser guessing and a guess is what this exists to avoid. Anything that throws counts as no capability. The server allowlists the reported codecs before they reach an Emby URL, and stores them against the persistent `client_id`, so they survive a reload the same way the video selector does.
+
+An un-upgraded or silent client sends nothing, which is read as H.264-only. That path was verified to produce output **byte-identical to 2.1.1** across h264, hevc and av1 sources at auto, capped and resolution-only qualities, so the upgrade changes nothing at all until a browser actually reports a capability.
+
+Eight tests cover both directions, the two-viewers-differ case, the unchanged H.264 stream-copy fast path, an explicit bitrate cap still forcing a re-encode of a kept codec, and the allowlist rejecting invented codec names.
+
+---
+
 ## [2.1.1] - 2026-08-05 - Midnight Premiere
 
 A dependency-only security patch. Two upstream advisories are closed, one of which affects the JavaScript that runs in every viewer's browser. No application code changed, no `.env` changes, no migration, nothing to reconfigure. Pull the new image, restart, done.
@@ -160,6 +208,7 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
+- **v2.1.2**  (2026-08-10): HEVC sources are no longer transcoded for viewers whose browser can decode them; the codec is negotiated per viewer, so a mixed party works.
 - **v2.1.1**  (2026-08-05): Security -- upstream advisories in `socket.io-parser` (high, browser-side) and `postcss` (medium, build-time).
 - **v2.1.0**  (2026-08-03): Security -- `/hls` now session-gated with a cookie/token party match, and the Emby admin token moved out of the session cookie.
 - **v2.0.2**  (2026-08-01): HLS token rewriting fixed for CRLF playlists (playback stuck buffering at 0:00) + first HLS proxy tests.
