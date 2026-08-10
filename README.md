@@ -114,6 +114,36 @@ Emby Watch Party works best with the following browsers:
 - **Brave (iOS)** - video playback works, but subtitles do not appear in fullscreen mode
   - **Workaround**: use Safari on iOS if you need subtitle support
 
+### HEVC / H.265 playback
+
+Watch Party asks each viewer's browser what it can decode and serves the source
+codec when possible, so an HEVC file plays untouched instead of being
+transcoded to H.264 on your Emby server. Viewers whose browser cannot decode
+HEVC still get H.264 automatically, so nobody is left with a black video, and
+the decision is made **per viewer**: two people in the same party can be served
+different codecs.
+
+Whether a given viewer gets HEVC depends on more than which browser they use:
+
+- **macOS, iOS, Safari** decode HEVC natively. Nothing to install.
+- **Chrome, Edge, Opera and other Chromium browsers on Windows** use the GPU
+  directly. This works out of the box, but **only while hardware acceleration
+  is enabled** in the browser's settings, because Chromium ships no software
+  HEVC decoder.
+- **Firefox on Windows** decodes HEVC only through Windows Media Foundation,
+  which needs a codec from the Microsoft Store. Windows 11 22H2 and later
+  include it; most Windows 10 installs do not. Two packages exist:
+  - [HEVC Video Extensions from Device Manufacturer](https://apps.microsoft.com/detail/9n4wgh0z6vhq) -- free, but only installs on systems whose manufacturer provisioned it. Try this one first.
+  - [HEVC Video Extensions](https://apps.microsoft.com/detail/9NMZLZ57R3T7) -- paid, works everywhere.
+
+To check what your browser reports, open `about:support` in Firefox and look
+for HEVC under codec support, or visit
+[this capability test page](https://devoldemar.github.io/hevc/) in any browser.
+
+Support is detected when you join a party, so if you install a codec or change
+your hardware-acceleration setting while Watch Party is open, reload the page
+before rejoining.
+
 ### Known issues
 - **Brave browser on iOS**: subtitles work in normal view but disappear when entering fullscreen mode. This is a limitation of how Brave handles native video controls on iOS. Safari is recommended for iOS users who need subtitle support.
 
