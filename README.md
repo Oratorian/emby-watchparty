@@ -138,7 +138,7 @@ Whether a given viewer gets HEVC depends on more than which browser they use:
 
 To check what your browser reports, open `about:support` in Firefox and look
 for HEVC under codec support, or visit
-[this capability test page](https://devoldemar.github.io/hevc/) in any browser.
+[https://devoldemar.github.io/hevc/ - HEVC Test](https://devoldemar.github.io/hevc/) or [this more granular capability test page](https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/video_demo_hevc.html) in any browser.
 
 Support is detected when you join a party, so if you install a codec or change
 your hardware-acceleration setting while Watch Party is open, reload the page
