@@ -52,6 +52,10 @@ One practical note that predates this release but matters more now: **Auto** qua
 - **HEVC and other non-H.264 sources are no longer transcoded unconditionally.** `VideoCodec=h264` was hardcoded into every stream URL. It is now chosen per viewer from what that viewer's browser reported. Reported by **[miakkia](https://github.com/miakkia)** in [#61](https://github.com/Oratorian/emby-watchparty/issues/61), including a measurement showing Emby reporting Direct Play once the source codec was preserved.
 - **The transcode log line no longer goes stale.** "Source is hevc, transcoding to h264" was written independently of the parameter that actually decides, so it kept claiming a transcode that was no longer being requested. Both now come from the same decision, and the message says whether the client could decode the source.
 
+### Security
+
+- **`nanoid` 3.3.16 to 3.3.18** closes [GHSA-2v37-7h3g-55p8](https://github.com/advisories/GHSA-2v37-7h3g-55p8) (**high**), where a custom generator can loop indefinitely when asked for a size of zero. Build-time only: it reaches this project through `vite` and `postcss`, and it does not appear in the browser bundle, so the realistic exposure is to whoever runs the build rather than to viewers. Included for the same reason `postcss` was in 2.1.1, which is that there is no reason to ship a known-vulnerable build toolchain. A transitive dependency, so `package.json` is unchanged and only `frontend/package-lock.json` moved.
+
 ### Technical details
 
 `TranscodeReasons` was not the cause, despite being the obvious suspect. Emby treats it as informational, for logging and telemetry, not as the copy-or-transcode decision, so removing `VideoCodecNotSupported` alone changes nothing. The forcing was the hardcoded `VideoCodec=h264` parameter.
