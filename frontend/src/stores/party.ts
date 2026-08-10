@@ -5,6 +5,7 @@ import { useAvatarStore } from './avatar'
 import { useAuthStore } from './auth'
 import { api } from '@/api/client'
 import { hideParty } from '@/utils/hiddenParties'
+import { detectVideoCodecs } from '@/utils/videoCodecs'
 
 export interface MemberInfo {
   username: string
@@ -165,6 +166,7 @@ export const usePartyStore = defineStore('party', () => {
       username: name,
       client_id: clientId,
       avatar_uuid: avatarUuid,
+      video_codecs: detectVideoCodecs(),
     })
   }
 
@@ -224,6 +226,7 @@ export const usePartyStore = defineStore('party', () => {
           username: name,
           client_id: clientId,
           avatar_uuid: avatarUuid,
+          video_codecs: detectVideoCodecs(),
         })
       }
       return ok
@@ -319,6 +322,7 @@ export const usePartyStore = defineStore('party', () => {
         username: username.value,
         client_id: getClientId(),
         avatar_uuid: avatarUuid,
+        video_codecs: detectVideoCodecs(),
       })
     })
 

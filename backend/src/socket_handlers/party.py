@@ -6,6 +6,24 @@ from datetime import datetime
 from backend.src.quality import DEFAULT_QUALITY_ID
 from backend.src.utils import generate_random_username
 
+# Video codecs a client may claim to decode. Allowlisted rather than
+# trusted, because the value reaches an Emby stream URL: an unconstrained
+# string would let a client put arbitrary text into VideoCodec=. h264 is
+# always implied, so a client that claims nothing still gets a stream.
+_ALLOWED_CLIENT_CODECS = frozenset({"h264", "hevc", "av1", "vp9"})
+
+
+def _parse_client_codecs(raw) -> set:
+    """Normalise a client's claimed codec list into a trusted set."""
+    if not isinstance(raw, list):
+        return {"h264"}
+    claimed = {
+        item.strip().lower()
+        for item in raw
+        if isinstance(item, str) and item.strip()
+    }
+    return (claimed & _ALLOWED_CLIENT_CODECS) | {"h264"}
+
 
 def register(ctx):
     sio = ctx['sio']
@@ -501,6 +519,7 @@ def register(ctx):
             avatar_uuid = avatar_uuid.strip() or None
         else:
             avatar_uuid = None
+        client_codecs = _parse_client_codecs(data.get("video_codecs"))
 
         if not username:
             username = generate_random_username()
@@ -516,6 +535,11 @@ def register(ctx):
         party = party_manager.get(party_id)
         participants = party.setdefault("participants", {})
         sid_client_ids = party.setdefault("sid_client_ids", {})
+        # Keyed on client_id rather than sid, for the same reason
+        # selected_by is: it stays valid across a reload or a reconnect,
+        # so a returning viewer keeps the codecs they reported and the
+        # eviction and rejoin paths below need no special handling.
+        party.setdefault("client_codecs", {})[client_id] = client_codecs
         known_participant = client_id in participants
         rejoin = known_participant
         old_sid = participants.get(client_id, {}).get("sid")

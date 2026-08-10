@@ -222,6 +222,14 @@ def register(ctx):
 
         start_ticks = int(start_seconds * 10_000_000) if start_seconds > 0 else None
 
+        # Per-viewer codec capability. Streams are already per viewer, so
+        # two people in the same party can legitimately get different
+        # codecs: the one whose browser decodes HEVC keeps it, the one
+        # whose browser does not gets h264 (#61). Absent means the client
+        # never reported, which build_params treats as h264-only.
+        client_id = party.get("sid_client_ids", {}).get(sid)
+        client_codecs = party.get("client_codecs", {}).get(client_id)
+
         from backend.src.stream_builder import StreamBuilder
         builder = StreamBuilder(emby_client, logger, config)
         stream_url_base = builder.build_stream_url(
@@ -234,6 +242,7 @@ def register(ctx):
             subtitle_index=subtitle_index,
             quality=normalised,
             start_time_ticks=start_ticks,
+            client_codecs=client_codecs,
         )
 
         stream_info = {
