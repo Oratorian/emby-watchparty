@@ -74,6 +74,12 @@ export const usePartyStore = defineStore('party', () => {
   // silently; surfacing it is the difference between a self-service
   // retry and an unreproducible "video won't load for one person".
   const sessionError = ref<string | null>(null)
+  // Set only when the server confirms the party is gone, which is a different
+  // situation from "could not authenticate" and needs a different answer.
+  // Retrying a party that no longer exists can never succeed, so offering a
+  // Retry button leaves the viewer pressing it forever. A restarted server and
+  // a pasted stale link both land here.
+  const partyMissing = ref(false)
   const sessionRetrying = ref(false)
   const sessionRetryAfter = ref(0)
   let sessionRetryTimer: ReturnType<typeof setInterval> | null = null
@@ -215,6 +221,27 @@ export const usePartyStore = defineStore('party', () => {
    * surfaced rather than swallowed, because socket-only auth is no
    * longer enough to play video.
    */
+  /**
+   * Ask the server whether the party is actually gone.
+   *
+   * A join can fail for reasons that are worth retrying (a blip, a rate
+   * limit, a server still coming up) and for one that never is. Only the
+   * server can tell them apart, and a failure to reach it is not evidence
+   * either way, so anything other than a definite "no" leaves the normal
+   * retry path in place.
+   */
+  async function checkPartyMissing() {
+    if (!partyId.value) return
+    try {
+      const { exists } = await api.partyExists(partyId.value)
+      partyMissing.value = !exists
+    } catch {
+      // Could not ask. Assume it is still there rather than sending someone
+      // back to the index over a network blip.
+      partyMissing.value = false
+    }
+  }
+
   async function bindSession(clientId: string, name: string, avatarUuid: string | null) {
     lastJoinArgs = { clientId, name, avatarUuid }
     const auth = useAuthStore()
@@ -223,6 +250,10 @@ export const usePartyStore = defineStore('party', () => {
         const result = await api.joinParty(partyId.value!, clientId, name || 'Guest', avatarUuid)
         if (!result.success) {
           sessionError.value = result.message || 'Could not join the party.'
+          // Asked rather than inferred from the message text, which is prose
+          // the server may reword at any time. This endpoint exists to answer
+          // exactly this question.
+          await checkPartyMissing()
           return false
         }
         // The cookie is now bound. Re-read auth state so partyUnlocked
@@ -232,6 +263,7 @@ export const usePartyStore = defineStore('party', () => {
         // for a party that was already unlocked when they joined).
         try { await auth.refresh() } catch { /* ignore */ }
         sessionError.value = null
+        partyMissing.value = false
         clearSessionRetryCountdown()
         return true
       } catch (e: unknown) {
@@ -248,6 +280,7 @@ export const usePartyStore = defineStore('party', () => {
         // A fetch-layer failure gives "Failed to fetch", which explains
         // nothing to a viewer and displaces the banner's own guidance.
         sessionError.value = e instanceof ApiError ? e.message : 'Could not reach the server.'
+        await checkPartyMissing()
       }
     }
     return false
@@ -570,7 +603,7 @@ export const usePartyStore = defineStore('party', () => {
     myStreamUrl, streamOffset, readyCheckActive, readyUsers, waitingUsers,
     pendingVote,
     bingeWatch, pendingAutoAdvance,
-    sessionError, sessionRetrying, sessionRetryAfter, supersededBy,
+    sessionError, partyMissing, sessionRetrying, sessionRetryAfter, supersededBy,
     join, leave, setupListeners, submitVote, retrySession,
     setBingeWatchActive, cancelAutoAdvance,
   }

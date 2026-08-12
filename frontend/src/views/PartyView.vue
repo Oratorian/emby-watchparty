@@ -142,6 +142,39 @@ function chatAvatarSrc(msg: { username: string; avatar_uuid?: string | null }): 
 const STORAGE_KEY = 'emby-watchparty-username'
 const usernameInput = ref('')
 const joined = ref(false)
+
+// Seconds left before a viewer on a dead party is sent back to the start page.
+// Long enough to read why they are being moved, short enough that nobody sits
+// on a screen with nothing to do on it.
+const PARTY_GONE_SECONDS = 8
+const partyGoneCountdown = ref(PARTY_GONE_SECONDS)
+let partyGoneTimer: ReturnType<typeof setInterval> | null = null
+
+function leaveForIndex() {
+  if (partyGoneTimer) clearInterval(partyGoneTimer)
+  partyGoneTimer = null
+  // Clears the party-bound cookie on the way out. Without it the stale
+  // binding follows the viewer to the next party they join.
+  party.leave()
+  router.push('/')
+}
+
+// Starts on the transition into "gone", not on a timer set up front, because
+// the party is usually fine and this state is normally never reached.
+watch(() => party.partyMissing, (missing) => {
+  if (!missing) {
+    if (partyGoneTimer) clearInterval(partyGoneTimer)
+    partyGoneTimer = null
+    partyGoneCountdown.value = PARTY_GONE_SECONDS
+    return
+  }
+  if (partyGoneTimer) return
+  partyGoneCountdown.value = PARTY_GONE_SECONDS
+  partyGoneTimer = setInterval(() => {
+    partyGoneCountdown.value -= 1
+    if (partyGoneCountdown.value <= 0) leaveForIndex()
+  }, 1000)
+})
 // We only need the username modal when we have nothing to auto-join with.
 // Without this flag, the modal flashes on every mount before the socket
 // confirms the auto-join, even when localStorage has a saved name.
@@ -623,6 +656,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
   disposeChat()
+  // Would otherwise keep ticking after the view is gone and push a route the
+  // user has already navigated away from.
+  if (partyGoneTimer) clearInterval(partyGoneTimer)
+  partyGoneTimer = null
   if (pendingPauseTimer) {
     cancelPlaybackTimer(pendingPauseTimer)
     pendingPauseTimer = null
@@ -1058,7 +1095,25 @@ async function submitBecomeHost(payload: { username: string; password: string })
        waiting on the socket to confirm the join. Suppresses the name
        modal flash-of-stale-UI on every mount / refresh. -->
   <div v-if="!joined && awaitingAutoJoin" class="modal-overlay">
-    <div v-if="party.sessionError" class="modal-card">
+    <!-- A party that no longer exists is not a retryable failure. Retrying it
+         can never succeed, so the old card left the viewer pressing a button
+         that was guaranteed to do nothing, with no route out of the page. This
+         says what happened and takes them back on its own. Reached by a stale
+         link, and by every link after the server restarts. -->
+    <div v-if="party.partyMissing" class="modal-card party-gone">
+      <h2>This party no longer exists</h2>
+      <p>
+        It has ended, or the server restarted since the link was made.
+        Party codes are not kept once a party closes.
+      </p>
+      <p class="party-gone-countdown" role="status">
+        Taking you back in {{ partyGoneCountdown }}s
+      </p>
+      <button class="btn btn-primary" type="button" @click="leaveForIndex">
+        Go now
+      </button>
+    </div>
+    <div v-else-if="party.sessionError" class="modal-card">
       <h2>Could not join party</h2>
       <p role="alert">{{ party.sessionError }}</p>
       <button
@@ -1558,6 +1613,22 @@ async function submitBecomeHost(payload: { username: string; password: string })
   max-width: 400px;
   width: 90%;
   box-shadow: var(--shadow-lg);
+}
+
+/* Reuses .modal-card so it sits exactly where the failure card it replaces
+   did. Only the countdown needs styling of its own. */
+.party-gone p {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.party-gone-countdown {
+  margin: var(--space-md) 0 var(--space-sm);
+  color: var(--text-muted);
+  font-size: .85rem;
+  /* Tabular figures so the number does not jitter the line as it counts
+     down, which is distracting on text nobody chose to look at. */
+  font-variant-numeric: tabular-nums;
 }
 
 .modal-card h2 {
