@@ -5,22 +5,28 @@ import { detectVideoCodecs, resetVideoCodecCache } from './videoCodecs'
  * Real capability matrices, measured in real browsers (issue #61).
  *
  * The point of these fixtures is that browser identity predicts nothing.
- * Chrome appears twice with opposite answers, because Chrome has no software
- * HEVC decoder and defers to the platform: a machine without hardware HEVC
- * reports exactly what a browser with no HEVC support at all reports. So no
- * user-agent rule could produce these results, and only a runtime probe can.
+ * Chrome appears twice with opposite answers, and the difference is not the
+ * hardware: it is whether hardware acceleration is switched on in the
+ * browser's own settings. Chrome ships no software HEVC decoder and defers to
+ * the platform, so turning acceleration off removes HEVC entirely.
+ *
+ * That makes this a *runtime* property, not a static one. The same person on
+ * the same machine can flip it between sessions, which rules out user-agent
+ * rules, a build-time table, and anything cached beyond the current page load.
  */
 const BROWSERS = {
   // Firefox 153.0.3 (64-bit), Windows. No HEVC decoder present; the browser
   // says so plainly ("Keine Decoder fuer angefragte Formate") and its own
   // fallback drops to avc1.
   firefox153: { hevc: false },
-  // Chrome on a machine with hardware HEVC decode. Plays hev1.1.6.L120.90 at
+  // Chrome with hardware acceleration enabled. Plays hev1.1.6.L120.90 at
   // roughly 15 Mbps.
-  chromeWithHevc: { hevc: true },
-  // Chrome 150 on a machine WITHOUT hardware HEVC decode. Same browser as
-  // above, opposite answer.
-  chromeWithoutHevc: { hevc: false },
+  chromeAccelerated: { hevc: true },
+  // Chrome 150 with hardware acceleration turned OFF. Same browser, and the
+  // same answer a machine with no HEVC hardware at all would give. miakkia's
+  // report on #61 is the other half of this: Chrome, Firefox and Opera GX all
+  // direct-played HEVC, and they noted acceleration was on in each.
+  chromeUnaccelerated: { hevc: false },
 }
 
 function useBrowser(profile: { hevc: boolean }, options: { mediaSource?: boolean } = {}) {
@@ -50,7 +56,7 @@ afterEach(() => {
 
 describe('detectVideoCodecs', () => {
   it('claims hevc only where the browser actually decodes it', () => {
-    useBrowser(BROWSERS.chromeWithHevc)
+    useBrowser(BROWSERS.chromeAccelerated)
     expect(detectVideoCodecs()).toEqual(['h264', 'hevc'])
   })
 
@@ -62,16 +68,17 @@ describe('detectVideoCodecs', () => {
     expect(detectVideoCodecs()).toEqual(['h264'])
   })
 
-  it('does not claim hevc on a Chrome without hardware HEVC decode', () => {
-    // Same browser family as the passing case above. This is why the decision
-    // has to be per viewer rather than per browser.
-    useBrowser(BROWSERS.chromeWithoutHevc)
+  it('does not claim hevc on a Chrome with hardware acceleration off', () => {
+    // Same browser as the passing case above, on hardware that can decode
+    // HEVC. Only a browser setting differs, which is why the decision has to
+    // be made at runtime, per viewer, and re-made on every join.
+    useBrowser(BROWSERS.chromeUnaccelerated)
     expect(detectVideoCodecs()).toEqual(['h264'])
   })
 
   it('falls back to the element probe when MediaSource is unavailable', () => {
     // Native HLS (iOS, Safari) never goes through MediaSource.
-    useBrowser(BROWSERS.chromeWithHevc, { mediaSource: false })
+    useBrowser(BROWSERS.chromeAccelerated, { mediaSource: false })
     expect(detectVideoCodecs()).toEqual(['h264', 'hevc'])
   })
 
