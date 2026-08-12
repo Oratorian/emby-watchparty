@@ -33,6 +33,35 @@ async function expectOk(response: APIResponse, label: string): Promise<void> {
   expect(response.status(), `${label} returned ${response.status()}`).toBe(200)
 }
 
+interface BrowserFetchResult {
+  status: number
+  headers: Record<string, string>
+  text?: string
+  byteLength?: number
+}
+
+async function browserFetch(
+  page: Page,
+  url: string,
+  bodyType: 'text' | 'bytes',
+  headers: Record<string, string> = {},
+): Promise<BrowserFetchResult> {
+  return page.evaluate(async ({ requestUrl, responseType, requestHeaders }) => {
+    const response = await fetch(requestUrl, { headers: requestHeaders })
+    const result: BrowserFetchResult = {
+      status: response.status,
+      headers: Object.fromEntries(response.headers.entries()),
+    }
+    if (responseType === 'text') result.text = await response.text()
+    else result.byteLength = (await response.arrayBuffer()).byteLength
+    return result
+  }, { requestUrl: url, responseType: bodyType, requestHeaders: headers })
+}
+
+function expectBrowserOk(response: BrowserFetchResult, label: string): void {
+  expect(response.status, `${label} returned ${response.status}`).toBe(200)
+}
+
 test('@playback-gate complete authenticated fake-Emby playback flow', async ({ browser, page }) => {
   const watchedFailures: string[] = []
   const masterRequests: string[] = []
@@ -87,20 +116,20 @@ test('@playback-gate complete authenticated fake-Emby playback flow', async ({ b
 
   await expect.poll(() => masterRequests.length).toBeGreaterThan(0)
   const masterUrl = masterRequests.at(-1)!
-  const master = await page.request.get(masterUrl)
-  await expectOk(master, 'authenticated HLS master playlist')
-  expect(master.headers()['content-type']).toContain('mpegurl')
-  const variantUrl = new URL(mediaUri(await master.text()), masterUrl).href
-  const variant = await page.request.get(variantUrl)
-  await expectOk(variant, 'authenticated HLS media playlist')
-  const segmentUrl = new URL(mediaUri(await variant.text()), variantUrl).href
-  const segment = await page.request.get(segmentUrl)
-  await expectOk(segment, 'authenticated HLS segment')
-  expect((await segment.body()).byteLength).toBeGreaterThan(0)
-  const range = await page.request.get(segmentUrl, { headers: { Range: 'bytes=0-17' } })
-  expect(range.status()).toBe(206)
-  expect(range.headers()['content-range']).toBe('bytes 0-17/168260')
-  expect((await range.body()).byteLength).toBe(18)
+  const master = await browserFetch(page, masterUrl, 'text')
+  expectBrowserOk(master, 'authenticated HLS master playlist')
+  expect(master.headers['content-type']).toContain('mpegurl')
+  const variantUrl = new URL(mediaUri(master.text!), masterUrl).href
+  const variant = await browserFetch(page, variantUrl, 'text')
+  expectBrowserOk(variant, 'authenticated HLS media playlist')
+  const segmentUrl = new URL(mediaUri(variant.text!), variantUrl).href
+  const segment = await browserFetch(page, segmentUrl, 'bytes')
+  expectBrowserOk(segment, 'authenticated HLS segment')
+  expect(segment.byteLength).toBeGreaterThan(0)
+  const range = await browserFetch(page, segmentUrl, 'bytes', { Range: 'bytes=0-17' })
+  expect(range.status).toBe(206)
+  expect(range.headers['content-range']).toBe('bytes 0-17/168260')
+  expect(range.byteLength).toBe(18)
 
   const audio = page.getByLabel('Audio')
   await expect(audio.locator('option')).toHaveCount(2)
@@ -152,20 +181,17 @@ test('@playback-gate complete authenticated fake-Emby playback flow', async ({ b
   await expect(page.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
 
   const otherContext = await browser.newContext()
-  const created = await otherContext.request.post('/api/party/create', { data: {} })
-  expect(created.status()).toBe(200)
-  const otherParty = (await created.json()).party_id as string
-  const joined = await otherContext.request.post(`/api/party/${otherParty}/join`, {
-    data: { client_id: 'cross-party-client', display_name: 'Mallory' },
-  })
-  expect(joined.status()).toBe(200)
-  const otherLogin = await otherContext.request.post('/api/auth/login', {
-    data: { username: 'Mallory', password: 'password' },
-  })
-  expect(otherLogin.status()).toBe(200)
-  expect((await otherLogin.json()).success).toBe(true)
-  const denied = await otherContext.request.get(masterUrl)
-  expect([401, 403]).toContain(denied.status())
+  const other = await otherContext.newPage()
+  await createAndJoin(other, 'Mallory')
+  await other.getByRole('main').getByRole(
+    'button', { name: 'Login to Become Host', exact: true },
+  ).click()
+  await other.getByPlaceholder('Emby username').fill('Mallory')
+  await other.getByPlaceholder('Emby password').fill('password')
+  await other.getByRole('button', { name: 'Become Host', exact: true }).click()
+  await expect(other.getByPlaceholder('Emby username')).toBeHidden()
+  const denied = await browserFetch(other, masterUrl, 'text')
+  expect([401, 403]).toContain(denied.status)
 
   expect(watchedFailures, 'unexpected auth, rate-limit, or cross-party browser failures').toEqual([])
   await otherContext.close()

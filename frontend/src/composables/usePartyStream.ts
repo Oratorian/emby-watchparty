@@ -158,6 +158,8 @@ export function usePartyStream(
 
       try {
         const streams = await loadSubtitleStreams(itemId, mediaSourceId)
+        if (lastSubtitlePreloadKey !== key) return
+        video.querySelectorAll('track').forEach((track) => track.remove())
         const textSubtitles = streams.subtitles.filter(
           (stream) => !stream.isPGS && stream.isTextSubtitleStream,
         )

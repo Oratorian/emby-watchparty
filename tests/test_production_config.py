@@ -34,6 +34,32 @@ def _config(runtime: RuntimeConfig | None = None, **overrides) -> Config:
     return Config(EnvConfig(**values), runtime or RuntimeConfig())
 
 
+def test_failed_runtime_save_rolls_back_every_field_type() -> None:
+    runtime = RuntimeConfig(
+        STATIC_SESSION_ENABLED=False,
+        STATIC_SESSION_ID="PARTY",
+        LOG_MAX_SIZE=10,
+        ENABLED_QUALITY_OPTIONS={"720p": [4000]},
+    )
+    config = _config(runtime=runtime)
+    before = runtime.to_dict()
+
+    with (
+        mock.patch.object(RuntimeConfig, "save", side_effect=OSError("read-only config")),
+        pytest.raises(OSError, match="read-only config"),
+    ):
+        config.update_runtime(
+            {
+                "STATIC_SESSION_ENABLED": True,
+                "STATIC_SESSION_ID": "LOUNGE",
+                "LOG_MAX_SIZE": 25,
+                "ENABLED_QUALITY_OPTIONS": {"1080p": [10000, 8000]},
+            }
+        )
+
+    assert runtime.to_dict() == before
+
+
 class UpstreamHostnameTests(unittest.TestCase):
     """`EMBY_SERVER_URL` addresses a container, not a public host.
 

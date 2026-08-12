@@ -68,6 +68,35 @@ The README section on what decides whether a viewer gets HEVC exists on `main` a
 
 ---
 
+### PR #59 follow-up: responsive library navigation
+
+Mobile library browsing had two independent failures. The party header kept a fixed
+80-pixel height while its controls wrapped into several rows, so those rows overlaid the
+library breadcrumb and made the route back to all libraries unreachable. The A-Z rail
+then built its enabled state from the current 50-item page and bucketed display `Name`,
+even though Emby orders libraries by `SortName`; letters outside that first page were
+therefore disabled on desktop and mobile.
+
+The mobile library-open state now uses a compact **All Libraries / current folder / Hide
+Library** bar and gives the library the remaining dynamic viewport height. Search, a
+responsive two-column poster grid and the sticky prefix rail stay within the viewport.
+Desktop keeps the full party header.
+
+Alphabet navigation now has an authenticated `/api/items/prefixes` boundary backed by
+Emby's `/Items/Prefixes`, plus an alphabetical item mode using `SortBy=SortName`.
+Selecting a prefix resolves its absolute offset through `NameLessThan`, fetches only that
+page, and keeps top and bottom sentinels so earlier and later pages remain reachable
+without loading the whole poster catalog. Season and episode views retain their numeric
+ordering. Prefix failures hide the shortcut without breaking ordinary browsing.
+
+Contract tests pin Emby scope, prefix forwarding and anchored offsets. Chromium proves a
+jump into an unloaded mixed-letter catalog and upward paging; iPhone WebKit proves the
+compact header, root navigation, visible search/prefix controls and overflow bounds. A
+checked local `docker-compose.yml` is also included for building and running this checkout
+with credentials supplied only through environment variables.
+
+---
+
 ### Appliance deployment
 
 **[dnordel](https://github.com/dnordel)**'s, contributed as [#58](https://github.com/Oratorian/emby-watchparty/pull/58): 16 commits over 20 files, +1627 / -204, making `deploy/schema.json` the single description of a deployment and rendering five artifacts from it with a hash stamp and a CI drift gate.

@@ -56,8 +56,8 @@ Run it **after** pointing your Compose file at a 3.0 image carrying this work an
 `scripts/generate_deployment_artifacts.py` renders it into the Compose example, `.env.example`,
 the environment reference, a CasaOS v2 manifest and a TrueNAS SCALE 24.10+ Custom App YAML.
 Each carries a schema hash, and CI fails the build if any of them drifts from the schema or
-stops parsing as Compose. Portainer imports the Compose file directly; Unraid keeps its
-separately maintained Community Apps template.
+stops parsing as Compose. Portainer imports the Compose file directly; the maintainer keeps
+Unraid's template in a separate repository, which Community Apps indexes through `TemplateURL`.
 
 The generated files are examples to copy, not files to run in place. They ship
 `APP_ENV=production` and leave `BEHIND_PROXY` and `SESSION_COOKIE_SECURE` commented out,
@@ -97,6 +97,7 @@ One practical note that predates this but matters more now: **Auto** quality mea
 
 Three of these are defects a beta1 user can actually hit today.
 
+- **Mobile library browsing no longer hides its own navigation.** Opening a library on a phone now replaces the oversized party controls with a compact library bar, keeps search and the A-Z rail inside the viewport, and provides an always-visible route back to all libraries. Alphabet jumps now use Emby's full-library prefixes and `SortName` pagination instead of only the posters already loaded, so enabled letters work immediately on mobile and desktop without fetching every image first.
 - **A proxy error page no longer replaces the explanation.** When a reverse proxy answered with its own HTML error page, that page was printed in the party banner where the guidance should be. The fixed sentence now leads and any upstream detail follows in bounded parentheses.
 - **Turning rate limiting off now turns off chat's limit too.** Chat is the one limiter that ignored the master switch in **Admin -> Security**, so with limiting disabled it was still the only one firing, silently dropping messages. This release would have made that visible by disabling the composer, which is what surfaced it.
 - **A retry delay could be longer than the limit it belonged to.** A three-second window reported four seconds in `Retry-After`.

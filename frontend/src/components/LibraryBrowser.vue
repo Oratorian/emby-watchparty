@@ -1,5 +1,5 @@
 <template>
-  <div class="library-browser">
+  <div ref="browserRoot" class="library-browser">
       <div class="panel-header">
         <div class="breadcrumbs">
           <span class="crumb" @click="goToRoot">Libraries</span>
@@ -33,8 +33,11 @@
 
       <div v-else class="library-content">
         <div class="items-grid">
+          <div v-if="hasPrevious" ref="topSentinel" class="sentinel sentinel-top">
+            <span v-if="loadingPrevious">Loading earlier titles...</span>
+          </div>
           <div
-            v-for="item in displayedItems"
+            v-for="item in items"
             :key="item.Id"
             :data-item-id="item.Id"
             class="item-card"
@@ -92,27 +95,18 @@
           </div>
         </div>
 
-        <!-- iOS-style A-Z jump bar. Only renders when the list is long
-             enough that scrolling becomes a chore (>=30 items). Dimmed
-             letters have no matching items and are not clickable.
-             Left-click jumps to the letter; right-click toggles a
-             filter that hides everything except items starting with
-             that letter (right-click the same letter again to clear). -->
+        <!-- iOS-style prefix jump bar. Availability comes from Emby,
+             not the currently loaded page, so every server prefix works
+             immediately in a paginated library. -->
         <div v-if="showAlphabetBar" class="alphabet-bar" aria-label="Jump to letter">
           <button
-            v-for="letter in ALPHABET"
+            v-for="letter in displayedPrefixes"
             :key="letter"
             class="alphabet-letter"
-            :class="{
-              dim: !alphabetIndex.has(letter),
-              active: filteredLetter === letter,
-            }"
-            :disabled="!alphabetIndex.has(letter)"
+            :class="{ dim: !availablePrefixes.has(letter) }"
+            :disabled="!availablePrefixes.has(letter)"
             @click="jumpToLetter(letter)"
-            @contextmenu="toggleFilterLetter(letter, $event)"
-            :aria-label="filteredLetter === letter
-              ? `Showing only ${letter}; right-click to clear`
-              : `Jump to ${letter}; right-click to show only ${letter}`"
+            :aria-label="`Jump to ${letter}`"
           >
             {{ letter }}
           </button>
@@ -180,6 +174,7 @@ interface EmbyItem {
   ProductionYear?: number
   Overview?: string
   RunTimeTicks?: number
+  SortName?: string
   UserData?: {
     PlaybackPositionTicks?: number
     PlayedPercentage?: number
@@ -222,20 +217,28 @@ function playedLabel(item: EmbyItem): string | null {
 interface Breadcrumb {
   id: string
   name: string
+  type?: string
 }
 
 const emit = defineEmits<{
   'select-video': [item: EmbyItem]
+  'navigation-change': [label: string]
 }>()
 
+const browserRoot = ref<HTMLElement | null>(null)
 const loading = ref(false)
 const loadingMore = ref(false)
+const loadingPrevious = ref(false)
 const items = ref<EmbyItem[]>([])
 const breadcrumbs = ref<Breadcrumb[]>([])
 const searchQuery = ref('')
 const isSearching = ref(false)
 const hasMore = ref(false)
+const hasPrevious = ref(false)
+const loadedStartIndex = ref(0)
+const totalRecordCount = ref(0)
 const currentParentId = ref<string | null>(null)
+const currentParentType = ref<string | null>(null)
 const PAGE_SIZE = 50
 
 // Per-tab nav token. Bumped on every navigation (root, breadcrumb,
@@ -300,7 +303,21 @@ function loadLibraryState(): LibraryState | null {
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!parsed?.parentId || !Array.isArray(parsed?.breadcrumbs)) return null
-    return parsed as LibraryState
+    const breadcrumbs = parsed.breadcrumbs as Breadcrumb[]
+
+    // Saved states written before breadcrumb types were persisted contain
+    // only the top-level library id/name. That location is necessarily an
+    // Emby CollectionFolder, so migrate it instead of silently disabling
+    // alphabetical mode (and therefore the entire prefix rail). Deeper
+    // untyped paths are ambiguous (Folder, Series, or Season); discard those
+    // restore targets rather than applying alphabetical ordering to episodes.
+    const rootBreadcrumb = breadcrumbs[0]
+    if (breadcrumbs.length === 1 && rootBreadcrumb && !rootBreadcrumb.type) {
+      breadcrumbs[0] = { ...rootBreadcrumb, type: 'CollectionFolder' }
+    }
+    if (!breadcrumbs.at(-1)?.type) return null
+
+    return { parentId: parsed.parentId, breadcrumbs }
   } catch {
     return null
   }
@@ -315,68 +332,36 @@ function imageUrl(id: string): string {
   return api.imageUrl(id, 'Primary', { maxWidth: 320, maxHeight: 480, quality: 90 })
 }
 
-// First letter of each item's Name, bucketed for the A-Z jump bar.
-// Returns '#' for digits/symbols so they cluster under one button
-// rather than spreading across letters that don't exist. Articles are
-// already stripped server-side via Emby's SortName (`The Matrix` is
-// sorted as `Matrix`) so the on-screen card order matches the letter
-// the user reaches for.
-function bucketLetter(name: string): string {
-  const first = (name || '').trim().charAt(0).toUpperCase()
-  return /^[A-Z]$/.test(first) ? first : '#'
-}
-
-// Map letter -> first item Id starting with that letter. Always built
-// against the FULL items list (not the filtered view below) so the
-// jump bar can navigate to any letter even while a filter is active.
-const alphabetIndex = computed(() => {
-  const map = new Map<string, string>()
-  for (const item of items.value) {
-    const letter = bucketLetter(item.Name)
-    if (!map.has(letter)) {
-      map.set(letter, item.Id)
-    }
-  }
-  return map
+const availablePrefixes = ref<Set<string>>(new Set())
+const alphabeticalMode = computed(() => (
+  currentParentType.value === 'CollectionFolder' || currentParentType.value === 'Folder'
+))
+const displayedPrefixes = computed(() => {
+  const extras = [...availablePrefixes.value]
+    .filter((prefix) => !ALPHABET.includes(prefix))
+    .sort((a, b) => a.localeCompare(b))
+  return [...ALPHABET, ...extras]
 })
+const showAlphabetBar = computed(() => (
+  alphabeticalMode.value
+  && totalRecordCount.value >= ALPHABET_BAR_MIN_ITEMS
+  && availablePrefixes.value.size > 0
+))
 
-const showAlphabetBar = computed(() => items.value.length >= ALPHABET_BAR_MIN_ITEMS)
-
-// Right-click on a letter restricts the visible grid to items whose
-// names start with that letter. null = no filter, show everything.
-// Cleared automatically whenever the underlying items list is replaced
-// (folder navigation, fresh search, etc.) so a filter never carries
-// over into an unrelated view.
-const filteredLetter = ref<string | null>(null)
-
-const displayedItems = computed(() => {
-  if (!filteredLetter.value) return items.value
-  return items.value.filter((item) => bucketLetter(item.Name) === filteredLetter.value)
-})
-
-function jumpToLetter(letter: string) {
-  // Left-click always shows the full list and jumps to the letter --
-  // otherwise scrolling to letter "A" while filtered to "M" would
-  // silently no-op because A's first item is currently filtered out.
-  filteredLetter.value = null
-  const targetId = alphabetIndex.value.get(letter)
-  if (!targetId) return
-  // Defer the scroll one tick so any DOM updates from clearing the
-  // filter have flushed before we look up the target card.
-  nextTick(() => {
-    const el = document.querySelector(`[data-item-id="${targetId}"]`)
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
-  })
-}
-
-function toggleFilterLetter(letter: string, event: MouseEvent) {
-  // Block the native browser context menu -- right-click on the
-  // alphabet bar is "filter" in this UI, not "inspect element".
-  event.preventDefault()
-  if (!alphabetIndex.value.has(letter)) return
-  filteredLetter.value = filteredLetter.value === letter ? null : letter
+async function jumpToLetter(letter: string) {
+  if (!currentParentId.value || !availablePrefixes.value.has(letter)) return
+  bumpNavToken(`jumpToLetter:${letter}`)
+  await fetchItems(currentParentId.value, false, false, letter)
+  await nextTick()
+  const firstItem = items.value[0]
+  if (!firstItem) return
+  browserRoot.value
+    ?.querySelector<HTMLElement>(`[data-item-id="${CSS.escape(firstItem.Id)}"]`)
+    // A smooth scroll races the top sentinel: it can prepend several pages
+    // while the animation is still moving, leaving the viewport before (or
+    // halfway through) the selected prefix. Land synchronously so prepend
+    // scroll-height compensation keeps this exact first item pinned.
+    ?.scrollIntoView({ behavior: 'auto', block: 'start' })
 }
 
 // Compute the card's aspect ratio from Emby's PrimaryImageAspectRatio.
@@ -407,7 +392,13 @@ async function goToRoot() {
   isSearching.value = false
   searchQuery.value = ''
   hasMore.value = false
+  hasPrevious.value = false
+  loadedStartIndex.value = 0
+  totalRecordCount.value = 0
+  availablePrefixes.value = new Set()
   currentParentId.value = null
+  currentParentType.value = null
+  emit('navigation-change', 'Libraries')
   await fetchLibraries()
 }
 
@@ -415,8 +406,10 @@ async function goToCrumb(index: number) {
   bumpNavToken(`goToCrumb:${index}`)
   const crumb = breadcrumbs.value[index]
   breadcrumbs.value = breadcrumbs.value.slice(0, index + 1)
+  currentParentType.value = crumb?.type ?? null
   isSearching.value = false
   searchQuery.value = ''
+  emit('navigation-change', crumb?.name ?? 'Libraries')
   await fetchItems(crumb!.id)
 }
 
@@ -430,8 +423,12 @@ async function fetchLibraries() {
       return
     }
     items.value = data.Items ?? data ?? []
+    totalRecordCount.value = data.TotalRecordCount ?? items.value.length
+    loadedStartIndex.value = 0
+    hasPrevious.value = false
+    hasMore.value = false
     clearLibraryState()
-    filteredLetter.value = null
+    availablePrefixes.value = new Set()
   } catch {
     if (myToken !== navToken) return
     items.value = []
@@ -454,25 +451,59 @@ const displayableTypes = new Set([
   'MusicAlbum', 'MusicArtist', 'Audio',
 ])
 
-async function fetchItems(parentId: string, append = false): Promise<'ok' | 'stale' | 'error'> {
+async function fetchPrefixes(parentId: string) {
+  if (!alphabeticalMode.value) {
+    availablePrefixes.value = new Set()
+    return
+  }
+  try {
+    const data = await api.itemPrefixes(parentId, navigationSignal())
+    availablePrefixes.value = new Set(
+      (data.Prefixes ?? []).map((prefix) => prefix.trim().toUpperCase()).filter(Boolean),
+    )
+  } catch {
+    availablePrefixes.value = new Set()
+  }
+}
+
+async function fetchItems(
+  parentId: string,
+  append = false,
+  prepend = false,
+  anchorPrefix?: string,
+): Promise<'ok' | 'stale' | 'error'> {
   // Append-paths inherit the current nav token (they're a continuation
   // of the same nav); fresh navigations get a new token via the caller
   // (handleItemClick / goToCrumb / etc.) before fetchItems runs.
   const myToken = navToken
-  if (append) {
+  if (prepend) {
+    loadingPrevious.value = true
+  } else if (append) {
     loadingMore.value = true
   } else {
     loading.value = true
     items.value = []
     currentParentId.value = parentId
-    // A fresh navigation means a fresh A-Z scope; the previous
-    // letter-filter shouldn't carry over into an unrelated view.
-    filteredLetter.value = null
+    hasPrevious.value = false
+    hasMore.value = false
   }
   try {
-    const startIndex = append ? items.value.length : 0
+    const previousPanel = browserRoot.value?.closest<HTMLElement>('.library-panel')
+    const previousScrollHeight = previousPanel?.scrollHeight ?? 0
+    const startIndex = prepend
+      ? Math.max(0, loadedStartIndex.value - PAGE_SIZE)
+      : append
+        ? loadedStartIndex.value + items.value.length
+        : 0
+    const params: Record<string, string | number | boolean> = {
+      parentId,
+      startIndex,
+      limit: PAGE_SIZE,
+      sortMode: alphabeticalMode.value ? 'alphabetical' : 'default',
+    }
+    if (anchorPrefix) params.anchorPrefix = anchorPrefix
     const data = await api.items(
-      { parentId, startIndex, limit: PAGE_SIZE },
+      params,
       navigationSignal(),
     )
     if (myToken !== navToken) {
@@ -496,13 +527,23 @@ async function fetchItems(parentId: string, append = false): Promise<'ok' | 'sta
     const newItems = hasDisplayable
       ? rawItems.filter((it) => displayableTypes.has(it.Type))
       : rawItems
-    if (append) {
+    const responseStart = data.StartIndex ?? startIndex
+    if (prepend) {
+      items.value.unshift(...newItems)
+      loadedStartIndex.value = responseStart
+      await nextTick()
+      if (previousPanel) {
+        previousPanel.scrollTop += previousPanel.scrollHeight - previousScrollHeight
+      }
+    } else if (append) {
       items.value.push(...newItems)
     } else {
       items.value = newItems
+      loadedStartIndex.value = responseStart
     }
-    const totalCount = data.TotalRecordCount ?? newItems.length
-    hasMore.value = items.value.length < totalCount
+    totalRecordCount.value = data.TotalRecordCount ?? newItems.length
+    hasPrevious.value = loadedStartIndex.value > 0
+    hasMore.value = loadedStartIndex.value + items.value.length < totalRecordCount.value
     // Only pin the current location as the restore target when the
     // response actually contained items. An empty response is ambiguous
     // with a mid-scan Emby state (files replaced, indexer hasn't caught
@@ -510,16 +551,17 @@ async function fetchItems(parentId: string, append = false): Promise<'ok' | 'sta
     // empty grid on every reload until the user manually navigates
     // elsewhere. In-session navigation into an empty folder still
     // works -- it just doesn't get persisted.
-    if (!append && !isSearching.value && newItems.length > 0) saveLibraryState()
+    if (!append && !prepend && !isSearching.value && newItems.length > 0) saveLibraryState()
+    if (!append && !prepend && !anchorPrefix) await fetchPrefixes(parentId)
   } catch {
     if (myToken !== navToken) return 'stale'
-    if (!append) items.value = []
-    hasMore.value = false
+    if (!append && !prepend) items.value = []
     return 'error'
   } finally {
     if (myToken === navToken) {
       loading.value = false
       loadingMore.value = false
+      loadingPrevious.value = false
     }
   }
   return 'ok'
@@ -530,6 +572,11 @@ function loadMore() {
   fetchItems(currentParentId.value, true)
 }
 
+function loadPrevious() {
+  if (loadingPrevious.value || !hasPrevious.value || !currentParentId.value) return
+  fetchItems(currentParentId.value, false, true)
+}
+
 async function doSearch() {
   const q = searchQuery.value.trim()
   if (!q) return
@@ -537,9 +584,12 @@ async function doSearch() {
   loading.value = true
   isSearching.value = true
   breadcrumbs.value = []
-  filteredLetter.value = null
   hasMore.value = false
+  hasPrevious.value = false
+  availablePrefixes.value = new Set()
   currentParentId.value = null
+  currentParentType.value = null
+  emit('navigation-change', 'Search results')
   try {
     const data = await api.search(q, navigationSignal())
     if (myToken !== navToken) {
@@ -547,6 +597,8 @@ async function doSearch() {
       return
     }
     items.value = data.Items ?? data ?? []
+    totalRecordCount.value = data.TotalRecordCount ?? items.value.length
+    loadedStartIndex.value = 0
   } catch {
     if (myToken !== navToken) return
     items.value = []
@@ -569,33 +621,44 @@ async function handleItemClick(item: EmbyItem) {
 
   if (browsableTypes.has(item.Type)) {
     bumpNavToken(`handleItemClick:${item.Type}:${item.Id}`)
-    breadcrumbs.value.push({ id: item.Id, name: item.Name })
+    breadcrumbs.value.push({ id: item.Id, name: item.Name, type: item.Type })
+    currentParentType.value = item.Type
+    emit('navigation-change', item.Name)
     await fetchItems(item.Id)
   }
 }
 
+const topSentinel = ref<HTMLElement | null>(null)
 const sentinel = ref<HTMLElement | null>(null)
 let observer: IntersectionObserver | null = null
 
 function setupObserver() {
   if (observer) observer.disconnect()
   observer = new IntersectionObserver((entries) => {
-    if (entries[0]?.isIntersecting && hasMore.value && !loadingMore.value) {
-      loadMore()
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue
+      if (entry.target === topSentinel.value) {
+        loadPrevious()
+      } else if (entry.target === sentinel.value) {
+        loadMore()
+      }
     }
   }, { rootMargin: '200px' })
 }
 
-watch(sentinel, (el) => {
-  if (observer) observer.disconnect()
-  if (el && observer) observer.observe(el)
+watch([topSentinel, sentinel], ([top, bottom]) => {
+  if (!observer) return
+  observer.disconnect()
+  if (top) observer.observe(top)
+  if (bottom) observer.observe(bottom)
 })
 
-watch(hasMore, async (val) => {
-  if (val) {
-    await nextTick()
-    if (sentinel.value && observer) observer.observe(sentinel.value)
-  }
+watch([hasPrevious, hasMore], async () => {
+  await nextTick()
+  if (!observer) return
+  observer.disconnect()
+  if (topSentinel.value) observer.observe(topSentinel.value)
+  if (sentinel.value) observer.observe(sentinel.value)
 })
 
 async function restoreOrFetchRoot() {
@@ -612,15 +675,21 @@ async function restoreOrFetchRoot() {
   // valid destination and used to wipe the LibraryState on every
   // mount here, silently discarding the user's browsing position.
   breadcrumbs.value = saved.breadcrumbs
+  currentParentType.value = saved.breadcrumbs.at(-1)?.type ?? null
+  emit('navigation-change', saved.breadcrumbs.at(-1)?.name ?? 'Libraries')
   const status = await fetchItems(saved.parentId)
   if (status === 'error') {
     bumpNavToken('restoreOrFetchRoot:fallback')
     clearLibraryState()
     breadcrumbs.value = []
     currentParentId.value = null
+    currentParentType.value = null
+    emit('navigation-change', 'Libraries')
     await fetchLibraries()
   }
 }
+
+defineExpose({ goToRoot })
 
 onMounted(() => {
   setupObserver()
@@ -743,10 +812,13 @@ onUnmounted(() => {
 .alphabet-bar {
   position: sticky;
   top: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-auto-flow: row;
+  grid-auto-rows: minmax(0, 1fr);
   align-items: center;
-  gap: 1px;
+  gap: clamp(0px, 0.15dvh, 1px);
+  height: min(467px, calc(100dvh - 200px));
+  min-height: 0;
   padding: 4px 2px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
@@ -761,10 +833,11 @@ onUnmounted(() => {
   border: 0;
   padding: 0;
   width: 18px;
-  height: 16px;
+  height: 100%;
+  min-height: 0;
   display: grid;
   place-items: center;
-  font-size: 10px;
+  font-size: clamp(7px, 1.2dvh, 10px);
   font-weight: 600;
   color: var(--accent-primary);
   font-family: var(--font-sans);
@@ -775,38 +848,6 @@ onUnmounted(() => {
 
 .alphabet-letter:hover:not(:disabled) {
   background: var(--accent-primary-dim);
-}
-
-/* Active state when the right-click filter is pinned to this letter.
-   Inverted colour so it reads as "this is what's currently selected"
-   at a glance even on a dense column of letters. Adds a glow pulse so
-   the active letter visibly draws the eye -- ~1.2s breathing cycle,
-   slow enough not to read as a strobe but fast enough to be noticeable
-   in peripheral vision while the user is scanning cards. */
-.alphabet-letter.active {
-  background: var(--accent-primary);
-  color: var(--bg-deep);
-  animation: alphabet-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes alphabet-pulse {
-  0%, 30% {
-    box-shadow: 0 0 0 0 var(--accent-primary-glow);
-    background: var(--accent-primary);
-  }
-  100% {
-    box-shadow: 0 0 6px 2px var(--accent-primary-glow);
-    background: #67e8f9;
-  }
-}
-
-/* Respect users who disabled motion in their OS -- show the active
-   state as a static glow without the looping animation. */
-@media (prefers-reduced-motion: reduce) {
-  .alphabet-letter.active {
-    animation: none;
-    box-shadow: 0 0 6px 2px var(--accent-primary-glow);
-  }
 }
 
 .alphabet-letter.dim,
@@ -1032,5 +1073,55 @@ onUnmounted(() => {
   color: var(--text-muted);
   font-size: 0.85rem;
   overflow-anchor: none;
+}
+
+@media (max-width: 760px) {
+  .library-browser,
+  .panel-header,
+  .search-bar,
+  .library-content,
+  .items-grid {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .panel-header {
+    margin-bottom: var(--space-sm);
+  }
+
+  .search-bar input {
+    min-width: 0;
+  }
+
+  .search-bar button {
+    flex-shrink: 0;
+    padding-inline: 10px;
+  }
+
+  .library-content {
+    gap: 6px;
+  }
+
+  .items-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .alphabet-bar {
+    right: 0;
+    height: min(521px, calc(100dvh - 180px - env(safe-area-inset-top)));
+    max-height: none;
+    overflow: hidden;
+    scrollbar-width: none;
+  }
+
+  .alphabet-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .alphabet-letter {
+    width: 20px;
+    height: 100%;
+  }
 }
 </style>

@@ -147,6 +147,8 @@ const joined = ref(false)
 // confirms the auto-join, even when localStorage has a saved name.
 const awaitingAutoJoin = ref(!!localStorage.getItem(STORAGE_KEY))
 const showLibrary = ref(false)
+const libraryLocation = ref('Libraries')
+const libraryBrowser = ref<{ goToRoot: () => Promise<void> } | null>(null)
 const copyLabel = ref('Copy')
 const showVersionModal = ref(false)
 const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
@@ -981,6 +983,10 @@ function toggleLibrary() {
   }
 }
 
+function goToAllLibraries() {
+  void libraryBrowser.value?.goToRoot()
+}
+
 function libraryButtonAction() {
   if (auth.partyUnlocked) {
     toggleLibrary()
@@ -1045,7 +1051,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
   </div>
 
   <!-- Party room -->
-  <div v-if="joined" class="party-container">
+  <div v-if="joined" class="party-container" :class="{ 'library-open': showLibrary }">
     <!-- Reconnecting banner: shown when the socket has dropped and
          socket.io-client is attempting to reconnect. Without this, a
          mid-party disconnect looks identical to a healthy connection
@@ -1184,12 +1190,26 @@ async function submitBecomeHost(payload: { username: string; password: string })
       </div>
     </header>
 
+    <header v-if="showLibrary" class="mobile-library-header">
+      <button type="button" class="mobile-library-btn" @click="goToAllLibraries">
+        All Libraries
+      </button>
+      <span class="mobile-library-location" :title="libraryLocation">
+        {{ libraryLocation }}
+      </span>
+      <button type="button" class="mobile-library-btn" @click="toggleLibrary">
+        Hide Library
+      </button>
+    </header>
+
     <div class="party-content">
       <!-- Library panel -->
       <LibraryBrowser
         v-if="showLibrary"
+        ref="libraryBrowser"
         class="library-panel"
         @select-video="selectVideo"
+        @navigation-change="libraryLocation = $event"
       />
 
       <!-- Video area -->
@@ -1662,6 +1682,10 @@ async function submitBecomeHost(payload: { username: string; password: string })
   border-bottom: 1px solid var(--border-subtle);
   position: relative;
   z-index: 10;
+}
+
+.mobile-library-header {
+  display: none;
 }
 
 .header-left {
@@ -2393,7 +2417,115 @@ async function submitBecomeHost(payload: { username: string; password: string })
   display: none;
 }
 
+/* Browser zoom and compact desktop windows can leave fewer than 1,100
+   CSS pixels even on a physically large monitor. A permanent 320px chat
+   column then starves the player and makes the controls wrap vertically.
+   Use the existing chat drawer at this intermediate breakpoint while
+   retaining the normal desktop library layout. */
+@media (max-width: 1280px) {
+  .brand-name {
+    display: none;
+  }
+
+  .party-header,
+  .header-left,
+  .header-actions {
+    gap: var(--space-sm);
+  }
+
+  .mobile-chat-toggle {
+    display: inline-flex;
+  }
+
+  .chat-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(92vw, 360px);
+    max-width: 100vw;
+    z-index: 1001;
+    transform: translateX(100%);
+    transition: transform var(--transition-fast);
+    box-shadow: var(--shadow-lg);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .chat-panel.chat-mobile-open {
+    transform: translateX(0);
+  }
+
+  .chat-close-btn {
+    display: inline-flex;
+  }
+
+  .chat-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.45);
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1280px) {
+  .video-wrapper {
+    overflow-y: auto;
+  }
+
+  .video-wrapper :deep(.video-player) {
+    flex: 0 0 100%;
+    min-height: 100%;
+  }
+}
+
 @media (max-width: 760px) {
+  .party-container.library-open .party-header {
+    display: none;
+  }
+
+  .mobile-library-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-shrink: 0;
+    min-height: calc(52px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top)
+      max(var(--space-sm), env(safe-area-inset-right)) 0
+      max(var(--space-sm), env(safe-area-inset-left));
+    background: rgba(11, 14, 28, 0.92);
+    border-bottom: 1px solid var(--border-subtle);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    z-index: 10;
+  }
+
+  .mobile-library-btn {
+    flex-shrink: 0;
+    min-height: 36px;
+    padding: 6px 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 9px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font: 600 12px var(--font-sans);
+    cursor: pointer;
+  }
+
+  .mobile-library-location {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
   .party-header {
     align-items: flex-start;
     gap: var(--space-sm);
@@ -2420,6 +2552,12 @@ async function submitBecomeHost(payload: { username: string; password: string })
   .library-panel {
     width: 100%;
     min-width: 0;
+    height: 100%;
+    overflow-x: hidden;
+  }
+
+  .party-container.library-open .video-area {
+    display: none;
   }
 
   .chat-panel {

@@ -21,6 +21,7 @@ from backend.src.dependencies import (
     party_host_session_matches,
     scrub_legacy_admin_session,
 )
+from backend.src.emby_client import EmbyUnavailableError
 
 # Shared dev-host gate -- single source of truth lives in auth.py so the
 # env var name and value-parsing rules can never drift between modules.
@@ -202,7 +203,14 @@ async def create_party(
                 message="client_id is required",
             )
 
-        auth = await emby_client.authenticate(body.username, body.password)
+        try:
+            auth = await emby_client.authenticate(body.username, body.password)
+        except EmbyUnavailableError:
+            return CreatePartyResponse(
+                party_id="",
+                url="",
+                message="Emby server unavailable; ask the operator to verify EMBY_SERVER_URL",
+            )
         if not auth:
             return CreatePartyResponse(
                 party_id="",
@@ -325,7 +333,10 @@ async def join_party(
     dev_user, dev_pw = _env_dev_host_creds(config)
     is_host = party.host_client_id == body.client_id
     if dev_user and dev_pw and not party_manager.is_unlocked(party_id):
-        auth = await emby_client.authenticate(dev_user, dev_pw)
+        try:
+            auth = await emby_client.authenticate(dev_user, dev_pw)
+        except EmbyUnavailableError:
+            auth = None
         if auth:
             host_session_grant = secrets.token_urlsafe(32)
             party_manager.set_host(

@@ -103,6 +103,62 @@ def test_admin_login_keeps_emby_token_out_of_browser_cookie(tmp_path: Path) -> N
     asyncio.run(exercise())
 
 
+def test_failed_config_save_does_not_enable_static_session_in_memory(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A failed disk write must not leave runtime config partially applied.
+
+    Otherwise the index redirects to the configured static party even though
+    PartyManager never created it, producing ``Party not found: PARTY`` after
+    refresh.
+    """
+
+    def fail_save(_runtime: RuntimeConfig) -> None:
+        raise OSError("config volume is read-only")
+
+    monkeypatch.setattr(RuntimeConfig, "save", fail_save)
+
+    async def exercise() -> None:
+        application = _application(tmp_path)
+        async with asgi_client(application) as client:
+            assert (await _login(client)).json()["success"] is True
+
+            saved = await client.put(
+                "/api/admin/config",
+                json={"STATIC_SESSION_ENABLED": True, "STATIC_SESSION_ID": "PARTY"},
+            )
+
+            assert saved.json()["success"] is False
+            assert (await client.get("/api/party/static-session")).json() == {"party_id": None}
+            assert application.state.party_manager.get("PARTY") is None
+
+    asyncio.run(exercise())
+
+
+def test_enabling_static_session_creates_static_party(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(RuntimeConfig, "save", lambda _runtime: None)
+
+    async def exercise() -> None:
+        application = _application(tmp_path)
+        async with asgi_client(application) as client:
+            assert (await _login(client)).json()["success"] is True
+
+            saved = await client.put(
+                "/api/admin/config",
+                json={"STATIC_SESSION_ENABLED": True, "STATIC_SESSION_ID": "PARTY"},
+            )
+
+            assert saved.json()["success"] is True
+            assert (await client.get("/api/party/static-session")).json() == {"party_id": "PARTY"}
+            assert application.state.party_manager.get("PARTY") is not None
+
+    asyncio.run(exercise())
+
+
 def test_admin_logout_revokes_server_side_session(tmp_path: Path) -> None:
     async def exercise() -> None:
         async with asgi_client(_application(tmp_path)) as client:
