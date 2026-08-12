@@ -27,14 +27,19 @@ from scripts.capture_emby_artifacts import (
     Sanitizer,
 )
 
-# Shaped like a real Emby item, with a real leak in every field that had one.
+# Shaped like a real Emby item, with something to leak in every field that had
+# one. Every value here is invented. It has to carry the SHAPE of the data that
+# leaked, since that is what the sanitizer's rules key on, but a fixture in a
+# public repo is the last place to reach for a real hostname or a real external
+# id -- and this file would not be caught by the corpus scanner, which walks
+# tests/artifacts and nothing else.
 REAL_ITEM = {
     "Id": "0123456789abcdef0123456789abcdef",
     "Name": "Placeholder Title",
     "SortName": "Placeholder Title, The",
     "ForcedSortName": "Placeholder Title, The",
     "ServerName": "DESKTOP-EXAMPLE0",
-    "Path": "/mnt/example/Films/Placeholder Title (2011)/Placeholder Title.mkv",
+    "Path": "/mnt/example/Films/Placeholder Title (2001)/Placeholder Title.mkv",
     "Type": "Movie",
     "Container": "mkv",
     "ProviderIds": {"Imdb": "tt0000000", "Tmdb": "000000"},
@@ -42,7 +47,7 @@ REAL_ITEM = {
         {
             "Id": "b0a1",
             "Name": "Placeholder Title",
-            "Path": "/mnt/example/Films/Placeholder Title (2011)/Placeholder Title.mkv",
+            "Path": "/mnt/example/Films/Placeholder Title (2001)/Placeholder Title.mkv",
             "Container": "mkv",
         }
     ],
