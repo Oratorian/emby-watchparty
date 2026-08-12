@@ -15,6 +15,7 @@ switch in the other one, misreporting whether they are advertised.
 import asyncio
 
 import httpx
+import pytest
 import socketio
 
 
@@ -171,14 +172,17 @@ def test_visibility_change_reaches_the_whole_room(live_watchparty) -> None:
     asyncio.run(_exercise_broadcast(live_watchparty.url))
 
 
-async def _exercise_sync_state(base_url: str) -> None:
+async def _exercise_sync_state(base_url: str, hidden: bool) -> None:
     client, realtime, party_id = await _host(base_url)
     try:
-        await realtime.emit("set_party_hidden", {"party_id": party_id, "hidden": False})
+        await realtime.emit("set_party_hidden", {"party_id": party_id, "hidden": hidden})
         await asyncio.sleep(0.05)
 
         # A joiner renders the switch from sync_state. Without `hidden` on it,
         # a second tab opens showing the party as hidden while it is listed.
+        # Both polarities, because SyncStateOutbound defaults the field to
+        # False: asserting only the False case passes against a payload that
+        # never carries the real value at all.
         states: list[dict] = []
         arrived = asyncio.Event()
         late_client, late_realtime = None, None
@@ -202,7 +206,7 @@ async def _exercise_sync_state(base_url: str) -> None:
         )
         try:
             await asyncio.wait_for(arrived.wait(), timeout=2)
-            assert states[0]["hidden"] is False
+            assert states[0]["hidden"] is hidden
         finally:
             await late_realtime.disconnect()
             await late_client.aclose()
@@ -211,5 +215,6 @@ async def _exercise_sync_state(base_url: str) -> None:
         await client.aclose()
 
 
-def test_sync_state_carries_the_current_visibility(live_watchparty) -> None:
-    asyncio.run(_exercise_sync_state(live_watchparty.url))
+@pytest.mark.parametrize("hidden", [True, False])
+def test_sync_state_carries_the_current_visibility(live_watchparty, hidden) -> None:
+    asyncio.run(_exercise_sync_state(live_watchparty.url, hidden))

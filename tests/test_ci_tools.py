@@ -89,7 +89,7 @@ def test_added_line_beginning_with_plus_plus_is_not_read_as_a_file_header(
 --- a/backend/example.py
 +++ b/backend/example.py
 @@ -0,0 +1 @@
-+prefix = "++ not a header"
++++ not a header
 @@ -5,0 +6 @@
 +uncovered = False
 """,
