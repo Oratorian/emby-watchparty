@@ -168,6 +168,24 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     app = FastAPI(title="Fake Emby", docs_url=None, redoc_url=None)
     app.state.fake_emby = state
 
+    @app.middleware("http")
+    async def _injected_behavior(request: Request, call_next):
+        """Failure and delay injection for every upstream route, not five.
+
+        This used to be an explicit call inside individual handlers, and it was
+        wired into the five older endpoints and none of the library ones. Every
+        upstream-failure path added by the library work was therefore
+        unreachable from a test: the 502 mappings and the filter-option
+        degradation could not be exercised even in principle.
+        """
+        if not request.url.path.startswith("/__test__"):
+            if failure := await state.before(request):
+                # The handler never runs, so it cannot record the attempt.
+                # Retry tests count attempts, and a failed one still happened.
+                state.record(request)
+                return failure
+        return await call_next(request)
+
     @app.get("/__test__/requests")
     async def recorded_requests(request: Request):
         _require_loopback(request)
@@ -204,16 +222,12 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     @app.get("/emby/System/Info/Public")
     async def system_info(request: Request):
         state.record(request)
-        if failure := await state.before(request):
-            return failure
         return {"ServerName": "Fake Emby", "Version": "4.9.0"}
 
     @app.post("/emby/Users/AuthenticateByName")
     async def authenticate(request: Request):
         credentials = await request.json()
         state.record(request)  # Never retain submitted credentials.
-        if failure := await state.before(request):
-            return failure
         username = credentials.get("Username")
         if username == "LargeLibrary":
             user_id = "user-large"
@@ -445,8 +459,6 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     @app.post("/emby/Items/{item_id}/PlaybackInfo")
     async def playback_info(request: Request, item_id: str):
         state.record(request, body=await request.json())
-        if failure := await state.before(request):
-            return failure
         return {
             "PlaySessionId": "play-session-1",
             "MediaSources": [{**MOVIE["MediaSources"][0], "ItemId": item_id}],
@@ -478,8 +490,6 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     async def playback_report(request: Request, suffix: str):
         del suffix
         state.record(request, body=await request.json())
-        if failure := await state.before(request):
-            return failure
         return {}
 
     @app.delete("/emby/Videos/ActiveEncodings")
@@ -491,8 +501,6 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     async def master_playlist(request: Request, item_id: str):
         del item_id
         state.record(request)
-        if failure := await state.before(request):
-            return failure
         return Response(
             content=state.behavior.master_playlist,
             media_type="application/vnd.apple.mpegurl",

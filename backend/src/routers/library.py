@@ -127,7 +127,7 @@ async def api_items(
     access_token, user_id = _host_creds(party_session)
     response.headers["Cache-Control"] = "no-store"
     try:
-        return await emby_client.get_items(
+        payload = await emby_client.get_items(
             parent_id=parent_id,
             item_type=type,
             recursive=recursive,
@@ -138,6 +138,10 @@ async def api_items(
             access_token=access_token,
             user_id=user_id,
         )
+        # Same upstream endpoint as POST /items/query, so it meets the same
+        # nameless rows. The guard was wired into the query twin only, which
+        # left the default browse to 500 on the exact row it was written for.
+        return _normalize_items_response(payload)
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=502,
@@ -354,7 +358,11 @@ async def api_filter_options(
     responses=PARTY_UNLOCKED_RESPONSES,
 )
 async def api_search(
-    q: str = Query(""),
+    # Capped like its /search/grouped sibling. search_items ranks candidates
+    # with a pure-Python edit distance, so cost grows with len(q) x len(title)
+    # on a single event loop; an uncapped q stalls socket sync and HLS proxying
+    # for every viewer in every party, not just the caller.
+    q: str = Query("", min_length=0, max_length=200),
     party_session: PartySession = Depends(require_party_unlocked),
     emby_client=Depends(get_emby_client),
 ):

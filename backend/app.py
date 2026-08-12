@@ -288,7 +288,23 @@ async def lifespan(application: FastAPI):
         yield
 
 
+async def _upstream_unavailable(_request, exc: httpx.HTTPError) -> JSONResponse:
+    """Any Emby transport failure that reaches here is a bad gateway, not a bug.
+
+    Registered once rather than per route. Thirteen of the eighteen library
+    routes had no such mapping, so a timeout or refused connection surfaced as
+    a bare 500: indistinguishable from an application fault, and it told the
+    operator to look in the wrong place. Routes that map it themselves are
+    unaffected, since their own handler runs first.
+    """
+    logging.getLogger("watchparty.upstream").warning(
+        "Emby upstream unavailable: %s", type(exc).__name__
+    )
+    return JSONResponse(status_code=502, content={"detail": "Emby upstream unavailable"})
+
+
 def _install_api_and_socket_routes(application: FastAPI, prefix: str) -> None:
+    application.add_exception_handler(httpx.HTTPError, _upstream_unavailable)  # type: ignore[arg-type]
     for api_router in (
         auth.router,
         library.router,

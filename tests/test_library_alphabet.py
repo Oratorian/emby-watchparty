@@ -120,3 +120,38 @@ def test_filtered_and_unfiltered_browsing_resolve_the_same_scope(live_watchparty
     assert query_scope["Recursive"] == browse_query["Recursive"] == "true"
     # A Series has no MediaType, so sending one matches zero rows upstream.
     assert "MediaTypes" not in query_scope
+
+
+def test_filtered_prefixes_carry_the_user_its_filters_need(live_watchparty) -> None:
+    """Emby cannot evaluate per-user Filters without a user.
+
+    The GET twin sends UserId and asserts it. This route forwards
+    IsPlayed/IsUnplayed/IsResumable/IsFavorite, all of which are user state, so
+    omitting it made the alphabet rail enable letters the grid did not contain.
+    """
+    client = _unlocked_client(live_watchparty)
+    try:
+        response = client.post(
+            "/api/items/prefixes/query",
+            json={
+                "scope": {
+                    "parent_id": "library-1",
+                    "include_item_types": [],
+                    "media_types": [],
+                    "recursive": False,
+                },
+                "page": {"start_index": 0, "limit": 50},
+                "sort": {"field": "SortName", "direction": "Ascending"},
+                "filters": {"playstate": "unplayed", "favorite": True},
+            },
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    recorded = httpx.get(f"{live_watchparty.fake.url}/__test__/requests").json()["requests"]
+    query = dict(
+        next(row for row in reversed(recorded) if row["path"] == "/emby/Items/Prefixes")["query"]
+    )
+    assert query["UserId"] == "user-alphabet"
+    assert query["Filters"] == "IsUnplayed"

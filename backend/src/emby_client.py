@@ -148,20 +148,30 @@ class EmbyClient:
             return False
 
     async def get_libraries(self, access_token=None, user_id=None):
+        """Raises on upstream failure. An empty library list is a real answer.
+
+        This used to swallow the error and return {"Items": []}, which the UI
+        renders as "No items found." So an unreachable or erroring Emby was
+        reported to the viewer as an empty media server, which is the one
+        diagnosis guaranteed to send them looking in the wrong place.
+        """
         path = f"/emby/Users/{user_id}/Views" if user_id else "/emby/Library/MediaFolders"
-        try:
-            response = await self.gateway.get(path, headers=self._headers(access_token, user_id))
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPError as exc:
-            self.logger.error("Error fetching libraries: error=%s", type(exc).__name__)
-            return {"Items": []}
+        response = await self.gateway.get(path, headers=self._headers(access_token, user_id))
+        response.raise_for_status()
+        return response.json()
 
     async def _ensure_library_cache(self, access_token=None, user_id=None) -> None:
         cache_key = user_id or "_anon_"
         if cache_key in self._library_collection_types:
             return
-        libraries = await self.get_libraries(access_token, user_id)
+        try:
+            libraries = await self.get_libraries(access_token, user_id)
+        except httpx.HTTPError as exc:
+            # Only used to resolve item scope. Browsing degrades to unscoped
+            # rather than failing outright, and the failure is not cached, so
+            # the next request retries.
+            self.logger.warning("library scope cache unavailable: %s", type(exc).__name__)
+            return
         self._library_collection_types[cache_key] = {
             item["Id"]: item.get("CollectionType")
             for item in libraries.get("Items", [])
@@ -388,6 +398,12 @@ class EmbyClient:
         if prefixes:
             for key in ("Fields", "StartIndex", "Limit"):
                 params.pop(key, None)
+            # The GET twin (get_item_prefixes) sends this and the captured real
+            # 4.9.5.0 request carries it. Without a user, Emby cannot evaluate
+            # the per-user Filters this route forwards (IsPlayed, IsUnplayed,
+            # IsResumable, IsFavorite), so the A-Z rail enabled letters the
+            # user-scoped grid did not contain.
+            params["UserId"] = user_id or ""
             response = await self.gateway.get(
                 "/emby/Items/Prefixes",
                 headers=self._headers(access_token, user_id),
