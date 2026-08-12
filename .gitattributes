@@ -1,0 +1,9 @@
+# Captured Emby responses are verified by hashing their raw bytes against
+# tests/artifacts/emby/<version>/manifest.json, so any line-ending conversion
+# changes the file's identity and fails the check. Windows checkouts with
+# core.autocrlf=true rewrite LF to CRLF, which is enough to break all 35 of
+# them while Linux CI stays green.
+#
+# -text disables that conversion for these paths only. Deliberately narrow:
+# a repo-wide `text=auto` would renormalise every tracked file at once.
+tests/artifacts/** -text
