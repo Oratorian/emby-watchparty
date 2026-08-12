@@ -254,7 +254,7 @@
                 </select>
               </label>
               <span v-if="isHost && details.Type === 'Episode'" class="binge-toggle">
-                <ToggleSwitch v-model="binge" />
+                <ToggleSwitch v-model="binge" label="Binge next episodes" />
                 <span>Binge next episodes</span>
               </span>
               <button class="start-playback" type="button" @click="startPlayback">Start watch party</button>

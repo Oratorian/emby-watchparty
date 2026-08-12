@@ -266,7 +266,7 @@ loadConfig()
               in to host. Browsing always needs a host with a valid session.
             </span>
           </div>
-          <ToggleSwitch v-model="config.REQUIRE_LOGIN" />
+          <ToggleSwitch v-model="config.REQUIRE_LOGIN" label="Require Login to Create Party" />
         </div>
       </div>
 
@@ -291,7 +291,7 @@ loadConfig()
               CPU/GPU load on the Emby server.
             </span>
           </div>
-          <ToggleSwitch v-model="config.FORCE_TRANSCODE" />
+          <ToggleSwitch v-model="config.FORCE_TRANSCODE" label="Force Transcode" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
@@ -311,7 +311,7 @@ loadConfig()
               party and cancels any countdown that's already running.
             </span>
           </div>
-          <ToggleSwitch v-model="config.BINGE_WATCH_ENABLED" />
+          <ToggleSwitch v-model="config.BINGE_WATCH_ENABLED" label="Binge-Watch" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
@@ -356,6 +356,7 @@ loadConfig()
             >
               <div class="quality-master">
                 <ToggleSwitch
+                  :label="`${tier.resolution} quality`"
                   :model-value="isResolutionEnabled(tier.resolution)"
                   @update:model-value="(v: boolean) => setResolutionEnabled(tier.resolution, v)"
                 />
@@ -371,6 +372,7 @@ loadConfig()
                   class="bitrate-row"
                 >
                   <ToggleSwitch
+                    :label="`${tier.resolution} at ${formatBitrate(kbps)}`"
                     :model-value="isBitrateEnabled(tier.resolution, kbps)"
                     @update:model-value="(v: boolean) => setBitrateEnabled(tier.resolution, kbps, v)"
                   />
@@ -408,7 +410,7 @@ loadConfig()
             <span>Log to File</span>
             <span class="setting-hint">Write logs to disk</span>
           </div>
-          <ToggleSwitch v-model="config.LOG_TO_FILE" />
+          <ToggleSwitch v-model="config.LOG_TO_FILE" label="Log to File" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
@@ -458,7 +460,7 @@ loadConfig()
             <span>Rate Limiting</span>
             <span class="setting-hint">Master switch for HTTP and Socket.IO limits</span>
           </div>
-          <ToggleSwitch v-model="config.ENABLE_RATE_LIMITING" />
+          <ToggleSwitch v-model="config.ENABLE_RATE_LIMITING" label="Rate Limiting" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
@@ -522,7 +524,7 @@ loadConfig()
             <span>Static Session Mode</span>
             <span class="setting-hint">Single persistent party that auto-creates on startup</span>
           </div>
-          <ToggleSwitch v-model="config.STATIC_SESSION_ENABLED" />
+          <ToggleSwitch v-model="config.STATIC_SESSION_ENABLED" label="Static Session Mode" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
@@ -541,7 +543,7 @@ loadConfig()
             <span>Enable Late Join Vote</span>
             <span class="setting-hint">Require a majority vote to admit users who join mid-playback</span>
           </div>
-          <ToggleSwitch v-model="config.LATE_JOIN_VOTE_ENABLED" />
+          <ToggleSwitch v-model="config.LATE_JOIN_VOTE_ENABLED" label="Enable Late Join Vote" />
         </div>
         <div class="setting-row">
           <div class="setting-label">

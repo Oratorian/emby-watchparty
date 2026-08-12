@@ -5,11 +5,24 @@
 // call site to accept (boolean | undefined) -- noisy and incorrect for
 // a control that always represents a definite on/off.
 const model = defineModel<boolean>({ default: false })
+
+// Required on purpose. Every call site puts its wording in a sibling
+// element, outside this component's <label>, so the native association
+// never formed and the control announced as an unnamed checkbox -- the
+// same "checkbox, not checked" for all eleven of them, with nothing
+// saying which setting was being changed. Making it optional would let
+// the next call site reintroduce exactly that, silently; required means
+// vue-tsc refuses the build instead.
+defineProps<{ label: string }>()
 </script>
 
 <template>
   <label class="toggle">
-    <input type="checkbox" v-model="model" />
+    <!-- role="switch" rather than the default checkbox semantics: this is an
+         on/off control, and screen readers then say "on"/"off" instead of
+         "checked"/"not checked". It stays a real checkbox input so the
+         keyboard behaviour and :checked styling below are the browser's. -->
+    <input type="checkbox" role="switch" :aria-label="label" v-model="model" />
     <span class="toggle-track">
       <span class="toggle-knob" />
     </span>

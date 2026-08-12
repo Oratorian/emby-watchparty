@@ -51,6 +51,7 @@ Admin Login, Avatar Recovery, Chat and Socket Connections were free-text fields 
 - Switching to a shorter version of a title no longer leaves your position reported minutes ahead of the picture. The stream was being started at a corrected offset while the old one was still being reported, so drift correction spent the rest of the film pulling against it.
 - A failed Related / Extras / Trailers fetch says it failed instead of reporting "None available.", and retries when the section is reopened rather than caching the failure for the life of the page.
 - A search that genuinely fails shows the failure. A dead Emby had been indistinguishable from an empty library.
+- Every on/off switch now tells a screen reader which setting it belongs to. All eleven of them announced as an unnamed checkbox, which on the admin panel meant nine identical controls in a row, and they now announce as switches rather than checkboxes.
 
 ### Technical details
 

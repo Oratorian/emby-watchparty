@@ -161,6 +161,25 @@ Plus ruff check and format, mypy over 48 files, `vue-tsc`, eslint, and both
 generated-contract drift checks, which now run under pytest rather than only in
 CI.
 
+#### The shared toggle had no name
+
+`ToggleSwitch` renders its `<input>` inside its own `<label>`, but every one of
+its eleven call sites puts the wording in a sibling element outside that label,
+so the association never formed. All eleven announced as "checkbox, not
+checked" with nothing saying which setting was about to change; on the admin
+panel that is nine consecutive identical controls.
+
+The `label` prop is **required** rather than optional, so `vue-tsc` refuses a
+call site that forgets it. Optional would have let the next one reintroduce the
+same silence. The input also carries `role="switch"`, which is what it is: a
+screen reader then says on/off rather than checked/not checked, while the
+element stays a real checkbox so keyboard behaviour and the `:checked` styling
+remain the browser's.
+
+`CONTRIBUTING.md` was reworded in the same pass to tell contributors to add a
+`## [Unreleased]` heading rather than to file under one that only exists
+between releases.
+
 #### Recorded rather than quietly fixed
 
 Three process notes, kept because each was a mistake in this cycle:
@@ -180,10 +199,7 @@ Three process notes, kept because each was a mistake in this cycle:
 #### Still open
 
 - `frontend/package.json` and `backend/src/__init__.py` still read
-  `3.0.0-beta1`, and `CONTRIBUTING.md` still points contributors at a
-  `## [Unreleased]` heading that no longer exists in `CHANGELOG.md`.
-- `ToggleSwitch` has no accessible name, which affects the admin panel as well
-  as the binge control.
+  `3.0.0-beta1`.
 - The artifact leak's external half is unchanged and not ours to close:
   dnordel's fork branch `codex/emby-library-parity`, and `refs/pull/60/head` on
   `Oratorian/emby-watchparty`, which needs GitHub Support.
