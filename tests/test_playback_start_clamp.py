@@ -43,8 +43,24 @@ def test_switching_to_a_shorter_version_lands_inside_the_new_runtime() -> None:
 
     start = clamp_start_seconds(party_clock, media_source_run_time(THEATRICAL))
 
-    assert start == 7200.0 - END_OF_MEDIA_BUFFER_SECONDS
+    # Deliberately not `7200.0 - END_OF_MEDIA_BUFFER_SECONDS`: deriving the
+    # expected value from the constant under test leaves its size unpinned,
+    # and the size is the whole point. Too small and Emby still answers with
+    # a zero-length manifest; too large and switching versions throws the
+    # room minutes backwards.
+    assert 7195.0 <= start <= 7199.0
     assert start < media_source_run_time(THEATRICAL)
+
+
+def test_the_end_of_media_buffer_is_small_enough_to_be_invisible() -> None:
+    """A generous buffer is not the safe direction.
+
+    This value is subtracted from the position the whole party is sitting at,
+    so anything approaching a noticeable rewind is a regression -- and being
+    off the end by a hair is what the buffer exists to avoid in the first
+    place, not being off it by a wide margin.
+    """
+    assert 1.0 <= END_OF_MEDIA_BUFFER_SECONDS <= 10.0
 
 
 def test_switching_to_a_longer_version_keeps_the_party_position() -> None:
