@@ -398,11 +398,26 @@ function configureFilters(parentId: string) {
   } catch {
     filterState.value = {}
   }
+  // /api/items/filter-options fans out to ten Emby catalogue endpoints, so it
+  // is the slowest request on the page and the most likely to be in flight
+  // when navigation aborts the shared controller. An abort is not a failure:
+  // treating it as one emptied filterControls, and because this function is
+  // memoised on configuredParentId and nothing ever reset it, the panel stayed
+  // empty for that library for the rest of the session. filterState is
+  // restored from localStorage before the fetch and survived the wipe, so a
+  // saved filter kept filtering the grid with no chips, no active count and no
+  // "Reset All" to clear it.
+  const myToken = navToken
   api.filterOptions({ parentId }, navigationSignal())
     .then((response) => {
       if (configuredParentId === parentId) filterControls.value = response.controls
     })
-    .catch(() => {
+    .catch((error) => {
+      if (myToken !== navToken || error?.name === 'AbortError') {
+        // Superseded, not broken. Clear the memo so the next visit refetches.
+        if (configuredParentId === parentId) configuredParentId = null
+        return
+      }
       if (configuredParentId === parentId) filterControls.value = []
     })
 }

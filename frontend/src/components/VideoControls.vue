@@ -44,6 +44,13 @@ const props = defineProps<{
   quality: string
   currentTime: number
   mediaSourceId?: string
+  // The party's current selection, exactly as `quality` already works. The
+  // detail view can set a non-default audio or subtitle track for everyone,
+  // and without these the strip seeded itself from the source's IsDefault
+  // instead, then re-emitted change_streams with that stale index and reverted
+  // the party's choice for this viewer.
+  audioIndex?: number | null
+  subtitleIndex?: number | null
   // Optional total runtime in seconds. Used to clamp the
   // jump-to-timestamp input so a typo can't seek past the end of
   // media. When null the popover still works but the validation
@@ -189,11 +196,29 @@ async function fetchStreams(mediaSourceId = props.mediaSourceId) {
     versions.value = data.versions || []
     selectedVersion.value = data.media_source_id || mediaSourceId || data.versions?.[0]?.id || ''
 
-    const defaultAudio = audioTracks.value.find((t) => t.isDefault)
-    if (defaultAudio) selectedAudio.value = defaultAudio.index
+    // The party's selection wins over the source's default, the same
+    // precedence `quality` already has. Falling back to IsDefault
+    // unconditionally is what reverted a track chosen in the detail view.
+    const partyAudio = props.audioIndex
+    const partyAudioExists =
+      partyAudio != null && audioTracks.value.some((t) => t.index === partyAudio)
+    if (partyAudioExists) {
+      selectedAudio.value = partyAudio
+    } else {
+      const defaultAudio = audioTracks.value.find((t) => t.isDefault)
+      if (defaultAudio) selectedAudio.value = defaultAudio.index
+    }
 
-    const defaultSub = subtitleTracks.value.find((t) => t.isDefault)
-    selectedSubtitle.value = defaultSub ? defaultSub.index : -1
+    const partySubtitle = props.subtitleIndex
+    const partySubtitleExists =
+      partySubtitle != null &&
+      (partySubtitle === -1 || subtitleTracks.value.some((t) => t.index === partySubtitle))
+    if (partySubtitleExists) {
+      selectedSubtitle.value = partySubtitle
+    } else {
+      const defaultSub = subtitleTracks.value.find((t) => t.isDefault)
+      selectedSubtitle.value = defaultSub ? defaultSub.index : -1
+    }
     appliedInitialSubtitleKey.value = null
     applyInitialSubtitleSelection()
   } catch {

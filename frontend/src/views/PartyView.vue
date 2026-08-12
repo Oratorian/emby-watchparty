@@ -603,8 +603,20 @@ onMounted(async () => {
     })
   })
 
-  // Auto-join with saved username
-  if (savedUsernameAtMount && !party.partyId) {
+  // Auto-join with saved username.
+  //
+  // Gated on this component's own `joined`, NOT on party.partyId. The store
+  // deliberately survives unmount (see onUnmounted below), so after any in-app
+  // navigation -- the Full Version Info link, Admin's "Back to Watch Party" --
+  // partyId is still set on return while this component is freshly mounted and
+  // has emitted no join_party. Nothing then reassigns party.users, the watcher
+  // that sets `joined` never fires, and the user is stuck behind the "Joining
+  // party..." overlay with no video, chat, controls or Leave button until they
+  // reload the page.
+  //
+  // The double-join this guard was reaching for is already prevented by
+  // savedUsernameAtMount being a mount-time snapshot.
+  if (savedUsernameAtMount && !joined.value) {
     joinWithName(savedUsernameAtMount)
   }
 })
@@ -1284,6 +1296,8 @@ async function submitBecomeHost(payload: { username: string; password: string })
             :quality="party.currentVideo.quality || '1080p-high'"
             :current-time="currentTime"
             :media-source-id="party.currentVideo.media_source_id ?? undefined"
+            :audio-index="party.currentVideo.audio_index ?? null"
+            :subtitle-index="party.currentVideo.subtitle_index ?? null"
             :run-time-seconds="party.currentVideo.run_time_seconds ?? undefined"
             :binge-available="party.bingeWatch.available"
             :binge-active="party.bingeWatch.active"
