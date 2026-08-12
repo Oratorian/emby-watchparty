@@ -16,6 +16,48 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [3.0.0-beta3] - Unreleased Internal beta - Director's Cut
+
+**Not published.** Nothing in beta2 or beta3 is in `:3.0.0-beta1`, `:devel` or `:nightly` yet; pulling any of those still gets beta1.
+
+beta2 brought the library work in. beta3 is about living with it. Everything here came out of actually using the new title view, plus one long pass over the test suite asking a narrower question than usual: not "does it pass", but "could it fail".
+
+### The title view stops pushing itself off the screen
+
+Extras, Trailers and the rest used to expand downwards, one block each, so opening all three left all three on screen with two "None available." lines trailing the one list that had anything in it. They are now a single panel that shows one section at a time, opens upward, and closes when the pointer leaves or Escape is pressed.
+
+A series no longer renders every episode as its own stacked row. A 24-episode season used to push the rest of the page out of view; there are now two dropdowns, one for the season and one for the episode, and they load with the title rather than waiting for a button.
+
+Both control groups moved up beside Back. They previously sat below the synopsis, which meant their position moved with the length of the synopsis, and a long one put them off the fold entirely.
+
+Titles with artwork are readable again. Light text was rendering straight onto whatever the backdrop happened to be, so a bright frame took the title, the buttons and the metadata with it.
+
+### A party that no longer exists says so
+
+Landing on a dead link, or on any link after the server restarts, used to leave you looking at a Retry button that could never succeed. It now says what happened and takes you back to the start page on a short countdown, with a "Go now" if you would rather not wait.
+
+### A host can keep a party off the public list
+
+An eye in the party header toggles whether the party appears under Active Parties. **Parties now start hidden.** This is unlisted rather than private: anyone holding the code still joins exactly as before, so it is for a private evening rather than for access control. The control is visible to everyone in the room and only the host can change it, because the state matters to the people already there.
+
+### Rate limits are the same two controls everywhere
+
+Admin Login, Avatar Recovery, Chat and Socket Connections were free-text fields while API Rate Limit and Party Creation Limit already used a number and a window dropdown. They now all work the same way. The parser behind them was also reading `10 per 15 minutes` back as `10 per minute`, which on the next save would have written a fifteen-fold tighter limit than the operator set.
+
+### Fixed
+
+- Copying the party code confirms again. The pill's icon swaps to a tick and the border tints for two seconds. The confirmation had been moved into a tooltip, which never appears after a click because the pointer is already sitting still.
+- Leaving a dead party no longer follows you into the next one. The "no longer exists" card could reappear on a perfectly healthy party, frozen, with only "Go now" as a way out.
+- Switching to a shorter version of a title no longer leaves your position reported minutes ahead of the picture. The stream was being started at a corrected offset while the old one was still being reported, so drift correction spent the rest of the film pulling against it.
+- A failed Related / Extras / Trailers fetch says it failed instead of reporting "None available.", and retries when the section is reopened rather than caching the failure for the life of the page.
+- A search that genuinely fails shows the failure. A dead Emby had been indistinguishable from an empty library.
+
+### Technical details
+
+See [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md) for the test-suite audit behind most of this section: what it found, the two real bugs that came out of it, and why 64 deliberate mutations were applied to the source to check the tests could see them.
+
+---
+
 ## [3.0.0-beta2] - Unreleased Internal beta - Director's Cut
 
 **Not published.** Nothing here is in `:3.0.0-beta1`, `:devel` or `:nightly` yet; pulling any of those still gets beta1. This section is what the next beta will carry.

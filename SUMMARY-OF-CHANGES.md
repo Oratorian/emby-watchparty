@@ -6,6 +6,190 @@ The 2.0 "Midnight Premiere" log (beta1 through beta18, every Added / Changed / F
 
 ---
 
+## [3.0.0-beta3] - Unreleased Internal beta - Director's Cut
+
+Two bodies of work. A UX pass over the title detail view and the party header,
+driven by using beta2's library rather than by a report; and an audit of the
+test suite itself, which is the larger half and the reason this section is
+mostly about tests.
+
+Neither is in a published image. `:3.0.0-beta1`, `:devel` and `:nightly` all still
+point at beta1.
+
+---
+
+### The UX pass
+
+Nine commits, all on `TitleDetails.vue`, `PartyView.vue` and `AdminPanel.vue`.
+The detail view's controls were correct and badly placed: sections expanded
+downwards and stacked, a series rendered one row per episode, and the whole
+group sat below the synopsis so its position moved with the length of the
+synopsis. They are now one popover opening upward, two dropdowns, and a
+`.detail-topbar` beside Back.
+
+Three of these were placement problems rather than behaviour problems, which is
+worth recording because the existing tests could not have caught any of them:
+they selected buttons and popovers globally and so constrained nothing about
+where anything lived.
+
+Two smaller pieces landed alongside. Party visibility is host-controlled and
+parties now start hidden, with a **known consequence accepted at the time**: a
+party that has never had a host cannot be listed by anyone, so Active Parties
+stays empty until a host logs in and opts in. Previously every party with
+members was listed, hostless ones included, shown as locked. And the admin
+rate-limit fields became number-plus-window pairs matching the two that already
+worked that way.
+
+---
+
+### The test-suite audit
+
+The suite was green throughout: 270 backend, 85 frontend, 27 e2e. The question
+was not whether it passed but whether it could fail. Six read-only agents over
+six areas, each area's findings then put to an adversarial verifier told to
+refute by default and to treat coverage hiding in an unexpected file as the
+most likely reason a "missing" finding is wrong.
+
+**66 raw findings, 47 confirmed.** Categories were fixed rather than counted:
+`stale` (asserts on markup the redesign deleted), `vacuous` (cannot fail), and
+`missing` (nothing covers it at all). A finding was only accepted with a named
+mutation to the **source** that the whole suite would not notice.
+
+Every fix was then checked by applying that mutation for real. **64 mutations,
+64 caught.** Two survived on the first attempt and are the more interesting
+half of the exercise:
+
+- The sanitizer's privacy inheritance could be removed without any test
+  failing, because default-deny caught the leak anyway. The two rules only come
+  apart under a key that is otherwise allowed through verbatim, so the probe was
+  rewritten to use one.
+- The episode-control reset could not be observed the way the audit proposed.
+  The handler writes `''` back over what `v-model` just set, so the ref ends the
+  tick reading what it last rendered and Vue schedules no update; the element
+  keeps showing the picked episode until something else re-renders. Harmless,
+  since choosing an episode navigates away, but the suggested assertion fails
+  against correct code and the test now forces the render instead.
+
+#### Two real bugs, not coverage gaps
+
+**A dead-party flag outlived its view.** The party store deliberately survives
+`PartyView` unmounting, and `leave()` never cleared `partyMissing`. After the
+countdown returned a viewer to the index, the next party they opened rendered
+"This party no longer exists" on mount, and rendered it frozen, because the
+countdown is driven by a watcher that fires on the transition into missing and
+that had already happened. Only "Go now" got them out. Cleared in `leave()`, and
+again at the top of `join()` before its first await so navigating straight from
+a dead party to a live one does not show the card for the duration of the join.
+
+**`streams_changed` reported the wrong position.** The clamp added in beta2
+starts a switched stream at a corrected offset, but the event kept sending the
+raw party clock, and the client maps the new stream's `t=0` onto whatever that
+field says. Switching to a version shorter than the current position therefore
+left the viewer's reported position minutes ahead of the frame on screen with
+drift correction fighting the gap. The frontend comment stated the assumption
+outright and had simply stopped being true. Found because the audit noted its
+proposed assertion would fail against the source; that failure was the finding.
+
+#### What kept recurring
+
+Three shapes, all of which had produced real incidents on this project before:
+
+1. **An assertion that survived its subject.** `findAll('button[data-episode-id]')
+   .toHaveLength(0)` counted markup the redesign had deleted, so it held for any
+   template, including one that had dropped the attribute entirely.
+2. **A test satisfied by the framework.** Re-selecting a `<select>` option and
+   counting emits proves nothing: `setValue` dispatches `change` whether or not
+   the value moved.
+3. **An expectation derived from its subject.** The clamp asserted
+   `start == 7200.0 - END_OF_MEDIA_BUFFER_SECONDS`, leaving the constant's size
+   unpinned in both directions. `1800.0` passed.
+
+#### The gaps that mattered most
+
+- **The artifact sanitizer had no coverage at all**, which is the tool behind
+  the leak recorded in beta2. `test_emby_artifacts` checks the committed corpus,
+  which only proves today's files are clean; it says nothing about what the next
+  capture writes, and captures run against a real private Emby and land in a
+  public repo. All three defects behind that incident were invisible from the
+  output side. Now 11 tests, written as properties rather than as a list of the
+  fields that leaked, because Emby adds fields between versions.
+- **Contract drift was structurally invisible to pytest.** The only
+  `--check` ran in one CI step, so removing an event from `INBOUND_MODELS` /
+  `OUTBOUND_MODELS` kept every render-based test agreeing with itself while the
+  frontend stayed typed for an event the backend no longer accepts. Both
+  generators are now checked from the suite.
+- **`video_codecs` on `join_party` had no assertion anywhere.** Dropping it, or
+  hardcoding it, left the suite green while every viewer silently fell back to
+  h264 and every HEVC source was re-encoded for people whose hardware would have
+  played it. A merge on this branch nearly did exactly that.
+- **The identity-collision message is one contract in two languages.** The
+  frontend matches the backend's sentence verbatim to decide whether to rotate
+  onto a tab-scoped client id and retry. Rewording the Python left both suites
+  green while second tabs stopped recovering. Asserted from pytest, the only
+  side that can read both files.
+- **`select_video`'s `resume_mode` and its host-only `binge` rule** were
+  untested. Both fail quietly, and the binge one let any joined member arm
+  auto-advance for the whole room.
+
+#### The e2e specs, which no suite runs
+
+These had never run against the redesigned UI, because nothing on this branch
+has been pushed. Rather than reading selectors, all four Playwright projects
+were run locally: chromium 18, ios-webkit 3, firefox 3, webkit 3, all passing.
+The specs drive by role and test-id rather than by the classes the redesign
+moved, which is why they survived.
+
+Two real problems in them, both found by reading rather than running:
+
+- `getByRole('button', { name: 'Close chat' })` resolved to the `.chat-backdrop`
+  overlay, whose `aria-label` is that string, rather than to the drawer's close
+  button, whose accessible name is its text. Nothing proved the button did
+  anything. Both exits are now asserted by effect.
+- Every desktop spec ran at 1138px, inside beta2's compact-desktop media query,
+  so the layout most people use had no coverage. Widening that query to swallow
+  the ordinary desktop failed nothing.
+
+#### Verification posture
+
+| | beta2 | beta3 |
+|---|---|---|
+| backend (pytest) | 270 | 298 |
+| frontend (vitest) | 85 | 152 |
+| e2e (playwright) | 27 | 28 |
+
+Plus ruff check and format, mypy over 48 files, `vue-tsc`, eslint, and both
+generated-contract drift checks, which now run under pytest rather than only in
+CI.
+
+#### Recorded rather than quietly fixed
+
+Three process notes, kept because each was a mistake in this cycle:
+
+- One batch was committed with `git add -A` under a message describing only the
+  source fix in it. Reset and split into three.
+- `npx` rewrote `frontend/package.json` and `package-lock.json` mid-session,
+  adding `playwright` to `dependencies` where `@playwright/test` already sat in
+  dev. Reverted rather than committed. A subsequent `npm ci` installed from that
+  mangled lock and produced a broken jsdom, which was briefly misdiagnosed as
+  the committed lockfile being at fault; it is not, and `3.0-dev`'s is sound too.
+- The frontend suite was exiting non-zero while reporting 152 passed: a new
+  `playing: true` case made `loadedmetadata` call `video.play()`, which jsdom
+  does not implement, raising an unhandled rejection that fails the run without
+  failing a test.
+
+#### Still open
+
+- `frontend/package.json` and `backend/src/__init__.py` still read
+  `3.0.0-beta1`, and `CONTRIBUTING.md` still points contributors at a
+  `## [Unreleased]` heading that no longer exists in `CHANGELOG.md`.
+- `ToggleSwitch` has no accessible name, which affects the admin panel as well
+  as the binge control.
+- The artifact leak's external half is unchanged and not ours to close:
+  dnordel's fork branch `codex/emby-library-parity`, and `refs/pull/60/head` on
+  `Oratorian/emby-watchparty`, which needs GitHub Support.
+
+---
+
 ## [3.0.0-beta2] - Unreleased Internal beta - Director's Cut
 
 Four bodies of work since beta1. Three are **[dnordel](https://github.com/dnordel)**'s, all
