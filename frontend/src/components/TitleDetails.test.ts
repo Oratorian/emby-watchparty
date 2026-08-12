@@ -18,7 +18,8 @@ describe('TitleDetails', () => {
       Overview: 'Artifact overview',
       People: [{ Id: 'person-1', Name: 'Actor', Type: 'Actor' }],
       Studios: [{ Id: 'studio-1', Name: 'Studio A' }],
-      Tags: ['Featured'],
+      // Emby sends TagItems, not a flat Tags array.
+      TagItems: [{ Id: 'tag-1', Name: 'Featured' }],
     })
     const itemSection = vi.spyOn(api, 'itemSection').mockResolvedValue({
       section: 'related',
