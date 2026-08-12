@@ -1,5 +1,5 @@
 import { defineComponent, h, nextTick, reactive } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 
 import { api } from '@/api/client'
@@ -113,7 +113,17 @@ describe('usePartyStream', () => {
       versions: [],
     })
 
-    await vi.waitFor(() => expect(wrapper.findAll('track')).toHaveLength(1))
+    // Drained rather than polled. vi.waitFor runs its callback once,
+    // synchronously, before the resolved itemStreams continuation gets to
+    // run -- so it was observing the DOM as it stood BEFORE the preload
+    // finished and could not have seen a duplicate however many appeared.
+    await flushPromises()
+
+    // Identity, not just the count: the surviving track has to be the one the
+    // user picked, not the preload's own copy of the same subtitle.
+    const sources = wrapper.findAll('track')
+      .map((track) => (track.element as HTMLTrackElement).getAttribute('src'))
+    expect(sources).toEqual(['/api/subtitles/item-1/source-b/3'])
     wrapper.unmount()
   })
 })

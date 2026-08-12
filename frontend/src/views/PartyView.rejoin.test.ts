@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useAvatarStore } from '@/stores/avatar'
 import { usePartyStore } from '@/stores/party'
 import PartyView from './PartyView.vue'
 
@@ -104,6 +105,40 @@ describe('returning to a party after in-app navigation', () => {
 
     // Falls through to the manual name prompt instead.
     expect(join).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('does not re-join a name typed while startup was still running', async () => {
+    // No saved name, so nothing should auto-join. The window is real: mount
+    // awaits the avatar load before reaching the auto-join, and a manual Join
+    // completing inside that window writes the typed name to storage.
+    localStorage.removeItem('emby-watchparty-username')
+    const party = usePartyStore()
+    const join = vi.spyOn(party, 'join').mockResolvedValue(undefined as never)
+
+    let releaseAvatar!: (value: string | null) => void
+    const avatar = useAvatarStore()
+    vi.spyOn(avatar, 'load').mockReturnValue(
+      new Promise((resolve) => { releaseAvatar = resolve }),
+    )
+
+    const wrapper = mountParty()
+    await flushPromises()
+
+    // Startup is parked on the avatar load; the name prompt is already up.
+    await wrapper.get('.modal-card input').setValue('Bob')
+    await wrapper.get('.modal-card button').trigger('click')
+    await flushPromises()
+    expect(join).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem('emby-watchparty-username')).toBe('Bob')
+
+    releaseAvatar(null)
+    await flushPromises()
+
+    // Reading storage after the awaits instead of snapshotting it at mount
+    // would find "Bob", mistake a name typed one moment ago for a preexisting
+    // auto-join, and claim the same socket identity a second time.
+    expect(join).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 })

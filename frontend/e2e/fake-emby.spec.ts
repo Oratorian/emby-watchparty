@@ -263,7 +263,59 @@ test('compact desktop gives video full width and moves chat into a drawer', asyn
 
   await chatToggle.click()
   await expect(page.locator('.chat-panel')).toBeInViewport()
-  await expect(page.getByRole('button', { name: 'Close chat', exact: true })).toBeVisible()
+
+  // The drawer's own close button, asserted by class and by effect. By role
+  // and accessible name this resolved to the .chat-backdrop overlay instead,
+  // which carries aria-label="Close chat" while the button's name is its
+  // text -- so nothing here proved the button did anything.
+  const close = page.locator('.chat-panel .chat-close-btn')
+  await expect(close).toBeVisible()
+  await close.click()
+  await expect(page.locator('.chat-panel')).not.toBeInViewport()
+
+  // The backdrop is the other way out, and closes the drawer too.
+  await chatToggle.click()
+  await expect(page.locator('.chat-panel')).toBeInViewport()
+  await page.getByRole('button', { name: 'Close chat', exact: true }).click()
+  await expect(page.locator('.chat-panel')).not.toBeInViewport()
+})
+
+test('full desktop keeps chat beside the video instead of in a drawer', async ({ page }) => {
+  // Every other desktop spec runs at 1138px, which is inside the compact
+  // block added on this branch. So the layout most people actually use --
+  // anything wider than 1280 -- had no coverage at all, and widening that
+  // media query to swallow the ordinary desktop would not have failed a
+  // single test.
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await page.getByPlaceholder('Your name (optional)').fill('Alice')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+  await page.getByRole('main').getByRole(
+    'button', { name: 'Login to Become Host', exact: true },
+  ).click()
+  await page.getByPlaceholder('Emby username').fill('Alice')
+  await page.getByPlaceholder('Emby password').fill('password')
+  await page.getByRole('button', { name: 'Become Host', exact: true }).click()
+  await page.getByText('Movies', { exact: true }).click()
+  await startFakeMovie(page)
+
+  // Chat is a persistent column: on screen without being asked for, and with
+  // no drawer toggle or backdrop in sight.
+  await expect(page.locator('.chat-panel')).toBeInViewport()
+  await expect(page.getByRole('button', { name: 'Chat', exact: true })).toBeHidden()
+  await expect(page.locator('.chat-backdrop')).toHaveCount(0)
+
+  const chatWidth = await page.locator('.chat-panel').evaluate(
+    (panel) => panel.getBoundingClientRect().width,
+  )
+  expect(chatWidth).toBeGreaterThan(300)
+
+  // And the video gives up exactly that column rather than the full width.
+  const videoWidth = await page.locator('.video-area').evaluate(
+    (area) => area.getBoundingClientRect().width,
+  )
+  expect(videoWidth).toBeLessThan(1440 - chatWidth + 40)
 })
 
 test('two browsers receive selection and synchronized controls', async ({ browser, page }) => {
@@ -531,6 +583,24 @@ test('admin modal traps focus and Escape restores its trigger', async ({ page })
   await expect(dialog).toBeFocused()
   const save = page.getByRole('button', { name: 'Save Settings' })
   await expect(save).toBeVisible()
+
+  // The rate-limit fields became value + window pairs on this branch, backed
+  // by a parser that reads what the backend actually stores. This is the only
+  // place the panel is exercised against the real config, so it is where a
+  // parse that silently rewrites an operator's limit shows up: '10 per 15
+  // minutes' read back as '10 per minute' is a fifteen-fold tightening,
+  // written on the next save.
+  const chatValue = dialog.getByLabel('Chat Limit', { exact: true })
+  const chatWindow = dialog.getByLabel('Chat Limit window', { exact: true })
+  await expect(chatValue).toHaveValue(/^[1-9]\d*$/)
+  await expect(chatWindow).toHaveValue(/^per /)
+
+  const loginWindow = dialog.getByLabel('Admin Login Limit window', { exact: true })
+  await expect(dialog.getByLabel('Admin Login Limit', { exact: true })).toHaveValue(/^[1-9]\d*$/)
+  await expect(loginWindow).toHaveValue(/^per /)
+
+  await chatWindow.selectOption('per 15 minutes')
+  await expect(chatWindow).toHaveValue('per 15 minutes')
 
   await page.keyboard.press('Shift+Tab')
   await expect(save).toBeFocused()

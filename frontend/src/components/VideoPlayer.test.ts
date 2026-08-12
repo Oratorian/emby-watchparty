@@ -143,6 +143,58 @@ describe('VideoPlayer native HLS support', () => {
     vi.useRealTimers()
   })
 
+  it('stays silent when the guard releases and the viewer never pressed play', async () => {
+    // The other side of the same condition. Reconciling unconditionally
+    // would have every viewer announce a play 500ms after their stream
+    // settles, which starts the film for a room that chose to stay paused --
+    // and the case above cannot see that, because it sets paused = false.
+    vi.useFakeTimers()
+    const wrapper = mount(VideoPlayer, {
+      props: {
+        streamUrl: '/hls/native/master.m3u8',
+        title: 'Movie',
+        playing: false,
+      },
+    })
+    const video = wrapper.get('video').element as HTMLVideoElement
+    Object.defineProperty(video, 'paused', { configurable: true, get: () => true })
+
+    await wrapper.get('video').trigger('loadedmetadata')
+    await vi.advanceTimersByTimeAsync(500)
+
+    expect(wrapper.emitted('play')).toBeUndefined()
+
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
+  it('stays silent when the room is already playing', async () => {
+    // props.playing true means the party is already running, so there is
+    // nothing to reconcile and an emit here is an echo the room does not need.
+    vi.useFakeTimers()
+    // playing: true makes loadedmetadata call video.play(), which jsdom does
+    // not implement. Left alone it returns undefined and the component's
+    // .catch throws an unhandled error that fails the whole run.
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+    const wrapper = mount(VideoPlayer, {
+      props: {
+        streamUrl: '/hls/native/master.m3u8',
+        title: 'Movie',
+        playing: true,
+      },
+    })
+    const video = wrapper.get('video').element as HTMLVideoElement
+    Object.defineProperty(video, 'paused', { configurable: true, get: () => false })
+
+    await wrapper.get('video').trigger('loadedmetadata')
+    await vi.advanceTimersByTimeAsync(500)
+
+    expect(wrapper.emitted('play')).toBeUndefined()
+
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
   it('releases the native HLS request when the player unmounts', () => {
     const wrapper = mount(VideoPlayer, {
       props: {

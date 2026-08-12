@@ -40,6 +40,49 @@ describe('GlobalLibrarySearch recovery paths', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   })
 
+  it('does report a search that genuinely failed', async () => {
+    // The other half of the same guard, and the reason it cannot simply
+    // swallow everything. Asserting only that the banner stays absent is
+    // satisfied by a component with no error branch at all -- a search
+    // against a dead Emby would then look identical to one that found
+    // nothing, and the operator would be debugging an empty library.
+    vi.spyOn(api, 'groupedSearch').mockRejectedValue(new Error('Emby upstream unavailable'))
+
+    const wrapper = mount(GlobalLibrarySearch)
+    const input = wrapper.get('input[aria-label="Search all libraries"]')
+
+    await input.setValue('spider')
+    await vi.advanceTimersByTimeAsync(350)
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toBe('Emby upstream unavailable')
+    // And the spinner is gone, so it does not read as still searching.
+    expect(wrapper.find('[role="status"]').exists()).toBe(false)
+  })
+
+  it('clears a previous failure once a search succeeds', async () => {
+    const search = vi.spyOn(api, 'groupedSearch')
+      .mockRejectedValueOnce(new Error('Emby upstream unavailable'))
+      .mockResolvedValue({ groups: [], query: 'spider' } as never)
+
+    const wrapper = mount(GlobalLibrarySearch)
+    const input = wrapper.get('input[aria-label="Search all libraries"]')
+
+    await input.setValue('spider')
+    await vi.advanceTimersByTimeAsync(350)
+    await flushPromises()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+
+    await input.setValue('spiderman')
+    await vi.advanceTimersByTimeAsync(350)
+    await flushPromises()
+
+    // A banner that outlives the failure that raised it is the bug the abort
+    // guard above was written for, from the other direction.
+    expect(search).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
   it('reports an empty query when the input drops below the minimum length', async () => {
     // The parent restores the library when the query is empty. Sending the
     // single character instead read as a live search matching nothing, which
