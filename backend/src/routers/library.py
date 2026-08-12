@@ -12,6 +12,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from backend.src.dependencies import (
+    PARTY_HOST_RESPONSES,
     PARTY_UNLOCKED_RESPONSES,
     PartySession,
     get_emby_client,
@@ -40,7 +41,14 @@ from backend.src.schemas import (
     StreamsResponse,
 )
 
-router = APIRouter(prefix="/api", tags=["library"])
+# 502 is declared on the router, not repeated on eighteen routes. Every route
+# here reaches Emby, and an upstream transport failure is mapped to 502 by a
+# single application-level handler, so /docs and /redoc would otherwise
+# document a contract the server does not honour. Declaring it centrally is
+# also what stops it drifting as routes are added.
+UPSTREAM_RESPONSES: dict = {502: {"description": "Emby upstream unavailable"}}
+
+router = APIRouter(prefix="/api", tags=["library"], responses=UPSTREAM_RESPONSES)
 
 
 def _host_creds(party_session: PartySession) -> tuple[str, str]:
@@ -467,7 +475,11 @@ async def api_item_section(
     return {"section": section, "items": items}
 
 
-@router.get("/item/{series_id}/seasons", response_model=ItemChildrenResponse)
+@router.get(
+    "/item/{series_id}/seasons",
+    response_model=ItemChildrenResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
 async def api_series_seasons(
     series_id: str,
     party_session: PartySession = Depends(require_party_unlocked),
@@ -480,7 +492,11 @@ async def api_series_seasons(
     return {"items": items}
 
 
-@router.get("/item/{series_id}/episodes", response_model=ItemChildrenResponse)
+@router.get(
+    "/item/{series_id}/episodes",
+    response_model=ItemChildrenResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
 async def api_series_episodes(
     series_id: str,
     season_id: str | None = Query(None, alias="seasonId"),
@@ -497,7 +513,11 @@ async def api_series_episodes(
     return {"items": items}
 
 
-@router.put("/item/{item_id}/favorite", response_model=FavoriteResponse)
+@router.put(
+    "/item/{item_id}/favorite",
+    response_model=FavoriteResponse,
+    responses=PARTY_HOST_RESPONSES,
+)
 async def api_set_favorite(
     item_id: str,
     body: FavoriteRequest,
@@ -511,7 +531,11 @@ async def api_set_favorite(
     return {"success": True, "favorite": body.favorite}
 
 
-@router.put("/item/{item_id}/played", response_model=PlayedResponse)
+@router.put(
+    "/item/{item_id}/played",
+    response_model=PlayedResponse,
+    responses=PARTY_HOST_RESPONSES,
+)
 async def api_set_played(
     item_id: str,
     body: PlayedRequest,
@@ -523,7 +547,11 @@ async def api_set_played(
     return {"success": True, "played": body.played}
 
 
-@router.get("/playlists", response_model=PlaylistListResponse)
+@router.get(
+    "/playlists",
+    response_model=PlaylistListResponse,
+    responses=PARTY_HOST_RESPONSES,
+)
 async def api_playlists(
     party_session: PartySession = Depends(require_party_host),
     emby_client=Depends(get_emby_client),
@@ -533,7 +561,11 @@ async def api_playlists(
     return {"items": items}
 
 
-@router.post("/playlists", response_model=PlaylistCreateResponse)
+@router.post(
+    "/playlists",
+    response_model=PlaylistCreateResponse,
+    responses=PARTY_HOST_RESPONSES,
+)
 async def api_create_playlist(
     body: PlaylistCreateRequest,
     party_session: PartySession = Depends(require_party_host),
@@ -546,7 +578,11 @@ async def api_create_playlist(
     return {"id": playlist_id, "name": body.name}
 
 
-@router.post("/playlists/{playlist_id}/items", response_model=ActionSuccessResponse)
+@router.post(
+    "/playlists/{playlist_id}/items",
+    response_model=ActionSuccessResponse,
+    responses=PARTY_HOST_RESPONSES,
+)
 async def api_add_playlist_item(
     playlist_id: str,
     body: PlaylistAddRequest,

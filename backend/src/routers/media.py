@@ -24,7 +24,13 @@ from backend.src.dependencies import (
 )
 from backend.src.schemas import IntroResponse
 
-router = APIRouter(prefix="/api", tags=["media"])
+# Every route here reaches Emby, so 502 is declared once on the router rather
+# than repeated per route. See the same note in routers/library.py.
+router = APIRouter(
+    prefix="/api",
+    tags=["media"],
+    responses={502: {"description": "Emby upstream unavailable"}},
+)
 
 
 @router.get(

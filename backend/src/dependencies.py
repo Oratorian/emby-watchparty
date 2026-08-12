@@ -308,6 +308,14 @@ PARTY_UNLOCKED_RESPONSES: dict = {
     423: {"description": "Party has no host (LOCKED)"},
 }
 
+# Routes gated by `require_party_host` -- everything require_party_unlocked
+# needs, plus proof the caller holds the party's host grant. The write routes
+# that mutate the host's Emby account are on this gate.
+PARTY_HOST_RESPONSES: dict = {
+    **PARTY_UNLOCKED_RESPONSES,
+    403: {"description": "Host only"},
+}
+
 # Routes gated by `require_host_token` -- must have a cookie AND the
 # party must still have a usable host token (UNLOCKED *or* PLAYING-ONLY).
 PARTY_HOST_TOKEN_RESPONSES: dict = {
