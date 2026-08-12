@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import secrets
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 import httpx
 
@@ -767,7 +768,14 @@ class EmbyClient:
             params.append(f"maxHeight={int(max_height)}")
         if quality:
             params.append(f"quality={int(quality)}")
-        path = f"{self.server_url}/emby/Items/{item_id}/Images/{image_type}"
+        # Quoted, because this value comes from a path segment supplied by any
+        # party viewer and is interpolated straight into an upstream URL. An id
+        # containing ? or & would otherwise append attacker-chosen query
+        # parameters to a request the server makes with the HOST's credentials.
+        # image_type and image_index are already constrained at the route; this
+        # is the one value that was not.
+        safe_item_id = quote(str(item_id), safe="")
+        path = f"{self.server_url}/emby/Items/{safe_item_id}/Images/{image_type}"
         if image_index is not None:
             path += f"/{int(image_index)}"
         return f"{path}?{'&'.join(params)}"

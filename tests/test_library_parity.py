@@ -201,16 +201,20 @@ def test_filter_options_are_capability_driven_from_emby(live_watchparty) -> None
         {"value": "played", "label": "Played"},
         {"value": "resumable", "label": "In progress"},
     ]
-    assert controls["genre"]["values"] == [{"value": "Drama", "label": "Drama"}]
-    assert controls["container"]["values"] == [{"value": "mkv", "label": "MKV"}]
-    assert controls["video_codec"]["values"] == [{"value": "h264", "label": "H264"}]
-    assert controls["audio_codec"]["values"] == [{"value": "aac", "label": "AAC"}]
-    assert controls["subtitle_codec"]["values"] == [{"value": "subrip", "label": "SUBRIP"}]
+    # The captured catalogues carry many values, so these assert the known one
+    # is present and correctly labelled rather than that it is the only row.
+    # Pinning a single-element list required the fake to truncate every
+    # catalogue to one item, which left a backend that dropped or truncated
+    # values indistinguishable from one that did not.
+    assert {"value": "Drama", "label": "Drama"} in controls["genre"]["values"]
+    assert {"value": "mkv", "label": "MKV"} in controls["container"]["values"]
+    assert {"value": "h264", "label": "H264"} in controls["video_codec"]["values"]
+    assert {"value": "aac", "label": "AAC"} in controls["audio_codec"]["values"]
+    assert {"value": "subrip", "label": "SUBRIP"} in controls["subtitle_codec"]["values"]
     assert "audio_language" not in controls
 
     recorded = httpx.get(f"{live_watchparty.fake.url}/__test__/requests").json()["requests"]
-    option_paths = {row["path"] for row in recorded}
-    assert {
+    catalogue_paths = {
         "/emby/Genres",
         "/emby/Studios",
         "/emby/Tags",
@@ -221,7 +225,24 @@ def test_filter_options_are_capability_driven_from_emby(live_watchparty) -> None
         "/emby/AudioCodecs",
         "/emby/AudioLayouts",
         "/emby/SubtitleCodecs",
-    } <= option_paths
+    }
+    assert catalogue_paths <= {row["path"] for row in recorded}
+
+    # Each catalogue must be scoped to the library being browsed. Asserting
+    # only that the endpoint was CALLED passed with every scoping parameter
+    # deleted, because the fake ignores the query string: the request would
+    # have returned the whole server's genres for one library's filter panel.
+    unscoped = []
+    for path in sorted(catalogue_paths):
+        row = next(row for row in reversed(recorded) if row["path"] == path)
+        query = dict(row["query"])
+        if query.get("ParentId") != "library-1":
+            unscoped.append(f"{path}: ParentId={query.get('ParentId')!r}")
+        if query.get("IncludeItemTypes") != "Movie":
+            unscoped.append(f"{path}: IncludeItemTypes={query.get('IncludeItemTypes')!r}")
+    assert not unscoped, "filter catalogues fetched without the browsed scope:\n" + "\n".join(
+        unscoped
+    )
 
 
 def test_grouped_search_normalizes_supported_emby_item_types(live_watchparty) -> None:

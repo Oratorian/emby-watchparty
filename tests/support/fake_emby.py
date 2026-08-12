@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import copy
 import json
 from dataclasses import dataclass, field
@@ -33,6 +34,10 @@ _SEGMENT_CHUNKS = [
     _SEGMENT_BYTES[: len(_SEGMENT_BYTES) // 2],
     _SEGMENT_BYTES[len(_SEGMENT_BYTES) // 2 :],
 ]
+# 1x1 transparent PNG, served by the artwork endpoint.
+_PIXEL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
 
 
 MOVIE: dict[str, Any] = {
@@ -153,14 +158,45 @@ def _require_loopback(request: Request) -> None:
 
 
 def _filter_artifact(kind: str) -> dict[str, Any]:
+    """Serve the captured catalogue with one known value pinned at the front.
+
+    The known value is what tests select on. The rest of the artifact is kept
+    rather than discarded: reducing every catalogue to a single row made the
+    fake unable to express a filter control with more than one option, so
+    nothing could detect a backend that dropped, truncated or mis-ordered the
+    values it received.
+    """
     artifact_name, value = _FILTER_ARTIFACT_NAMES[kind]
     payload = json.loads((_ARTIFACT_ROOT / f"{artifact_name}.json").read_text(encoding="utf-8"))
     result = copy.deepcopy(payload)
-    first = dict(result["Items"][0])
-    first["Name"] = value
-    result["Items"] = [first]
-    result["TotalRecordCount"] = 1
+    items = list(result.get("Items") or [])
+    if items:
+        first = dict(items[0])
+        first["Name"] = value
+        items[0] = first
+    else:
+        items = [{"Name": value}]
+    result["Items"] = items
+    result["TotalRecordCount"] = len(items)
     return result
+
+
+# Ids the captured corpus actually describes, plus the fake's own movie. A real
+# Emby answers 404 for anything else; returning a fully-shaped payload for every
+# id meant no test could detect a wrong or missing item id being sent upstream.
+KNOWN_ITEM_IDS = {
+    MOVIE["Id"],
+    "movie-1",
+    "episode-1",
+    "series-1",
+    "season-1",
+    "playlist-1",
+}
+
+
+def _known_item(item_id: str) -> None:
+    if item_id not in KNOWN_ITEM_IDS:
+        raise HTTPException(status_code=404, detail="Item not found")
 
 
 def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
@@ -389,13 +425,15 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
 
     @app.api_route("/emby/Users/{user_id}/FavoriteItems/{item_id}", methods=["POST", "DELETE"])
     async def favorite_item(request: Request, user_id: str, item_id: str):
-        del user_id, item_id
+        del user_id
+        _known_item(item_id)
         state.record(request)
         return {"IsFavorite": request.method == "POST"}
 
     @app.api_route("/emby/Users/{user_id}/PlayedItems/{item_id}", methods=["POST", "DELETE"])
     async def played_item(request: Request, user_id: str, item_id: str):
-        del user_id, item_id
+        del user_id
+        _known_item(item_id)
         state.record(request)
         return {"Played": request.method == "POST"}
 
@@ -410,9 +448,26 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         state.record(request)
         return {}
 
+    @app.get("/emby/Items/{item_id}/Images/{image_type}")
+    @app.get("/emby/Items/{item_id}/Images/{image_type}/{image_index}")
+    async def item_image(
+        request: Request, item_id: str, image_type: str, image_index: str | None = None
+    ):
+        """Artwork bytes. The fake had no route here at all, so /api/image
+        answered 404 in every pytest and Playwright run and the proxy had no
+        executable coverage: neither its bounds nor its auth were exercised."""
+        _known_item(item_id)
+        state.record(request)
+        if image_type not in {"Primary", "Backdrop", "Logo", "Thumb", "Art", "Banner"}:
+            raise HTTPException(status_code=404, detail="No such image type")
+        if image_index is not None and not image_index.isdigit():
+            raise HTTPException(status_code=404, detail="No such image index")
+        # A real 1x1 PNG, enough to prove bytes and content-type round-trip.
+        return Response(content=_PIXEL_PNG, media_type="image/png")
+
     @app.get("/emby/Items/{item_id}/Similar")
     async def similar_items(request: Request, item_id: str):
-        del item_id
+        _known_item(item_id)
         state.record(request)
         return json.loads((_ARTIFACT_ROOT / "related-items.json").read_text(encoding="utf-8"))
 
@@ -430,13 +485,15 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
 
     @app.get("/emby/Users/{user_id}/Items/{item_id}/LocalTrailers")
     async def local_trailers(request: Request, user_id: str, item_id: str):
-        del user_id, item_id
+        del user_id
+        _known_item(item_id)
         state.record(request)
         return json.loads((_ARTIFACT_ROOT / "trailers.json").read_text(encoding="utf-8"))
 
     @app.get("/emby/Users/{user_id}/Items/{item_id}/SpecialFeatures")
     async def special_features(request: Request, user_id: str, item_id: str):
-        del user_id, item_id
+        del user_id
+        _known_item(item_id)
         state.record(request)
         return json.loads((_ARTIFACT_ROOT / "extras.json").read_text(encoding="utf-8"))
 

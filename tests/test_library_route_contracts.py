@@ -110,3 +110,56 @@ def test_every_library_route_requires_an_unlocked_party() -> None:
             unguarded.append(getattr(route, "path", "?"))
 
     assert not unguarded, f"library routes reachable without a party session: {unguarded}"
+
+
+def test_artwork_proxy_returns_bytes_and_cannot_forge_an_upstream_query(live_watchparty) -> None:
+    """The artwork proxy had no executable coverage at all.
+
+    The fake Emby served no Images route, so /api/image answered 404 in every
+    pytest and Playwright run: neither its bounds, its auth, nor its URL
+    construction were exercised by anything.
+
+    item_id was also the one value interpolated raw into the upstream URL while
+    type and index were both constrained, so an id carrying ? or & appended
+    attacker-chosen parameters to a request the server makes with the HOST's
+    credentials.
+    """
+    client = _unlocked_client(live_watchparty)
+    try:
+        good = client.get("/api/image/movie-1", params={"maxWidth": 240})
+        forged = client.get("/api/image/movie-1%3FmaxWidth%3D9999%26X%3D1")
+    finally:
+        client.close()
+
+    assert good.status_code == 200
+    assert good.headers["content-type"].startswith("image/")
+    assert good.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+    # The forged id must never become extra query parameters upstream.
+    recorded = httpx.get(f"{live_watchparty.fake.url}/__test__/requests").json()["requests"]
+    image_rows = [row for row in recorded if "/Images/" in row["path"]]
+    assert image_rows, "no upstream image request recorded"
+    for row in image_rows:
+        assert dict(row["query"]).get("X") is None
+    assert forged.status_code in {404, 422}
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [("/api/image/movie-1", 200), ("/api/image/no-such-item", 404)],
+)
+def test_a_wrong_item_id_is_visible_rather_than_answered(
+    live_watchparty, path: str, expected: int
+) -> None:
+    """The fake used to answer any id with a fully shaped payload.
+
+    That made a wrong or missing item id undetectable by any test, which is the
+    harness being more permissive than a real Emby.
+    """
+    client = _unlocked_client(live_watchparty)
+    try:
+        response = client.get(path)
+    finally:
+        client.close()
+
+    assert response.status_code == expected
