@@ -8,13 +8,63 @@ The 2.0 "Midnight Premiere" log (beta1 through beta18, every Added / Changed / F
 
 ## [Unreleased]
 
-Two bodies of work since beta1, both **[dnordel](https://github.com/dnordel)**'s, both
+Three bodies of work since beta1. Two are **[dnordel](https://github.com/dnordel)**'s, both
 landed on `3.0-dev` via their branch after an audit rather than through a PR merge:
 appliance deployment ([#58](https://github.com/Oratorian/emby-watchparty/pull/58)) and
-migration diagnostics ([#57](https://github.com/Oratorian/emby-watchparty/pull/57)).
+migration diagnostics ([#57](https://github.com/Oratorian/emby-watchparty/pull/57)). The
+third is per-viewer codec negotiation ([#61](https://github.com/Oratorian/emby-watchparty/issues/61)),
+built on the stable line and forward-ported.
 
-Neither is in a published image. `:3.0.0-beta1`, `:devel` and `:nightly` all still point
+None of it is in a published image. `:3.0.0-beta1`, `:devel` and `:nightly` all still point
 at beta1.
+
+---
+
+### Per-viewer codec negotiation
+
+Reported by **[miakkia](https://github.com/miakkia)** as [#61](https://github.com/Oratorian/emby-watchparty/issues/61), with a local patch and a measurement showing Emby reporting Direct Play once the source codec was preserved. Built on `main` and released as 2.1.2, then forward-ported here as `feat/hevc-client-capability-3.0`, four commits, `+473 / -12` over 12 files.
+
+Built stable-first deliberately. The bug is in 2.x, most users are on 2.x, and shipping the fix only on an unreleased 3.0 would have left them waiting on a major version for a one-parameter defect. Forward-porting also meant the design was validated against a real Emby server before it went anywhere near the branch that is still moving.
+
+#### What was actually wrong
+
+`VideoCodec=h264` was hardcoded into the parameter list for every stream, including h264 sources. `TranscodeReasons=VideoCodecNotSupported` was the obvious suspect and is not the cause: Emby treats that field as informational, for logging and telemetry, not as the copy-or-transcode decision. Removing it alone changes nothing, which is why the reporter's own patch worked only once they also changed the codec parameter.
+
+A second defect fell out of the first. The human-readable log line was written independently of the parameter it described, so it kept claiming "Source is hevc, transcoding to h264" after the request had stopped asking for that. Both now derive from one `keep_source_codec` decision, so the log cannot go stale against the URL again.
+
+#### Why not simply preserve the source codec
+
+That is what the issue proposed, and it is unsafe: nothing detected client capability, browser HEVC support is narrower than it looks, and in a synchronised party the failure lands on one person as a black video while everyone else is fine.
+
+Browser HEVC turned out to depend on four separate things, two of which a user can change without installing anything. Chromium ships no software HEVC decoder and defers to the platform, so it needs hardware acceleration left enabled. Firefox on Windows goes through Media Foundation and needs a Microsoft Store codec that most Windows 10 installs lack. Apple platforms have it natively. Measured states during the work included one browser giving both answers on one machine before and after an OS-level install, and two Chromes disagreeing purely on a settings toggle. No user-agent rule reproduces that; only a runtime probe does.
+
+The probe accepts only `probably` from `canPlayType`, since `maybe` is the browser guessing and a guess is the thing being eliminated. Anything that throws counts as no capability.
+
+#### Scope boundary
+
+Watch Party states what the viewer's browser reported it can decode. What Emby does with that, stream-copy or re-encode, and which encoder it selects, is Emby's decision and is not modelled here.
+
+A stricter rule was proposed during review and rejected: keep the source codec only when Emby would *actually* copy it, meaning no bitrate cap, no resolution cap and `FORCE_TRANSCODE` off. It required predicting another system's internal decision from the outside, which cannot be verified from here and would go stale on any Emby release. Its premise was also wrong, resting on a capped HEVC session falling back to software x265 when the hard fallback is x264, which removes the cost the rule existed to avoid.
+
+#### Verification
+
+Verified end to end on 2.x by installing and then removing the Windows HEVC Store codec and watching the request switch between `VideoCodec=hevc` with `-c:v:0 copy` at ~50 ms per 3 s segment, and `VideoCodec=h264` with `TranscodeReasons=VideoCodecNotSupported` and libx264 at ~1750 ms, with nothing else changed. That is the whole claim, observed rather than reasoned about.
+
+The no-capability path was checked for byte-identical output against 2.1.1 across h264, hevc and av1 sources at auto, capped and resolution-only qualities, so the change is inert until a browser actually reports something.
+
+#### 3.0 deltas, and the test they needed
+
+Four things differ from the 2.1.2 change because 3.0 has diverged underneath it: `join_party` is a validated typed contract, so `video_codecs` is declared on `JoinPartyPayload` and the socket schema and TypeScript types are regenerated; the party is a typed aggregate, so codecs are a domain field rather than a dict key; the reconnect join moved to `usePartyReconnect`, so there are three emit sites; and strict inbound validation makes the payload the first gate.
+
+The eight forward-ported tests cover negotiation, which is identical on both lines, and covered none of that. Three were added here. The field being optional is load-bearing in a way the 2.x line has no equivalent for: if a missing `video_codecs` failed validation, an unpatched client would not lose a stream copy, it would fail to join the party at all. Strict validation also rejects a wrong-shaped list before `_parse_client_codecs` sees it, so on this line the allowlist is the second gate rather than the first; it keeps its own defences, because it is written against the raw 2.x-shaped value, but the ordering is now pinned so a later loosening of the contract cannot move the trust boundary unnoticed.
+
+#### A correction, recorded rather than quietly fixed
+
+The browser-matrix fixture originally recorded the second Chrome as lacking HEVC hardware. It has the hardware; acceleration was switched off in the browser's settings. The distinction changes what the fixture argues: absent hardware makes support a property of the machine, checkable once, while a settings toggle makes it a property of the session, which is the actual reason the probe runs per page load and is not cached beyond it. An inference about the reporter's Opera GX result was dropped in the same commit, because they reported HEVC working with acceleration on and never reported testing it off.
+
+#### Still open
+
+The README section on what decides whether a viewer gets HEVC exists on `main` and has not been carried here.
 
 ---
 
@@ -147,7 +197,7 @@ One near-miss is worth recording. `chat.py` emits `rate_limited` with `to=sid`, 
 
 Every fix for a real defect has a test proven to fail against the code it replaced, by reverting the source and rerunning; tests that pass on both sides are labelled guards rather than passed off as regression coverage. The audit's own findings were adversarially refuted before being accepted, with lenses assigned by severity, and vote splits recorded rather than collapsed.
 
-Current state after both bodies of work: **197 backend tests** across 27 modules, **31 Vitest**, **16 Playwright**. `ruff check` and `ruff format --check` clean over 77 files, `mypy` clean over the 44 it covers (`backend` and `scripts`), eslint and `vue-tsc` clean, and the generated deployment artifacts in sync with the schema. All on 3.12.10, run with CI's exact commands against the merged tree.
+Current state after all three bodies of work: **212 backend tests** across 28 modules, **37 Vitest** across 13 files, **16 Playwright**. `ruff check` and `ruff format --check` clean over 78 files, `mypy` clean over the 44 it covers (`backend` and `scripts`), eslint and `vue-tsc` clean, the socket contract free of drift, and the generated deployment artifacts in sync with the schema. All on 3.12.10, run with CI's exact commands against the merged tree.
 
 That last clause is not decoration. The first draft of this section claimed `ruff format` was clean having only ever run `ruff check`, and CI runs both; the merged tree was red on the format step until a fact-check pass caught it. The gap and its correction are recorded here rather than quietly fixed, because "the checks pass" is the one claim a reader cannot verify without redoing the work.
 
