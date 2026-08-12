@@ -8,15 +8,85 @@ The 2.0 "Midnight Premiere" log (beta1 through beta18, every Added / Changed / F
 
 ## [3.0.0-beta2] - Unreleased Internal beta - Director's Cut
 
-Three bodies of work since beta1. Two are **[dnordel](https://github.com/dnordel)**'s, both
+Four bodies of work since beta1. Three are **[dnordel](https://github.com/dnordel)**'s, all
 landed on `3.0-dev` via their branch after an audit rather than through a PR merge:
-appliance deployment ([#58](https://github.com/Oratorian/emby-watchparty/pull/58)) and
-migration diagnostics ([#57](https://github.com/Oratorian/emby-watchparty/pull/57)). The
-third is per-viewer codec negotiation ([#61](https://github.com/Oratorian/emby-watchparty/issues/61)),
-built on the stable line and forward-ported.
+appliance deployment ([#58](https://github.com/Oratorian/emby-watchparty/pull/58)),
+migration diagnostics ([#57](https://github.com/Oratorian/emby-watchparty/pull/57)) and
+library parity ([#59](https://github.com/Oratorian/emby-watchparty/pull/59) +
+[#60](https://github.com/Oratorian/emby-watchparty/pull/60)). The fourth is per-viewer codec
+negotiation ([#61](https://github.com/Oratorian/emby-watchparty/issues/61)), built on the
+stable line and forward-ported.
 
 None of it is in a published image. `:3.0.0-beta1`, `:devel` and `:nightly` all still point
 at beta1.
+
+---
+
+### Library parity
+
+**[dnordel](https://github.com/dnordel)**'s, as [#59](https://github.com/Oratorian/emby-watchparty/pull/59) and [#60](https://github.com/Oratorian/emby-watchparty/pull/60): 39 commits over 89 files, `+23872 / -226`, of which roughly 17000 lines are a captured corpus of real Emby 4.9.5.0 responses rather than code. Filters driven by server capability, an A-Z jump backed by Emby's prefix index, grouped search, a full title detail view, and host actions for played/favourite/playlists.
+
+#### The stacking, and why neither could merge
+
+#60 targets #59's branch rather than `3.0-dev`, so one blocked merge blocked both. #59 branched before the codec negotiation landed and conflicted with it in `SUMMARY-OF-CHANGES.md`, which is all GitHub needed to refuse. Assembled locally instead; both PRs are closed with that explanation.
+
+Only one conflict needed judgement rather than a side. #60 moved the `join_party` emit inside `if (bound)`, so a tab that failed to bind no longer announces a join, while the codec work had added `video_codecs` to that emit while it still sat outside the block. Taking #60's version drops `video_codecs` and silently returns every viewer to h264-only with no test failing; taking the other leaves two emits so every successful join fires twice.
+
+#### The audit
+
+Twelve dimension finders over the merged diff, each finding then put to three adversarial verifiers on different lenses (is it reachable, is it handled elsewhere, does anything actually break) with the default set to refuted. 229 agents, 77 candidates, **64 confirmed**: 6 critical, 26 high, 26 medium, 6 low. All fixed here.
+
+The `authz-writes` dimension came back clean, which is worth recording: the new `PUT favorite`, `PUT played` and `POST playlists` routes act on the host's Emby account from a party containing untrusted guests, and that was the sharpest question going in.
+
+#### Two merge blockers that were green, not red
+
+Neither showed as a failure, which is why they matter more than the count suggests.
+
+The 80% changed-line coverage gate matched **zero** Python lines and reported 100%. coverage.py names each file relative to its `--cov` root (`src/app.py`) while the diff produces repo-relative paths (`backend/src/app.py`), so the two sets could never intersect. Measured on this branch's own diff: 2946 changed Python lines, 0 matched. Its unit test could not catch it because the fixture hand-wrote a path shape coverage.py never emits. A per-language breakdown now prints on every run, because a gate measuring nothing is indistinguishable from a gate passing.
+
+The `container` job could never go green: it starts the fake Emby on loopback and then points the containerised app at the docker bridge gateway. `ci-gate` requires that job, so every PR was blocked. Demonstrated by connecting from this machine's own non-loopback address rather than by reading the config.
+
+#### A public, permanent leak
+
+`scripts/capture_emby_artifacts.py` pulls from a real Emby into a corpus committed to a public repository, and its sanitizer was **default-allow**: any key nobody had explicitly listed passed through. `SortName`, `ForcedSortName` and `FileName` shipped verbatim beside the `<text-037>` placeholders meant to anonymise them, so `"…And Justice for All"` and `24 S01e01 1200 A.M. - 100 A.M..mkv` sat next to their own redactions. `system-info.json` carried the capture machine's hostname.
+
+The `providerid` rule was dead code. `ProviderIds` is a dict and the key check sat below the dict-recursion branch, so it could never fire: 97 raw Imdb, Tmdb, Tvdb, TvRage and Zap2It ids shipped, and an external id re-identifies a title on its own.
+
+The leak test could not fail. `PRIVATE_MARKERS` listed `api_key`, `access_token`, `password` and two IP prefixes, every one of them a string the sanitizer already redacts unconditionally, so the assertion had nothing to match and passed over a corpus containing all of the above.
+
+All three had to hold simultaneously for this to ship. The sanitizer now default-denies with the private flag inherited through the recursion, the test asserts the positive property (every string leaf under a title key, a private ancestor, or matching a content-betraying shape must be a placeholder), and the committed corpus is repaired in place: 169 values across 10 files. **The working tree is clean; git history is not.** Removing it there needs a history rewrite, which is the maintainer's call.
+
+#### Both recurring patterns, again
+
+Third cycle for both, and together they account for most of the yield.
+
+*The harness is more permissive than the real server.* Seven detail endpoints ran `del item_id` and answered any id with a fully shaped payload. `_filter_artifact` truncated every captured catalogue to a single row, so the fake could not express a filter control with more than one option. The fake served no Images route at all, so `/api/image` answered 404 in every run and the artwork proxy had no executable coverage, which is what hid `item_id` being the one value interpolated raw into the upstream URL while type and index were both constrained. Failure injection was wired into five legacy handlers and none of the library ones, so every new upstream-failure path was untestable in principle.
+
+Four tests were confirmed unable to fail. `test_filter_options_are_capability_driven_from_emby` passed with every scoping parameter deleted. The multi-value filter test sent one element per list, and a single-element list joins to itself under any separator, so all fourteen could have been replaced with garbage.
+
+*The twin path.* `_normalize_items_response` guarded the POST twin but not GET, which hits the same upstream endpoint and 500d on the exact row the guard was written for. `/api/search` took an uncapped `q` where `/search/grouped` capped at 200, and ranking is O(len(q) x len(title)) on a single event loop. `GET /api/items` forwarded `startIndex` and `limit` to Emby unbounded where the POST twin bounds both. `ChangeStreamsPayload` left stream indices unbounded where `SelectVideoPayload` bounds them. The version switch passed the raw party clock as a start time where both sibling paths clamp.
+
+The audit named eight routes missing the upstream-error mapping; enumerating the router found **thirteen**. Rather than write a thirteenth copy, it is registered once for the whole application, which is the shape of most of these fixes: one authority instead of N copies. `query_items` now calls the same scope resolver `GET /api/items` uses; `clamp_start_seconds` is one shared helper; the REST contract is checked by the compiler.
+
+#### What the fixes exposed on their own
+
+Three defects the audit did not find, surfaced by the repairs.
+
+`get_libraries` swallowed upstream errors and returned `{"Items": []}`, which the UI renders as "No items found." An unreachable Emby was reported to the viewer as an empty media server, the one diagnosis guaranteed to send them looking in the wrong place.
+
+`LibraryItem.Type` was declared `string` while the backend declares `str | None`. The lie was load-bearing: `LibraryBrowser` guards `it.Type &&` in one branch and omits it in the neighbouring line, which only reads as safe because the type claimed null was impossible. Found by wiring the generated REST types into the build.
+
+That same assertion found nine fields the backend has always sent that the frontend type never declared, `SeriesId` among them, so components needing the parent series redeclared a local shape instead.
+
+#### Verification posture
+
+Every fix for a real defect has a test proven to fail against the code it replaces, by reverting the source and rerunning. Where a test passes on both sides it is labelled a guard rather than passed off as coverage: two of the four `VideoControls` tests are guards, and the commit says so.
+
+Two fixes have **no** automated test and are flagged rather than implied: the party-rejoin hang and the filter-panel wipe both need a mounted `PartyView` or a genuinely aborted in-flight request, and neither could be written to a standard worth trusting over the reasoning.
+
+One test was written, found to be a tautology that re-implemented the clamp arithmetic it was meant to check, and deleted in favour of one driving real Emby tick payloads. A `vue-tsc` error was committed and caught one commit later, because the exit code had been read through a pipe and reported `tail`'s status.
+
+State after this work: **267 backend tests** across 36 modules, **65 Vitest** across 21 files, **16 Playwright**. `ruff check` and `ruff format --check` clean over 90 files, `mypy` clean over 48, eslint and `vue-tsc` clean, the socket contract, the REST contract and the deployment artifacts all free of drift. All on 3.12.10, run with CI's exact commands.
 
 ---
 
@@ -226,7 +296,7 @@ One near-miss is worth recording. `chat.py` emits `rate_limited` with `to=sid`, 
 
 Every fix for a real defect has a test proven to fail against the code it replaced, by reverting the source and rerunning; tests that pass on both sides are labelled guards rather than passed off as regression coverage. The audit's own findings were adversarially refuted before being accepted, with lenses assigned by severity, and vote splits recorded rather than collapsed.
 
-Current state after all three bodies of work: **212 backend tests** across 28 modules, **37 Vitest** across 13 files, **16 Playwright**. `ruff check` and `ruff format --check` clean over 78 files, `mypy` clean over the 44 it covers (`backend` and `scripts`), eslint and `vue-tsc` clean, the socket contract free of drift, and the generated deployment artifacts in sync with the schema. All on 3.12.10, run with CI's exact commands against the merged tree.
+Current state after all four bodies of work: **267 backend tests** across 36 modules, **65 Vitest** across 21 files, **16 Playwright**. `ruff check` and `ruff format --check` clean over 90 files, `mypy` clean over the 48 it covers (`backend` and `scripts`), eslint and `vue-tsc` clean, the socket contract and the REST contract free of drift, and the generated deployment artifacts in sync with the schema. All on 3.12.10, run with CI's exact commands against the merged tree.
 
 That last clause is not decoration. The first draft of this section claimed `ruff format` was clean having only ever run `ruff check`, and CI runs both; the merged tree was red on the format step until a fact-check pass caught it. The gap and its correction are recorded here rather than quietly fixed, because "the checks pass" is the one claim a reader cannot verify without redoing the work.
 
