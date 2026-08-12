@@ -115,6 +115,34 @@ describe('VideoPlayer native HLS support', () => {
     wrapper.unmount()
   })
 
+  it('forwards a play started while the stream-settle guard is active', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(VideoPlayer, {
+      props: {
+        streamUrl: '/hls/native/master.m3u8',
+        title: 'Movie',
+        playing: false,
+      },
+    })
+    const video = wrapper.get('video').element as HTMLVideoElement
+    let paused = true
+    Object.defineProperty(video, 'paused', {
+      configurable: true,
+      get: () => paused,
+    })
+
+    await wrapper.get('video').trigger('loadedmetadata')
+    paused = false
+    await wrapper.get('video').trigger('play')
+    expect(wrapper.emitted('play')).toBeUndefined()
+
+    await vi.advanceTimersByTimeAsync(500)
+    expect(wrapper.emitted('play')).toHaveLength(1)
+
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
   it('releases the native HLS request when the player unmounts', () => {
     const wrapper = mount(VideoPlayer, {
       props: {

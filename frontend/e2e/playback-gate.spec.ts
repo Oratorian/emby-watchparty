@@ -83,11 +83,22 @@ test('@playback-gate complete authenticated fake-Emby playback flow', async ({ b
 
   const ready = await page.request.get('/api/ready')
   await expectOk(ready, 'readiness')
+  // Keep mount startup in flight while the user joins. This locks down a
+  // race where startup used to read the username written by the manual
+  // join and incorrectly launch a second auto-join for the same tab.
+  await page.route('**/api/version', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 750))
+    await route.continue()
+  })
   const partyUrl = await createAndJoin(page, 'Alice')
 
   const guestContext = await browser.newContext()
   const guest = await guestContext.newPage()
   guest.on('response', audit)
+  await guest.route('**/api/version', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 750))
+    await route.continue()
+  })
   await guest.goto(partyUrl)
   await guest.getByPlaceholder('Your name (optional)').fill('Bob')
   await guest.getByRole('button', { name: 'Join', exact: true }).click()

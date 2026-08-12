@@ -78,9 +78,7 @@ async def get_intro_info(
 )
 async def api_image(
     item_id: str,
-    type: Literal["Primary", "Backdrop", "Logo", "Thumb", "Art", "Banner"] = Query(
-        "Primary"
-    ),
+    type: Literal["Primary", "Backdrop", "Logo", "Thumb", "Art", "Banner"] = Query("Primary"),
     index: int | None = Query(None, ge=0, le=99),
     # Optional sizing forwarded to Emby. Library card thumbnails only
     # need ~240x360, but the original 2.0 endpoint proxied the full

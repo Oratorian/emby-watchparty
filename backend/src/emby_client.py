@@ -278,9 +278,7 @@ class EmbyClient:
         response.raise_for_status()
         return response.json()
 
-    async def query_items(
-        self, query, access_token=None, user_id=None, *, prefixes=False
-    ):
+    async def query_items(self, query, access_token=None, user_id=None, *, prefixes=False):
         """Run a strict watchparty library query through Emby's allowlisted API."""
         if not user_id:
             return {"Items": [], "TotalRecordCount": 0, "StartIndex": 0}
@@ -323,11 +321,7 @@ class EmbyClient:
             "Is3D": filters["is_3d"],
         }
         params.update(
-            {
-                key: str(value).lower()
-                for key, value in boolean_values.items()
-                if value is not None
-            }
+            {key: str(value).lower() for key, value in boolean_values.items() if value is not None}
         )
 
         list_values = {
@@ -335,6 +329,7 @@ class EmbyClient:
             "OfficialRatings": (filters["official_ratings"], "|"),
             "Studios": (filters["studios"], "|"),
             "Tags": (filters["tags"], "|"),
+            "PersonIds": (filters["person_ids"], ","),
             "Years": (filters["years"], ","),
             "Containers": (filters["containers"], ","),
             "VideoCodecs": (filters["video_codecs"], ","),
@@ -402,9 +397,7 @@ class EmbyClient:
                 params=count_params,
             )
             count_response.raise_for_status()
-            params["StartIndex"] = int(
-                count_response.json().get("TotalRecordCount") or 0
-            )
+            params["StartIndex"] = int(count_response.json().get("TotalRecordCount") or 0)
 
         response = await self.gateway.get(
             f"/emby/Users/{user_id}/Items",
@@ -524,6 +517,7 @@ class EmbyClient:
                 "SeriesId,SeasonId"
             ),
             "IncludeItemTypes": include_item_types,
+            "Limit": 60,
             "api_key": self._auth_param(access_token),
         }
         try:
@@ -533,14 +527,126 @@ class EmbyClient:
                 params=params,
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            compact_query = self._compact_search_text(str(query))
+            if len(compact_query) < 5:
+                return result
+
+            # Emby's SearchTerm matching is punctuation-sensitive: for
+            # example, "spiderman" returns nothing for "Spider-Man".
+            # Ask for a bounded prefix candidate set, then rank locally
+            # after removing punctuation/spacing and allowing a small typo.
+            params["SearchTerm"] = compact_query[:4]
+            fallback = await self.gateway.get(
+                f"/emby/Users/{user_id}/Items",
+                headers=self._headers(access_token, user_id),
+                params=params,
+            )
+            fallback.raise_for_status()
+            candidates_by_id: dict[str, dict] = {}
+            for item in [*result.get("Items", []), *fallback.json().get("Items", [])]:
+                identity = str(item.get("Id") or (item.get("Type"), item.get("Name")))
+                candidates_by_id.setdefault(identity, item)
+
+            # A misspelled surname may produce no candidates from the
+            # first-name prefix (for example, "sean conery" -> "sean").
+            # If nothing collected so far is even a fuzzy match, retry a
+            # bounded prefix from the final word so Emby can surface the
+            # person/title for local ranking ("con" -> "Sean Connery").
+            query_words = [
+                self._compact_search_text(word)
+                for word in str(query).split()
+                if self._compact_search_text(word)
+            ]
+            surname_prefix = query_words[-1][:3] if len(query_words) > 1 else ""
+            has_fuzzy_candidate = any(
+                self._fuzzy_search_score(compact_query, item.get("Name", "")) > 0
+                for item in candidates_by_id.values()
+            )
+            if (
+                surname_prefix
+                and surname_prefix != params["SearchTerm"]
+                and not has_fuzzy_candidate
+            ):
+                params["SearchTerm"] = surname_prefix
+                surname_fallback = await self.gateway.get(
+                    f"/emby/Users/{user_id}/Items",
+                    headers=self._headers(access_token, user_id),
+                    params=params,
+                )
+                surname_fallback.raise_for_status()
+                for item in surname_fallback.json().get("Items", []):
+                    identity = str(item.get("Id") or (item.get("Type"), item.get("Name")))
+                    candidates_by_id.setdefault(identity, item)
+            ranked = sorted(
+                (
+                    (self._fuzzy_search_score(compact_query, item.get("Name", "")), index, item)
+                    for index, item in enumerate(candidates_by_id.values())
+                ),
+                key=lambda row: (-row[0], row[1]),
+            )
+            has_exact_normalized_match = any(score > 0.9 for score, _, _ in ranked)
+            items = [
+                item
+                for score, _, item in ranked
+                if score > (0.9 if has_exact_normalized_match else 0)
+            ]
+            return {"Items": items, "TotalRecordCount": len(items)}
         except httpx.HTTPError as exc:
             self.logger.error("Error searching items: error=%s", type(exc).__name__)
             return {"Items": []}
 
-    async def get_item_section(
-        self, item_id, section, access_token=None, user_id=None
-    ):
+    @staticmethod
+    def _compact_search_text(value: str) -> str:
+        return "".join(character for character in value.casefold() if character.isalnum())
+
+    @classmethod
+    def _fuzzy_search_score(cls, compact_query: str, title: str) -> float:
+        compact_title = cls._compact_search_text(title)
+        if not compact_title:
+            return 0.0
+        if compact_query in compact_title:
+            return 1.0 - min(len(compact_title) - len(compact_query), 100) / 1000
+        window_length = len(compact_query)
+        windows = (
+            [compact_title]
+            if len(compact_title) <= window_length
+            else [compact_title]
+            + [
+                compact_title[index : index + window_length]
+                for index in range(len(compact_title) - window_length + 1)
+            ]
+        )
+        distance = min(cls._damerau_levenshtein(compact_query, window) for window in windows)
+        allowed_distance = max(1, len(compact_query) // 10)
+        return 0.9 - distance * 0.05 if distance <= allowed_distance else 0.0
+
+    @staticmethod
+    def _damerau_levenshtein(left: str, right: str) -> int:
+        previous_previous: list[int] | None = None
+        previous = list(range(len(right) + 1))
+        for left_index, left_character in enumerate(left, start=1):
+            current = [left_index]
+            for right_index, right_character in enumerate(right, start=1):
+                cost = 0 if left_character == right_character else 1
+                value = min(
+                    current[right_index - 1] + 1,
+                    previous[right_index] + 1,
+                    previous[right_index - 1] + cost,
+                )
+                if (
+                    previous_previous is not None
+                    and left_index > 1
+                    and right_index > 1
+                    and left_character == right[right_index - 2]
+                    and left[left_index - 2] == right_character
+                ):
+                    value = min(value, previous_previous[right_index - 2] + 1)
+                current.append(value)
+            previous_previous, previous = previous, current
+        return previous[-1]
+
+    async def get_item_section(self, item_id, section, access_token=None, user_id=None):
         routes = {
             "related": (f"/emby/Items/{item_id}/Similar", {"UserId": user_id, "Limit": 12}),
             "trailers": (f"/emby/Users/{user_id}/Items/{item_id}/LocalTrailers", {}),
@@ -556,9 +662,7 @@ class EmbyClient:
         payload = response.json()
         return payload.get("Items", []) if isinstance(payload, dict) else payload
 
-    async def get_series_seasons(
-        self, series_id, access_token=None, user_id=None
-    ):
+    async def get_series_seasons(self, series_id, access_token=None, user_id=None):
         response = await self.gateway.get(
             f"/emby/Shows/{series_id}/Seasons",
             headers=self._headers(access_token, user_id),
@@ -567,9 +671,7 @@ class EmbyClient:
         response.raise_for_status()
         return response.json().get("Items", [])
 
-    async def get_series_episodes(
-        self, series_id, season_id=None, access_token=None, user_id=None
-    ):
+    async def get_series_episodes(self, series_id, season_id=None, access_token=None, user_id=None):
         params = {"UserId": user_id}
         if season_id:
             params["SeasonId"] = season_id
@@ -581,9 +683,7 @@ class EmbyClient:
         response.raise_for_status()
         return response.json().get("Items", [])
 
-    async def set_favorite(
-        self, item_id, favorite, access_token=None, user_id=None
-    ):
+    async def set_favorite(self, item_id, favorite, access_token=None, user_id=None):
         path = f"/emby/Users/{user_id}/FavoriteItems/{item_id}"
         method = self.gateway.post if favorite else self.gateway.delete
         response = await method(path, headers=self._headers(access_token, user_id))
@@ -613,9 +713,7 @@ class EmbyClient:
         response.raise_for_status()
         return response.json()["Id"]
 
-    async def add_to_playlist(
-        self, playlist_id, item_id, access_token=None, user_id=None
-    ):
+    async def add_to_playlist(self, playlist_id, item_id, access_token=None, user_id=None):
         response = await self.gateway.post(
             f"/emby/Playlists/{playlist_id}/Items",
             headers=self._headers(access_token, user_id),

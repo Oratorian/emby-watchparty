@@ -14,6 +14,8 @@ export interface MemberInfo {
 type VideoInfo = ServerToClientPayloads['video_selected']['video']
 
 const CLIENT_ID_STORAGE_KEY = 'emby-watchparty-client-id'
+const TAB_CLIENT_ID_STORAGE_KEY = 'emby-watchparty-tab-client-id'
+const IDENTITY_IN_USE_MESSAGE = 'Participant identity is already in use'
 
 // The session cookie holds exactly one party id, and cookies are shared
 // across every tab in a browser profile. So a second tab joining a
@@ -25,11 +27,19 @@ const CLIENT_ID_STORAGE_KEY = 'emby-watchparty-client-id'
 const PARTY_BINDING_CHANNEL = 'emby-watchparty-party-binding'
 
 function getClientId(): string {
+  const tabClientId = sessionStorage.getItem(TAB_CLIENT_ID_STORAGE_KEY)
+  if (tabClientId) return tabClientId
   let clientId = localStorage.getItem(CLIENT_ID_STORAGE_KEY)
   if (clientId) return clientId
 
   clientId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
   localStorage.setItem(CLIENT_ID_STORAGE_KEY, clientId)
+  return clientId
+}
+
+function rotateClientIdForTab(): string {
+  const clientId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  sessionStorage.setItem(TAB_CLIENT_ID_STORAGE_KEY, clientId)
   return clientId
 }
 
@@ -163,7 +173,7 @@ export const usePartyStore = defineStore('party', () => {
     const normalisedId = id.toUpperCase()
     partyId.value = normalisedId
     username.value = name
-    const clientId = getClientId()
+    let clientId = getClientId()
     // Load the persisted avatar id (IndexedDB or localStorage) so it
     // can ride along on the join. Safe to call repeatedly.
     if (!avatar.uuid) {
@@ -174,15 +184,20 @@ export const usePartyStore = defineStore('party', () => {
     // Announce only once the cookie is actually bound. A tab that failed
     // to bind never repointed anything, so it must not make a healthy
     // tab believe it has been superseded.
-    if (await bindSession(clientId, name, avatarUuid)) {
-      announceBinding(normalisedId)
+    let bound = await bindSession(clientId, name, avatarUuid)
+    if (!bound && sessionError.value === IDENTITY_IN_USE_MESSAGE) {
+      clientId = rotateClientIdForTab()
+      bound = await bindSession(clientId, name, avatarUuid)
     }
-    socket.emit('join_party', {
-      party_id: partyId.value,
-      username: name,
-      client_id: clientId,
-      avatar_uuid: avatarUuid,
-    })
+    if (bound) {
+      announceBinding(normalisedId)
+      socket.emit('join_party', {
+        party_id: partyId.value,
+        username: name,
+        client_id: clientId,
+        avatar_uuid: avatarUuid,
+      })
+    }
   }
 
   // Remembered so retrySession() can re-run the join without the caller
@@ -203,7 +218,11 @@ export const usePartyStore = defineStore('party', () => {
     const auth = useAuthStore()
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        await api.joinParty(partyId.value!, clientId, name || 'Guest', avatarUuid)
+        const result = await api.joinParty(partyId.value!, clientId, name || 'Guest', avatarUuid)
+        if (!result.success) {
+          sessionError.value = result.message || 'Could not join the party.'
+          return false
+        }
         // The cookie is now bound. Re-read auth state so partyUnlocked
         // and hostUsername reflect this party, not the empty pre-join
         // status. Otherwise late joiners briefly render "Party is

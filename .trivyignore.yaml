@@ -1,0 +1,9 @@
+# Exceptions must use Trivy's `expired_at` field and a statement formatted as
+# `owner=<GitHub login>; reason=<risk acceptance>`. CI rejects expired entries.
+# Example:
+# vulnerabilities:
+#   - id: CVE-2099-0001
+#     statement: "owner=maintainer; reason=no reachable runtime path"
+#     expired_at: 2099-01-31
+vulnerabilities: []
+misconfigurations: []

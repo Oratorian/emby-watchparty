@@ -211,6 +211,7 @@ class LibraryQueryFilters(StrictApiModel):
     official_ratings: list[str] = Field(default_factory=list)
     studios: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    person_ids: list[str] = Field(default_factory=list)
     years: list[int] = Field(default_factory=list)
     containers: list[str] = Field(default_factory=list)
     video_codecs: list[str] = Field(default_factory=list)
@@ -231,9 +232,7 @@ class LibraryQueryFilters(StrictApiModel):
     theme_videos: Literal["any", "with", "without"] = "any"
     locked: Literal["any", "yes", "no"] = "any"
     overview: Literal["any", "with", "without"] = "any"
-    missing_provider_ids: list[Literal["imdb", "tmdb", "tvdb"]] = Field(
-        default_factory=list
-    )
+    missing_provider_ids: list[Literal["imdb", "tmdb", "tvdb"]] = Field(default_factory=list)
 
 
 class LibraryQueryRequest(StrictApiModel):

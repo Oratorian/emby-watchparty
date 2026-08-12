@@ -32,6 +32,7 @@ REQUIRED_BOUNDARIES = {
     "played-remove",
     "playlist-create",
     "playlist-add",
+    "filtered-query-unnamed-folder",
 }
 PRIVATE_MARKERS = ("api_key", "access_token", "password", "192.168.", "127.0.0.1")
 

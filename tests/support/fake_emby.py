@@ -120,6 +120,8 @@ class FakeEmbyState:
     behavior: FakeEmbyBehavior = field(default_factory=FakeEmbyBehavior)
     requests: list[dict[str, Any]] = field(default_factory=list)
     search_items: list[dict[str, Any]] | None = None
+    search_responses: dict[str, list[dict[str, Any]]] | None = None
+    user_items: list[dict[str, Any]] | None = None
     stream_closed: asyncio.Event = field(default_factory=asyncio.Event)
 
     def record(self, request: Request, *, body: Any = None) -> None:
@@ -291,10 +293,19 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
                 "Items": [{"Id": "playlist-1", "Name": "Watch later", "Type": "Playlist"}],
                 "TotalRecordCount": 1,
             }
-        if request.query_params.get("SearchTerm") and state.search_items is not None:
+        search_term_raw = request.query_params.get("SearchTerm")
+        if search_term_raw and state.search_responses is not None:
+            items = copy.deepcopy(state.search_responses.get(search_term_raw.casefold(), []))
+            return {"Items": items, "TotalRecordCount": len(items)}
+        if search_term_raw and state.search_items is not None:
             return {
                 "Items": copy.deepcopy(state.search_items),
                 "TotalRecordCount": len(state.search_items),
+            }
+        if state.user_items is not None:
+            return {
+                "Items": copy.deepcopy(state.user_items),
+                "TotalRecordCount": len(state.user_items),
             }
         if user_id not in {"user-large", "user-alphabet"}:
             return {"Items": [MOVIE], "TotalRecordCount": 1}
@@ -348,17 +359,13 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         state.record(request)
         return {"Items": [MOVIE], "TotalRecordCount": 1}
 
-    @app.api_route(
-        "/emby/Users/{user_id}/FavoriteItems/{item_id}", methods=["POST", "DELETE"]
-    )
+    @app.api_route("/emby/Users/{user_id}/FavoriteItems/{item_id}", methods=["POST", "DELETE"])
     async def favorite_item(request: Request, user_id: str, item_id: str):
         del user_id, item_id
         state.record(request)
         return {"IsFavorite": request.method == "POST"}
 
-    @app.api_route(
-        "/emby/Users/{user_id}/PlayedItems/{item_id}", methods=["POST", "DELETE"]
-    )
+    @app.api_route("/emby/Users/{user_id}/PlayedItems/{item_id}", methods=["POST", "DELETE"])
     async def played_item(request: Request, user_id: str, item_id: str):
         del user_id, item_id
         state.record(request)

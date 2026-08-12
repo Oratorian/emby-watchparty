@@ -1,6 +1,8 @@
 -r requirements.in
 pytest>=8.0,<9.0
+pytest-cov>=6.0,<7.0
 httpx2>=2.9,<3.0
 ruff>=0.9,<1.0
 mypy>=1.15,<2.0
+types-PyYAML>=6.0,<7.0
 aiohttp>=3.11,<4.0

@@ -53,6 +53,23 @@ def _host_creds(party_session: PartySession) -> tuple[str, str]:
     return access_token, user_id
 
 
+def _normalize_items_response(payload: dict) -> dict:
+    """Keep permissive Emby rows from violating the strict viewer contract."""
+    raw_items = payload.get("Items")
+    if not isinstance(raw_items, list):
+        return payload
+    items = [
+        item for item in raw_items if isinstance(item, dict) and str(item.get("Name") or "").strip()
+    ]
+    if len(items) == len(raw_items):
+        return payload
+    normalized = {**payload, "Items": items}
+    total = payload.get("TotalRecordCount")
+    if isinstance(total, int):
+        normalized["TotalRecordCount"] = max(0, total - (len(raw_items) - len(items)))
+    return normalized
+
+
 @router.get(
     "/libraries",
     response_model=LibraryItemsResponse,
@@ -145,9 +162,10 @@ async def api_query_items(
     access_token, user_id = _host_creds(party_session)
     response.headers["Cache-Control"] = "no-store"
     try:
-        return await emby_client.query_items(
+        payload = await emby_client.query_items(
             query.model_dump(), access_token=access_token, user_id=user_id
         )
+        return _normalize_items_response(payload)
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="Emby upstream unavailable") from exc
 
@@ -169,30 +187,42 @@ async def api_query_prefixes(
         user_id=user_id,
         prefixes=True,
     )
-    return {
-        "Prefixes": [
-            row["Name"] for row in rows if isinstance(row, dict) and row.get("Name")
-        ]
-    }
+    return {"Prefixes": [row["Name"] for row in rows if isinstance(row, dict) and row.get("Name")]}
 
 
-def _filter_values(
-    payload: dict | None, *, uppercase_labels: bool = False
-) -> list[dict[str, str]]:
+def _filter_values(payload: dict | None, *, uppercase_labels: bool = False) -> list[dict[str, str]]:
     if not payload:
         return []
     return [
         {
             "value": str(item["Name"]),
-            "label": (
-                str(item["Name"]).upper()
-                if uppercase_labels
-                else str(item["Name"])
-            ),
+            "label": (str(item["Name"]).upper() if uppercase_labels else str(item["Name"])),
         }
         for item in payload.get("Items", [])
         if item.get("Name")
     ]
+
+
+_US_MOVIE_RATING_ORDER = (
+    "G",
+    "PG",
+    "PG-13",
+    "R",
+    "NC-17",
+    "NR",
+    "NOT RATED",
+)
+
+
+def _prioritize_parental_ratings(
+    values: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Put familiar US movie ratings first, preserving all other source order."""
+    priority = {rating: index for index, rating in enumerate(_US_MOVIE_RATING_ORDER)}
+    return sorted(
+        values,
+        key=lambda value: priority.get(value["value"].strip().upper(), len(priority)),
+    )
 
 
 @router.get(
@@ -254,10 +284,10 @@ async def api_filter_options(
                 "subtitle_codec",
             },
         )
+        if control_id == "official_rating":
+            values = _prioritize_parental_ratings(values)
         if values:
-            controls.append(
-                {"id": control_id, "label": label, "kind": "multi", "values": values}
-            )
+            controls.append({"id": control_id, "label": label, "kind": "multi", "values": values})
     controls.extend(
         [
             {
@@ -274,10 +304,7 @@ async def api_filter_options(
                 "label": "Resolution",
                 "kind": "select",
                 "values": [{"value": "any", "label": "Any"}]
-                + [
-                    {"value": value, "label": value}
-                    for value in ("4K", "1080p", "720p", "SD")
-                ],
+                + [{"value": value, "label": value} for value in ("4K", "1080p", "720p", "SD")],
             },
             {"id": "is_3d", "label": "3D", "kind": "toggle", "values": []},
         ]
@@ -480,9 +507,7 @@ async def api_set_played(
     emby_client=Depends(get_emby_client),
 ):
     access_token, user_id = _host_creds(party_session)
-    await emby_client.set_played(
-        item_id, body.played, access_token=access_token, user_id=user_id
-    )
+    await emby_client.set_played(item_id, body.played, access_token=access_token, user_id=user_id)
     return {"success": True, "played": body.played}
 
 

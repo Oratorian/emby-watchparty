@@ -46,6 +46,32 @@ test('host authenticates and browses the fake Emby library', async ({ page }) =>
   await page.getByPlaceholder('Emby password').fill('password')
   await page.getByRole('button', { name: 'Become Host', exact: true }).click()
 
+  await expect(page.getByRole('heading', { name: 'Choose a library' })).toBeVisible()
+  await expect(page.getByText('CollectionFolder', { exact: true })).toBeHidden()
+  const libraryArtwork = page.getByRole('button', { name: 'Open Movies', exact: true })
+    .locator('.item-poster')
+  await expect(libraryArtwork.getByText('MOVIES', { exact: true })).toBeVisible()
+  expect(await libraryArtwork.evaluate((element) => {
+    const box = element.getBoundingClientRect()
+    return box.width / box.height
+  })).toBeGreaterThan(1.5)
+  const librarySearch = page.getByRole('searchbox', { name: 'Search all libraries' })
+  const searchMetrics = await librarySearch.evaluate((element) => {
+    const box = element.getBoundingClientRect()
+    return { fontSize: Number.parseFloat(getComputedStyle(element).fontSize), height: box.height }
+  })
+  expect(searchMetrics.fontSize).toBeGreaterThanOrEqual(14)
+  expect(searchMetrics.height).toBeGreaterThanOrEqual(40)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  const compactSearchMetrics = await librarySearch.evaluate((element) => {
+    const box = element.getBoundingClientRect()
+    return { fontSize: Number.parseFloat(getComputedStyle(element).fontSize), height: box.height }
+  })
+  expect(compactSearchMetrics.fontSize).toBeGreaterThanOrEqual(14)
+  expect(compactSearchMetrics.height).toBeGreaterThanOrEqual(40)
+  await page.setViewportSize({ width: 1280, height: 720 })
+
   await page.getByText('Movies', { exact: true }).click()
   const movie = page.getByText('Fake Movie', { exact: true })
   await expect(movie).toBeVisible()
@@ -66,6 +92,7 @@ test('host filters, opens details, configures playback, and restores library sta
   await page.getByText('Movies', { exact: true }).click()
 
   await page.getByRole('button', { name: 'Filters', exact: true }).click()
+  await page.getByRole('button', { name: 'Open Genre filter', exact: true }).click()
   await page.getByLabel('Drama', { exact: true }).check()
   await expect(page.getByText('Genre: Drama', { exact: true })).toBeVisible()
 
@@ -74,7 +101,6 @@ test('host filters, opens details, configures playback, and restores library sta
   await movieCard.press('Enter')
   await expect(page.getByRole('heading', { name: 'Fake Movie', exact: true })).toBeVisible()
   await expect(page.getByText('A deterministic movie served by fake Emby.')).toBeVisible()
-
   await page.getByRole('button', { name: 'Favorite', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Remove favorite', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Mark played', exact: true }).click()

@@ -31,9 +31,12 @@
 
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue'
-import { api, type LibraryItem, type SearchGroup } from '@/api/client'
+import { api, type GroupedSearchResponse, type LibraryItem, type SearchGroup } from '@/api/client'
 
-defineEmits<{ select: [item: LibraryItem] }>()
+const emit = defineEmits<{
+  select: [item: LibraryItem]
+  results: [response: GroupedSearchResponse]
+}>()
 
 const query = ref('')
 const groups = ref<SearchGroup[]>([])
@@ -58,6 +61,7 @@ async function search() {
     groups.value = []
     submitted.value = false
     loading.value = false
+    emit('results', { query: value, groups: [] })
     return
   }
   const token = ++requestToken
@@ -69,6 +73,7 @@ async function search() {
     const response = await api.groupedSearch(value, controller.signal)
     if (token !== requestToken) return
     groups.value = response.groups
+    emit('results', response)
   } catch (cause) {
     if (token !== requestToken || controller?.signal.aborted) return
     groups.value = []
@@ -83,6 +88,7 @@ watch(query, () => {
   if (query.value.trim().length < 2) {
     groups.value = []
     submitted.value = false
+    emit('results', { query: query.value.trim(), groups: [] })
     return
   }
   timer = setTimeout(() => void search(), 300)
@@ -98,6 +104,7 @@ function clear() {
   groups.value = []
   submitted.value = false
   error.value = ''
+  emit('results', { query: '', groups: [] })
 }
 
 onUnmounted(cancel)
@@ -105,7 +112,12 @@ onUnmounted(cancel)
 
 <style scoped>
 .global-search { position: relative; display: flex; gap: .5rem; flex-wrap: wrap; }
-.global-search input { flex: 1 1 18rem; }
+.global-search input {
+  flex: 1 1 18rem;
+  min-height: max(2.5rem, 42px);
+  font-size: max(0.875rem, 14px) !important;
+}
+.global-search input::placeholder { color: var(--text-secondary); }
 .global-search button {
   padding: .45rem .75rem;
   border: 1px solid var(--border-subtle);

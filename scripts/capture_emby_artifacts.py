@@ -113,9 +113,7 @@ def main() -> None:
         views_response = client.get(f"/emby/Users/{user_id}/Views")
         views_response.raise_for_status()
         views = views_response.json()
-        movie_view = next(
-            item for item in views["Items"] if item.get("CollectionType") == "movies"
-        )
+        movie_view = next(item for item in views["Items"] if item.get("CollectionType") == "movies")
         tv_view = next(
             (item for item in views["Items"] if item.get("CollectionType") == "tvshows"),
             None,
@@ -328,9 +326,7 @@ def main() -> None:
                 params={"UserId": user_id, "Fields": fields},
             )
             seasons_response.raise_for_status()
-            captures.append(
-                ("seasons", "GET", "/emby/Shows/{series_id}/Seasons", seasons_response)
-            )
+            captures.append(("seasons", "GET", "/emby/Shows/{series_id}/Seasons", seasons_response))
             episodes_response = client.get(
                 f"/emby/Shows/{series['Id']}/Episodes",
                 params={"UserId": user_id, "Fields": fields, "Limit": 1},
@@ -353,8 +349,18 @@ def main() -> None:
         else:
             captures.extend(
                 [
-                    ("series-detail", "GET", "/emby/Users/{user_id}/Items/{series_id}", views_response),
-                    ("episode-detail", "GET", "/emby/Users/{user_id}/Items/{episode_id}", views_response),
+                    (
+                        "series-detail",
+                        "GET",
+                        "/emby/Users/{user_id}/Items/{series_id}",
+                        views_response,
+                    ),
+                    (
+                        "episode-detail",
+                        "GET",
+                        "/emby/Users/{user_id}/Items/{episode_id}",
+                        views_response,
+                    ),
                 ]
             )
 
@@ -367,8 +373,18 @@ def main() -> None:
             client.post(favorite_path).raise_for_status()
         captures.extend(
             [
-                ("favorite-add", "POST", "/emby/Users/{user_id}/FavoriteItems/{item_id}", favorite_add),
-                ("favorite-remove", "DELETE", "/emby/Users/{user_id}/FavoriteItems/{item_id}", favorite_remove),
+                (
+                    "favorite-add",
+                    "POST",
+                    "/emby/Users/{user_id}/FavoriteItems/{item_id}",
+                    favorite_add,
+                ),
+                (
+                    "favorite-remove",
+                    "DELETE",
+                    "/emby/Users/{user_id}/FavoriteItems/{item_id}",
+                    favorite_remove,
+                ),
             ]
         )
 
@@ -381,7 +397,12 @@ def main() -> None:
         captures.extend(
             [
                 ("played-add", "POST", "/emby/Users/{user_id}/PlayedItems/{item_id}", played_add),
-                ("played-remove", "DELETE", "/emby/Users/{user_id}/PlayedItems/{item_id}", played_remove),
+                (
+                    "played-remove",
+                    "DELETE",
+                    "/emby/Users/{user_id}/PlayedItems/{item_id}",
+                    played_remove,
+                ),
             ]
         )
 

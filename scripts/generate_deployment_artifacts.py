@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]  # PyYAML ships no inline type information.
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCHEMA = ROOT / "deploy" / "schema.json"

@@ -48,6 +48,10 @@ Run it **after** pointing your Compose file at a 3.0 image carrying this work an
 
 `npm run test:playback-gate` drives a complete session against a fake Emby: authenticated master and media playlists, segments and byte ranges, pause and resume, seeking in both directions, audio and subtitle selection, reconnect, host reload, session-bind retry, cross-party denial, and the iPhone WebKit native-HLS path. It is the check to run before calling a change safe, and the one this cycle's fixes were held to.
 
+### CI tests the application in parallel
+
+Pull requests now split backend, frontend, browser, native-HLS, container and dependency checks into parallel jobs, then combine them behind one stable merge gate. Changed executable lines need 80% coverage, superseded runs are cancelled, failures retain browser/container evidence, and the exact built container must pass health, readiness, authenticated Chromium playback and high/critical runtime-vulnerability checks. Firefox and desktop WebKit add lifecycle, reconnect and accessibility coverage; macOS WebKit remains the native-HLS authority. Release automation is unchanged.
+
 ### Appliance deployment comes from one schema
 
 `deploy/schema.json` is now the single description of a deployment, and

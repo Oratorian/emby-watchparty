@@ -90,6 +90,7 @@ export interface LibraryItem {
   Id: string
   Name: string
   Type: string
+  CollectionType?: string
   Overview?: string
   RunTimeTicks?: number
   SortName?: string

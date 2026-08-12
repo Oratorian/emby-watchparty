@@ -2,114 +2,349 @@ name: Validate
 
 on:
   pull_request:
+    branches: [main, 3.0-dev]
   push:
-    # Validate both the stable line and the 3.0 integration branch.
     branches: [main, 3.0-dev]
   workflow_call:
 
 permissions:
   contents: read
 
+concurrency:
+  group: validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "24"
+
 jobs:
-  validate:
+  contracts:
+    name: Workflow and generated contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          python-version: "3.12"
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      - uses: actions/setup-node@v6
+      - name: Install Python tooling
+        run: python -m pip install --require-hashes -r requirements-dev.txt
+      - name: Validate workflow syntax
+        env:
+          ACTIONLINT_VERSION: "1.7.7"
+        run: |
+          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_x86_64.tar.gz"
+          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/checksums.txt"
+          grep " actionlint_${ACTIONLINT_VERSION}_linux_x86_64.tar.gz$" checksums.txt | sha256sum -c -
+          tar -xzf "actionlint_${ACTIONLINT_VERSION}_linux_x86_64.tar.gz" actionlint
+          # Existing release workflow intentionally remains outside this CI-only change.
+          ./actionlint -color -ignore 'SC2016|SC2086'
+      - name: Generated contract drift
+        run: |
+          python scripts/generate_socket_types.py --check
+          python scripts/generate_deployment_artifacts.py --check
+          python scripts/validate_trivy_ignores.py
+      - name: Compose manifests
+        run: |
+          docker compose -f docker-compose.yml.example config -q
+          docker compose -f deploy/casaos/docker-compose.yml config -q
+          docker compose -f deploy/truenas/custom-app.yml config -q
+      - name: Deployment image tag resolves
+        run: |
+          image=$(python -c "import json; s=json.load(open('deploy/schema.json'))['image']; print(s['repository'] + ':' + s['tag'])")
+          docker manifest inspect "$image" > /dev/null
+
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: python -m pip install -r requirements-dev.txt
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: python -m pip install --require-hashes -r requirements-dev.txt
       - name: Ruff
         run: |
           python -m ruff check backend scripts tests
           python -m ruff format --check backend scripts tests
       - name: mypy
         run: python -m mypy
-      - name: pytest
-        run: python -m pytest
-      - name: Deployment artifact drift and Compose validation
-        run: |
-          python scripts/generate_deployment_artifacts.py --check
-          docker compose -f docker-compose.yml.example config -q
-          docker compose -f deploy/casaos/docker-compose.yml config -q
-          docker compose -f deploy/truenas/custom-app.yml config -q
+      - name: pytest with coverage
+        run: >-
+          python -m pytest
+          --cov=backend --cov=scripts
+          --cov-report=term-missing
+          --cov-report=xml:coverage/backend.xml
+      - name: Upload backend coverage
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: backend-coverage
+          path: coverage/backend.xml
+          retention-days: 14
+          if-no-files-found: error
 
-      # `compose config` never contacts a registry, so it happily validated
-      # artifacts pinned to a tag that does not exist. Every documented
-      # deployment path then failed at the first `up` with manifest unknown.
-      - name: Deployment image tag resolves
-        run: |
-          IMAGE=$(python -c "import json; s = json.load(open('deploy/schema.json'))['image']; print(s['repository'] + ':' + s['tag'])")
-          echo "Resolving $IMAGE"
-          docker manifest inspect "$IMAGE" > /dev/null
-      - name: Frontend install
-        run: npm ci
-        working-directory: frontend
-      - name: Frontend lint
-        run: npm run lint
-        working-directory: frontend
-      - name: Frontend type-check
-        run: npm run type-check
-        working-directory: frontend
-      - name: Vitest
-        run: npm run test:unit
-        working-directory: frontend
-      - name: Socket schema drift
-        shell: bash
-        run: |
-          generated="$(mktemp -d)"
-          python scripts/generate_socket_types.py --output-dir "$generated"
-          diff -u backend/socket-events.schema.json "$generated/backend/socket-events.schema.json"
-          diff -u frontend/src/types/socket.generated.ts "$generated/frontend/src/types/socket.generated.ts"
-      - name: Production build
-        run: npm run build-only
-        working-directory: frontend
-      - name: Install Playwright Chromium and WebKit
-        run: npx playwright install --with-deps chromium webkit
-        working-directory: frontend
-      - name: Playwright Chromium and iOS WebKit
-        run: npm run test:e2e
-        working-directory: frontend
-
-  ios-native-hls:
-    runs-on: macos-15
-    needs: validate
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          python-version: "3.12"
-          cache: pip
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: python -m pip install -r requirements-dev.txt
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+      - run: npm run type-check
+        working-directory: frontend
+      - name: Vitest with coverage
+        run: npm run test:coverage
+        working-directory: frontend
+      - run: npm run build-only
+        working-directory: frontend
+      - name: Upload frontend coverage
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/lcov.info
+          retention-days: 14
+          if-no-files-found: error
+      - name: Upload compiled frontend
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: frontend-static
+          path: backend/static
+          retention-days: 14
+          if-no-files-found: error
+
+  browser:
+    name: Browser (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: python -m pip install --require-hashes -r requirements-dev.txt
+      - run: npm ci
+        working-directory: frontend
+      - name: Install browser
+        run: npx playwright install --with-deps ${{ matrix.project }}
+        working-directory: frontend
+      - name: Playwright
+        run: npm run test:e2e -- --project=${{ matrix.project }}
+        working-directory: frontend
+      - name: Upload browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: browser-${{ matrix.project }}-failure
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 14
+          if-no-files-found: ignore
+
+  ios-native-hls:
+    name: Native HLS (macOS WebKit)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: python -m pip install --require-hashes -r requirements-dev.txt
       - run: npm ci
         working-directory: frontend
       - run: npx playwright install webkit
         working-directory: frontend
-      - name: Playwright native HLS on macOS WebKit
+      - name: Playwright native HLS
         run: npm run test:e2e -- --project=ios-webkit
         working-directory: frontend
         env:
           EXPECT_NATIVE_HLS: "1"
+      - name: Upload native-HLS diagnostics
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: native-hls-failure
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 14
+          if-no-files-found: ignore
 
-  docker:
+  container:
+    name: Container runtime and vulnerability gate
     runs-on: ubuntu-latest
-    needs: [validate, ios-native-hls]
     steps:
-      - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/build-push-action@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - name: Build test image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
-          push: false
-          load: false
+          load: true
+          tags: emby-watchparty:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - run: python -m pip install --require-hashes -r requirements-dev.txt
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Start fake Emby and exact container image
+        run: |
+          python scripts/run_fake_emby.py > fake-emby.log 2>&1 &
+          docker run --detach --name watchparty-ci --publish 5013:5000 \
+            --add-host host.docker.internal:host-gateway \
+            --env APP_ENV=development \
+            --env EMBY_SERVER_URL=http://host.docker.internal:5012 \
+            --env EMBY_API_KEY=e2e-key \
+            --env SESSION_SECRET=container-ci-session-secret-at-least-32-characters \
+            --env SESSION_COOKIE_SECURE=false \
+            emby-watchparty:ci
+          for _attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:5013/api/health >/dev/null && \
+               curl -fsS http://127.0.0.1:5013/api/ready >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs watchparty-ci
+          exit 1
+      - name: Critical journey against container
+        run: npm run test:playback-gate -- --project=chromium
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://127.0.0.1:5013
+      - name: Scan final runtime image
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: emby-watchparty:ci
+          format: json
+          output: trivy.json
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          vuln-type: os,library
+          trivyignores: .trivyignore.yaml
+      - name: Capture container diagnostics
+        if: always()
+        run: docker logs watchparty-ci > container.log 2>&1 || true
+      - name: Upload container diagnostics
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: container-failure
+          path: |
+            container.log
+            fake-emby.log
+            trivy.json
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 14
+          if-no-files-found: ignore
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Reject newly introduced vulnerable dependencies
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+  changed-coverage:
+    name: Changed-line coverage
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: backend-coverage
+          path: .coverage/backend
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: frontend-coverage
+          path: .coverage/frontend
+      - name: Select comparison base
+        id: base
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE: ${{ github.event.before }}
+        run: |
+          base="${PR_BASE:-$PUSH_BASE}"
+          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+            base=$(git rev-parse HEAD^)
+          fi
+          echo "sha=$base" >> "$GITHUB_OUTPUT"
+      - name: Enforce 80% changed executable lines
+        run: >-
+          python scripts/check_diff_coverage.py
+          --base "${{ steps.base.outputs.sha }}"
+          --python-report .coverage/backend/backend.xml
+          --frontend-report .coverage/frontend/lcov.info
+          --threshold 80
+
+  ci-gate:
+    name: CI Gate
+    if: always()
+    needs:
+      - contracts
+      - backend
+      - frontend
+      - browser
+      - ios-native-hls
+      - container
+      - dependency-review
+      - changed-coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every applicable check
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq .
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")'

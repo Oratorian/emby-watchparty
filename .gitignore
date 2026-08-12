@@ -39,6 +39,8 @@ wheels/
 .mypy_cache
 .pytest_cache
 .ruff_cache
+.coverage
+coverage/
 
 # OS
 .DS_Store
@@ -56,6 +58,7 @@ config.json
 backend/static
 frontend/playwright-report/
 frontend/test-results/
+frontend/coverage/
 
 # Runtime data (avatar SQLite + uploaded files)
 data/

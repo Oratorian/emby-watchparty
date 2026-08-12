@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ApiError, api } from '@/api/client'
 import { withPrefix } from '@/utils/appPrefix'
 import { useAuthStore } from '@/stores/auth'
+import { getClientId } from '@/stores/party'
 import { getHiddenParties } from '@/utils/hiddenParties'
 
 // Modal is only opened in the REQUIRE_LOGIN=true create flow,
@@ -62,16 +63,6 @@ function joinListedParty(code: string) {
 const showCreateModal = ref(false)
 const createBusy = ref(false)
 const createError = ref<string | null>(null)
-
-const CLIENT_ID_STORAGE_KEY = 'emby-watchparty-client-id'
-
-function getClientId(): string {
-  let id = localStorage.getItem(CLIENT_ID_STORAGE_KEY)
-  if (id) return id
-  id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
-  localStorage.setItem(CLIENT_ID_STORAGE_KEY, id)
-  return id
-}
 
 onMounted(async () => {
   try {

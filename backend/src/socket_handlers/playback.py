@@ -462,7 +462,9 @@ def register(ctx):
         # consistently (otherwise the late-join rejoin path would
         # silently re-default if Emby ever flips its default ordering).
         resolved_media_source_id = media_source.get("Id") or media_source_id
-        selected_audio = audio_index if audio_index is not None else _default_audio_index(media_source)
+        selected_audio = (
+            audio_index if audio_index is not None else _default_audio_index(media_source)
+        )
         selected_quality = normalise_quality_id(
             quality or DEFAULT_QUALITY_ID,
             force_transcode=bool(config.FORCE_TRANSCODE),
