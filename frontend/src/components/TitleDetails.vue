@@ -135,18 +135,20 @@
       </section>
       <section v-if="details.Studios?.length"><h3>Studios</h3><p>{{ details.Studios.map((studio) => studio.Name).join(' · ') }}</p></section>
       <section v-if="tagNames.length"><h3>Tags</h3><p>{{ tagNames.join(' · ') }}</p></section>
-      <!-- One popover, one section at a time. Each button used to render its
-           own block underneath, so opening all three left all three stacked
-           forever with nothing to close them and two "None available." lines
-           trailing the one list that had content. -->
+      <!-- One toolbar row, and one popover showing one section at a time.
+           Each button used to render its own block underneath, so opening all
+           three left all three stacked forever with nothing to close them.
+           One toolbar row. These were two stacked sections with their own
+           headings, and between the headings, the button row, the two selects
+           and the episode count they cost four vertical bands for what is one
+           set of controls. -->
       <section
-        class="optional-sections"
+        class="detail-toolbar"
         @mouseleave="scheduleSectionClose"
         @mouseenter="cancelSectionClose"
         @keydown.esc="closeSection"
       >
-        <h3>More</h3>
-        <div class="section-buttons">
+        <div class="toolbar-group section-buttons">
           <button
             v-for="section in optionalSections"
             :key="section.id"
@@ -205,32 +207,24 @@
             <p v-else class="section-empty">None available.</p>
           </div>
         </div>
-      </section>
-      <section v-if="details.Type === 'Series'" class="series-browser">
-        <h3>Seasons & episodes</h3>
-        <!-- Outside the loaded branch on purpose. A SEASONS failure leaves
-             seasonsLoaded false, so an error rendered only inside v-else was
-             invisible in exactly the case it existed for: the user pressed
-             Load seasons and nothing happened, with no message anywhere. -->
-        <p v-if="seriesError" role="alert">{{ seriesError }}</p>
-        <!-- Seasons load with the title. The button that used to gate this was
-             a step with no decision behind it: nobody opens a series detail
-             view and does not want its episodes. It survives only as a retry,
-             because a failed load does need a way back. -->
-        <p v-if="seasonsLoading && !seasonsLoaded" role="status">Loading seasons…</p>
-        <button
-          v-else-if="!seasonsLoaded"
-          type="button"
-          data-section="seasons"
-          @click="loadSeasons()"
-        >
-          {{ seriesError ? 'Retry' : 'Load seasons' }}
-        </button>
-        <!-- Two selects rather than a button per season and a bulleted list of
-             every episode. A season of 24 episodes rendered 24 stacked rows
-             that pushed the rest of the page out of view, and a long-running
-             series made that unusable. -->
-        <div v-else class="series-pickers">
+
+        <!-- Same row, divider between. Seasons load with the title, so this
+             appears without anyone pressing anything; the button survives only
+             as the way back from a failure. The error sits outside the loaded
+             branch because a seasons failure leaves seasonsLoaded false, which
+             is exactly when it needs to be visible. -->
+        <div v-if="details.Type === 'Series'" class="toolbar-group series-group">
+          <p v-if="seriesError" class="toolbar-error" role="alert">{{ seriesError }}</p>
+          <p v-if="seasonsLoading && !seasonsLoaded" role="status">Loading seasons…</p>
+          <button
+            v-else-if="!seasonsLoaded"
+            type="button"
+            data-section="seasons"
+            @click="loadSeasons()"
+          >
+            {{ seriesError ? 'Retry' : 'Load seasons' }}
+          </button>
+          <div v-else class="series-pickers">
           <label>
             Season
             <select
@@ -266,9 +260,10 @@
             </select>
           </label>
 
-          <p v-if="episodes.length" class="series-count">
-            {{ episodes.length }} episode{{ episodes.length === 1 ? '' : 's' }}
-          </p>
+            <p v-if="episodes.length" class="series-count">
+              {{ episodes.length }} Episode{{ episodes.length === 1 ? '' : 's' }}
+            </p>
+          </div>
         </div>
       </section>
     </template>
@@ -703,14 +698,36 @@ onUnmounted(() => {
 .play-title, .start-playback { background: var(--accent-primary) !important; border-color: transparent !important; color: var(--bg-deep) !important; }
 .playlist-picker, .playback-options { display: flex; align-items: end; gap: .65rem; flex-wrap: wrap; margin-top: .85rem; }
 .playlist-picker label, .playback-options label { display: grid; gap: .25rem; color: var(--text-secondary); font-size: .8rem; }
-/* Anchor for the absolutely-positioned popover, so it floats relative to the
-   button row rather than the page. */
-.section-buttons {
-  position: relative;
+/* One row for both control groups. Two stacked sections with their own
+   headings cost four vertical bands for a single set of controls, on a page
+   whose whole complaint was that it kept extending downwards. */
+.detail-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: .4rem;
+  align-items: center;
+  gap: .75rem 1.25rem;
+  padding: .5rem 0;
 }
+
+.toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem .6rem;
+}
+
+/* A divider rather than a heading: it separates the groups without adding a
+   line of its own. Dropped once the row wraps, where it would sit sideways. */
+.series-group {
+  border-left: 1px solid var(--border-subtle);
+  padding-left: 1.25rem;
+}
+
+/* Anchor for the absolutely-positioned popover, so it floats relative to the
+   button row rather than the page. */
+.section-buttons { position: relative; }
+
+.toolbar-error { margin: 0; color: var(--color-danger, #ff6b6b); font-size: .85rem; }
 
 .section-btn { margin: 0; }
 .section-btn.active {
@@ -821,12 +838,18 @@ onUnmounted(() => {
 .series-pickers {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: .75rem 1rem;
+  align-items: center;
+  gap: .4rem .75rem;
 }
-.series-pickers label { display: flex; flex-direction: column; gap: .25rem; }
-.series-pickers select { min-width: 12rem; max-width: 22rem; }
+/* Label beside the control, not above it: stacking them added a second line
+   to a row that exists to be one line. */
+.series-pickers label { display: flex; align-items: center; gap: .4rem; }
+.series-pickers select { min-width: 9rem; max-width: 18rem; }
 .series-count { margin: 0; color: var(--text-secondary, #9aa0aa); font-size: .82rem; }
+
+@media (max-width: 720px) {
+  .series-group { border-left: none; padding-left: 0; }
+}
 
 @media (max-width: 640px) {
   .section-popover { width: calc(100vw - 2rem); }

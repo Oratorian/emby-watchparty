@@ -148,7 +148,7 @@ describe('the More section popover', () => {
       await wrapper.get('button[data-section="related"]').trigger('click')
       await flushPromises()
 
-      await wrapper.get('.optional-sections').trigger('mouseleave')
+      await wrapper.get('.detail-toolbar').trigger('mouseleave')
       // Not immediately: moving diagonally towards the panel briefly exits
       // the group, and closing on that would make it unusable.
       expect(wrapper.find('.section-popover').exists()).toBe(true)
@@ -167,9 +167,9 @@ describe('the More section popover', () => {
       await wrapper.get('button[data-section="related"]').trigger('click')
       await flushPromises()
 
-      await wrapper.get('.optional-sections').trigger('mouseleave')
+      await wrapper.get('.detail-toolbar').trigger('mouseleave')
       await vi.advanceTimersByTimeAsync(200)
-      await wrapper.get('.optional-sections').trigger('mouseenter')
+      await wrapper.get('.detail-toolbar').trigger('mouseenter')
       await vi.advanceTimersByTimeAsync(1000)
 
       expect(wrapper.find('.section-popover').exists()).toBe(true)
@@ -183,7 +183,7 @@ describe('the More section popover', () => {
     await wrapper.get('button[data-section="related"]').trigger('click')
     await flushPromises()
 
-    await wrapper.get('.optional-sections').trigger('keydown.esc')
+    await wrapper.get('.detail-toolbar').trigger('keydown.esc')
 
     expect(wrapper.find('.section-popover').exists()).toBe(false)
   })
@@ -358,10 +358,10 @@ describe('the seasons and episodes pickers', () => {
 
   it('reports how many episodes the season has', async () => {
     const wrapper = await loadedSeries()
-    expect(wrapper.get('.series-count').text()).toBe('2 episodes')
+    expect(wrapper.get('.series-count').text()).toBe('2 Episodes')
 
     await wrapper.get('select[aria-label="Season"]').setValue('season-2')
     await flushPromises()
-    expect(wrapper.get('.series-count').text()).toBe('1 episode')
+    expect(wrapper.get('.series-count').text()).toBe('1 Episode')
   })
 })
