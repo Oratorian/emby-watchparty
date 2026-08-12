@@ -199,3 +199,75 @@ describe('the More section popover', () => {
     expect(wrapper.find('.section-popover').exists()).toBe(false)
   })
 })
+
+describe('the More popover presentation', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.spyOn(api, 'itemDetails').mockResolvedValue(SERIES as never)
+    vi.spyOn(api, 'qualityOptions').mockResolvedValue({
+      options: [{ id: 'auto', label: 'Auto' }],
+      default_id: 'auto',
+    } as never)
+    vi.spyOn(api, 'itemSection').mockResolvedValue({
+      section: 'related',
+      items: [
+        {
+          Id: 'rocky-2',
+          Name: 'Rocky II',
+          Type: 'Movie',
+          ProductionYear: 1979,
+          RunTimeTicks: 71_400_000_000,
+          ImageTags: { Primary: 'abc' },
+        },
+        { Id: 'brink', Name: 'The Brink of War', Type: 'Episode' },
+      ],
+    } as never)
+  })
+
+  async function openRelated() {
+    const wrapper = mount(TitleDetails, {
+      props: { item: { Id: 'series-1', Name: 'A Series', Type: 'Series' }, isHost: false },
+    })
+    await flushPromises()
+    await wrapper.get('button[data-section="related"]').trigger('click')
+    await flushPromises()
+    return wrapper
+  }
+
+  it('formats each row with year, runtime and a poster', async () => {
+    const wrapper = await openRelated()
+
+    const rows = wrapper.findAll('.section-item')
+    expect(rows).toHaveLength(2)
+    // 1979 and 1h 59m, rather than a bare bulleted title.
+    expect(rows[0]!.text()).toContain('Rocky II')
+    expect(rows[0]!.text()).toContain('1979')
+    expect(rows[0]!.text()).toContain('1h 59m')
+    expect(rows[0]!.find('img').attributes('src')).toContain('rocky-2')
+  })
+
+  it('omits the type when it adds nothing, and keeps it when it does', async () => {
+    const wrapper = await openRelated()
+    const rows = wrapper.findAll('.section-item')
+
+    // Every row in a Related list is usually a Movie; repeating it is noise.
+    expect(rows[0]!.text()).not.toContain('Movie')
+    expect(rows[1]!.text()).toContain('Episode')
+  })
+
+  it('falls back to an initial when the item has no poster', async () => {
+    const wrapper = await openRelated()
+    const rows = wrapper.findAll('.section-item')
+
+    expect(rows[1]!.find('img').exists()).toBe(false)
+    expect(rows[1]!.get('.section-thumb-fallback').text()).toBe('T')
+  })
+
+  it('offers a close control for pointer users who never leave the panel', async () => {
+    const wrapper = await openRelated()
+
+    await wrapper.get('.section-close').trigger('click')
+
+    expect(wrapper.find('.section-popover').exists()).toBe(false)
+  })
+})

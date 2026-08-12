@@ -168,14 +168,37 @@
             role="dialog"
             :aria-label="openSectionLabel"
           >
+            <header class="section-popover-head">
+              <h4>{{ openSectionLabel }}</h4>
+              <button
+                type="button"
+                class="section-close"
+                aria-label="Close"
+                @click="closeSection"
+              >
+                ×
+              </button>
+            </header>
             <p v-if="sectionErrors[openSection]" role="alert">{{ sectionErrors[openSection] }}</p>
             <p v-else-if="sectionLoading === openSection" role="status">
               Loading {{ openSectionLabel.toLowerCase() }}…
             </p>
-            <ul v-else-if="sectionItems[openSection]?.length">
+            <ul v-else-if="sectionItems[openSection]?.length" class="section-grid">
               <li v-for="item in sectionItems[openSection]" :key="item.Id">
                 <button type="button" class="section-item" @click="$emit('open', item)">
-                  {{ item.Name }}
+                  <span class="section-thumb">
+                    <img
+                      v-if="item.ImageTags?.Primary"
+                      :src="api.imageUrl(item.Id, 'Primary', { maxWidth: 120, maxHeight: 180, quality: 80 })"
+                      :alt="''"
+                      loading="lazy"
+                    />
+                    <span v-else class="section-thumb-fallback">{{ item.Name.charAt(0) }}</span>
+                  </span>
+                  <span class="section-text">
+                    <span class="section-name">{{ item.Name }}</span>
+                    <span v-if="itemMeta(item)" class="section-meta">{{ itemMeta(item) }}</span>
+                  </span>
                 </button>
               </li>
             </ul>
@@ -281,6 +304,21 @@ function closeSection() {
 function scheduleSectionClose() {
   cancelSectionClose()
   sectionCloseTimer = setTimeout(closeSection, 400)
+}
+
+/** Year, runtime and type, whichever the row actually carries. */
+function itemMeta(item: LibraryItem): string {
+  const parts: string[] = []
+  if (item.ProductionYear) parts.push(String(item.ProductionYear))
+  const ticks = item.RunTimeTicks
+  if (ticks) {
+    const minutes = Math.round(ticks / 600_000_000)
+    parts.push(minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`)
+  }
+  // Only when it adds something: a Related list is mostly Movies, and
+  // repeating "Movie" on every row is noise.
+  if (item.Type && item.Type !== 'Movie') parts.push(item.Type)
+  return parts.join(' · ')
 }
 
 function toggleSection(section: ItemSection) {
@@ -612,42 +650,108 @@ onUnmounted(() => {
 
 .section-popover {
   position: absolute;
-  top: calc(100% + 8px);
+  /* Upwards. This section sits low in the detail view, so a downward panel
+     opened into the page fold and pushed everything after it out of sight. */
+  bottom: calc(100% + 10px);
   left: 0;
   z-index: 50;
-  min-width: 15rem;
-  /* Bounded, and scrolls internally. The old inline blocks grew the page
-     without limit, which is what pushed everything below them off screen. */
-  max-width: min(26rem, 100%);
-  max-height: 18rem;
+  /* One wide panel rather than a narrow strip: these are poster rows, and at
+     15rem they wrapped into an unreadable column. Bounded and internally
+     scrolled so it still cannot grow the page. */
+  width: min(46rem, calc(100vw - 3rem));
+  max-height: min(24rem, 60vh);
   overflow-y: auto;
   background: var(--bg-secondary, #181820);
   border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  padding: .6rem .7rem;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, .55),
+  border-radius: 14px;
+  padding: .75rem .9rem .9rem;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, .6),
               0 0 0 1px rgba(0, 224, 255, .1) inset;
 }
 
+.section-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  /* Sticky so the title and the close control stay reachable while the list
+     scrolls, which matters once a Related list runs past the panel height. */
+  position: sticky;
+  top: 0;
+  margin: -.75rem -.9rem .6rem;
+  padding: .6rem .9rem .5rem;
+  background: var(--bg-secondary, #181820);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.section-popover-head h4 {
+  margin: 0;
+  font-size: .95rem;
+  letter-spacing: .02em;
+}
+.section-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #9aa0aa);
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0 .25rem;
+  cursor: pointer;
+}
+.section-close:hover, .section-close:focus-visible { color: var(--text-primary); }
+
 .section-popover ul { list-style: none; margin: 0; padding: 0; }
-.section-popover li + li { margin-top: .15rem; }
+
+.section-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: .35rem .5rem;
+}
 
 .section-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: .6rem;
   width: 100%;
   text-align: left;
   background: none;
   border: none;
   color: var(--text-primary);
-  padding: .3rem .4rem;
-  border-radius: 6px;
+  padding: .35rem .4rem;
+  border-radius: 8px;
   cursor: pointer;
   font: inherit;
 }
 .section-item:hover,
 .section-item:focus-visible { background: var(--bg-surface, rgba(255, 255, 255, .06)); }
 
+.section-thumb {
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 3.25rem;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-surface, rgba(255, 255, 255, .06));
+  display: grid;
+  place-items: center;
+}
+.section-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.section-thumb-fallback { color: var(--text-secondary, #9aa0aa); font-size: .9rem; }
+
+.section-text { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
+.section-name {
+  /* Long titles truncate rather than reflowing the whole grid row. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.section-meta { font-size: .78rem; color: var(--text-secondary, #9aa0aa); }
+
 .section-empty { margin: 0; color: var(--text-secondary, #9aa0aa); }
+
+@media (max-width: 640px) {
+  .section-popover { width: calc(100vw - 2rem); }
+  .section-grid { grid-template-columns: 1fr; }
+}
 .tagline { font-style: italic; }
 @media (max-width: 640px) { .detail-hero { grid-template-columns: 1fr; } .detail-poster { max-width: 14rem; } }
 </style>
