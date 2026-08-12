@@ -120,9 +120,10 @@
                   <option value="start_over">Start over</option>
                 </select>
               </label>
-              <label v-if="isHost && details.Type === 'Episode'">
-                <input v-model="binge" type="checkbox" /> Binge next episodes
-              </label>
+              <span v-if="isHost && details.Type === 'Episode'" class="binge-toggle">
+                <ToggleSwitch v-model="binge" />
+                <span>Binge next episodes</span>
+              </span>
               <button class="start-playback" type="button" @click="startPlayback">Start watch party</button>
             </template>
           </div>
@@ -281,6 +282,7 @@ import {
   type QualityOptionsResponse,
   type StreamsResponse,
 } from '@/api/client'
+import ToggleSwitch from '@/components/ToggleSwitch.vue'
 
 const props = defineProps<{ item: LibraryItem; isHost: boolean; selectedSeasonId?: string | null }>()
 const emit = defineEmits<{
@@ -790,8 +792,63 @@ onUnmounted(() => {
 .detail-hero .primary-actions button,
 .detail-hero .personal-actions button { padding: .45rem .9rem; line-height: 1.25; }
 .play-title, .start-playback { background: var(--accent-primary) !important; border-color: transparent !important; color: var(--bg-deep) !important; }
-.playlist-picker, .playback-options { display: flex; align-items: end; gap: .65rem; flex-wrap: wrap; margin-top: .85rem; }
+.playlist-picker, .playback-options {
+  display: flex;
+  align-items: end;
+  gap: .65rem;
+  flex-wrap: wrap;
+  margin-top: .85rem;
+  /* One height for every control in the row. align-items:end lines up the
+     boxes' bottoms, but a select, a button and a toggle are three different
+     heights, so their centres still sat at three different Y positions. Fixing
+     the height makes bottoms and centres agree. */
+  --control-height: 2.25rem;
+}
+
+.playlist-picker select,
+.playlist-picker input,
+.playlist-picker button,
+.playback-options select,
+.playback-options button {
+  height: var(--control-height);
+  box-sizing: border-box;
+  /* Default vertical padding differs between a select and a button, which
+     shifts their text off the shared baseline even at equal heights. */
+  padding-block: 0;
+}
+
+/* Buttons only. A select centres its own text and largely ignores
+   line-height, so applying it there varies by browser rather than helping. */
+.playlist-picker button,
+.playback-options button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .playlist-picker label, .playback-options label { display: grid; gap: .25rem; color: var(--text-secondary); font-size: .8rem; }
+
+/* The shared ToggleSwitch, matching the rest of the app, rather than a bare
+   checkbox. It was previously an unstyled input inside a <label>, which the
+   sibling rule above turned into a grid: the box stacked ABOVE its own text
+   and floated over the row aligned to nothing.
+ *
+ * A <span> rather than a <label>, because ToggleSwitch brings its own label
+ * and nesting one inside another makes the click target ambiguous. The height
+ * matches the select boxes so the row reads as one band of controls; the
+ * container aligns to the controls rather than their captions. */
+.binge-toggle {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  /* Same height as the controls beside it, so bottom-aligning the row also
+     centres the switch against the select and the button. Without this the
+     span shrank to its text and floated above the shared baseline. */
+  height: var(--control-height);
+  padding: 0;
+  color: var(--text-primary);
+  font-size: .85rem;
+  white-space: nowrap;
+}
 /* One row for both control groups. Two stacked sections with their own
    headings cost four vertical bands for a single set of controls, on a page
    whose whole complaint was that it kept extending downwards. */
