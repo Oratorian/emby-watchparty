@@ -1,0 +1,17 @@
+{
+  "BackdropImageTags": [],
+  "Id": "<id-unnamed-folder>",
+  "ImageTags": {},
+  "IsFolder": true,
+  "PrimaryImageAspectRatio": 0.6666666666666666,
+  "PrimaryImageItemId": "<id-primary-image>",
+  "PrimaryImageTag": "<image-tag>",
+  "ServerId": "<server-id>",
+  "Type": "Folder",
+  "UserData": {
+    "IsFavorite": false,
+    "PlayCount": 0,
+    "PlaybackPositionTicks": 0,
+    "Played": false
+  }
+}

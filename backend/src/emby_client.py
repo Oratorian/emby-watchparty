@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 from typing import TYPE_CHECKING
 
@@ -277,6 +278,182 @@ class EmbyClient:
         response.raise_for_status()
         return response.json()
 
+    async def query_items(self, query, access_token=None, user_id=None, *, prefixes=False):
+        """Run a strict watchparty library query through Emby's allowlisted API."""
+        if not user_id:
+            return {"Items": [], "TotalRecordCount": 0, "StartIndex": 0}
+
+        scope = query["scope"]
+        page = query["page"]
+        sort = query["sort"]
+        filters = query["filters"]
+        params: dict[str, str | int] = {
+            "Recursive": str(scope["recursive"]).lower(),
+            "Fields": (
+                "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,"
+                "ParentIndexNumber,SeriesId,SeasonId,UserData,MediaSourceCount"
+            ),
+            "SortBy": sort["field"],
+            "SortOrder": sort["direction"],
+            "StartIndex": page["start_index"],
+            "Limit": page["limit"],
+        }
+
+        scalar_values = {
+            "ParentId": scope["parent_id"],
+            "IncludeItemTypes": ",".join(scope["include_item_types"]),
+            "MediaTypes": ",".join(scope["media_types"]),
+            "SearchTerm": query.get("search_term"),
+        }
+        params.update({key: value for key, value in scalar_values.items() if value})
+
+        playstate = {
+            "played": "IsPlayed",
+            "unplayed": "IsUnplayed",
+            "resumable": "IsResumable",
+        }.get(filters["playstate"])
+        if playstate:
+            params["Filters"] = playstate
+
+        boolean_values = {
+            "IsFavorite": filters["favorite"],
+            "IsDuplicate": filters["duplicates"],
+            "Is3D": filters["is_3d"],
+        }
+        params.update(
+            {key: str(value).lower() for key, value in boolean_values.items() if value is not None}
+        )
+
+        list_values = {
+            "Genres": (filters["genres"], "|"),
+            "OfficialRatings": (filters["official_ratings"], "|"),
+            "Studios": (filters["studios"], "|"),
+            "Tags": (filters["tags"], "|"),
+            "PersonIds": (filters["person_ids"], ","),
+            "Years": (filters["years"], ","),
+            "Containers": (filters["containers"], ","),
+            "VideoCodecs": (filters["video_codecs"], ","),
+            "VideoTypes": (filters["video_types"], ","),
+            "AudioCodecs": (filters["audio_codecs"], ","),
+            "AudioLayouts": (filters["audio_layouts"], ","),
+            "AudioLanguages": (filters["audio_languages"], ","),
+            "SubtitleCodecs": (filters["subtitle_codecs"], ","),
+            "SubtitleLanguages": (filters["subtitle_languages"], ","),
+        }
+        for key, (values, separator) in list_values.items():
+            if values:
+                params[key] = separator.join(str(value) for value in values)
+
+        resolution_ranges = {
+            "4K": {"MinHeight": 2160},
+            "1080p": {"MinHeight": 1080, "MaxHeight": 2159},
+            "720p": {"MinHeight": 720, "MaxHeight": 1079},
+            "SD": {"MaxHeight": 719},
+        }
+        if filters["resolutions"]:
+            params.update(resolution_ranges[filters["resolutions"][0]])
+
+        truth_values = {
+            "HasSubtitles": filters["subtitles"],
+            "HasTrailer": filters["trailers"],
+            "HasSpecialFeature": filters["extras"],
+            "HasThemeSong": filters["theme_songs"],
+            "HasThemeVideo": filters["theme_videos"],
+            "IsLocked": filters["locked"],
+            "HasOverview": filters["overview"],
+        }
+        for key, value in truth_values.items():
+            if value in {"with", "yes"}:
+                params[key] = "true"
+            elif value in {"without", "no"}:
+                params[key] = "false"
+
+        provider_params = {"imdb": "HasImdbId", "tmdb": "HasTmdbId", "tvdb": "HasTvdbId"}
+        for provider in filters["missing_provider_ids"]:
+            params[provider_params[provider]] = "false"
+
+        if prefixes:
+            for key in ("Fields", "StartIndex", "Limit"):
+                params.pop(key, None)
+            response = await self.gateway.get(
+                "/emby/Items/Prefixes",
+                headers=self._headers(access_token, user_id),
+                params=params,
+            )
+            response.raise_for_status()
+            return response.json()
+
+        anchor_prefix = query.get("anchor_prefix")
+        if sort["field"] == "SortName" and anchor_prefix:
+            count_params = {
+                **params,
+                "NameLessThan": anchor_prefix,
+                "StartIndex": 0,
+                "Limit": 1,
+            }
+            count_response = await self.gateway.get(
+                f"/emby/Users/{user_id}/Items",
+                headers=self._headers(access_token, user_id),
+                params=count_params,
+            )
+            count_response.raise_for_status()
+            params["StartIndex"] = int(count_response.json().get("TotalRecordCount") or 0)
+
+        response = await self.gateway.get(
+            f"/emby/Users/{user_id}/Items",
+            headers=self._headers(access_token, user_id),
+            params=params,
+        )
+        response.raise_for_status()
+        result = response.json()
+        result["StartIndex"] = int(params["StartIndex"])
+        return result
+
+    async def get_filter_options(
+        self,
+        *,
+        parent_id=None,
+        include_item_types=None,
+        media_types=None,
+        access_token=None,
+        user_id=None,
+    ):
+        params = {
+            "UserId": user_id or "",
+            "Recursive": "true",
+            "ParentId": parent_id or "",
+            "IncludeItemTypes": include_item_types or "",
+            "MediaTypes": media_types or "",
+            "Limit": 200,
+        }
+        paths = {
+            "genre": "/emby/Genres",
+            "studio": "/emby/Studios",
+            "tag": "/emby/Tags",
+            "year": "/emby/Years",
+            "official_rating": "/emby/OfficialRatings",
+            "container": "/emby/Containers",
+            "video_codec": "/emby/VideoCodecs",
+            "audio_codec": "/emby/AudioCodecs",
+            "audio_layout": "/emby/AudioLayouts",
+            "subtitle_codec": "/emby/SubtitleCodecs",
+        }
+
+        async def fetch(path):
+            try:
+                response = await self.gateway.get(
+                    path,
+                    headers=self._headers(access_token, user_id),
+                    params={key: value for key, value in params.items() if value != ""},
+                )
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPError:
+                return None
+
+        responses = await asyncio.gather(*(fetch(path) for path in paths.values()))
+        return dict(zip(paths, responses, strict=True))
+
     async def get_season_episodes(self, season_id, access_token=None, user_id=None):
         path = f"/emby/Users/{user_id}/Items" if user_id else "/emby/Items"
         params = {
@@ -321,9 +498,16 @@ class EmbyClient:
             self.logger.error("Error fetching item details: error=%s", type(exc).__name__)
             return None
 
-    async def search_items(self, query, access_token=None, user_id=None):
+    async def search_items(
+        self,
+        query,
+        access_token=None,
+        user_id=None,
+        include_item_types="Movie,Series",
+    ):
         if not user_id:
             return {"Items": []}
+
         params = {
             "SearchTerm": query,
             "Recursive": "true",
@@ -332,7 +516,8 @@ class EmbyClient:
                 "RunTimeTicks,MediaSourceCount,IndexNumber,ParentIndexNumber,"
                 "SeriesId,SeasonId"
             ),
-            "IncludeItemTypes": "Movie,Series",
+            "IncludeItemTypes": include_item_types,
+            "Limit": 60,
             "api_key": self._auth_param(access_token),
         }
         try:
@@ -342,10 +527,199 @@ class EmbyClient:
                 params=params,
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            compact_query = self._compact_search_text(str(query))
+            if len(compact_query) < 5:
+                return result
+
+            # Emby's SearchTerm matching is punctuation-sensitive: for
+            # example, "spiderman" returns nothing for "Spider-Man".
+            # Ask for a bounded prefix candidate set, then rank locally
+            # after removing punctuation/spacing and allowing a small typo.
+            params["SearchTerm"] = compact_query[:4]
+            fallback = await self.gateway.get(
+                f"/emby/Users/{user_id}/Items",
+                headers=self._headers(access_token, user_id),
+                params=params,
+            )
+            fallback.raise_for_status()
+            candidates_by_id: dict[str, dict] = {}
+            for item in [*result.get("Items", []), *fallback.json().get("Items", [])]:
+                identity = str(item.get("Id") or (item.get("Type"), item.get("Name")))
+                candidates_by_id.setdefault(identity, item)
+
+            # A misspelled surname may produce no candidates from the
+            # first-name prefix (for example, "sean conery" -> "sean").
+            # If nothing collected so far is even a fuzzy match, retry a
+            # bounded prefix from the final word so Emby can surface the
+            # person/title for local ranking ("con" -> "Sean Connery").
+            query_words = [
+                self._compact_search_text(word)
+                for word in str(query).split()
+                if self._compact_search_text(word)
+            ]
+            surname_prefix = query_words[-1][:3] if len(query_words) > 1 else ""
+            has_fuzzy_candidate = any(
+                self._fuzzy_search_score(compact_query, item.get("Name", "")) > 0
+                for item in candidates_by_id.values()
+            )
+            if (
+                surname_prefix
+                and surname_prefix != params["SearchTerm"]
+                and not has_fuzzy_candidate
+            ):
+                params["SearchTerm"] = surname_prefix
+                surname_fallback = await self.gateway.get(
+                    f"/emby/Users/{user_id}/Items",
+                    headers=self._headers(access_token, user_id),
+                    params=params,
+                )
+                surname_fallback.raise_for_status()
+                for item in surname_fallback.json().get("Items", []):
+                    identity = str(item.get("Id") or (item.get("Type"), item.get("Name")))
+                    candidates_by_id.setdefault(identity, item)
+            ranked = sorted(
+                (
+                    (self._fuzzy_search_score(compact_query, item.get("Name", "")), index, item)
+                    for index, item in enumerate(candidates_by_id.values())
+                ),
+                key=lambda row: (-row[0], row[1]),
+            )
+            has_exact_normalized_match = any(score > 0.9 for score, _, _ in ranked)
+            items = [
+                item
+                for score, _, item in ranked
+                if score > (0.9 if has_exact_normalized_match else 0)
+            ]
+            return {"Items": items, "TotalRecordCount": len(items)}
         except httpx.HTTPError as exc:
             self.logger.error("Error searching items: error=%s", type(exc).__name__)
             return {"Items": []}
+
+    @staticmethod
+    def _compact_search_text(value: str) -> str:
+        return "".join(character for character in value.casefold() if character.isalnum())
+
+    @classmethod
+    def _fuzzy_search_score(cls, compact_query: str, title: str) -> float:
+        compact_title = cls._compact_search_text(title)
+        if not compact_title:
+            return 0.0
+        if compact_query in compact_title:
+            return 1.0 - min(len(compact_title) - len(compact_query), 100) / 1000
+        window_length = len(compact_query)
+        windows = (
+            [compact_title]
+            if len(compact_title) <= window_length
+            else [compact_title]
+            + [
+                compact_title[index : index + window_length]
+                for index in range(len(compact_title) - window_length + 1)
+            ]
+        )
+        distance = min(cls._damerau_levenshtein(compact_query, window) for window in windows)
+        allowed_distance = max(1, len(compact_query) // 10)
+        return 0.9 - distance * 0.05 if distance <= allowed_distance else 0.0
+
+    @staticmethod
+    def _damerau_levenshtein(left: str, right: str) -> int:
+        previous_previous: list[int] | None = None
+        previous = list(range(len(right) + 1))
+        for left_index, left_character in enumerate(left, start=1):
+            current = [left_index]
+            for right_index, right_character in enumerate(right, start=1):
+                cost = 0 if left_character == right_character else 1
+                value = min(
+                    current[right_index - 1] + 1,
+                    previous[right_index] + 1,
+                    previous[right_index - 1] + cost,
+                )
+                if (
+                    previous_previous is not None
+                    and left_index > 1
+                    and right_index > 1
+                    and left_character == right[right_index - 2]
+                    and left[left_index - 2] == right_character
+                ):
+                    value = min(value, previous_previous[right_index - 2] + 1)
+                current.append(value)
+            previous_previous, previous = previous, current
+        return previous[-1]
+
+    async def get_item_section(self, item_id, section, access_token=None, user_id=None):
+        routes = {
+            "related": (f"/emby/Items/{item_id}/Similar", {"UserId": user_id, "Limit": 12}),
+            "trailers": (f"/emby/Users/{user_id}/Items/{item_id}/LocalTrailers", {}),
+            "extras": (f"/emby/Users/{user_id}/Items/{item_id}/SpecialFeatures", {}),
+        }
+        path, params = routes[section]
+        response = await self.gateway.get(
+            path,
+            headers=self._headers(access_token, user_id),
+            params=params,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("Items", []) if isinstance(payload, dict) else payload
+
+    async def get_series_seasons(self, series_id, access_token=None, user_id=None):
+        response = await self.gateway.get(
+            f"/emby/Shows/{series_id}/Seasons",
+            headers=self._headers(access_token, user_id),
+            params={"UserId": user_id},
+        )
+        response.raise_for_status()
+        return response.json().get("Items", [])
+
+    async def get_series_episodes(self, series_id, season_id=None, access_token=None, user_id=None):
+        params = {"UserId": user_id}
+        if season_id:
+            params["SeasonId"] = season_id
+        response = await self.gateway.get(
+            f"/emby/Shows/{series_id}/Episodes",
+            headers=self._headers(access_token, user_id),
+            params=params,
+        )
+        response.raise_for_status()
+        return response.json().get("Items", [])
+
+    async def set_favorite(self, item_id, favorite, access_token=None, user_id=None):
+        path = f"/emby/Users/{user_id}/FavoriteItems/{item_id}"
+        method = self.gateway.post if favorite else self.gateway.delete
+        response = await method(path, headers=self._headers(access_token, user_id))
+        response.raise_for_status()
+
+    async def set_played(self, item_id, played, access_token=None, user_id=None):
+        path = f"/emby/Users/{user_id}/PlayedItems/{item_id}"
+        method = self.gateway.post if played else self.gateway.delete
+        response = await method(path, headers=self._headers(access_token, user_id))
+        response.raise_for_status()
+
+    async def get_playlists(self, access_token=None, user_id=None):
+        response = await self.gateway.get(
+            f"/emby/Users/{user_id}/Items",
+            headers=self._headers(access_token, user_id),
+            params={"Recursive": "true", "IncludeItemTypes": "Playlist"},
+        )
+        response.raise_for_status()
+        return response.json().get("Items", [])
+
+    async def create_playlist(self, name, access_token=None, user_id=None):
+        response = await self.gateway.post(
+            "/emby/Playlists",
+            headers=self._headers(access_token, user_id),
+            params={"Name": name, "UserId": user_id},
+        )
+        response.raise_for_status()
+        return response.json()["Id"]
+
+    async def add_to_playlist(self, playlist_id, item_id, access_token=None, user_id=None):
+        response = await self.gateway.post(
+            f"/emby/Playlists/{playlist_id}/Items",
+            headers=self._headers(access_token, user_id),
+            params={"Ids": item_id, "UserId": user_id},
+        )
+        response.raise_for_status()
 
     def get_image_url(
         self,
@@ -355,6 +729,7 @@ class EmbyClient:
         max_width=None,
         max_height=None,
         quality=None,
+        image_index=None,
     ):
         params = [f"api_key={self._auth_param(access_token)}"]
         if max_width:
@@ -363,7 +738,10 @@ class EmbyClient:
             params.append(f"maxHeight={int(max_height)}")
         if quality:
             params.append(f"quality={int(quality)}")
-        return f"{self.server_url}/emby/Items/{item_id}/Images/{image_type}?{'&'.join(params)}"
+        path = f"{self.server_url}/emby/Items/{item_id}/Images/{image_type}"
+        if image_index is not None:
+            path += f"/{int(image_index)}"
+        return f"{path}?{'&'.join(params)}"
 
     async def get_playback_info(
         self,

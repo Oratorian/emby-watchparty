@@ -42,7 +42,7 @@ test('mobile library uses compact navigation and keeps alphabet controls visible
   const middle = page.getByRole('button', { name: 'Jump to M', exact: true })
   await expect(middle).toBeEnabled()
   await expect(middle).toBeInViewport()
-  await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeInViewport()
+  await expect(page.getByLabel('Search all libraries')).toBeInViewport()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
     await page.evaluate(() => document.documentElement.clientWidth),
   )
@@ -74,6 +74,9 @@ test('@playback-gate iPhone WebKit selects native HLS from fake Emby', async ({ 
   await page.getByRole('button', { name: 'Become Host', exact: true }).tap()
   await page.getByText('Movies', { exact: true }).tap()
   await page.getByText('Fake Movie', { exact: true }).tap()
+  await expect(page.getByRole('heading', { name: 'Fake Movie', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Play', exact: true }).tap()
+  await page.getByRole('button', { name: 'Start watch party', exact: true }).tap()
 
   const video = page.locator('video#videoElement')
   await expect(video).toHaveAttribute('playsinline', '')

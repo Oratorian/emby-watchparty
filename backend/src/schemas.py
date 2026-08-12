@@ -3,7 +3,9 @@ Pydantic models for API request/response schemas
 Auto-generates OpenAPI documentation at /docs
 """
 
-from pydantic import BaseModel, ConfigDict
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 # ============== Auth ==============
 
@@ -169,6 +171,152 @@ class LibraryItemsResponse(BaseModel):
 
 class LibraryPrefixesResponse(BaseModel):
     Prefixes: list[str] = []
+
+
+class StrictApiModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class LibraryQueryScope(StrictApiModel):
+    parent_id: str | None = None
+    include_item_types: list[str] = Field(default_factory=list)
+    media_types: list[str] = Field(default_factory=list)
+    recursive: bool = False
+
+
+class LibraryQueryPage(StrictApiModel):
+    start_index: int = Field(default=0, ge=0)
+    limit: int = Field(default=50, ge=1, le=200)
+
+
+class LibraryQuerySort(StrictApiModel):
+    field: Literal[
+        "SortName",
+        "DateCreated",
+        "PremiereDate",
+        "ProductionYear",
+        "CommunityRating",
+        "CriticRating",
+        "Runtime",
+        "Random",
+    ] = "SortName"
+    direction: Literal["Ascending", "Descending"] = "Ascending"
+
+
+class LibraryQueryFilters(StrictApiModel):
+    playstate: Literal["any", "played", "unplayed", "resumable"] = "any"
+    favorite: bool | None = None
+    duplicates: bool | None = None
+    genres: list[str] = Field(default_factory=list)
+    official_ratings: list[str] = Field(default_factory=list)
+    studios: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    person_ids: list[str] = Field(default_factory=list)
+    years: list[int] = Field(default_factory=list)
+    containers: list[str] = Field(default_factory=list)
+    video_codecs: list[str] = Field(default_factory=list)
+    video_types: list[str] = Field(default_factory=list)
+    resolutions: list[Literal["4K", "1080p", "720p", "SD"]] = Field(
+        default_factory=list, max_length=1
+    )
+    is_3d: bool | None = None
+    audio_codecs: list[str] = Field(default_factory=list)
+    audio_layouts: list[str] = Field(default_factory=list)
+    audio_languages: list[str] = Field(default_factory=list)
+    subtitles: Literal["any", "with", "without"] = "any"
+    subtitle_codecs: list[str] = Field(default_factory=list)
+    subtitle_languages: list[str] = Field(default_factory=list)
+    trailers: Literal["any", "with", "without"] = "any"
+    extras: Literal["any", "with", "without"] = "any"
+    theme_songs: Literal["any", "with", "without"] = "any"
+    theme_videos: Literal["any", "with", "without"] = "any"
+    locked: Literal["any", "yes", "no"] = "any"
+    overview: Literal["any", "with", "without"] = "any"
+    missing_provider_ids: list[Literal["imdb", "tmdb", "tvdb"]] = Field(default_factory=list)
+
+
+class LibraryQueryRequest(StrictApiModel):
+    scope: LibraryQueryScope = Field(default_factory=LibraryQueryScope)
+    page: LibraryQueryPage = Field(default_factory=LibraryQueryPage)
+    sort: LibraryQuerySort = Field(default_factory=LibraryQuerySort)
+    filters: LibraryQueryFilters = Field(default_factory=LibraryQueryFilters)
+    search_term: str | None = Field(default=None, max_length=200)
+    anchor_prefix: str | None = Field(default=None, min_length=1, max_length=8)
+
+
+class FilterOption(StrictApiModel):
+    value: str
+    label: str
+
+
+class FilterControl(StrictApiModel):
+    id: str
+    label: str
+    kind: Literal["select", "multi", "toggle"]
+    values: list[FilterOption] = Field(default_factory=list)
+
+
+class FilterOptionsResponse(StrictApiModel):
+    controls: list[FilterControl]
+
+
+class SearchGroup(StrictApiModel):
+    id: Literal["movies", "series", "episodes", "people", "collections", "other"]
+    label: str
+    items: list[LibraryItem] = Field(default_factory=list)
+
+
+class GroupedSearchResponse(StrictApiModel):
+    query: str
+    groups: list[SearchGroup] = Field(default_factory=list)
+
+
+class ItemSectionResponse(StrictApiModel):
+    section: Literal["related", "trailers", "extras"]
+    items: list[LibraryItem] = Field(default_factory=list)
+
+
+class ItemChildrenResponse(StrictApiModel):
+    items: list[LibraryItem] = Field(default_factory=list)
+
+
+class FavoriteRequest(StrictApiModel):
+    favorite: bool
+
+
+class FavoriteResponse(StrictApiModel):
+    success: bool
+    favorite: bool
+
+
+class PlayedRequest(StrictApiModel):
+    played: bool
+
+
+class PlayedResponse(StrictApiModel):
+    success: bool
+    played: bool
+
+
+class PlaylistListResponse(StrictApiModel):
+    items: list[LibraryItem] = Field(default_factory=list)
+
+
+class PlaylistCreateRequest(StrictApiModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class PlaylistCreateResponse(StrictApiModel):
+    id: str
+    name: str
+
+
+class PlaylistAddRequest(StrictApiModel):
+    item_id: str = Field(min_length=1, max_length=200)
+
+
+class ActionSuccessResponse(StrictApiModel):
+    success: bool
 
 
 class ItemDetailsResponse(BaseModel):

@@ -34,6 +34,18 @@ const isSyncing = ref(false)
 
 let hls: Hls | null = null
 
+function releasePlaybackSync(video: HTMLVideoElement) {
+  setTimeout(() => {
+    isSyncing.value = false
+    // A viewer can press Play as soon as the native controls become
+    // usable, before the short stream-settle guard expires. The native
+    // play event is intentionally suppressed during that guard, so
+    // reconcile the visible local state once it releases instead of
+    // silently leaving the rest of the party paused.
+    if (!props.playing && !video.paused && !video.ended) emit('play')
+  }, 500)
+}
+
 function destroyHls() {
   if (hls) {
     hls.destroy()
@@ -107,7 +119,7 @@ function attachStream(url: string) {
             emit('autoplay-blocked')
           })
         }
-        setTimeout(() => { isSyncing.value = false }, 500)
+        releasePlaybackSync(video)
       }
       if (video.readyState >= 3) {
         releaseSync()
@@ -151,7 +163,7 @@ function attachStream(url: string) {
           })
         }
         emitReadyOnce()
-        setTimeout(() => { isSyncing.value = false }, 500)
+        releasePlaybackSync(video)
       },
       { once: true },
     )

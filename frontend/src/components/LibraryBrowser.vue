@@ -1,7 +1,22 @@
 <template>
   <div ref="browserRoot" class="library-browser">
+    <TitleDetails
+      v-if="detailItem"
+      :item="detailItem"
+      :is-host="auth.isHost"
+      :selected-season-id="selectedSeasonId"
+      @back="closeDetails"
+      @play="emit('select-video', $event)"
+      @browse="browseDetail"
+      @open="openDetails($event)"
+    />
+    <template v-else>
       <div class="panel-header">
-        <div class="breadcrumbs">
+        <div v-if="!currentParentId" class="library-home-heading">
+          <h2>Choose a library</h2>
+          <p>Browse your Emby media and pick what the party watches next.</p>
+        </div>
+        <div v-else class="breadcrumbs">
           <span class="crumb" @click="goToRoot">Libraries</span>
           <template v-for="(crumb, i) in breadcrumbs" :key="crumb.id">
             <span class="crumb-sep">/</span>
@@ -15,23 +30,50 @@
           </template>
         </div>
 
-        <div class="search-bar">
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Search..."
-            @keydown.enter="doSearch"
-          />
-          <button @click="doSearch">Search</button>
-          <button v-if="isSearching" @click="clearSearch">Clear</button>
+        <GlobalLibrarySearch
+          @select="handleSearchResult"
+          @results="handleSearchResults"
+        />
+        <div v-if="selectedPerson" class="search-filter-chip" role="status">
+          Showing titles with <strong>{{ selectedPerson.Name }}</strong>
+          <button type="button" aria-label="Clear person filter" @click="clearPersonFilter">×</button>
         </div>
+      </div>
+
+      <div v-if="currentParentId" class="library-tools">
+        <LibraryFilters
+          :controls="filterControls"
+          :model-value="filterState"
+          @update:model-value="applyFilters"
+        />
+        <label>
+          Sort
+          <select v-model="sortField" aria-label="Sort titles" @change="applySort">
+            <option value="SortName">Title</option>
+            <option value="DateCreated">Date added</option>
+            <option value="PremiereDate">Release date</option>
+            <option value="ProductionYear">Year</option>
+            <option value="CommunityRating">Community rating</option>
+            <option value="CriticRating">Critic rating</option>
+            <option value="Runtime">Runtime</option>
+            <option value="Random">Random</option>
+          </select>
+          <select v-model="sortDirection" aria-label="Sort direction" @change="applySort">
+            <option value="Ascending">Ascending</option>
+            <option value="Descending">Descending</option>
+          </select>
+        </label>
       </div>
 
       <div v-if="loading" class="loading">Loading...</div>
 
+      <div v-else-if="itemsError" class="empty load-error" role="alert">
+        {{ itemsError }}
+      </div>
+
       <div v-else-if="items.length === 0" class="empty">No items found.</div>
 
-      <div v-else class="library-content">
+      <div v-else class="library-content" :class="{ 'library-home': !currentParentId }">
         <div class="items-grid">
           <div v-if="hasPrevious" ref="topSentinel" class="sentinel sentinel-top">
             <span v-if="loadingPrevious">Loading earlier titles...</span>
@@ -41,11 +83,15 @@
             :key="item.Id"
             :data-item-id="item.Id"
             class="item-card"
+            role="button"
+            :aria-label="`Open ${item.Name}`"
+            tabindex="0"
             :class="{
               'item-card-live': item.Id === playingItemId,
               'item-card-next': item.Id === nextItemId,
             }"
             @click="handleItemClick(item)"
+            @keydown.enter.prevent="handleItemClick(item)"
           >
             <div class="item-poster" :style="posterStyle(item)">
               <img
@@ -54,7 +100,9 @@
                 :alt="item.Name"
                 loading="lazy"
               />
-              <div v-else class="no-poster">{{ item.Name.charAt(0) }}</div>
+              <div v-else class="no-poster">
+                {{ !currentParentId ? libraryMark(item) : item.Name.charAt(0) }}
+              </div>
               <div v-if="item.Id === playingItemId" class="live-badge" aria-label="Currently playing">
                 <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
                 <span class="live-text">LIVE</span>
@@ -82,10 +130,11 @@
             <div class="item-info">
               <span class="item-name">{{ item.Name }}</span>
               <span class="item-meta">
+                <span v-if="!currentParentId">{{ libraryKind(item) }}</span>
                 <span v-if="item.ProductionYear">{{ item.ProductionYear }}</span>
                 <span v-if="item.ProductionYear && itemRuntime(item)" class="sep">·</span>
                 <span v-if="itemRuntime(item)">{{ itemRuntime(item) }}</span>
-                <span v-if="!item.ProductionYear && !itemRuntime(item)" class="item-type">{{ item.Type }}</span>
+                <span v-if="currentParentId && !item.ProductionYear && !itemRuntime(item)" class="item-type">{{ item.Type }}</span>
               </span>
               <span v-if="playedLabel(item)" class="item-played">{{ playedLabel(item) }}</span>
             </div>
@@ -112,15 +161,21 @@
           </button>
         </div>
       </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { api } from '@/api/client'
+import { api, type FilterControl, type GroupedSearchResponse, type LibraryFilterState, type LibraryItem, type LibraryQueryRequest, type PlaybackSelection } from '@/api/client'
 import { usePartyStore } from '@/stores/party'
+import { useAuthStore } from '@/stores/auth'
+import LibraryFilters from './LibraryFilters.vue'
+import GlobalLibrarySearch from './GlobalLibrarySearch.vue'
+import TitleDetails from './TitleDetails.vue'
 
 const party = usePartyStore()
+const auth = useAuthStore()
 // Drives the LIVE badge + EQ animation overlay on the currently-playing
 // card. Falls back to null when nothing is selected so the overlay never
 // renders accidentally on a stale match.
@@ -169,12 +224,15 @@ interface EmbyItem {
   Id: string
   Name: string
   Type: string
+  CollectionType?: string
   ImageTags?: { Primary?: string }
   PrimaryImageAspectRatio?: number
   ProductionYear?: number
   Overview?: string
   RunTimeTicks?: number
   SortName?: string
+  SeriesId?: string
+  SeriesName?: string
   UserData?: {
     PlaybackPositionTicks?: number
     PlayedPercentage?: number
@@ -218,10 +276,33 @@ interface Breadcrumb {
   id: string
   name: string
   type?: string
+  collectionType?: string
+}
+
+function libraryKind(item: EmbyItem): string {
+  const labels: Record<string, string> = {
+    movies: 'Movie library',
+    tvshows: 'Series library',
+    boxsets: 'Curated collections',
+    playlists: 'Saved playlists',
+    livetv: 'Live channels',
+  }
+  return labels[item.CollectionType ?? ''] ?? 'Media library'
+}
+
+function libraryMark(item: EmbyItem): string {
+  const marks: Record<string, string> = {
+    movies: 'MOVIES',
+    tvshows: 'SERIES',
+    boxsets: 'SETS',
+    playlists: 'LISTS',
+    livetv: 'LIVE',
+  }
+  return marks[item.CollectionType ?? ''] ?? (item.Name === 'Recordings' ? 'DVR' : 'MEDIA')
 }
 
 const emit = defineEmits<{
-  'select-video': [item: EmbyItem]
+  'select-video': [selection: EmbyItem | PlaybackSelection]
   'navigation-change': [label: string]
 }>()
 
@@ -230,16 +311,170 @@ const loading = ref(false)
 const loadingMore = ref(false)
 const loadingPrevious = ref(false)
 const items = ref<EmbyItem[]>([])
+const itemsError = ref('')
 const breadcrumbs = ref<Breadcrumb[]>([])
-const searchQuery = ref('')
-const isSearching = ref(false)
 const hasMore = ref(false)
 const hasPrevious = ref(false)
 const loadedStartIndex = ref(0)
 const totalRecordCount = ref(0)
 const currentParentId = ref<string | null>(null)
 const currentParentType = ref<string | null>(null)
+const selectedPerson = ref<EmbyItem | null>(null)
+const liveSearchActive = ref(false)
 const PAGE_SIZE = 50
+const detailItem = ref<LibraryItem | null>(null)
+const selectedSeasonId = ref<string | null>(null)
+let detailScrollTop = 0
+let detailFocusId: string | null = null
+
+function openDetails(item: EmbyItem, seasonId?: string) {
+  const panel = browserRoot.value?.closest<HTMLElement>('.library-panel')
+  detailScrollTop = panel?.scrollTop ?? 0
+  detailFocusId = item.Id
+  detailItem.value = item
+  selectedSeasonId.value = seasonId || null
+  emit('navigation-change', item.Name)
+}
+
+async function closeDetails() {
+  detailItem.value = null
+  selectedSeasonId.value = null
+  if (liveSearchActive.value && currentParentId.value) {
+    liveSearchActive.value = false
+    selectedPerson.value = null
+    bumpNavToken('closeSearchDetails')
+    await fetchItems(currentParentId.value)
+  }
+  emit('navigation-change', breadcrumbs.value.at(-1)?.name ?? 'Libraries')
+  await nextTick()
+  const panel = browserRoot.value?.closest<HTMLElement>('.library-panel')
+  if (panel) panel.scrollTop = detailScrollTop
+  if (detailFocusId) {
+    browserRoot.value
+      ?.querySelector<HTMLElement>(`[data-item-id="${CSS.escape(detailFocusId)}"]`)
+      ?.focus()
+  }
+}
+
+async function browseDetail(item: LibraryItem) {
+  detailItem.value = null
+  await handleItemClick(item as EmbyItem, true)
+}
+const filterControls = ref<FilterControl[]>([])
+const filterState = ref<LibraryFilterState>({})
+const sortField = ref<LibraryQueryRequest['sort']['field']>('SortName')
+const sortDirection = ref<LibraryQueryRequest['sort']['direction']>('Ascending')
+let configuredParentId: string | null = null
+
+const FILTER_FIELDS: Record<string, string> = {
+  genre: 'genres',
+  official_rating: 'official_ratings',
+  studio: 'studios',
+  tag: 'tags',
+  year: 'years',
+  container: 'containers',
+  video_codec: 'video_codecs',
+  video_type: 'video_types',
+  resolution: 'resolutions',
+  audio_codec: 'audio_codecs',
+  audio_layout: 'audio_layouts',
+  audio_language: 'audio_languages',
+  subtitle_codec: 'subtitle_codecs',
+  subtitle_language: 'subtitle_languages',
+}
+
+function filterStorageKey(parentId: string): string {
+  return `emby-watchparty-library-filters:${parentId}`
+}
+
+function configureFilters(parentId: string) {
+  if (configuredParentId === parentId) return
+  configuredParentId = parentId
+  try {
+    const saved = JSON.parse(localStorage.getItem(filterStorageKey(parentId)) || '{}')
+    filterState.value = saved.filters && typeof saved.filters === 'object' ? saved.filters : {}
+    sortField.value = saved.sortField || 'SortName'
+    sortDirection.value = saved.sortDirection || 'Ascending'
+  } catch {
+    filterState.value = {}
+  }
+  api.filterOptions({ parentId }, navigationSignal())
+    .then((response) => {
+      if (configuredParentId === parentId) filterControls.value = response.controls
+    })
+    .catch(() => {
+      if (configuredParentId === parentId) filterControls.value = []
+    })
+}
+
+function persistFilters() {
+  if (!currentParentId.value) return
+  try {
+    localStorage.setItem(filterStorageKey(currentParentId.value), JSON.stringify({
+      filters: filterState.value,
+      sortField: sortField.value,
+      sortDirection: sortDirection.value,
+    }))
+  } catch { /* ignore disabled storage */ }
+}
+
+function applyFilters(value: LibraryFilterState) {
+  filterState.value = value
+  persistFilters()
+  if (!currentParentId.value) return
+  bumpNavToken('applyFilters')
+  void fetchItems(currentParentId.value)
+}
+
+function applySort() {
+  persistFilters()
+  if (!currentParentId.value) return
+  bumpNavToken('applySort')
+  void fetchItems(currentParentId.value)
+}
+
+function queryFilters(): LibraryQueryRequest['filters'] {
+  const result: LibraryQueryRequest['filters'] = {}
+  for (const [id, value] of Object.entries(filterState.value)) {
+    const target = FILTER_FIELDS[id] || id
+    if (id === 'favorite' || id === 'duplicates' || id === 'is_3d') {
+      result[target] = value === 'true'
+    } else if (id === 'year') {
+      result[target] = (Array.isArray(value) ? value : [value]).map(Number)
+    } else if (id === 'resolution') {
+      result[target] = Array.isArray(value) ? value : [value]
+    } else {
+      result[target] = value
+    }
+  }
+  if (selectedPerson.value) result.person_ids = [selectedPerson.value.Id]
+  return result
+}
+
+function queryScope(parentId: string): LibraryQueryRequest['scope'] {
+  const root = breadcrumbs.value[0]
+  const atLibraryRoot = breadcrumbs.value.length === 1 && root?.id === parentId
+  if (!atLibraryRoot || root.type !== 'CollectionFolder') {
+    return {
+      parent_id: parentId,
+      include_item_types: [],
+      media_types: [],
+      recursive: false,
+    }
+  }
+  const itemTypes: Record<string, string[]> = {
+    movies: ['Movie'],
+    tvshows: ['Series'],
+    boxsets: ['BoxSet'],
+    playlists: ['Playlist'],
+  }
+  return {
+    parent_id: parentId,
+    include_item_types: itemTypes[root.collectionType ?? ''] ?? [],
+    media_types: ['movies', 'tvshows'].includes(root.collectionType ?? '') ? ['Video'] : [],
+    recursive: true,
+  }
+}
 
 // Per-tab nav token. Bumped on every navigation (root, breadcrumb,
 // folder click, search). Every async fetch captures the token at
@@ -262,7 +497,7 @@ function navigationSignal(): AbortSignal {
   return navigationController.signal
 }
 
-const browsableTypes = new Set(['CollectionFolder', 'Folder', 'Series', 'Season'])
+const browsableTypes = new Set(['CollectionFolder', 'Folder', 'Series', 'Season', 'BoxSet'])
 const playableTypes = new Set(['Movie', 'Episode'])
 
 // Persist the user's browsing position so they don't have to
@@ -344,6 +579,8 @@ const displayedPrefixes = computed(() => {
 })
 const showAlphabetBar = computed(() => (
   alphabeticalMode.value
+  && sortField.value === 'SortName'
+  && sortDirection.value === 'Ascending'
   && totalRecordCount.value >= ALPHABET_BAR_MIN_ITEMS
   && availablePrefixes.value.size > 0
 ))
@@ -388,9 +625,9 @@ function posterStyle(item: EmbyItem): Record<string, string> {
 
 async function goToRoot() {
   bumpNavToken('goToRoot')
+  liveSearchActive.value = false
+  selectedPerson.value = null
   breadcrumbs.value = []
-  isSearching.value = false
-  searchQuery.value = ''
   hasMore.value = false
   hasPrevious.value = false
   loadedStartIndex.value = 0
@@ -407,8 +644,6 @@ async function goToCrumb(index: number) {
   const crumb = breadcrumbs.value[index]
   breadcrumbs.value = breadcrumbs.value.slice(0, index + 1)
   currentParentType.value = crumb?.type ?? null
-  isSearching.value = false
-  searchQuery.value = ''
   emit('navigation-change', crumb?.name ?? 'Libraries')
   await fetchItems(crumb!.id)
 }
@@ -457,7 +692,14 @@ async function fetchPrefixes(parentId: string) {
     return
   }
   try {
-    const data = await api.itemPrefixes(parentId, navigationSignal())
+    const data = Object.keys(filterState.value).length || selectedPerson.value
+      ? await api.queryPrefixes({
+          scope: { parent_id: parentId, include_item_types: [], media_types: [], recursive: false },
+          page: { start_index: 0, limit: PAGE_SIZE },
+          sort: { field: sortField.value, direction: sortDirection.value },
+          filters: queryFilters(),
+        }, navigationSignal())
+      : await api.itemPrefixes(parentId, navigationSignal())
     availablePrefixes.value = new Set(
       (data.Prefixes ?? []).map((prefix) => prefix.trim().toUpperCase()).filter(Boolean),
     )
@@ -483,7 +725,9 @@ async function fetchItems(
   } else {
     loading.value = true
     items.value = []
+    itemsError.value = ''
     currentParentId.value = parentId
+    configureFilters(parentId)
     hasPrevious.value = false
     hasMore.value = false
   }
@@ -502,10 +746,21 @@ async function fetchItems(
       sortMode: alphabeticalMode.value ? 'alphabetical' : 'default',
     }
     if (anchorPrefix) params.anchorPrefix = anchorPrefix
-    const data = await api.items(
-      params,
-      navigationSignal(),
-    )
+    const useQuery = Object.keys(filterState.value).length > 0
+      || selectedPerson.value !== null
+      || sortField.value !== 'SortName'
+      || sortDirection.value !== 'Ascending'
+    const data = useQuery
+      ? await api.queryItems({
+          scope: {
+            ...queryScope(parentId),
+          },
+          page: { start_index: startIndex, limit: PAGE_SIZE },
+          sort: { field: sortField.value, direction: sortDirection.value },
+          filters: queryFilters(),
+          anchor_prefix: anchorPrefix,
+        }, navigationSignal())
+      : await api.items(params, navigationSignal())
     if (myToken !== navToken) {
       console.debug('[LibraryBrowser] fetchItems STALE — dropping result', { startedAt: myToken, current: navToken, parentId, append })
       return 'stale'
@@ -551,11 +806,14 @@ async function fetchItems(
     // empty grid on every reload until the user manually navigates
     // elsewhere. In-session navigation into an empty folder still
     // works -- it just doesn't get persisted.
-    if (!append && !prepend && !isSearching.value && newItems.length > 0) saveLibraryState()
+    if (!append && !prepend && newItems.length > 0) saveLibraryState()
     if (!append && !prepend && !anchorPrefix) await fetchPrefixes(parentId)
   } catch {
     if (myToken !== navToken) return 'stale'
-    if (!append && !prepend) items.value = []
+    if (!append && !prepend) {
+      items.value = []
+      itemsError.value = 'Could not load library. Try again.'
+    }
     return 'error'
   } finally {
     if (myToken === navToken) {
@@ -577,55 +835,96 @@ function loadPrevious() {
   fetchItems(currentParentId.value, false, true)
 }
 
-async function doSearch() {
-  const q = searchQuery.value.trim()
-  if (!q) return
-  const myToken = bumpNavToken(`doSearch:${q}`)
-  loading.value = true
-  isSearching.value = true
-  breadcrumbs.value = []
-  hasMore.value = false
-  hasPrevious.value = false
-  availablePrefixes.value = new Set()
-  currentParentId.value = null
-  currentParentType.value = null
-  emit('navigation-change', 'Search results')
-  try {
-    const data = await api.search(q, navigationSignal())
-    if (myToken !== navToken) {
-      console.debug('[LibraryBrowser] doSearch STALE — dropping result', { startedAt: myToken, current: navToken, q })
-      return
-    }
-    items.value = data.Items ?? data ?? []
-    totalRecordCount.value = data.TotalRecordCount ?? items.value.length
-    loadedStartIndex.value = 0
-  } catch {
-    if (myToken !== navToken) return
-    items.value = []
-  } finally {
-    if (myToken === navToken) loading.value = false
+async function handleItemClick(item: EmbyItem, browse = false) {
+  if (!browse && item.Type === 'Season' && item.SeriesId) {
+    openDetails(
+      { Id: item.SeriesId, Name: item.SeriesName || item.Name, Type: 'Series' },
+      item.Id,
+    )
+    return
   }
-}
-
-function clearSearch() {
-  isSearching.value = false
-  searchQuery.value = ''
-  goToRoot()
-}
-
-async function handleItemClick(item: EmbyItem) {
-  if (playableTypes.has(item.Type)) {
-    emit('select-video', item)
+  if (!browse && (playableTypes.has(item.Type) || item.Type === 'Series')) {
+    openDetails(item)
     return
   }
 
   if (browsableTypes.has(item.Type)) {
     bumpNavToken(`handleItemClick:${item.Type}:${item.Id}`)
-    breadcrumbs.value.push({ id: item.Id, name: item.Name, type: item.Type })
+    breadcrumbs.value.push({
+      id: item.Id,
+      name: item.Name,
+      type: item.Type,
+      collectionType: item.CollectionType,
+    })
     currentParentType.value = item.Type
     emit('navigation-change', item.Name)
     await fetchItems(item.Id)
   }
+}
+
+async function handleSearchResult(item: EmbyItem) {
+  if (item.Type !== 'Person') {
+    await handleItemClick(item)
+    return
+  }
+  if (!currentParentId.value) return
+  liveSearchActive.value = true
+  selectedPerson.value = item
+  bumpNavToken(`searchPerson:${item.Id}`)
+  await fetchItems(currentParentId.value)
+}
+
+async function handleSearchResults(response: GroupedSearchResponse) {
+  if (!currentParentId.value) return
+  const query = response.query.trim()
+  const directItems = response.groups
+    .filter((group) => group.id !== 'people')
+    .flatMap((group) => group.items) as EmbyItem[]
+  const people = response.groups
+    .filter((group) => group.id === 'people')
+    .flatMap((group) => group.items) as EmbyItem[]
+
+  if (!query) {
+    if (!liveSearchActive.value) return
+    liveSearchActive.value = false
+    selectedPerson.value = null
+    bumpNavToken('clearLiveSearch')
+    await fetchItems(currentParentId.value)
+    return
+  }
+  liveSearchActive.value = true
+  if (directItems.length > 0) {
+    selectedPerson.value = null
+    bumpNavToken('liveSearchItems')
+    items.value = directItems
+    itemsError.value = ''
+    totalRecordCount.value = directItems.length
+    hasPrevious.value = false
+    hasMore.value = false
+    return
+  }
+  if (people.length === 1) {
+    if (selectedPerson.value?.Id === people[0]!.Id) return
+    selectedPerson.value = people[0]!
+    bumpNavToken(`liveSearchPerson:${people[0]!.Id}`)
+    await fetchItems(currentParentId.value)
+    return
+  }
+  selectedPerson.value = null
+  bumpNavToken('liveSearchEmpty')
+  items.value = []
+  itemsError.value = ''
+  totalRecordCount.value = 0
+  hasPrevious.value = false
+  hasMore.value = false
+}
+
+async function clearPersonFilter() {
+  if (!selectedPerson.value || !currentParentId.value) return
+  liveSearchActive.value = false
+  selectedPerson.value = null
+  bumpNavToken('clearPersonFilter')
+  await fetchItems(currentParentId.value)
 }
 
 const topSentinel = ref<HTMLElement | null>(null)
@@ -1075,6 +1374,60 @@ onUnmounted(() => {
   overflow-anchor: none;
 }
 
+.search-filter-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.55rem 0.4rem 0.7rem;
+  border: 1px solid var(--accent-primary);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+.search-filter-chip button {
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.library-home-heading h2 {
+  font-size: 1.45rem;
+  letter-spacing: -0.02em;
+}
+
+.library-home-heading p {
+  margin-top: 0.2rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.library-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+
+.library-tools select { margin-left: .35rem; }
+
+@media (min-width: 761px) and (max-height: 600px) {
+  .alphabet-bar {
+    height: min(467px, calc(100dvh - 240px));
+  }
+}
+
+@media (max-width: 700px) {
+  .library-tools { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 760px) {
   .library-browser,
   .panel-header,
@@ -1123,5 +1476,47 @@ onUnmounted(() => {
     width: 20px;
     height: 100%;
   }
+}
+
+.library-content.library-home .items-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 1rem;
+}
+
+.library-home .item-card {
+  min-width: 0;
+}
+
+.library-home .item-poster {
+  aspect-ratio: 16 / 9 !important;
+}
+
+.library-home .no-poster {
+  background:
+    radial-gradient(circle at 25% 15%, rgba(34, 211, 238, 0.14), transparent 45%),
+    linear-gradient(135deg, var(--bg-primary), var(--bg-secondary));
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.library-home .item-info {
+  padding: 0.7rem 0.85rem 0.8rem;
+  gap: 0.25rem;
+}
+
+.library-home .item-name {
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.library-home .item-meta {
+  font-size: 0.8rem;
+}
+
+.item-card:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 3px;
 }
 </style>

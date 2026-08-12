@@ -11,6 +11,7 @@
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:playback-gate": "playwright test --grep @playback-gate"
   },
@@ -28,6 +29,7 @@
     "@tsconfig/node24": "^24.0.4",
     "@types/node": "^24.12.0",
     "@vitejs/plugin-vue": "^6.0.4",
+    "@vitest/coverage-v8": "^4.1.10",
     "@vue/test-utils": "^2.4.11",
     "@vue/tsconfig": "^0.9.0",
     "eslint": "^10.8.0",

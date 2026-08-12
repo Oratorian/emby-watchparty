@@ -176,19 +176,24 @@ const {
 const versionInfo = ref({ version: '', codename: '' })
 
 onMounted(async () => {
+  // Snapshot persisted intent before any startup await. A manual Join can
+  // complete while version/avatar requests are still pending and writes the
+  // username to storage; reading storage afterward mistakes that new value
+  // for a preexisting auto-join and claims the same socket identity twice.
+  const savedUsernameAtMount = localStorage.getItem(STORAGE_KEY)
   socket.connect()
   party.setupListeners()
   attachReconnect()
   auth.attachSocketListeners()
 
-  try {
-    await auth.refresh()
-  } catch { /* ignore */ }
-
-  try {
-    const v = await api.version()
+  // These requests are informational and must not delay socket listener
+  // registration. A fast join/play can arrive while either request is
+  // still in flight; registering below only after awaiting them used to
+  // drop that first playback event entirely.
+  void auth.refresh().catch(() => { /* ignore */ })
+  void api.version().then((v) => {
     versionInfo.value = { version: v.current_version || v.version || '', codename: v.codename || '' }
-  } catch { /* ignore */ }
+  }).catch(() => { /* ignore */ })
 
   attachChat()
   attachVoting()
@@ -599,9 +604,8 @@ onMounted(async () => {
   })
 
   // Auto-join with saved username
-  const saved = localStorage.getItem(STORAGE_KEY)
-  if (saved) {
-    joinWithName(saved)
+  if (savedUsernameAtMount && !party.partyId) {
+    joinWithName(savedUsernameAtMount)
   }
 })
 
@@ -698,7 +702,12 @@ function onVideoPlay() {
   // once HLS.js auto-plays the new manifest. Broadcasting that to the
   // party would be a no-op at best and a "Andrew started playback"
   // chat spam at worst.
-  if (!party.partyId || isForcePausing || isInitialSync || myStreamReloading.value) return
+  if (!party.partyId || isForcePausing || isInitialSync) return
+  // A reload-generated play only needs suppressing when the room was
+  // already playing. If the room is paused, a playing media element is
+  // a real local action (including one pressed during stream settling)
+  // and must be broadcast instead of silently desynchronising this tab.
+  if (myStreamReloading.value && party.playbackState.playing) return
   if (pendingPauseTimer) {
     cancelPlaybackTimer(pendingPauseTimer)
     pendingPauseTimer = null
@@ -891,17 +900,14 @@ watch(() => party.currentVideo, (newVal, oldVal) => {
   }
 })
 
-function onChangeStreams(opts: { audioIndex?: number; subtitleIndex?: number; quality?: string }) {
+function onChangeStreams(opts: { audioIndex?: number; subtitleIndex?: number; quality?: string; mediaSourceId?: string }) {
   if (!party.partyId) return
-  // The alternate Emby version (issue #43) is locked at select_video
-  // time on the backend (current_video.media_source_id), so this emit
-  // never needs to carry it -- audio/subtitle/quality changes always
-  // resolve to the same version automatically.
   socket.emit('change_streams', {
     party_id: party.partyId,
     audio_index: opts.audioIndex,
     subtitle_index: opts.subtitleIndex,
     quality: opts.quality,
+    media_source_id: opts.mediaSourceId,
   })
 }
 
@@ -1034,7 +1040,22 @@ async function submitBecomeHost(payload: { username: string; password: string })
        waiting on the socket to confirm the join. Suppresses the name
        modal flash-of-stale-UI on every mount / refresh. -->
   <div v-if="!joined && awaitingAutoJoin" class="modal-overlay">
-    <div class="modal-card join-spinner">
+    <div v-if="party.sessionError" class="modal-card">
+      <h2>Could not join party</h2>
+      <p role="alert">{{ party.sessionError }}</p>
+      <button
+        class="btn btn-primary"
+        :disabled="party.sessionRetrying || party.sessionRetryAfter > 0"
+        @click="party.retrySession()"
+      >
+        {{ party.sessionRetrying
+          ? 'Retrying…'
+          : party.sessionRetryAfter > 0
+            ? `Retry in ${party.sessionRetryAfter}s`
+            : 'Retry' }}
+      </button>
+    </div>
+    <div v-else class="modal-card join-spinner">
       <span class="spinner" />
       <p>Joining party…</p>
     </div>

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -14,6 +16,19 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 _SEGMENT_BYTES = (Path(__file__).parent / "assets" / "fake_segment.ts").read_bytes()
+_ARTIFACT_ROOT = Path(__file__).parents[1] / "artifacts" / "emby" / "4.9.5.0"
+_FILTER_ARTIFACT_NAMES = {
+    "Genres": ("filter-options", "Drama"),
+    "Studios": ("studios", "Studio A"),
+    "Tags": ("tags", "Featured"),
+    "Years": ("years", "2024"),
+    "OfficialRatings": ("official-ratings", "PG-13"),
+    "Containers": ("containers", "mkv"),
+    "VideoCodecs": ("video-codecs", "h264"),
+    "AudioCodecs": ("audio-codecs", "aac"),
+    "AudioLayouts": ("audio-layouts", "stereo"),
+    "SubtitleCodecs": ("subtitle-codecs", "subrip"),
+}
 _SEGMENT_CHUNKS = [
     _SEGMENT_BYTES[: len(_SEGMENT_BYTES) // 2],
     _SEGMENT_BYTES[len(_SEGMENT_BYTES) // 2 :],
@@ -104,6 +119,9 @@ class FakeEmbyBehavior:
 class FakeEmbyState:
     behavior: FakeEmbyBehavior = field(default_factory=FakeEmbyBehavior)
     requests: list[dict[str, Any]] = field(default_factory=list)
+    search_items: list[dict[str, Any]] | None = None
+    search_responses: dict[str, list[dict[str, Any]]] | None = None
+    user_items: list[dict[str, Any]] | None = None
     stream_closed: asyncio.Event = field(default_factory=asyncio.Event)
 
     def record(self, request: Request, *, body: Any = None) -> None:
@@ -132,6 +150,17 @@ def _require_loopback(request: Request) -> None:
     host = request.client.host if request.client else ""
     if host not in {"127.0.0.1", "::1", "testclient"}:
         raise HTTPException(status_code=403, detail="test controls are loopback-only")
+
+
+def _filter_artifact(kind: str) -> dict[str, Any]:
+    artifact_name, value = _FILTER_ARTIFACT_NAMES[kind]
+    payload = json.loads((_ARTIFACT_ROOT / f"{artifact_name}.json").read_text(encoding="utf-8"))
+    result = copy.deepcopy(payload)
+    first = dict(result["Items"][0])
+    first["Name"] = value
+    result["Items"] = [first]
+    result["TotalRecordCount"] = 1
+    return result
 
 
 def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
@@ -242,9 +271,42 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
             {"Name": "Z", "Value": None},
         ]
 
+    @app.get("/emby/Genres")
+    @app.get("/emby/Studios")
+    @app.get("/emby/Tags")
+    @app.get("/emby/Years")
+    @app.get("/emby/OfficialRatings")
+    @app.get("/emby/Containers")
+    @app.get("/emby/VideoCodecs")
+    @app.get("/emby/AudioCodecs")
+    @app.get("/emby/AudioLayouts")
+    @app.get("/emby/SubtitleCodecs")
+    async def filter_values(request: Request):
+        state.record(request)
+        return _filter_artifact(request.url.path.rsplit("/", 1)[-1])
+
     @app.get("/emby/Users/{user_id}/Items")
     async def user_items(request: Request, user_id: str):
         state.record(request)
+        if request.query_params.get("IncludeItemTypes") == "Playlist":
+            return {
+                "Items": [{"Id": "playlist-1", "Name": "Watch later", "Type": "Playlist"}],
+                "TotalRecordCount": 1,
+            }
+        search_term_raw = request.query_params.get("SearchTerm")
+        if search_term_raw and state.search_responses is not None:
+            items = copy.deepcopy(state.search_responses.get(search_term_raw.casefold(), []))
+            return {"Items": items, "TotalRecordCount": len(items)}
+        if search_term_raw and state.search_items is not None:
+            return {
+                "Items": copy.deepcopy(state.search_items),
+                "TotalRecordCount": len(state.search_items),
+            }
+        if state.user_items is not None:
+            return {
+                "Items": copy.deepcopy(state.user_items),
+                "TotalRecordCount": len(state.user_items),
+            }
         if user_id not in {"user-large", "user-alphabet"}:
             return {"Items": [MOVIE], "TotalRecordCount": 1}
 
@@ -296,6 +358,59 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     async def items(request: Request):
         state.record(request)
         return {"Items": [MOVIE], "TotalRecordCount": 1}
+
+    @app.api_route("/emby/Users/{user_id}/FavoriteItems/{item_id}", methods=["POST", "DELETE"])
+    async def favorite_item(request: Request, user_id: str, item_id: str):
+        del user_id, item_id
+        state.record(request)
+        return {"IsFavorite": request.method == "POST"}
+
+    @app.api_route("/emby/Users/{user_id}/PlayedItems/{item_id}", methods=["POST", "DELETE"])
+    async def played_item(request: Request, user_id: str, item_id: str):
+        del user_id, item_id
+        state.record(request)
+        return {"Played": request.method == "POST"}
+
+    @app.post("/emby/Playlists")
+    async def create_playlist(request: Request):
+        state.record(request)
+        return {"Id": "playlist-2"}
+
+    @app.post("/emby/Playlists/{playlist_id}/Items")
+    async def add_playlist_item(request: Request, playlist_id: str):
+        del playlist_id
+        state.record(request)
+        return {}
+
+    @app.get("/emby/Items/{item_id}/Similar")
+    async def similar_items(request: Request, item_id: str):
+        del item_id
+        state.record(request)
+        return json.loads((_ARTIFACT_ROOT / "related-items.json").read_text(encoding="utf-8"))
+
+    @app.get("/emby/Shows/{series_id}/Seasons")
+    async def show_seasons(request: Request, series_id: str):
+        del series_id
+        state.record(request)
+        return json.loads((_ARTIFACT_ROOT / "seasons.json").read_text(encoding="utf-8"))
+
+    @app.get("/emby/Shows/{series_id}/Episodes")
+    async def show_episodes(request: Request, series_id: str):
+        del series_id
+        state.record(request)
+        return json.loads((_ARTIFACT_ROOT / "episodes.json").read_text(encoding="utf-8"))
+
+    @app.get("/emby/Users/{user_id}/Items/{item_id}/LocalTrailers")
+    async def local_trailers(request: Request, user_id: str, item_id: str):
+        del user_id, item_id
+        state.record(request)
+        return json.loads((_ARTIFACT_ROOT / "trailers.json").read_text(encoding="utf-8"))
+
+    @app.get("/emby/Users/{user_id}/Items/{item_id}/SpecialFeatures")
+    async def special_features(request: Request, user_id: str, item_id: str):
+        del user_id, item_id
+        state.record(request)
+        return json.loads((_ARTIFACT_ROOT / "extras.json").read_text(encoding="utf-8"))
 
     @app.get("/emby/Items/Intros")
     async def intros(request: Request):

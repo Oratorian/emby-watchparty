@@ -28,6 +28,18 @@
           "default": null,
           "title": "Audio Index"
         },
+        "media_source_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Source Id"
+        },
         "party_id": {
           "title": "Party Id",
           "type": "string"
@@ -267,6 +279,31 @@
     },
     "select_video": {
       "properties": {
+        "audio_index": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audio Index"
+        },
+        "binge": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binge"
+        },
         "item_id": {
           "title": "Item Id",
           "type": "string"
@@ -309,10 +346,32 @@
           "default": null,
           "title": "Quality"
         },
+        "resume_mode": {
+          "default": "start_over",
+          "enum": [
+            "resume",
+            "start_over"
+          ],
+          "title": "Resume Mode",
+          "type": "string"
+        },
         "start_seconds": {
           "default": 0.0,
           "title": "Start Seconds",
           "type": "number"
+        },
+        "subtitle_index": {
+          "anyOf": [
+            {
+              "minimum": -1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle Index"
         }
       },
       "required": [

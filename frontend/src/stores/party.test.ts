@@ -8,6 +8,8 @@ import { useSocketStore } from './socket'
 describe('party socket listeners', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    localStorage.clear()
+    sessionStorage.clear()
   })
 
   it('keeps one members_update listener across repeated setup', () => {
@@ -50,6 +52,31 @@ describe('party socket listeners', () => {
     )
     expect(party.sessionRetryAfter).toBe(42)
     vi.useRealTimers()
+  })
+
+  it('rotates this tab identity when an active participant owns the browser identity', async () => {
+    const socket = useSocketStore()
+    const emit = vi.spyOn(socket, 'emit').mockImplementation(() => undefined)
+    const join = vi.spyOn(api, 'joinParty')
+      .mockResolvedValueOnce({
+        success: false,
+        message: 'Participant identity is already in use',
+      })
+      .mockResolvedValueOnce({ success: true })
+    vi.spyOn(api, 'authStatus').mockRejectedValue(new Error('not needed'))
+
+    const party = usePartyStore()
+    await party.join('ABC123', 'Alice')
+
+    expect(join).toHaveBeenCalledTimes(2)
+    const firstClientId = join.mock.calls[0]?.[1]
+    const secondClientId = join.mock.calls[1]?.[1]
+    expect(secondClientId).not.toBe(firstClientId)
+    expect(party.sessionError).toBeNull()
+    expect(emit).toHaveBeenCalledWith('join_party', expect.objectContaining({
+      client_id: secondClientId,
+    }))
+    expect(emit).toHaveBeenCalledTimes(1)
   })
 
   it('identifies a different-party binding from another tab', async () => {

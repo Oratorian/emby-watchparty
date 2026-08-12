@@ -1,0 +1,2847 @@
+{
+  "Items": [
+    {
+      "BackdropImageTags": [
+        "53fe854596a541e6c22c24c12a6cbb74"
+      ],
+      "Bitrate": 2106540,
+      "CommunityRating": 7.4,
+      "Container": "mp4",
+      "CriticRating": 78,
+      "GenreItems": [
+        {
+          "Id": 17144,
+          "Name": "<text-008>"
+        },
+        {
+          "Id": 17143,
+          "Name": "<text-007>"
+        },
+        {
+          "Id": 17146,
+          "Name": "<text-010>"
+        }
+      ],
+      "Genres": [
+        "Crime",
+        "Drama",
+        "Thriller"
+      ],
+      "Id": "<id-048>",
+      "ImageTags": {
+        "Logo": "323a7fec6af93fc0c15a618f65195de7",
+        "Primary": "3b91c0e5d140a497917af453de3c9dc4",
+        "Thumb": "196c4d65e2c22459e28cd5f092b39b2f"
+      },
+      "IsFolder": false,
+      "MediaSources": [
+        {
+          "AddApiKeyToDirectStreamUrl": false,
+          "Bitrate": 2106540,
+          "Chapters": [],
+          "Container": "mp4",
+          "DefaultAudioStreamIndex": 1,
+          "Formats": [],
+          "HasMixedProtocols": false,
+          "Id": "<id-049>",
+          "IsInfiniteStream": false,
+          "IsRemote": false,
+          "ItemId": "<id-048>",
+          "MediaStreams": [
+            {
+              "AspectRatio": "16:9",
+              "AttachmentSize": 0,
+              "AverageFrameRate": 23.976025,
+              "BitDepth": 8,
+              "BitRate": 2009026,
+              "Codec": "h264",
+              "CodecTag": "avc1",
+              "ColorPrimaries": "bt709",
+              "ColorSpace": "bt709",
+              "DisplayTitle": "1080p H264",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Height": 1080,
+              "Index": 0,
+              "IsAnamorphic": false,
+              "IsDefault": true,
+              "IsExternal": false,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": false,
+              "Language": "und",
+              "Level": 41,
+              "NalLengthSize": "4",
+              "PixelFormat": "yuv420p",
+              "Profile": "High",
+              "Protocol": "File",
+              "RealFrameRate": 23.976025,
+              "RefFrames": 1,
+              "SupportsExternalStream": false,
+              "TimeBase": "1/24000",
+              "Type": "Video",
+              "VideoRange": "SDR",
+              "Width": 1920
+            },
+            {
+              "AttachmentSize": 0,
+              "BitRate": 93371,
+              "ChannelLayout": "stereo",
+              "Channels": 2,
+              "Codec": "aac",
+              "CodecTag": "mp4a",
+              "DisplayTitle": "AAC stereo (Default)",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Index": 1,
+              "IsDefault": true,
+              "IsExternal": false,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": false,
+              "Language": "und",
+              "Profile": "LC",
+              "Protocol": "File",
+              "SampleRate": 48000,
+              "SupportsExternalStream": false,
+              "TimeBase": "1/48000",
+              "Type": "Audio"
+            },
+            {
+              "AttachmentSize": 0,
+              "Codec": "srt",
+              "DisplayLanguage": "English",
+              "DisplayTitle": "English (SRT)",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Index": 2,
+              "IsDefault": false,
+              "IsExternal": true,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": true,
+              "Language": "en",
+              "Path": "<path>",
+              "Protocol": "File",
+              "SupportsExternalStream": true,
+              "Type": "Subtitle"
+            }
+          ],
+          "Name": "<text-037>",
+          "Path": "<path>",
+          "Protocol": "File",
+          "ReadAtNativeFramerate": false,
+          "RequiredHttpHeaders": {},
+          "RequiresClosing": false,
+          "RequiresLooping": false,
+          "RequiresOpening": false,
+          "RunTimeTicks": 71441366670,
+          "Size": 1881176278,
+          "SupportsDirectPlay": true,
+          "SupportsDirectStream": true,
+          "SupportsProbing": true,
+          "SupportsTranscoding": true,
+          "Type": "Default"
+        }
+      ],
+      "MediaStreams": [
+        {
+          "AspectRatio": "16:9",
+          "AttachmentSize": 0,
+          "AverageFrameRate": 23.976025,
+          "BitDepth": 8,
+          "BitRate": 2009026,
+          "Codec": "h264",
+          "CodecTag": "avc1",
+          "ColorPrimaries": "bt709",
+          "ColorSpace": "bt709",
+          "DisplayTitle": "1080p H264",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Height": 1080,
+          "Index": 0,
+          "IsAnamorphic": false,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Language": "und",
+          "Level": 41,
+          "NalLengthSize": "4",
+          "PixelFormat": "yuv420p",
+          "Profile": "High",
+          "Protocol": "File",
+          "RealFrameRate": 23.976025,
+          "RefFrames": 1,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/24000",
+          "Type": "Video",
+          "VideoRange": "SDR",
+          "Width": 1920
+        },
+        {
+          "AttachmentSize": 0,
+          "BitRate": 93371,
+          "ChannelLayout": "stereo",
+          "Channels": 2,
+          "Codec": "aac",
+          "CodecTag": "mp4a",
+          "DisplayTitle": "AAC stereo (Default)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 1,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Language": "und",
+          "Profile": "LC",
+          "Protocol": "File",
+          "SampleRate": 48000,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/48000",
+          "Type": "Audio"
+        },
+        {
+          "AttachmentSize": 0,
+          "Codec": "srt",
+          "DisplayLanguage": "English",
+          "DisplayTitle": "English (SRT)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 2,
+          "IsDefault": false,
+          "IsExternal": true,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": true,
+          "Language": "en",
+          "Path": "<path>",
+          "Protocol": "File",
+          "SupportsExternalStream": true,
+          "Type": "Subtitle"
+        }
+      ],
+      "MediaType": "Video",
+      "Name": "<text-037>",
+      "OfficialRating": "R",
+      "Overview": "<text-038>",
+      "People": [
+        {
+          "Id": "<id-050>",
+          "Name": "<text-039>",
+          "PrimaryImageTag": "89bba9470a3ae1fa76cbb48057eb01f1",
+          "Role": "Gail Packer",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-051>",
+          "Name": "<text-040>",
+          "PrimaryImageTag": "ee8fb73d0db9bc840f244ae09871b12f",
+          "Role": "Ralph Agee",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-052>",
+          "Name": "<text-041>",
+          "PrimaryImageTag": "fd510a68ff521ee3daa8529757b4e717",
+          "Role": "Jeff McCullaugh",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-053>",
+          "Name": "<text-042>",
+          "PrimaryImageTag": "2f00f54475fc4dfc7cf54c0fffa5376d",
+          "Role": "Warren Fresnell",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-054>",
+          "Name": "<text-043>",
+          "PrimaryImageTag": "c15a85db8c37999f894ea61cff2c99a8",
+          "Role": "Carl Travers",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-055>",
+          "Name": "<text-044>",
+          "PrimaryImageTag": "88c2f94dea03790d01881ac24d9b9996",
+          "Role": "Officer Leary",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-056>",
+          "Name": "<text-045>",
+          "PrimaryImageTag": "69f35cf625379e8bdf8d67fbf95ddd5d",
+          "Role": "Elderly Man",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-057>",
+          "Name": "<text-046>",
+          "PrimaryImageTag": "5b4968e033c2c59e0c459ca0782cca4d",
+          "Role": "Prison Doctor",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-058>",
+          "Name": "<text-047>",
+          "PrimaryImageTag": "a202c435fe3ed0e8c8456086c62f72d7",
+          "Role": "Grandpa Sam",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-059>",
+          "Name": "<text-048>",
+          "PrimaryImageTag": "745142c51d469a248fbaee9543e092ea",
+          "Role": "Arthur Kirkland",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-060>",
+          "Name": "<text-049>",
+          "PrimaryImageTag": "9c3b1bcb649e14c163162b68647b755d",
+          "Role": "Judge Francis Rayford",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-061>",
+          "Name": "<text-050>",
+          "PrimaryImageTag": "35b0e0d00a2608b609618fe3511ada86",
+          "Role": "Judge Henry T. Fleming",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-062>",
+          "Name": "<text-051>",
+          "PrimaryImageTag": "c08a0ded20ea0407d91596ed5e4dc7f2",
+          "Role": "Jay Porter",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-063>",
+          "Name": "<text-052>",
+          "PrimaryImageTag": "b76a39fcfafe37271e77da9533631519",
+          "Role": "Arnie",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-064>",
+          "Name": "<text-053>",
+          "PrimaryImageTag": "915a2ac87d36634c27bd44c168f74e86",
+          "Role": "Frank Bowers",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-065>",
+          "Name": "<text-054>",
+          "PrimaryImageTag": "0169d8ed88b6274afb1a1c24f77a2c01",
+          "Role": "Leo Fauci",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-066>",
+          "Name": "<text-055>",
+          "Role": "Larry",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-067>",
+          "Name": "<text-056>",
+          "PrimaryImageTag": "274280d096322dc3a7511b388bac1785",
+          "Role": "Deputy Sheriff",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-068>",
+          "Name": "<text-057>",
+          "PrimaryImageTag": "89f6298d7e21d67b7080de1ba0d49e99",
+          "Type": "Director"
+        }
+      ],
+      "PrimaryImageAspectRatio": 0.6666666666666666,
+      "ProductionYear": 1979,
+      "ProviderIds": {
+        "Imdb": "<imdb>",
+        "Tmdb": "<tmdb>",
+        "Tvdb": "<tvdb>"
+      },
+      "RunTimeTicks": 71441366670,
+      "ServerId": "<id-001>",
+      "Size": 1881176278,
+      "Studios": [
+        {
+          "Id": 27753,
+          "Name": "<text-058>"
+        }
+      ],
+      "TagItems": [],
+      "Taglines": [
+        "<taglines>"
+      ],
+      "Type": "Movie",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": true
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Bitrate": 2219234,
+      "CommunityRating": 8.7,
+      "Container": "mp4",
+      "GenreItems": [
+        {
+          "Id": 26828,
+          "Name": "<text-015>"
+        },
+        {
+          "Id": 17143,
+          "Name": "<text-007>"
+        }
+      ],
+      "Genres": [
+        "Comedy",
+        "Drama"
+      ],
+      "Id": "<id-761>",
+      "ImageTags": {
+        "Primary": "4bee1e532e23a6e7cb32dbb551e25175"
+      },
+      "IndexNumber": 12,
+      "IsFolder": false,
+      "MediaSources": [
+        {
+          "AddApiKeyToDirectStreamUrl": false,
+          "Bitrate": 2219234,
+          "Chapters": [],
+          "Container": "mp4",
+          "DefaultAudioStreamIndex": 1,
+          "Formats": [],
+          "HasMixedProtocols": false,
+          "Id": "<id-762>",
+          "IsInfiniteStream": false,
+          "IsRemote": false,
+          "ItemId": "<id-761>",
+          "MediaStreams": [
+            {
+              "AspectRatio": "16:9",
+              "AttachmentSize": 0,
+              "AverageFrameRate": 23.976025,
+              "BitDepth": 10,
+              "BitRate": 2000599,
+              "Codec": "hevc",
+              "CodecTag": "hev1",
+              "DisplayTitle": "1080p HEVC",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Height": 1080,
+              "Index": 0,
+              "IsAnamorphic": false,
+              "IsDefault": true,
+              "IsExternal": false,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": false,
+              "Language": "und",
+              "Level": 120,
+              "PixelFormat": "yuv420p10le",
+              "Profile": "Main 10",
+              "Protocol": "File",
+              "RealFrameRate": 23.976025,
+              "RefFrames": 1,
+              "SupportsExternalStream": false,
+              "TimeBase": "1/24000",
+              "Type": "Video",
+              "VideoRange": "SDR",
+              "Width": 1920
+            },
+            {
+              "AttachmentSize": 0,
+              "BitRate": 224000,
+              "ChannelLayout": "5.1",
+              "Channels": 6,
+              "Codec": "aac",
+              "CodecTag": "mp4a",
+              "DisplayLanguage": "English",
+              "DisplayTitle": "English AAC 5.1 (Default)",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Index": 1,
+              "IsDefault": true,
+              "IsExternal": false,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": false,
+              "Language": "eng",
+              "Profile": "LC",
+              "Protocol": "File",
+              "SampleRate": 48000,
+              "SupportsExternalStream": false,
+              "TimeBase": "1/48000",
+              "Type": "Audio"
+            },
+            {
+              "AttachmentSize": 0,
+              "Codec": "srt",
+              "DisplayLanguage": "English",
+              "DisplayTitle": "English (SRT)",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Index": 2,
+              "IsDefault": false,
+              "IsExternal": true,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": true,
+              "Language": "en",
+              "Path": "<path>",
+              "Protocol": "File",
+              "SupportsExternalStream": true,
+              "Type": "Subtitle"
+            }
+          ],
+          "Name": "<text-835>",
+          "Path": "<path>",
+          "Protocol": "File",
+          "ReadAtNativeFramerate": false,
+          "RequiredHttpHeaders": {},
+          "RequiresClosing": false,
+          "RequiresLooping": false,
+          "RequiresOpening": false,
+          "RunTimeTicks": 16873960000,
+          "Size": 468091004,
+          "SupportsDirectPlay": true,
+          "SupportsDirectStream": true,
+          "SupportsProbing": true,
+          "SupportsTranscoding": true,
+          "Type": "Default"
+        }
+      ],
+      "MediaStreams": [
+        {
+          "AspectRatio": "16:9",
+          "AttachmentSize": 0,
+          "AverageFrameRate": 23.976025,
+          "BitDepth": 10,
+          "BitRate": 2000599,
+          "Codec": "hevc",
+          "CodecTag": "hev1",
+          "DisplayTitle": "1080p HEVC",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Height": 1080,
+          "Index": 0,
+          "IsAnamorphic": false,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Language": "und",
+          "Level": 120,
+          "PixelFormat": "yuv420p10le",
+          "Profile": "Main 10",
+          "Protocol": "File",
+          "RealFrameRate": 23.976025,
+          "RefFrames": 1,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/24000",
+          "Type": "Video",
+          "VideoRange": "SDR",
+          "Width": 1920
+        },
+        {
+          "AttachmentSize": 0,
+          "BitRate": 224000,
+          "ChannelLayout": "5.1",
+          "Channels": 6,
+          "Codec": "aac",
+          "CodecTag": "mp4a",
+          "DisplayLanguage": "English",
+          "DisplayTitle": "English AAC 5.1 (Default)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 1,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Language": "eng",
+          "Profile": "LC",
+          "Protocol": "File",
+          "SampleRate": 48000,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/48000",
+          "Type": "Audio"
+        },
+        {
+          "AttachmentSize": 0,
+          "Codec": "srt",
+          "DisplayLanguage": "English",
+          "DisplayTitle": "English (SRT)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 2,
+          "IsDefault": false,
+          "IsExternal": true,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": true,
+          "Language": "en",
+          "Path": "<path>",
+          "Protocol": "File",
+          "SupportsExternalStream": true,
+          "Type": "Subtitle"
+        }
+      ],
+      "MediaType": "Video",
+      "Name": "<text-123>",
+      "OfficialRating": "18+",
+      "Overview": "<text-836>",
+      "ParentBackdropImageTags": [
+        "e7ee65398568391632d4daab6b35acbb"
+      ],
+      "ParentBackdropItemId": "<id-764>",
+      "ParentIndexNumber": 4,
+      "ParentLogoImageTag": "d509cd199d0d78808aef607aa0b19338",
+      "ParentLogoItemId": "<id-764>",
+      "ParentThumbImageTag": "669311c6b57a9a0db53e6bbfce4e4afe",
+      "ParentThumbItemId": "<id-764>",
+      "People": [
+        {
+          "Id": "<id-763>",
+          "Name": "<text-837>",
+          "Type": "Director"
+        }
+      ],
+      "PrimaryImageAspectRatio": 1.7777777777777777,
+      "ProductionYear": 2011,
+      "ProviderIds": {
+        "IMDB": "<imdb>",
+        "TvRage": "<tvrage>",
+        "Tvdb": "<tvdb>"
+      },
+      "RunTimeTicks": 16873960000,
+      "SeasonId": "<id-765>",
+      "SeasonName": "Season 4",
+      "SeriesId": "<id-764>",
+      "SeriesName": "<text-838>",
+      "SeriesPrimaryImageTag": "8e141a9b7f6d86e5182dae15a4354b84",
+      "ServerId": "<id-001>",
+      "Size": 468091004,
+      "Studios": [],
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Episode",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-766>",
+      "ImageTags": {
+        "Primary": "6836c29147109b33f1546d4906f22143"
+      },
+      "Name": "<text-839>",
+      "PrimaryImageAspectRatio": 0.6666666666666666,
+      "ProviderIds": {
+        "tmdb": "<tmdb>",
+        "tvdb": "<tvdb>"
+      },
+      "ServerId": "<id-001>",
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Person",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Bitrate": 1321242,
+      "CommunityRating": 7.417,
+      "Container": "mkv",
+      "GenreItems": [
+        {
+          "Id": 17144,
+          "Name": "<text-008>"
+        },
+        {
+          "Id": 17143,
+          "Name": "<text-007>"
+        },
+        {
+          "Id": 17146,
+          "Name": "<text-010>"
+        }
+      ],
+      "Genres": [
+        "Crime",
+        "Drama",
+        "Thriller"
+      ],
+      "Id": "<id-767>",
+      "ImageTags": {
+        "Primary": "b367cc131c52e4013f5c8a9ccbc2ae3c"
+      },
+      "IndexNumber": 10,
+      "IsFolder": false,
+      "MediaSources": [
+        {
+          "AddApiKeyToDirectStreamUrl": false,
+          "Bitrate": 1321242,
+          "Chapters": [],
+          "Container": "mkv",
+          "DefaultAudioStreamIndex": 1,
+          "Formats": [],
+          "HasMixedProtocols": false,
+          "Id": "<id-768>",
+          "IsInfiniteStream": false,
+          "IsRemote": false,
+          "ItemId": "<id-767>",
+          "MediaStreams": [
+            {
+              "AspectRatio": "2.40:1",
+              "AttachmentSize": 0,
+              "AverageFrameRate": 23.976025,
+              "BitDepth": 10,
+              "BitRate": 1321242,
+              "Codec": "hevc",
+              "ColorPrimaries": "bt709",
+              "ColorSpace": "bt709",
+              "ColorTransfer": "bt709",
+              "DisplayTitle": "1080p HEVC",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Height": 800,
+              "Index": 0,
+              "IsAnamorphic": false,
+              "IsDefault": true,
+              "IsExternal": false,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": false,
+              "Level": 120,
+              "PixelFormat": "yuv420p10le",
+              "Profile": "Main 10",
+              "Protocol": "File",
+              "RealFrameRate": 23.976025,
+              "RefFrames": 1,
+              "SupportsExternalStream": false,
+              "TimeBase": "1/1000",
+              "Type": "Video",
+              "VideoRange": "SDR",
+              "Width": 1920
+            },
+            {
+              "AttachmentSize": 0,
+              "BitRate": 320000,
+              "ChannelLayout": "5.1",
+              "Channels": 6,
+              "Codec": "aac",
+              "DisplayLanguage": "English",
+              "DisplayTitle": "English AAC 5.1 (Default)",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Index": 1,
+              "IsDefault": true,
+              "IsExternal": false,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": false,
+              "Language": "eng",
+              "Profile": "LC",
+              "Protocol": "File",
+              "SampleRate": 48000,
+              "SupportsExternalStream": false,
+              "TimeBase": "1/1000",
+              "Type": "Audio"
+            },
+            {
+              "AttachmentSize": 0,
+              "Codec": "subrip",
+              "DisplayLanguage": "English",
+              "DisplayTitle": "English (SUBRIP)",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Index": 2,
+              "IsDefault": false,
+              "IsExternal": false,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": true,
+              "Language": "eng",
+              "Protocol": "File",
+              "SubtitleLocationType": "InternalStream",
+              "SupportsExternalStream": true,
+              "TimeBase": "1/1000",
+              "Title": "English [SDH]",
+              "Type": "Subtitle"
+            }
+          ],
+          "Name": "<text-841>",
+          "Path": "<path>",
+          "Protocol": "File",
+          "ReadAtNativeFramerate": false,
+          "RequiredHttpHeaders": {},
+          "RequiresClosing": false,
+          "RequiresLooping": false,
+          "RequiresOpening": false,
+          "RunTimeTicks": 27992530000,
+          "Size": 462311616,
+          "SupportsDirectPlay": true,
+          "SupportsDirectStream": true,
+          "SupportsProbing": true,
+          "SupportsTranscoding": true,
+          "Type": "Default"
+        }
+      ],
+      "MediaStreams": [
+        {
+          "AspectRatio": "2.40:1",
+          "AttachmentSize": 0,
+          "AverageFrameRate": 23.976025,
+          "BitDepth": 10,
+          "BitRate": 1321242,
+          "Codec": "hevc",
+          "ColorPrimaries": "bt709",
+          "ColorSpace": "bt709",
+          "ColorTransfer": "bt709",
+          "DisplayTitle": "1080p HEVC",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Height": 800,
+          "Index": 0,
+          "IsAnamorphic": false,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Level": 120,
+          "PixelFormat": "yuv420p10le",
+          "Profile": "Main 10",
+          "Protocol": "File",
+          "RealFrameRate": 23.976025,
+          "RefFrames": 1,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/1000",
+          "Type": "Video",
+          "VideoRange": "SDR",
+          "Width": 1920
+        },
+        {
+          "AttachmentSize": 0,
+          "BitRate": 320000,
+          "ChannelLayout": "5.1",
+          "Channels": 6,
+          "Codec": "aac",
+          "DisplayLanguage": "English",
+          "DisplayTitle": "English AAC 5.1 (Default)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 1,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Language": "eng",
+          "Profile": "LC",
+          "Protocol": "File",
+          "SampleRate": 48000,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/1000",
+          "Type": "Audio"
+        },
+        {
+          "AttachmentSize": 0,
+          "Codec": "subrip",
+          "DisplayLanguage": "English",
+          "DisplayTitle": "English (SUBRIP)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 2,
+          "IsDefault": false,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": true,
+          "Language": "eng",
+          "Protocol": "File",
+          "SubtitleLocationType": "InternalStream",
+          "SupportsExternalStream": true,
+          "TimeBase": "1/1000",
+          "Title": "English [SDH]",
+          "Type": "Subtitle"
+        }
+      ],
+      "MediaType": "Video",
+      "Name": "<text-840>",
+      "OfficialRating": "TV-MA",
+      "Overview": "<text-842>",
+      "ParentBackdropImageTags": [
+        "1aae565015a4ae739b58c9811a1a7a3a"
+      ],
+      "ParentBackdropItemId": "<id-771>",
+      "ParentIndexNumber": 1,
+      "ParentLogoImageTag": "e6d436f89889d7bf0d0c4418b4379dff",
+      "ParentLogoItemId": "<id-771>",
+      "ParentThumbImageTag": "6eca05db5c2b0ee93aabd2f9fc55a90a",
+      "ParentThumbItemId": "<id-771>",
+      "People": [
+        {
+          "Id": "<id-769>",
+          "Name": "<text-843>",
+          "PrimaryImageTag": "3da25406298567c67574c9753affeea9",
+          "Role": "Brian Moser",
+          "Type": "GuestStar"
+        },
+        {
+          "Id": "<id-770>",
+          "Name": "<text-844>",
+          "Type": "Director"
+        }
+      ],
+      "PrimaryImageAspectRatio": 1.7777777777777777,
+      "ProductionYear": 2025,
+      "ProviderIds": {
+        "Imdb": "<imdb>",
+        "Tvdb": "<tvdb>"
+      },
+      "RunTimeTicks": 27992530000,
+      "SeasonId": "<id-772>",
+      "SeasonName": "Season 1",
+      "SeriesId": "<id-771>",
+      "SeriesName": "<text-845>",
+      "SeriesPrimaryImageTag": "81c653f82e655e39581c91a745f6fc9f",
+      "ServerId": "<id-001>",
+      "Size": 462311616,
+      "Studios": [],
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Episode",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-773>",
+      "ImageTags": {
+        "Primary": "d46559d64fa16f49e6c2ef25aec045ff"
+      },
+      "Name": "<text-846>",
+      "PrimaryImageAspectRatio": 0.6666666666666666,
+      "ProviderIds": {
+        "Tmdb": "<tmdb>"
+      },
+      "ServerId": "<id-001>",
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Person",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-774>",
+      "ImageTags": {
+        "Primary": "375cf9b511b5b38898d6bdf25e08afa9"
+      },
+      "Name": "<text-847>",
+      "PrimaryImageAspectRatio": 0.6666666666666666,
+      "ProviderIds": {
+        "tmdb": "<tmdb>",
+        "tvdb": "<tvdb>"
+      },
+      "ServerId": "<id-001>",
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Person",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "AirDays": [],
+      "BackdropImageTags": [
+        "a8c3662593d0d65d1139263feed23684"
+      ],
+      "CommunityRating": 8.6,
+      "GenreItems": [
+        {
+          "Id": 26780,
+          "Name": "<text-013>"
+        },
+        {
+          "Id": 17143,
+          "Name": "<text-007>"
+        },
+        {
+          "Id": 17144,
+          "Name": "<text-008>"
+        },
+        {
+          "Id": 39234,
+          "Name": "<text-026>"
+        },
+        {
+          "Id": 26868,
+          "Name": "<text-018>"
+        },
+        {
+          "Id": 26867,
+          "Name": "<text-017>"
+        },
+        {
+          "Id": 17145,
+          "Name": "<text-009>"
+        },
+        {
+          "Id": 26829,
+          "Name": "<text-016>"
+        }
+      ],
+      "Genres": [
+        "Science Fiction",
+        "Drama",
+        "Crime",
+        "Children",
+        "Animation",
+        "Adventure",
+        "Action",
+        "Romance"
+      ],
+      "Id": "<id-775>",
+      "ImageTags": {
+        "Logo": "8220a5a3414180de8e3d091e64d497f2",
+        "Primary": "c08803114bfaacff11518b9ac6cbc0ae",
+        "Thumb": "0f2ac79a64ad14439c893e19e50e1897"
+      },
+      "IsFolder": true,
+      "Name": "<text-848>",
+      "OfficialRating": "TV-PG",
+      "Overview": "<text-849>",
+      "People": [
+        {
+          "Id": "<id-776>",
+          "Name": "<text-850>",
+          "PrimaryImageTag": "78e02fba26cae79a491405bf7c86cba0",
+          "Role": "Dick Grayson / Robin / Nightwing",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-777>",
+          "Name": "<text-851>",
+          "PrimaryImageTag": "4746a30d9d27c18cadd38f430ffde97e",
+          "Role": "Kaldur'ahm / Aqualad / Aquaman",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-778>",
+          "Name": "<text-852>",
+          "PrimaryImageTag": "6b468da6d98281c8de92ea31f45d3b1a",
+          "Role": "Wally West / Kid Flash",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-779>",
+          "Name": "<text-853>",
+          "PrimaryImageTag": "2b8d97d7fff016d9e4163d153cf591ab",
+          "Role": "Conner Kent / Superboy",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-780>",
+          "Name": "<text-854>",
+          "PrimaryImageTag": "151134d4a28dc7acf2f1524ab175878f",
+          "Role": "Will Harper / Red Arrow",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-781>",
+          "Name": "<text-855>",
+          "PrimaryImageTag": "ff34017031be40616ecf5e51215e85be",
+          "Role": "M'gann M'orzz / Megan Morse / Miss Martian",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-782>",
+          "Name": "<text-856>",
+          "PrimaryImageTag": "1d1da969ea921f9d3fb09e7e385d7591",
+          "Role": "Artemis Crock / Artemis / Tigress",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-783>",
+          "Name": "<text-857>",
+          "PrimaryImageTag": "59a3c7fd7e6b9e5ed09ac6bbd38f3347",
+          "Role": "Arthur Curry / Aquaman",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-784>",
+          "Name": "<text-858>",
+          "PrimaryImageTag": "55dd14f6efe48590001eb60634739b7f",
+          "Role": "Bruce Wayne / Batman",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-785>",
+          "Name": "<text-859>",
+          "PrimaryImageTag": "3bc36e6cb752aecf479c4b071cf21b54",
+          "Role": "Barry Allen / The Flash",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-786>",
+          "Name": "<text-860>",
+          "PrimaryImageTag": "0eb6de3ee1952b5c54f2861c69075f0d",
+          "Role": "Barry Allen / The Flash",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-787>",
+          "Name": "<text-861>",
+          "PrimaryImageTag": "4016235a0e128df65a973324163a9252",
+          "Role": "J'onn J'onzz / John Jones / Martian Manhunter",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-788>",
+          "Name": "<text-862>",
+          "PrimaryImageTag": "d037e0a2e1bfaa41649bb6ba02e22aae",
+          "Role": "Diana Prince / Wonder Woman",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-789>",
+          "Name": "<text-863>",
+          "PrimaryImageTag": "e099e45b51cccf19da5025750e6d5f01",
+          "Role": "Captain Marvel / Shazam",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-790>",
+          "Name": "<text-864>",
+          "PrimaryImageTag": "f254327ce5fe398719192e6dce5e797a",
+          "Role": "Billy Batson",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-791>",
+          "Name": "<text-865>",
+          "PrimaryImageTag": "b606618a48fdc0d1657e70ec7ad80f18",
+          "Role": "Dinah Lance / Black Canary",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-792>",
+          "Name": "<text-866>",
+          "PrimaryImageTag": "ee315aeaad211869feb3b7239d5b1360",
+          "Role": "Vandal Savage",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-793>",
+          "Name": "<text-867>",
+          "PrimaryImageTag": "ac69a2817db7c15f061a77a9c158b90d",
+          "Role": "Vandal Savage",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-794>",
+          "Name": "<text-868>",
+          "PrimaryImageTag": "f557967744639564baae98c489be05a8",
+          "Role": "Jade Nguyen / Cheshire",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-795>",
+          "Name": "<text-869>",
+          "PrimaryImageTag": "d7e7e1774f24e9b466f87a2920c7cc14",
+          "Role": "La'gaan / Lagoon Boy",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-796>",
+          "Name": "<text-870>",
+          "PrimaryImageTag": "be9f490f1e768a26e1c051a051668be4",
+          "Role": "Karen Beecher / Bumblebee",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-797>",
+          "Name": "<text-871>",
+          "PrimaryImageTag": "8e096416ee9fc353d306a6f13cf24653",
+          "Role": "Barbara Gordon / Batgirl / Oracle",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-798>",
+          "Name": "<text-872>",
+          "Role": "Raquel Ervin / Rocket",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-799>",
+          "Name": "<text-873>",
+          "PrimaryImageTag": "6424e0baa15de953f2e127ac1eeb9fb6",
+          "Role": "Raquel Ervin / Rocket",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-800>",
+          "Name": "<text-874>",
+          "PrimaryImageTag": "8f3f8b7aa8d375cd8fc3b38700a51c6e",
+          "Role": "Zatanna Zatara",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-801>",
+          "Name": "<text-875>",
+          "PrimaryImageTag": "c8d9c5b050c937257b48cd711254d24c",
+          "Role": "Garfield Logan / Beast Boy",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-802>",
+          "Name": "<text-876>",
+          "PrimaryImageTag": "722158b58374a9c88547fa7e3a00c28d",
+          "Role": "Garfield Logan / Beast Boy",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-803>",
+          "Name": "<text-877>",
+          "PrimaryImageTag": "7869bf64ba26acacafd421f6f4a86dd6",
+          "Role": "Jaime Reyes / Blue Beetle",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-804>",
+          "Name": "<text-878>",
+          "PrimaryImageTag": "c834e014e4008930e8ae4cf9f456b407",
+          "Role": "Cassie Sandsmark / Wonder Girl",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-805>",
+          "Name": "<text-879>",
+          "PrimaryImageTag": "9000f32ed810ec73ad85e332876d3d9c",
+          "Role": "Tim Drake / Robin",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-806>",
+          "Name": "<text-880>",
+          "PrimaryImageTag": "69706672a37617448be4615844fc3349",
+          "Role": "Bart Allen / Impulse / Kid Flash",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-807>",
+          "Name": "<text-881>",
+          "PrimaryImageTag": "3b6af6eb911b79369b1daef3556a66fd",
+          "Role": "Brion Markov / Geo-Force",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-808>",
+          "Name": "<text-882>",
+          "PrimaryImageTag": "5f977e33d32a8506291c1baf0b9c8ebb",
+          "Role": "Tara Markov / Terra",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-809>",
+          "Name": "<text-883>",
+          "PrimaryImageTag": "69059e43498633f030b44501264e627d",
+          "Role": "Violet Harper / Gabrielle Daou / Halo",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-810>",
+          "Name": "<text-884>",
+          "PrimaryImageTag": "a1ed898b87d8b6cd1373a48df67e29c6",
+          "Role": "Victor Stone / Cyborg",
+          "Type": "Actor"
+        }
+      ],
+      "PrimaryImageAspectRatio": 0.68,
+      "ProductionYear": 2010,
+      "ProviderIds": {
+        "Imdb": "<imdb>",
+        "Tmdb": "<tmdb>",
+        "Tvdb": "<tvdb>",
+        "Zap2It": "<zap2it>",
+        "facebook": "<facebook>",
+        "official website": "<url>"
+      },
+      "RunTimeTicks": 15000000000,
+      "ServerId": "<id-001>",
+      "Studios": [
+        {
+          "Id": 39235,
+          "Name": "<text-885>"
+        },
+        {
+          "Id": 34757,
+          "Name": "<text-886>"
+        },
+        {
+          "Id": 34758,
+          "Name": "<text-887>"
+        },
+        {
+          "Id": 165914,
+          "Name": "<text-888>"
+        },
+        {
+          "Id": 39237,
+          "Name": "<text-889>"
+        }
+      ],
+      "TagItems": [],
+      "Taglines": [
+        "<taglines>"
+      ],
+      "Type": "Series",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false,
+        "UnplayedItemCount": 46
+      }
+    },
+    {
+      "AirDays": [],
+      "BackdropImageTags": [
+        "5d2da01946174519c904153cf8738241"
+      ],
+      "CommunityRating": 8.5,
+      "GenreItems": [
+        {
+          "Id": 26780,
+          "Name": "<text-013>"
+        },
+        {
+          "Id": 28552,
+          "Name": "<text-023>"
+        },
+        {
+          "Id": 26869,
+          "Name": "<text-019>"
+        },
+        {
+          "Id": 17143,
+          "Name": "<text-007>"
+        },
+        {
+          "Id": 17144,
+          "Name": "<text-008>"
+        },
+        {
+          "Id": 39234,
+          "Name": "<text-026>"
+        },
+        {
+          "Id": 26868,
+          "Name": "<text-018>"
+        },
+        {
+          "Id": 26867,
+          "Name": "<text-017>"
+        },
+        {
+          "Id": 17145,
+          "Name": "<text-009>"
+        },
+        {
+          "Id": 17658,
+          "Name": "<text-011>"
+        }
+      ],
+      "Genres": [
+        "Science Fiction",
+        "Fantasy",
+        "Family",
+        "Drama",
+        "Crime",
+        "Children",
+        "Animation",
+        "Adventure",
+        "Action",
+        "Mystery"
+      ],
+      "Id": "<id-811>",
+      "ImageTags": {
+        "Logo": "b816f19575c49297a991fec3cec5e77c",
+        "Primary": "00d385fba1f7da07ee8c8873bf5f042e",
+        "Thumb": "e843a68d1b5b35ac91ba645092bcfd00"
+      },
+      "IsFolder": true,
+      "Name": "<text-890>",
+      "OfficialRating": "TV-Y7",
+      "Overview": "<text-891>",
+      "People": [
+        {
+          "Id": "<id-812>",
+          "Name": "<text-892>",
+          "PrimaryImageTag": "5983c569fb0853e535d58d6177188236",
+          "Role": "Superman",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-813>",
+          "Name": "<text-893>",
+          "PrimaryImageTag": "0e5f66ae0913a902eb17367518c1baf3",
+          "Role": "Batman",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-814>",
+          "Name": "<text-894>",
+          "PrimaryImageTag": "a7e01c91b245cef599cddcb18b6ef600",
+          "Role": "Wonder Woman",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-815>",
+          "Name": "<text-895>",
+          "PrimaryImageTag": "63faff3bd4ebec47006eeb817541a2ef",
+          "Role": "The Flash",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-783>",
+          "Name": "<text-857>",
+          "PrimaryImageTag": "59a3c7fd7e6b9e5ed09ac6bbd38f3347",
+          "Role": "Green Lantern",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-816>",
+          "Name": "<text-896>",
+          "PrimaryImageTag": "2d3b88323751cc64347f3d2b77807916",
+          "Role": "Hawkgirl",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-817>",
+          "Name": "<text-897>",
+          "PrimaryImageTag": "0169672d618209dae9da2b11d6006596",
+          "Role": "Martian Manhunter",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-818>",
+          "Name": "<text-898>",
+          "PrimaryImageTag": "3037ca5d2ba898214f01693f2fcb2855",
+          "Role": "Kara Kent",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-819>",
+          "Name": "<text-899>",
+          "PrimaryImageTag": "67c87567ef8cf469d55d953285099837",
+          "Role": "Aquaman",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-820>",
+          "Name": "<text-900>",
+          "PrimaryImageTag": "bbec5b30a6a9846be5b1c2cea71da06e",
+          "Role": "Atom",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-821>",
+          "Name": "<text-901>",
+          "PrimaryImageTag": "ea680de1c7ea7c1f5e2963795910303b",
+          "Role": "Black Canary",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-822>",
+          "Name": "<text-902>",
+          "PrimaryImageTag": "5f7e7482f116cc003470d8b115b39524",
+          "Role": "Huntress",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-823>",
+          "Name": "<text-903>",
+          "PrimaryImageTag": "42e7cdc5e3b2bb77e2521cb8a0287b2e",
+          "Role": "Zatanna ",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-824>",
+          "Name": "<text-904>",
+          "PrimaryImageTag": "5816f0f96244d3d0241983fce2c1eb8c",
+          "Role": "Green Arrow",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-825>",
+          "Name": "<text-905>",
+          "PrimaryImageTag": "1e79d00624ecd2d3e9628bdd9b1209e0",
+          "Role": "Lex Luthor",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-826>",
+          "Name": "<text-906>",
+          "PrimaryImageTag": "cfc31c33369cea00cecba2c4c618785c",
+          "Role": "Question",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-827>",
+          "Name": "<text-907>",
+          "PrimaryImageTag": "dee8186c234f904259cc88fe407f1fe9",
+          "Role": "Dr.Fate",
+          "Type": "Actor"
+        }
+      ],
+      "PrimaryImageAspectRatio": 0.68,
+      "ProductionYear": 2001,
+      "ProviderIds": {
+        "Imdb": "<imdb>",
+        "Tmdb": "<tmdb>",
+        "TvRage": "<tvrage>",
+        "Tvdb": "<tvdb>",
+        "Zap2It": "<zap2it>"
+      },
+      "RunTimeTicks": 15000000000,
+      "ServerId": "<id-001>",
+      "Studios": [
+        {
+          "Id": 39235,
+          "Name": "<text-885>"
+        }
+      ],
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Series",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false,
+        "UnplayedItemCount": 52
+      }
+    },
+    {
+      "BackdropImageTags": [
+        "f9dbe77e6b9fbbb04b81ad1f983f0f3d"
+      ],
+      "Bitrate": 3343104,
+      "CommunityRating": 6,
+      "Container": "mp4",
+      "CriticRating": 39,
+      "GenreItems": [
+        {
+          "Id": 17145,
+          "Name": "<text-009>"
+        },
+        {
+          "Id": 26867,
+          "Name": "<text-017>"
+        },
+        {
+          "Id": 28552,
+          "Name": "<text-023>"
+        }
+      ],
+      "Genres": [
+        "Action",
+        "Adventure",
+        "Fantasy"
+      ],
+      "Id": "<id-828>",
+      "ImageTags": {
+        "Logo": "f045c96e23cf418ec59cc26824eb44e5",
+        "Primary": "596364e8b7b50e440cfb17e8038cfece",
+        "Thumb": "1122d94283a2208457ff2fe0ed4d2a81"
+      },
+      "IsFolder": false,
+      "MediaSources": [
+        {
+          "AddApiKeyToDirectStreamUrl": false,
+          "Bitrate": 3343104,
+          "Chapters": [],
+          "Container": "mp4",
+          "DefaultAudioStreamIndex": 1,
+          "Formats": [],
+          "HasMixedProtocols": false,
+          "Id": "<id-829>",
+          "IsInfiniteStream": false,
+          "IsRemote": false,
+          "ItemId": "<id-828>",
+          "MediaStreams": [
+            {
+              "AspectRatio": "16:9",
+              "AttachmentSize": 0,
+              "AverageFrameRate": 23.976025,
+              "BitDepth": 8,
+              "BitRate": 2890287,
+              "Codec": "h264",
+              "CodecTag": "avc1",
+              "ColorPrimaries": "bt709",
+              "ColorSpace": "bt709",
+              "ColorTransfer": "bt709",
+              "DisplayTitle": "1080p H264",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Height": 1080,
+              "Index": 0,
+              "IsAnamorphic": false,
+              "IsDefault": true,
+              "IsExternal": false,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": false,
+              "Language": "und",
+              "Level": 41,
+              "NalLengthSize": "4",
+              "PixelFormat": "yuv420p",
+              "Profile": "High",
+              "Protocol": "File",
+              "RealFrameRate": 23.976025,
+              "RefFrames": 1,
+              "SupportsExternalStream": false,
+              "TimeBase": "1/90000",
+              "Type": "Video",
+              "VideoRange": "SDR",
+              "Width": 1920
+            },
+            {
+              "AttachmentSize": 0,
+              "BitRate": 448000,
+              "ChannelLayout": "5.1",
+              "Channels": 6,
+              "Codec": "ac3",
+              "CodecTag": "ac-3",
+              "DisplayLanguage": "English",
+              "DisplayTitle": "English AC3 5.1 (Default)",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Index": 1,
+              "IsDefault": true,
+              "IsExternal": false,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": false,
+              "Language": "eng",
+              "Protocol": "File",
+              "SampleRate": 48000,
+              "SupportsExternalStream": false,
+              "TimeBase": "1/48000",
+              "Type": "Audio"
+            },
+            {
+              "AttachmentSize": 0,
+              "Codec": "srt",
+              "DisplayLanguage": "English",
+              "DisplayTitle": "English (SRT)",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Index": 2,
+              "IsDefault": false,
+              "IsExternal": true,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": true,
+              "Language": "en",
+              "Path": "<path>",
+              "Protocol": "File",
+              "SupportsExternalStream": true,
+              "Type": "Subtitle"
+            },
+            {
+              "AttachmentSize": 0,
+              "Codec": "srt",
+              "DisplayTitle": "(SRT)",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Index": 3,
+              "IsDefault": false,
+              "IsExternal": true,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": true,
+              "Path": "<path>",
+              "Protocol": "File",
+              "SupportsExternalStream": true,
+              "Type": "Subtitle"
+            }
+          ],
+          "Name": "<text-890>",
+          "Path": "<path>",
+          "Protocol": "File",
+          "ReadAtNativeFramerate": false,
+          "RequiredHttpHeaders": {},
+          "RequiresClosing": false,
+          "RequiresLooping": false,
+          "RequiresOpening": false,
+          "RunTimeTicks": 72026240000,
+          "Size": 3009890638,
+          "SupportsDirectPlay": true,
+          "SupportsDirectStream": true,
+          "SupportsProbing": true,
+          "SupportsTranscoding": true,
+          "Type": "Default"
+        }
+      ],
+      "MediaStreams": [
+        {
+          "AspectRatio": "16:9",
+          "AttachmentSize": 0,
+          "AverageFrameRate": 23.976025,
+          "BitDepth": 8,
+          "BitRate": 2890287,
+          "Codec": "h264",
+          "CodecTag": "avc1",
+          "ColorPrimaries": "bt709",
+          "ColorSpace": "bt709",
+          "ColorTransfer": "bt709",
+          "DisplayTitle": "1080p H264",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Height": 1080,
+          "Index": 0,
+          "IsAnamorphic": false,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Language": "und",
+          "Level": 41,
+          "NalLengthSize": "4",
+          "PixelFormat": "yuv420p",
+          "Profile": "High",
+          "Protocol": "File",
+          "RealFrameRate": 23.976025,
+          "RefFrames": 1,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/90000",
+          "Type": "Video",
+          "VideoRange": "SDR",
+          "Width": 1920
+        },
+        {
+          "AttachmentSize": 0,
+          "BitRate": 448000,
+          "ChannelLayout": "5.1",
+          "Channels": 6,
+          "Codec": "ac3",
+          "CodecTag": "ac-3",
+          "DisplayLanguage": "English",
+          "DisplayTitle": "English AC3 5.1 (Default)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 1,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Language": "eng",
+          "Protocol": "File",
+          "SampleRate": 48000,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/48000",
+          "Type": "Audio"
+        },
+        {
+          "AttachmentSize": 0,
+          "Codec": "srt",
+          "DisplayLanguage": "English",
+          "DisplayTitle": "English (SRT)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 2,
+          "IsDefault": false,
+          "IsExternal": true,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": true,
+          "Language": "en",
+          "Path": "<path>",
+          "Protocol": "File",
+          "SupportsExternalStream": true,
+          "Type": "Subtitle"
+        },
+        {
+          "AttachmentSize": 0,
+          "Codec": "srt",
+          "DisplayTitle": "(SRT)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 3,
+          "IsDefault": false,
+          "IsExternal": true,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": true,
+          "Path": "<path>",
+          "Protocol": "File",
+          "SupportsExternalStream": true,
+          "Type": "Subtitle"
+        }
+      ],
+      "MediaType": "Video",
+      "Name": "<text-890>",
+      "OfficialRating": "PG-13",
+      "Overview": "<text-908>",
+      "People": [
+        {
+          "Id": "<id-830>",
+          "Name": "<text-909>",
+          "PrimaryImageTag": "f90376e4aaff0ee414d7dad11d6f2bda",
+          "Role": "Bruce Wayne / Batman",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-831>",
+          "Name": "<text-910>",
+          "PrimaryImageTag": "ab4ffb4f68796e3d433a61916a0bc50b",
+          "Role": "Diana Prince / Wonder Woman",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-832>",
+          "Name": "<text-911>",
+          "PrimaryImageTag": "00cec4381010303b42c53599fd73a4c7",
+          "Role": "Clark Kent / Superman / Kal-El",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-833>",
+          "Name": "<text-912>",
+          "PrimaryImageTag": "8a8cdcf53c4336ecf291dd9b6950ece6",
+          "Role": "Barry Allen / Flash",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-834>",
+          "Name": "<text-913>",
+          "PrimaryImageTag": "24837aa0d4e4e868e0076e8cda738b5d",
+          "Role": "Arthur Curry / Aquaman",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-835>",
+          "Name": "<text-914>",
+          "PrimaryImageTag": "ca478472ff1124ea20efc0338c30b8a0",
+          "Role": "Victor Stone / Cyborg",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-836>",
+          "Name": "<text-915>",
+          "PrimaryImageTag": "c31bb266fd073f6093fbda17ac7b0d3f",
+          "Role": "Lois Lane",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-837>",
+          "Name": "<text-916>",
+          "PrimaryImageTag": "266a77190349d3fa8648046ae9c3b8f1",
+          "Role": "Alfred Pennyworth",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-838>",
+          "Name": "<text-917>",
+          "PrimaryImageTag": "f912d7f0cbc82e5a9ff0fa0fd32c02dc",
+          "Role": "Martha Kent",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-839>",
+          "Name": "<text-918>",
+          "PrimaryImageTag": "6bc322d144438e98667c02fa2e84312c",
+          "Role": "Queen Hippolyta",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-840>",
+          "Name": "<text-919>",
+          "PrimaryImageTag": "76ddefbd7c4a179f81407f8d2d55b2fe",
+          "Role": "Menalippe",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-841>",
+          "Name": "<text-920>",
+          "PrimaryImageTag": "3c42fd98f8a335f904e93c177aa69810",
+          "Role": "Commissioner James Gordon",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-842>",
+          "Name": "<text-921>",
+          "PrimaryImageTag": "dd93ca9684e2bde2de6a1aa272e22749",
+          "Role": "Steppenwolf",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-843>",
+          "Name": "<text-922>",
+          "PrimaryImageTag": "456cb1d750dc17260cd7c4dfc9e8364a",
+          "Role": "Mera",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-844>",
+          "Name": "<text-923>",
+          "PrimaryImageTag": "58895dc67fbb5c9a9e7f37270cacd0b4",
+          "Role": "Mr. Wilson",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-057>",
+          "Name": "<text-046>",
+          "PrimaryImageTag": "5b4968e033c2c59e0c459ca0782cca4d",
+          "Role": "Silas Stone",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-845>",
+          "Name": "<text-924>",
+          "PrimaryImageTag": "80484315fcef937432d2ab6f86321f9a",
+          "Role": "Henry Allen",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-846>",
+          "Name": "<text-925>",
+          "PrimaryImageTag": "94ca7257394a80ebc62348d037322aa2",
+          "Role": "Ares",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-847>",
+          "Name": "<text-926>",
+          "PrimaryImageTag": "d3e26b2264bc3c58468a95db4c6e291c",
+          "Role": "Burglar",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-848>",
+          "Name": "<text-927>",
+          "PrimaryImageTag": "004d84277882b7be25db6128fce5e790",
+          "Role": "Epione",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-849>",
+          "Name": "<text-928>",
+          "PrimaryImageTag": "7ecec10f9ae3d9807014faea78f3efc2",
+          "Role": "Antiope",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-850>",
+          "Name": "<text-929>",
+          "PrimaryImageTag": "acdf5991e784091ed3699d0222b0ee26",
+          "Role": "Lex Luthor",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-851>",
+          "Name": "<text-930>",
+          "PrimaryImageTag": "5a00a55db5165b6b201d8b294b327e33",
+          "Role": "Penthesilea",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-852>",
+          "Name": "<text-931>",
+          "PrimaryImageTag": "66fcd0392a74f76e691737d384556dce",
+          "Role": "Venelia",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-853>",
+          "Name": "<text-932>",
+          "PrimaryImageTag": "ad76e440dd5fdeff1b0a3d299c6267e2",
+          "Role": "Black Clad Alpha",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-854>",
+          "Name": "<text-933>",
+          "PrimaryImageTag": "fbed6fce48475a5f419f1d94af85a9ad",
+          "Role": "Mayor",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-855>",
+          "Name": "<text-934>",
+          "PrimaryImageTag": "a13daef8254401fe09d29f18608ae0a3",
+          "Role": "Euboea (as Samantha Jo)",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-856>",
+          "Name": "<text-935>",
+          "PrimaryImageTag": "23f82fa1f2ef034d8801f2892fb40cfd",
+          "Role": "Officer Ben Sadowsky",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-857>",
+          "Name": "<text-936>",
+          "PrimaryImageTag": "6f2b9f9213329f214fe1ed5d9eb8cab2",
+          "Role": "King Atlan",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-858>",
+          "Name": "<text-937>",
+          "PrimaryImageTag": "793b0a90e3b8bd6669029f0bd905d096",
+          "Role": "Art Thief",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-859>",
+          "Name": "<text-938>",
+          "PrimaryImageTag": "8abc91332944d0b6ac749783511a41e0",
+          "Role": "Bio hazard suit soldier",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-860>",
+          "Name": "<text-939>",
+          "PrimaryImageTag": "756fa4cbe09aabf0ccbc3f894d6a6993",
+          "Type": "Director"
+        }
+      ],
+      "PrimaryImageAspectRatio": 0.6666666666666666,
+      "ProductionYear": 2017,
+      "ProviderIds": {
+        "Imdb": "<imdb>",
+        "Tmdb": "<tmdb>",
+        "Tvdb": "<tvdb>",
+        "facebook": "<facebook>",
+        "instagram": "<instagram>",
+        "official website": "<url>",
+        "x (twitter)": "<x-twitter>"
+      },
+      "RunTimeTicks": 72026240000,
+      "ServerId": "<id-001>",
+      "Size": 3009890638,
+      "Studios": [
+        {
+          "Id": 28667,
+          "Name": "<text-940>"
+        }
+      ],
+      "TagItems": [],
+      "Taglines": [
+        "<taglines>"
+      ],
+      "Type": "Movie",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": true
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-861>",
+      "ImageTags": {},
+      "Name": "<text-941>",
+      "ProviderIds": {
+        "tmdb": "<tmdb>"
+      },
+      "ServerId": "<id-001>",
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Person",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-862>",
+      "ImageTags": {},
+      "Name": "<text-942>",
+      "ProviderIds": {
+        "tmdb": "<tmdb>",
+        "tvdb": "<tvdb>"
+      },
+      "ServerId": "<id-001>",
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Person",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-863>",
+      "ImageTags": {
+        "Primary": "8bf8c3f46711a765f8ae744de63b084a"
+      },
+      "Name": "<text-943>",
+      "PrimaryImageAspectRatio": 0.6666666666666666,
+      "ProviderIds": {
+        "tmdb": "<tmdb>"
+      },
+      "ServerId": "<id-001>",
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Person",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-864>",
+      "ImageTags": {
+        "Primary": "ac06639117289e1f6e8f93b889e33d8b"
+      },
+      "Name": "<text-944>",
+      "PrimaryImageAspectRatio": 0.6666666666666666,
+      "ProviderIds": {
+        "tmdb": "<tmdb>",
+        "tvdb": "<tvdb>"
+      },
+      "ServerId": "<id-001>",
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Person",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-865>",
+      "ImageTags": {
+        "Primary": "04ef863b61e617f2857b6790e6a1c9f1"
+      },
+      "Name": "<text-945>",
+      "PrimaryImageAspectRatio": 0.6666666666666666,
+      "ProviderIds": {
+        "tmdb": "<tmdb>",
+        "tvdb": "<tvdb>"
+      },
+      "ServerId": "<id-001>",
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Person",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-866>",
+      "ImageTags": {},
+      "Name": "<text-946>",
+      "ProviderIds": {
+        "tmdb": "<tmdb>"
+      },
+      "ServerId": "<id-001>",
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Person",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-867>",
+      "ImageTags": {},
+      "Name": "<text-947>",
+      "ProviderIds": {
+        "tmdb": "<tmdb>"
+      },
+      "ServerId": "<id-001>",
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Person",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-868>",
+      "ImageTags": {},
+      "Name": "<text-948>",
+      "ProviderIds": {
+        "Tmdb": "<tmdb>"
+      },
+      "ServerId": "<id-001>",
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Person",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-869>",
+      "ImageTags": {
+        "Primary": "e646bc034c01b7483084d1dcf1ffd63a"
+      },
+      "Name": "<text-949>",
+      "PrimaryImageAspectRatio": 0.6666666666666666,
+      "ProviderIds": {
+        "tmdb": "<tmdb>"
+      },
+      "ServerId": "<id-001>",
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Person",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [],
+      "Id": "<id-870>",
+      "ImageTags": {
+        "Primary": "488bbb5b4f245f7a5067ff76d1bd25a9"
+      },
+      "Name": "<text-950>",
+      "PrimaryImageAspectRatio": 0.6666666666666666,
+      "ProviderIds": {
+        "tmdb": "<tmdb>"
+      },
+      "ServerId": "<id-001>",
+      "TagItems": [],
+      "Taglines": [],
+      "Type": "Person",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": false
+      }
+    },
+    {
+      "BackdropImageTags": [
+        "83ab6d3192f004623539817d683d8a3a"
+      ],
+      "Bitrate": 2608051,
+      "CommunityRating": 5.7,
+      "Container": "mkv",
+      "CriticRating": 11,
+      "GenreItems": [
+        {
+          "Id": 17145,
+          "Name": "<text-009>"
+        },
+        {
+          "Id": 26867,
+          "Name": "<text-017>"
+        },
+        {
+          "Id": 26780,
+          "Name": "<text-013>"
+        }
+      ],
+      "Genres": [
+        "Action",
+        "Adventure",
+        "Science Fiction"
+      ],
+      "Id": "<id-871>",
+      "ImageTags": {
+        "Logo": "dd470e6c47ae5d888db5b4d52b329ba0",
+        "Primary": "25e29ea86617d3f9c6502fbd8314c3d5",
+        "Thumb": "23b440c484166019b2d56d58cc40508a"
+      },
+      "IsFolder": false,
+      "MediaSources": [
+        {
+          "AddApiKeyToDirectStreamUrl": false,
+          "Bitrate": 2608051,
+          "Chapters": [],
+          "Container": "mkv",
+          "DefaultAudioStreamIndex": 1,
+          "Formats": [],
+          "HasMixedProtocols": false,
+          "Id": "<id-872>",
+          "IsInfiniteStream": false,
+          "IsRemote": false,
+          "ItemId": "<id-871>",
+          "MediaStreams": [
+            {
+              "AspectRatio": "2.40:1",
+              "AttachmentSize": 0,
+              "AverageFrameRate": 23.976025,
+              "BitDepth": 8,
+              "BitRate": 2608051,
+              "Codec": "h264",
+              "DisplayTitle": "1080p H264",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Height": 800,
+              "Index": 0,
+              "IsAnamorphic": false,
+              "IsDefault": true,
+              "IsExternal": false,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": false,
+              "Level": 40,
+              "NalLengthSize": "4",
+              "PixelFormat": "yuv420p",
+              "Profile": "High",
+              "Protocol": "File",
+              "RealFrameRate": 23.976025,
+              "RefFrames": 1,
+              "SupportsExternalStream": false,
+              "TimeBase": "1/1000",
+              "Type": "Video",
+              "VideoRange": "SDR",
+              "Width": 1920
+            },
+            {
+              "AttachmentSize": 0,
+              "BitRate": 320000,
+              "ChannelLayout": "5.1",
+              "Channels": 6,
+              "Codec": "aac",
+              "DisplayLanguage": "English",
+              "DisplayTitle": "English AAC 5.1 (Default)",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Index": 1,
+              "IsDefault": true,
+              "IsExternal": false,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": false,
+              "Language": "eng",
+              "Profile": "HE-AAC",
+              "Protocol": "File",
+              "SampleRate": 48000,
+              "SupportsExternalStream": false,
+              "TimeBase": "1/1000",
+              "Type": "Audio"
+            },
+            {
+              "AttachmentSize": 0,
+              "Codec": "srt",
+              "DisplayLanguage": "English",
+              "DisplayTitle": "English (SRT)",
+              "ExtendedVideoSubType": "None",
+              "ExtendedVideoSubTypeDescription": "None",
+              "ExtendedVideoType": "None",
+              "Index": 2,
+              "IsDefault": false,
+              "IsExternal": true,
+              "IsForced": false,
+              "IsHearingImpaired": false,
+              "IsInterlaced": false,
+              "IsTextSubtitleStream": true,
+              "Language": "en",
+              "Path": "<path>",
+              "Protocol": "File",
+              "SupportsExternalStream": true,
+              "Type": "Subtitle"
+            }
+          ],
+          "Name": "<text-951>",
+          "Path": "<path>",
+          "Protocol": "File",
+          "ReadAtNativeFramerate": false,
+          "RequiredHttpHeaders": {},
+          "RequiresClosing": false,
+          "RequiresLooping": false,
+          "RequiresOpening": false,
+          "RunTimeTicks": 72332260000,
+          "Size": 2358077793,
+          "SupportsDirectPlay": true,
+          "SupportsDirectStream": true,
+          "SupportsProbing": true,
+          "SupportsTranscoding": true,
+          "Type": "Default"
+        }
+      ],
+      "MediaStreams": [
+        {
+          "AspectRatio": "2.40:1",
+          "AttachmentSize": 0,
+          "AverageFrameRate": 23.976025,
+          "BitDepth": 8,
+          "BitRate": 2608051,
+          "Codec": "h264",
+          "DisplayTitle": "1080p H264",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Height": 800,
+          "Index": 0,
+          "IsAnamorphic": false,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Level": 40,
+          "NalLengthSize": "4",
+          "PixelFormat": "yuv420p",
+          "Profile": "High",
+          "Protocol": "File",
+          "RealFrameRate": 23.976025,
+          "RefFrames": 1,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/1000",
+          "Type": "Video",
+          "VideoRange": "SDR",
+          "Width": 1920
+        },
+        {
+          "AttachmentSize": 0,
+          "BitRate": 320000,
+          "ChannelLayout": "5.1",
+          "Channels": 6,
+          "Codec": "aac",
+          "DisplayLanguage": "English",
+          "DisplayTitle": "English AAC 5.1 (Default)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 1,
+          "IsDefault": true,
+          "IsExternal": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": false,
+          "Language": "eng",
+          "Profile": "HE-AAC",
+          "Protocol": "File",
+          "SampleRate": 48000,
+          "SupportsExternalStream": false,
+          "TimeBase": "1/1000",
+          "Type": "Audio"
+        },
+        {
+          "AttachmentSize": 0,
+          "Codec": "srt",
+          "DisplayLanguage": "English",
+          "DisplayTitle": "English (SRT)",
+          "ExtendedVideoSubType": "None",
+          "ExtendedVideoSubTypeDescription": "None",
+          "ExtendedVideoType": "None",
+          "Index": 2,
+          "IsDefault": false,
+          "IsExternal": true,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsInterlaced": false,
+          "IsTextSubtitleStream": true,
+          "Language": "en",
+          "Path": "<path>",
+          "Protocol": "File",
+          "SupportsExternalStream": true,
+          "Type": "Subtitle"
+        }
+      ],
+      "MediaType": "Video",
+      "Name": "<text-951>",
+      "OfficialRating": "12",
+      "Overview": "<text-952>",
+      "People": [
+        {
+          "Id": "<id-471>",
+          "Name": "<text-521>",
+          "PrimaryImageTag": "5cacee53d62c84374d040ddf03c77603",
+          "Role": "Beatrice ",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-873>",
+          "Name": "<text-953>",
+          "PrimaryImageTag": "dc7d6ec39c18cccd813bd67ad6c7d597",
+          "Role": "Tobias \"Four\" Eaton",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-874>",
+          "Name": "<text-954>",
+          "PrimaryImageTag": "e0eb62014bbbdfd4c07f391927655fc7",
+          "Role": "Peter Hayes",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-875>",
+          "Name": "<text-955>",
+          "PrimaryImageTag": "2a89282f599f4fbc00bfe14454fc0aeb",
+          "Role": "Evelyn Johnson-Eaton",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-876>",
+          "Name": "<text-956>",
+          "PrimaryImageTag": "2faf771b370df2dcba021dc123a07f6d",
+          "Role": "Caleb Prior",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-877>",
+          "Name": "<text-957>",
+          "PrimaryImageTag": "d23e26672f39e9590d51dd029ca00ac1",
+          "Role": "Uriah Pedrad",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-878>",
+          "Name": "<text-958>",
+          "PrimaryImageTag": "bb2d72e35e9f3991e692257f4c837e4d",
+          "Role": "Matthew",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-879>",
+          "Name": "<text-959>",
+          "PrimaryImageTag": "ae7ec7798ef2d547ef7b25b6f120f625",
+          "Role": "Edgar",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-880>",
+          "Name": "<text-960>",
+          "PrimaryImageTag": "f5cc71da231185a0db279d5599d2fa89",
+          "Role": "Nita",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-881>",
+          "Name": "<text-961>",
+          "PrimaryImageTag": "2cf85828c390b9003bb5918949bd454c",
+          "Role": "Romit",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-334>",
+          "Name": "<text-373>",
+          "PrimaryImageTag": "5e3fe5faecb0ec81e941101eb3ba5a92",
+          "Role": "Hollis",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-882>",
+          "Name": "<text-962>",
+          "PrimaryImageTag": "f1ba7101904eba480e67263f2f54cab0",
+          "Role": "Sarah",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-883>",
+          "Name": "<text-963>",
+          "PrimaryImageTag": "8f7c8ed451cd0732f290999d17377f9b",
+          "Role": "Zoe",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-884>",
+          "Name": "<text-964>",
+          "PrimaryImageTag": "76316c2ab0c705e643b7db39a9879f1c",
+          "Role": "Tom",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-885>",
+          "Name": "<text-965>",
+          "PrimaryImageTag": "48698e03276f25f1da81a853b2dcc579",
+          "Role": "Anna",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-886>",
+          "Name": "<text-966>",
+          "PrimaryImageTag": "9dbcb4f84400abbaf3ce6df6dfc9316b",
+          "Role": "Fringe Father",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-887>",
+          "Name": "<text-967>",
+          "PrimaryImageTag": "e4634fde7a1323dc0b92277beaace0a4",
+          "Role": "Factionless Guard",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-888>",
+          "Name": "<text-968>",
+          "PrimaryImageTag": "bea27d8dc1e7ad99d4e8e3968f22a458",
+          "Role": "Crush Girl #2",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-889>",
+          "Name": "<text-969>",
+          "PrimaryImageTag": "ffcfb98ec41bc74d7e2374c0f7602270",
+          "Role": "Groupie Babe #1",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-890>",
+          "Name": "<text-970>",
+          "PrimaryImageTag": "aba921041e986ce77b706a8d8e2b0f25",
+          "Role": "Natalie Prior",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-891>",
+          "Name": "<text-971>",
+          "PrimaryImageTag": "3956558e0bc393daf25b4662fb236e59",
+          "Role": "Phillip",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-892>",
+          "Name": "<text-972>",
+          "PrimaryImageTag": "c7eb56b46d108b19b44c81aaf757b4d1",
+          "Role": "David",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-893>",
+          "Name": "<text-973>",
+          "PrimaryImageTag": "d5536e64be4dd0fc2fa44a72e9e12140",
+          "Role": "Johanna Reyes",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-894>",
+          "Name": "<text-974>",
+          "PrimaryImageTag": "da1480ed693f91e72da7bc6f9dc61615",
+          "Role": "Jack Kang",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-788>",
+          "Name": "<text-862>",
+          "PrimaryImageTag": "d037e0a2e1bfaa41649bb6ba02e22aae",
+          "Role": "Tori Wu",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-895>",
+          "Name": "<text-975>",
+          "PrimaryImageTag": "356deb518142bd983d90c17d4eaaa4e3",
+          "Role": "Marcus Eaton",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-896>",
+          "Name": "<text-976>",
+          "PrimaryImageTag": "1c1d2425b0c6135a1ce9e5c83997e7a4",
+          "Role": "Max",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-897>",
+          "Name": "<text-977>",
+          "PrimaryImageTag": "c0a646cbbf833b966c880d2c71875d0b",
+          "Role": "Edith Prior",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-898>",
+          "Name": "<text-978>",
+          "PrimaryImageTag": "0e6dca69c3bc31a99c379d2aa8d8265c",
+          "Role": "Christina",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-899>",
+          "Name": "<text-979>",
+          "PrimaryImageTag": "cbfb5d35f0643ee78053bc1976e8c8b8",
+          "Role": "Checkpoint Guard",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-900>",
+          "Name": "<text-980>",
+          "PrimaryImageTag": "cc3448ef5e410fdffaa32a9fa0840416",
+          "Role": "Council Member",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-901>",
+          "Name": "<text-981>",
+          "PrimaryImageTag": "0fe65944acf413a7ab23a20931cb00ee",
+          "Role": "Trial Factionless Dissenter",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-902>",
+          "Name": "<text-982>",
+          "PrimaryImageTag": "fbda8ef9d291dfd21cbabbd022421648",
+          "Role": "Perfexia Medical Technician",
+          "Type": "Actor"
+        },
+        {
+          "Id": "<id-903>",
+          "Name": "<text-983>",
+          "PrimaryImageTag": "7bd719f5b18fc5e49623de00316d0c93",
+          "Type": "Director"
+        }
+      ],
+      "PrimaryImageAspectRatio": 0.6666666666666666,
+      "ProductionYear": 2016,
+      "ProviderIds": {
+        "Imdb": "<imdb>",
+        "Tmdb": "<tmdb>",
+        "Tvdb": "<tvdb>",
+        "facebook": "<facebook>",
+        "instagram": "<instagram>",
+        "official website": "<url>",
+        "x (twitter)": "<x-twitter>"
+      },
+      "RunTimeTicks": 72332260000,
+      "ServerId": "<id-001>",
+      "Size": 2358077793,
+      "Studios": [
+        {
+          "Id": 29751,
+          "Name": "<text-516>"
+        }
+      ],
+      "TagItems": [],
+      "Taglines": [
+        "<taglines>"
+      ],
+      "Type": "Movie",
+      "UserData": {
+        "IsFavorite": false,
+        "PlayCount": 0,
+        "PlaybackPositionTicks": 0,
+        "Played": true
+      }
+    }
+  ],
+  "TotalRecordCount": 4462
+}

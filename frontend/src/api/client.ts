@@ -90,14 +90,32 @@ export interface LibraryItem {
   Id: string
   Name: string
   Type: string
+  CollectionType?: string
   Overview?: string
   RunTimeTicks?: number
   SortName?: string
+  ProductionYear?: number
+  Tagline?: string
+  Taglines?: string[]
+  CommunityRating?: number
+  CriticRating?: number
+  OfficialRating?: string
+  Genres?: string[]
+  Tags?: string[]
+  People?: Array<{ Id?: string; Name?: string; Type?: string; Role?: string }>
+  Studios?: Array<{ Id?: string; Name?: string }>
+  ImageTags?: Record<string, string>
+  BackdropImageTags?: string[]
+  LogoImageTag?: string
+  PrimaryImageAspectRatio?: number
+  MediaSources?: JsonObject[]
+  MediaStreams?: JsonObject[]
   MediaSourceCount?: number
   UserData?: {
     PlaybackPositionTicks?: number
     PlayedPercentage?: number
     Played?: boolean
+    IsFavorite?: boolean
   }
 }
 export interface LibraryResponse {
@@ -107,6 +125,52 @@ export interface LibraryResponse {
 }
 export interface LibraryPrefixesResponse {
   Prefixes: string[]
+}
+export interface FilterOption { value: string; label: string }
+export interface FilterControl {
+  id: string
+  label: string
+  kind: 'select' | 'multi' | 'toggle'
+  values: FilterOption[]
+}
+export interface FilterOptionsResponse { controls: FilterControl[] }
+export type LibraryFilterState = Record<string, string | string[]>
+export interface LibraryQueryRequest {
+  scope: {
+    parent_id: string | null
+    include_item_types: string[]
+    media_types: string[]
+    recursive: boolean
+  }
+  page: { start_index: number; limit: number }
+  sort: {
+    field: 'SortName' | 'DateCreated' | 'PremiereDate' | 'ProductionYear'
+      | 'CommunityRating' | 'CriticRating' | 'Runtime' | 'Random'
+    direction: 'Ascending' | 'Descending'
+  }
+  filters: Record<string, string | string[] | number[] | boolean | null>
+  search_term?: string | null
+  anchor_prefix?: string | null
+}
+export interface SearchGroup {
+  id: 'movies' | 'series' | 'episodes' | 'people' | 'collections' | 'other'
+  label: string
+  items: LibraryItem[]
+}
+export interface GroupedSearchResponse { query: string; groups: SearchGroup[] }
+export type ItemSection = 'related' | 'trailers' | 'extras'
+export interface ItemSectionResponse { section: ItemSection; items: LibraryItem[] }
+export interface PlaylistListResponse { items: LibraryItem[] }
+export interface ItemChildrenResponse { items: LibraryItem[] }
+export interface PlaybackSelection {
+  item: LibraryItem
+  mediaSourceId?: string
+  quality: string
+  audioIndex: number | null
+  subtitleIndex: number | null
+  startSeconds: number
+  resumeMode: 'resume' | 'start_over'
+  binge?: boolean
 }
 export interface PartyResponse extends SuccessResponse {
   party_id?: string
@@ -277,12 +341,55 @@ export const api = {
     `/api/items/prefixes?${new URLSearchParams({ parentId }).toString()}`,
     { signal },
   ),
+  filterOptions: (
+    params: { parentId?: string; includeItemTypes?: string; mediaTypes?: string },
+    signal?: AbortSignal,
+  ) => apiFetch<FilterOptionsResponse>(
+    `/api/items/filter-options?${new URLSearchParams(params).toString()}`,
+    { signal },
+  ),
+  queryItems: (query: LibraryQueryRequest, signal?: AbortSignal) => apiFetch<LibraryResponse>(
+    '/api/items/query',
+    { method: 'POST', body: JSON.stringify(query), signal },
+  ),
+  queryPrefixes: (query: LibraryQueryRequest, signal?: AbortSignal) =>
+    apiFetch<LibraryPrefixesResponse>('/api/items/prefixes/query', {
+      method: 'POST', body: JSON.stringify(query), signal,
+    }),
   search: (q: string, signal?: AbortSignal) => apiFetch<LibraryResponse>(
     `/api/search?q=${encodeURIComponent(q)}`, { signal },
+  ),
+  groupedSearch: (q: string, signal?: AbortSignal) => apiFetch<GroupedSearchResponse>(
+    `/api/search/grouped?q=${encodeURIComponent(q)}`, { signal },
   ),
   itemDetails: (id: string, signal?: AbortSignal) => apiFetch<LibraryItem>(
     `/api/item/${id}`, { signal },
   ),
+  itemSection: (id: string, section: ItemSection, signal?: AbortSignal) =>
+    apiFetch<ItemSectionResponse>(`/api/item/${id}/sections/${section}`, { signal }),
+  seriesSeasons: (id: string, signal?: AbortSignal) =>
+    apiFetch<ItemChildrenResponse>(`/api/item/${id}/seasons`, { signal }),
+  seriesEpisodes: (id: string, seasonId?: string, signal?: AbortSignal) => {
+    const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
+    return apiFetch<ItemChildrenResponse>(`/api/item/${id}/episodes${query}`, { signal })
+  },
+  setFavorite: (id: string, favorite: boolean, signal?: AbortSignal) =>
+    apiFetch<{ success: boolean; favorite: boolean }>(`/api/item/${id}/favorite`, {
+      method: 'PUT', body: JSON.stringify({ favorite }), signal,
+    }),
+  setPlayed: (id: string, played: boolean, signal?: AbortSignal) =>
+    apiFetch<{ success: boolean; played: boolean }>(`/api/item/${id}/played`, {
+      method: 'PUT', body: JSON.stringify({ played }), signal,
+    }),
+  playlists: (signal?: AbortSignal) => apiFetch<PlaylistListResponse>('/api/playlists', { signal }),
+  createPlaylist: (name: string, signal?: AbortSignal) =>
+    apiFetch<{ id: string; name: string }>('/api/playlists', {
+      method: 'POST', body: JSON.stringify({ name }), signal,
+    }),
+  addPlaylistItem: (playlistId: string, itemId: string, signal?: AbortSignal) =>
+    apiFetch<{ success: boolean }>(`/api/playlists/${playlistId}/items`, {
+      method: 'POST', body: JSON.stringify({ item_id: itemId }), signal,
+    }),
   // mediaSourceId optionally scopes the response to one alternate
   // version. When omitted, the audio/subtitle arrays describe Emby's
   // default source and `versions` still lists every alternate.
@@ -296,9 +403,10 @@ export const api = {
   imageUrl: (
     id: string,
     type = 'Primary',
-    opts?: { maxWidth?: number; maxHeight?: number; quality?: number },
+    opts?: { index?: number; maxWidth?: number; maxHeight?: number; quality?: number },
   ) => {
     const params = new URLSearchParams({ type })
+    if (opts?.index !== undefined) params.set('index', String(opts.index))
     if (opts?.maxWidth) params.set('maxWidth', String(opts.maxWidth))
     if (opts?.maxHeight) params.set('maxHeight', String(opts.maxHeight))
     if (opts?.quality) params.set('quality', String(opts.quality))
