@@ -12,6 +12,10 @@ from typing import Any
 import yaml
 
 STATEMENT = re.compile(r"^owner=\S+; reason=\S.+$")
+# Every section Trivy honours. Validating only two of them meant a suppression
+# filed under secrets or licenses needed no owner and no expiry, so the policy
+# this script exists to enforce could be bypassed by choosing another heading.
+SECTIONS = ("vulnerabilities", "misconfigurations", "secrets", "licenses")
 
 
 def _future_date(value: object) -> bool:
@@ -33,7 +37,13 @@ def _errors(document: Any) -> list[str]:
     if not isinstance(document, dict):
         return ["ignore policy must be a YAML object"]
     errors: list[str] = []
-    for section in ("vulnerabilities", "misconfigurations"):
+    # A misspelled heading is silently ignored by Trivy as well, so the
+    # suppression does nothing while looking like it does something.
+    unknown = sorted(set(document) - set(SECTIONS))
+    errors.extend(
+        f"unknown section '{name}': expected one of {', '.join(SECTIONS)}" for name in unknown
+    )
+    for section in SECTIONS:
         entries = document.get(section, [])
         if not isinstance(entries, list):
             errors.append(f"{section} must be a list")

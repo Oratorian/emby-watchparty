@@ -147,3 +147,45 @@ misconfigurations: []
 
     assert trivy_ignores_main(["--file", str(policy)]) == 1
     assert "CVE-2099-0001: expired_at must be a future ISO date" in capsys.readouterr().err
+
+
+def test_every_trivy_section_requires_owner_and_expiry(tmp_path: Path, capsys) -> None:
+    """A suppression must not escape the policy by choosing another heading.
+
+    Only vulnerabilities and misconfigurations were validated, so an entry
+    filed under secrets or licenses needed no owner and never expired, while
+    Trivy honoured it exactly the same.
+    """
+    policy = tmp_path / ".trivyignore.yaml"
+    policy.write_text(
+        """vulnerabilities: []
+misconfigurations: []
+secrets:
+  - id: generic-api-key
+    statement: temporary
+licenses:
+  - id: GPL-3.0
+    statement: temporary
+""",
+        encoding="utf-8",
+    )
+
+    assert trivy_ignores_main(["--file", str(policy)]) == 1
+    errors = capsys.readouterr().err
+    assert "generic-api-key: expired_at must be a future ISO date" in errors
+    assert "GPL-3.0: expired_at must be a future ISO date" in errors
+
+
+def test_a_misspelled_section_is_rejected_rather_than_silently_ignored(
+    tmp_path: Path, capsys
+) -> None:
+    """Trivy ignores an unknown heading too, so the suppression does nothing.
+
+    Without this the file looks like it grants an exception and does not, which
+    is worse than either outcome on its own.
+    """
+    policy = tmp_path / ".trivyignore.yaml"
+    policy.write_text("vulnerabilites: []\n", encoding="utf-8")
+
+    assert trivy_ignores_main(["--file", str(policy)]) == 1
+    assert "unknown section 'vulnerabilites'" in capsys.readouterr().err

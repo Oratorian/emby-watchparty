@@ -262,10 +262,28 @@ jobs:
           format: json
           output: trivy.json
           exit-code: "1"
+          # Only fixable findings block the build, because a vulnerability with
+          # no upstream fix cannot be actioned by failing CI. The reporting
+          # step below is what stops that being a silent permanent
+          # suppression: it lists exactly what this flag hid.
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           vuln-type: os,library
           trivyignores: .trivyignore.yaml
+      - name: Report unfixed vulnerabilities the gate ignores
+        if: always()
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: emby-watchparty:ci
+          format: table
+          # Reports, never blocks. ignore-unfixed on the gate above is a
+          # blanket exception that needs no owner and never expires, unlike
+          # every entry in .trivyignore.yaml. Printing it keeps the base-image
+          # backlog visible so the choice to carry it stays a decision.
+          exit-code: "0"
+          ignore-unfixed: false
+          severity: HIGH,CRITICAL
+          vuln-type: os,library
       - name: Capture container diagnostics
         if: always()
         run: docker logs watchparty-ci > container.log 2>&1 || true
@@ -285,14 +303,26 @@ jobs:
 
   dependency-review:
     name: Dependency review
-    if: github.event_name == 'pull_request'
+    # Also runs on push. Work reaches the integration branches by direct push
+    # as often as by PR, and gating this on pull_request alone left those
+    # commits with no dependency check at all while ci-gate still went green,
+    # because it counts a skipped job as a pass. Skipped on a branch's first
+    # push, where there is no previous commit to diff against.
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' &&
+       github.event.before != '0000000000000000000000000000000000000000')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
       - name: Reject newly introduced vulnerable dependencies
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
+          base-ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          head-ref: ${{ github.sha }}
 
   changed-coverage:
     name: Changed-line coverage
@@ -351,4 +381,14 @@ jobs:
           RESULTS: ${{ toJSON(needs) }}
         run: |
           echo "$RESULTS" | jq .
+          # Skipped still counts as a pass, because some jobs are legitimately
+          # conditional. Naming them is what stops that being invisible: a gate
+          # where every job skipped looks identical to a gate where every job
+          # passed, and that is how a check goes missing without anyone
+          # noticing it stopped running.
+          skipped=$(echo "$RESULTS" | jq -r 'to_entries[] | select(.value.result == "skipped") | .key')
+          if [ -n "$skipped" ]; then
+            echo "::warning::Checks that did NOT run for this event:"
+            echo "$skipped" | while read -r job; do echo "::warning::  skipped: $job"; done
+          fi
           echo "$RESULTS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")'
