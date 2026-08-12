@@ -24,6 +24,8 @@ beta1 said the change most likely to be noticed was rate limiting becoming enfor
 
 It also stops the upgrade itself being guesswork. There is now a read-only command that tells you what 3.0 will make of your 2.1.x configuration before you pull it, and the deployment examples for Compose, CasaOS, TrueNAS and Portainer are generated from one schema rather than kept in step by hand.
 
+The third change is the one your Emby server will feel: HEVC sources are no longer re-encoded for viewers whose browser could already play them. That shipped on the stable line as 2.1.2 and is carried here so upgrading to 3.0 does not undo it.
+
 ### A blocked action now says so
 
 Party creation, joining, admin login, avatar recovery, background requests, socket connections and chat all name the limit and show a safe retry delay. Previously most of them showed nothing useful: chat, avatar recovery and the background party list said nothing at all, and a rate-limited join showed only a generic "could not authenticate" banner. Party creation and admin login were worse than nothing, throwing an error neither page caught, so the create button stuck on "Creating party..." and the admin login button simply did not respond.
@@ -68,6 +70,29 @@ New platform guides under [`docs/deployment/`](docs/deployment/) cover Compose, 
 TrueNAS and Portainer, each with the read-only preflight, fail-closed health and readiness
 diagnosis, updates, playback acceptance and full rollback, without ever deleting legacy data.
 
+### HEVC stops being transcoded for viewers who can already play it
+
+Shipped first on the stable line as 2.1.2 and carried here, so 3.0 does not regress against it. If you are coming from 2.1.2 you already have this; nothing below is new to you.
+
+Until now every stream was requested as H.264, whatever the source was. That is the safe answer when you have no idea what the viewer's browser can decode, and it was the only answer available, because nothing ever asked. So an HEVC file was re-encoded on your Emby server for everybody, including people whose browser would have played the original untouched.
+
+Watch Party now asks. Each viewer's browser reports what it can decode when they join, and the server keeps the source codec for the ones that can handle it. Anyone else still gets H.264, automatically, so nobody is left staring at a black video. Because streams are already built per viewer, **two people in the same party can be served different codecs**, which is the only thing that works when one is on a Mac and one is on a Windows box without the codec.
+
+Nothing to configure, no `.env` changes, nothing added to the migration.
+
+Measured on 2.1.2 against an 8K HEVC file, same machine, same browser, the only variable being whether the viewer could decode HEVC:
+
+| | encoder on your server | work per 3s of video |
+|---|---|---|
+| viewer can decode HEVC | **none**, stream copied | **~50 ms** |
+| viewer cannot | libx264 at 1080p | ~1750 ms |
+
+Whether you get it depends on the viewer's machine, not just their browser, and that is worth knowing before anyone reports it as a bug. **macOS, iOS and Safari** decode HEVC natively. **Chromium browsers on Windows** use the GPU directly, but only while **hardware acceleration is enabled**, since Chromium ships no software HEVC decoder and turning acceleration off removes HEVC entirely. **Firefox on Windows** goes through Windows Media Foundation and needs a codec from the Microsoft Store: try the free [HEVC Video Extensions from Device Manufacturer](https://apps.microsoft.com/detail/9n4wgh0z6vhq) first, the [paid package](https://apps.microsoft.com/detail/9NMZLZ57R3T7) works everywhere, and codec packs such as K-Lite do **not** help because browsers do not use DirectShow filters.
+
+Support is detected when you join, so if you install a codec or change your hardware-acceleration setting with Watch Party open, reload the page before rejoining.
+
+One practical note that predates this but matters more now: **Auto** quality means "do not downscale". That is what you want when the source can be copied, and the worst case when it cannot, because a large source is then re-encoded at full resolution. If a viewer cannot decode HEVC, a capped quality will reach them far sooner than Auto will.
+
 ### Fixed
 
 Three of these are defects a beta1 user can actually hit today.
@@ -75,16 +100,24 @@ Three of these are defects a beta1 user can actually hit today.
 - **A proxy error page no longer replaces the explanation.** When a reverse proxy answered with its own HTML error page, that page was printed in the party banner where the guidance should be. The fixed sentence now leads and any upstream detail follows in bounded parentheses.
 - **Turning rate limiting off now turns off chat's limit too.** Chat is the one limiter that ignored the master switch in **Admin -> Security**, so with limiting disabled it was still the only one firing, silently dropping messages. This release would have made that visible by disabling the composer, which is what surfaced it.
 - **A retry delay could be longer than the limit it belonged to.** A three-second window reported four seconds in `Retry-After`.
+- **HEVC and other non-H.264 sources are no longer transcoded unconditionally.** `VideoCodec=h264` was hardcoded into every stream URL. It is now chosen per viewer from what that viewer's browser reported. Reported by **[miakkia](https://github.com/miakkia)** in [#61](https://github.com/Oratorian/emby-watchparty/issues/61), including a measurement showing Emby reporting Direct Play once the source codec was preserved.
+- **The transcode log line no longer goes stale.** "Source is hevc, transcoding to h264" was written independently of the parameter that actually decides, so it kept claiming a transcode that was no longer being requested. Both now come from the same decision, and the message says whether the client could decode the source.
 
 The rest of the rate-limit surfacing was written and corrected inside this cycle, so no published image ever carried these; they are listed because the code is on `3.0-dev` and reviewable, not because you are running them. A viewer's first join could be refused as "too many join attempts", the chat "message not sent" warning outlived its countdown, two refused chat messages merged into one reversed line, ordinary socket reconnects painted a red `xhr poll error` alert, and a stale party-list warning blamed rate limiting for the rest of a server outage. All are described with their causes in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
 
 ### Technical details
 
-All of this is **[dnordel](https://github.com/dnordel)**'s: the rate-limit surfacing and the preflight as [#57](https://github.com/Oratorian/emby-watchparty/pull/57), 25 commits over 45 files, and the deployment schema as [#58](https://github.com/Oratorian/emby-watchparty/pull/58), 16 commits over 20 files. Both landed on `3.0-dev` via their branches after an audit rather than through a PR merge.
+Two of the three bodies of work here are **[dnordel](https://github.com/dnordel)**'s: the rate-limit surfacing and the preflight as [#57](https://github.com/Oratorian/emby-watchparty/pull/57), 25 commits over 45 files, and the deployment schema as [#58](https://github.com/Oratorian/emby-watchparty/pull/58), 16 commits over 20 files. Both landed on `3.0-dev` via their branches after an audit rather than through a PR merge.
 
 Those audits found 20 defects in the first and 13 in the second, all fixed before either landed. Their methodology, the defect classes, and the two failure patterns now recurring across cycles are in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
 
-Test coverage since beta1: **197 backend tests** across 27 modules (was 116), **31 Vitest** (was 17), **16 Playwright** (was 14), with `ruff check`, `ruff format` and `eslint` clean, and `mypy` clean over 44 source files.
+The codec negotiation is the third, built on the stable line for 2.1.2 and forward-ported here rather than written twice. `TranscodeReasons` was not the cause, despite being the obvious suspect: Emby treats it as informational, so removing `VideoCodecNotSupported` alone changes nothing. The forcing was the hardcoded `VideoCodec=h264`.
+
+The client probes with `MediaSource.isTypeSupported` for the hls.js path and `canPlayType` for native HLS, accepting only `probably`, since `maybe` is the browser guessing and a guess is what this exists to avoid. Anything that throws counts as no capability. The server allowlists what it is told before any of it reaches an Emby URL, and stores it against the persistent `client_id`, so it survives a reload the same way the video selector does. Watch Party reports what the viewer can decode and stops there; which encoder Emby then reaches for is Emby's decision and is not second-guessed here.
+
+Four things differ from the 2.1.2 change, all because 3.0 has diverged underneath it. `join_party` is a validated typed contract, so `video_codecs` is declared on `JoinPartyPayload` and the schema and TypeScript types are regenerated; strict inbound validation then makes the payload the first gate and the allowlist the second. The party is a typed aggregate, so codecs are a domain field rather than a dict key. The reconnect join lives in `usePartyReconnect`, so there are three emit sites rather than two. And a client that sends nothing gets the default empty list, which reads as H.264-only, which is exactly what an un-upgraded frontend sends.
+
+Test coverage since beta1: **212 backend tests** across 28 modules (was 116), **37 Vitest** (was 17), **16 Playwright** (was 14), with `ruff check`, `ruff format` and `eslint` clean, and `mypy` clean over 44 source files.
 
 ---
 
