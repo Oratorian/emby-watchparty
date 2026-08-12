@@ -79,6 +79,10 @@ def list_parties(
             continue
         if not party.member_count:
             continue
+        # Hidden by its host. Unlisted, not private: the code still works for
+        # anyone who has it, exactly as an unlisted link does elsewhere.
+        if party.hidden:
+            continue
         try:
             cv = party.current_video
             items.append(

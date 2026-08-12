@@ -401,6 +401,24 @@
       "title": "BingeWatchPayload",
       "type": "object"
     },
+    "set_party_hidden": {
+      "properties": {
+        "hidden": {
+          "title": "Hidden",
+          "type": "boolean"
+        },
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id",
+        "hidden"
+      ],
+      "title": "PartyVisibilityPayload",
+      "type": "object"
+    },
     "stop_video": {
       "properties": {
         "party_id": {
@@ -1348,6 +1366,20 @@
       "title": "PartyDissolvedOutbound",
       "type": "object"
     },
+    "party_visibility_changed": {
+      "additionalProperties": false,
+      "properties": {
+        "hidden": {
+          "title": "Hidden",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "hidden"
+      ],
+      "title": "PartyVisibilityOutbound",
+      "type": "object"
+    },
     "pause": {
       "additionalProperties": false,
       "properties": {
@@ -2151,6 +2183,11 @@
             }
           ],
           "default": null
+        },
+        "hidden": {
+          "default": false,
+          "title": "Hidden",
+          "type": "boolean"
         },
         "pending_auto_advance": {
           "anyOf": [

@@ -88,6 +88,10 @@ class BingeWatchPayload(PartyPayload):
     active: bool
 
 
+class PartyVisibilityPayload(PartyPayload):
+    hidden: bool
+
+
 INBOUND_MODELS: dict[str, type[SocketPayload]] = {
     "join_party": JoinPartyPayload,
     "leave_party": PartyPayload,
@@ -101,6 +105,7 @@ INBOUND_MODELS: dict[str, type[SocketPayload]] = {
     "video_ended": PartyPayload,
     "auto_advance_cancel": PartyPayload,
     "set_binge_watch_active": BingeWatchPayload,
+    "set_party_hidden": PartyVisibilityPayload,
     "report_progress": TimedPartyPayload,
     "stream_ready": PartyPayload,
     "heartbeat": TimedPartyPayload,
@@ -188,6 +193,7 @@ class SyncStateOutbound(OutboundPayload):
     users: list[str] = []
     binge_watch: BingeWatchStateOutbound | None = None
     pending_auto_advance: PendingAutoAdvanceOutbound | None = None
+    hidden: bool = False
 
 
 class VideoOutbound(OutboundPayload):
@@ -277,6 +283,10 @@ class BingeStateOutbound(OutboundPayload):
     active: bool
 
 
+class PartyVisibilityOutbound(OutboundPayload):
+    hidden: bool
+
+
 class AutoAdvancePendingOutbound(OutboundPayload):
     next_item_id: str
     next_title: str
@@ -335,6 +345,7 @@ OUTBOUND_MODELS: dict[str, type[OutboundPayload]] = {
     "join_vote_resolved": VoteResolvedOutbound,
     "join_rejected": JoinRejectedOutbound,
     "binge_watch_state_changed": BingeStateOutbound,
+    "party_visibility_changed": PartyVisibilityOutbound,
     "auto_advance_pending": AutoAdvancePendingOutbound,
     "auto_advance_cancelled": AutoAdvanceCancelledOutbound,
     "auto_advance_fired": AutoAdvanceFiredOutbound,

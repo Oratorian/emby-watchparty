@@ -1306,6 +1306,38 @@ def register(ctx):
             f"by {party.username_for_sid(sid, '?')}"
         )
 
+    @sio.on("set_party_hidden")
+    async def handle_set_party_hidden(sid, data):
+        """Keep this party off the public index listing.
+
+        Unlisted rather than private: anyone holding the code can still join,
+        exactly as before. The listing is a convenience for finding an open
+        room, and a host running a private evening should not have to choose
+        between being advertised and being reachable.
+        """
+        party_id = data.get("party_id", "").strip().upper()
+        hidden = bool(data.get("hidden"))
+        party = party_manager.get(party_id)
+        if not party:
+            return
+
+        # Host-only, same rule as the binge switch above: the control is not
+        # rendered for anyone else, so a request from a non-host is a client
+        # that should not have sent it and gets no reply.
+        caller_client_id = _client_id_for_sid(party, sid)
+        if not caller_client_id or party.host_client_id != caller_client_id:
+            return
+
+        await party_manager.set_hidden(party_id, hidden)
+        # Broadcast to the room, not just the caller: the host may have the
+        # party open in more than one tab, and a stale switch there would
+        # misreport whether the party is advertised.
+        await sio.emit("party_visibility_changed", {"hidden": hidden}, room=party_id)
+        logger.info(
+            f"Party {party_id} {'hidden from' if hidden else 'listed in'} the index "
+            f"by {party.username_for_sid(sid, '?')}"
+        )
+
     # report_progress throttle. The handler fires a synchronous outbound
     # Emby HTTP call on every emit; previously there was no cap, so a
     # joined member could 1000-Hz spam and (a) pin the asyncio event

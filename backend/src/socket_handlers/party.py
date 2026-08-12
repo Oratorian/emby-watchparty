@@ -828,6 +828,10 @@ def register(ctx):
                     "active": bool(party.binge_watch_active),
                 },
                 "pending_auto_advance": pending_advance_payload,
+                # Sent on join so the host's switch renders in the right state
+                # from the first frame. Without it a hidden party shows an
+                # un-hidden switch until someone toggles it.
+                "hidden": bool(party.hidden),
             },
             to=sid,
         )

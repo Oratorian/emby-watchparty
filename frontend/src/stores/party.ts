@@ -139,6 +139,10 @@ export const usePartyStore = defineStore('party', () => {
     available: false, active: false,
   })
 
+  // Whether this party is kept off the public index listing. Unlisted, not
+  // private: the code still works for anyone who has it.
+  const hidden = ref(false)
+
   // Pending auto-advance modal state. Non-null only between video_ended
   // and the next video_selected / video_stopped, while the countdown
   // is running. timeoutAt is the absolute deadline (ms since epoch);
@@ -230,6 +234,14 @@ export const usePartyStore = defineStore('party', () => {
    * either way, so anything other than a definite "no" leaves the normal
    * retry path in place.
    */
+  function setHidden(next: boolean) {
+    if (!partyId.value) return
+    // Optimistic, then corrected by the broadcast. The server is the
+    // authority; a refused toggle (non-host) simply never echoes back.
+    hidden.value = next
+    useSocketStore().emit('set_party_hidden', { party_id: partyId.value, hidden: next })
+  }
+
   async function checkPartyMissing() {
     if (!partyId.value) return
     try {
@@ -361,7 +373,7 @@ export const usePartyStore = defineStore('party', () => {
       'user_joined', 'user_left', 'sync_state', 'video_selected',
       'video_stopped', 'video_ended', 'play', 'pause', 'seek',
       'streams_changed', 'members_update', 'ready_check_update', 'all_ready',
-      'binge_watch_state_changed', 'auto_advance_pending',
+      'binge_watch_state_changed', 'party_visibility_changed', 'auto_advance_pending',
       'auto_advance_cancelled', 'auto_advance_fired', 'binge_finished',
     ] as const
     for (const e of events) socket.off(e)
@@ -418,6 +430,7 @@ export const usePartyStore = defineStore('party', () => {
           active: !!data.binge_watch.active,
         }
       }
+      hidden.value = !!data.hidden
       // Hydrate a running binge countdown so a rejoiner during the
       // countdown window sees the modal (and Cancel button). Without
       // this, the watchdog fires unattended and the selector loses
@@ -477,6 +490,12 @@ export const usePartyStore = defineStore('party', () => {
       if (data.time !== undefined) {
         playbackState.value.time = data.time
       }
+    })
+
+    // Broadcast to the room rather than the caller, so a host with the party
+    // open in two tabs does not leave a stale switch in the other one.
+    socket.on('party_visibility_changed', (data: ServerToClientPayloads['party_visibility_changed']) => {
+      hidden.value = !!data.hidden
     })
 
     socket.on('binge_watch_state_changed', (data: ServerToClientPayloads['binge_watch_state_changed']) => {
@@ -602,7 +621,7 @@ export const usePartyStore = defineStore('party', () => {
     partyId, username, users, members, currentVideo, playbackState, userCount,
     myStreamUrl, streamOffset, readyCheckActive, readyUsers, waitingUsers,
     pendingVote,
-    bingeWatch, pendingAutoAdvance,
+    bingeWatch, pendingAutoAdvance, hidden, setHidden,
     sessionError, partyMissing, sessionRetrying, sessionRetryAfter, supersededBy,
     join, leave, setupListeners, submitVote, retrySession,
     setBingeWatchActive, cancelAutoAdvance,

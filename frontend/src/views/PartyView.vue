@@ -1276,6 +1276,31 @@ async function submitBecomeHost(payload: { username: string; password: string })
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         </button>
+        <!-- Always rendered, so everyone can see whether the room is being
+             advertised, but only the host can change it. Disabled rather than
+             hidden: the server refuses a non-host anyway, so a live-looking
+             button would silently do nothing, and with no host at all the
+             state still matters to the people already in the room.
+             Unlisted, not private: the code keeps working either way. -->
+        <button
+          type="button"
+          class="ico-btn"
+          :class="{ 'ico-btn-active': party.hidden }"
+          :disabled="!auth.isHost"
+          :aria-pressed="party.hidden"
+          :title="!auth.isHost
+            ? (party.hidden
+              ? 'Hidden from Active Parties. Only the host can change this.'
+              : 'Listed in Active Parties. Only the host can change this.')
+            : (party.hidden
+              ? 'Hidden from Active Parties. Anyone with the code can still join. Click to list it.'
+              : 'Listed in Active Parties. Click to hide it.')"
+          :aria-label="party.hidden ? 'Party is hidden from Active Parties' : 'Party is listed in Active Parties'"
+          @click="party.setHidden(!party.hidden)"
+        >
+          <svg v-if="party.hidden" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><path d="M1 1l22 22"/></svg>
+          <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
         <button @click="showMobileChat = true" class="chip-btn mobile-chat-toggle">Chat</button>
         <button @click="leaveParty" class="btn-leave" title="Leave party">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
@@ -2018,6 +2043,26 @@ async function submitBecomeHost(payload: { username: string; password: string })
   color: var(--text-secondary);
   cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+/* Readable but clearly not actionable for non-hosts. The state is worth
+   showing everyone; the ability to change it is not. */
+.ico-btn:disabled {
+  cursor: default;
+  opacity: .75;
+}
+.ico-btn:disabled:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-subtle);
+}
+
+/* Hidden is a state the host is holding, not a momentary action, so the
+   control stays lit while it applies. Without this the only way to tell an
+   unlisted party from a listed one is to squint at which icon is showing. */
+.ico-btn-active {
+  background: var(--accent-primary-dim, rgba(0, 224, 255, .12));
+  border-color: var(--accent-primary, #00e0ff);
+  color: var(--accent-primary, #00e0ff);
 }
 
 .ico-btn:hover {

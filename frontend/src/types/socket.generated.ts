@@ -67,6 +67,10 @@ export interface ClientToServerPayloads {
     "party_id": string
     "active": boolean
   }
+  "set_party_hidden": {
+    "party_id": string
+    "hidden": boolean
+  }
   "stop_video": {
     "party_id": string
   }
@@ -204,6 +208,9 @@ export interface ServerToClientPayloads {
     "party_id": string
     "reason": string
   }
+  "party_visibility_changed": {
+    "hidden": boolean
+  }
   "pause": {
     "time": number
     "username"?: string | null
@@ -246,6 +253,7 @@ export interface ServerToClientPayloads {
     "users"?: string[]
     "binge_watch"?: { "available": boolean; "active": boolean } | null
     "pending_auto_advance"?: { "next_item_id"?: string | null; "next_title"?: string | null; "next_index_number"?: number | null; "total_episodes"?: number | null; "deadline"?: string | null; "countdown_seconds"?: number | null } | null
+    "hidden"?: boolean
   }
   "toggle_library": {
     "show": boolean
