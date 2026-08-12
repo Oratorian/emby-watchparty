@@ -1,6 +1,139 @@
 <template>
   <article class="title-details">
-    <button class="back-to-library" type="button" @click="$emit('back')">← Back</button>
+    <div class="detail-topbar">
+      <button class="back-to-library" type="button" @click="$emit('back')">← Back</button>
+      <!-- Both control groups on the top bar beside Back, and one popover
+           showing one section at a time.
+           Previously two stacked sections further down the page, each with its
+           own heading. That cost four vertical bands for one set of controls,
+           and their position moved with the length of the overview above them,
+           so on a long synopsis they were pushed off the fold entirely. -->
+      <section
+        v-if="details"
+        class="detail-toolbar"
+        @mouseleave="scheduleSectionClose"
+        @mouseenter="cancelSectionClose"
+        @keydown.esc="closeSection"
+      >
+        <div class="toolbar-group section-buttons">
+          <button
+            v-for="section in optionalSections"
+            :key="section.id"
+            type="button"
+            :data-section="section.id"
+            class="section-btn"
+            :class="{ active: openSection === section.id }"
+            :aria-expanded="openSection === section.id"
+            :aria-controls="`section-panel-${section.id}`"
+            @click="toggleSection(section.id)"
+          >
+            {{ section.label }}
+          </button>
+
+          <div
+            v-if="openSection"
+            :id="`section-panel-${openSection}`"
+            class="section-popover"
+            role="dialog"
+            :aria-label="openSectionLabel"
+          >
+            <header class="section-popover-head">
+              <h4>{{ openSectionLabel }}</h4>
+              <button
+                type="button"
+                class="section-close"
+                aria-label="Close"
+                @click="closeSection"
+              >
+                ×
+              </button>
+            </header>
+            <p v-if="sectionErrors[openSection]" role="alert">{{ sectionErrors[openSection] }}</p>
+            <p v-else-if="sectionLoading === openSection" role="status">
+              Loading {{ openSectionLabel.toLowerCase() }}…
+            </p>
+            <ul v-else-if="sectionItems[openSection]?.length" class="section-grid">
+              <li v-for="item in sectionItems[openSection]" :key="item.Id">
+                <button type="button" class="section-item" @click="$emit('open', item)">
+                  <span class="section-thumb">
+                    <img
+                      v-if="item.ImageTags?.Primary"
+                      :src="api.imageUrl(item.Id, 'Primary', { maxWidth: 120, maxHeight: 180, quality: 80 })"
+                      :alt="''"
+                      loading="lazy"
+                    />
+                    <span v-else class="section-thumb-fallback">{{ item.Name.charAt(0) }}</span>
+                  </span>
+                  <span class="section-text">
+                    <span class="section-name">{{ item.Name }}</span>
+                    <span v-if="itemMeta(item)" class="section-meta">{{ itemMeta(item) }}</span>
+                  </span>
+                </button>
+              </li>
+            </ul>
+            <p v-else class="section-empty">None available.</p>
+          </div>
+        </div>
+
+        <!-- Same row, divider between. Seasons load with the title, so this
+             appears without anyone pressing anything; the button survives only
+             as the way back from a failure. The error sits outside the loaded
+             branch because a seasons failure leaves seasonsLoaded false, which
+             is exactly when it needs to be visible. -->
+        <div v-if="details?.Type === 'Series'" class="toolbar-group series-group">
+          <p v-if="seriesError" class="toolbar-error" role="alert">{{ seriesError }}</p>
+          <p v-if="seasonsLoading && !seasonsLoaded" role="status">Loading seasons…</p>
+          <button
+            v-else-if="!seasonsLoaded"
+            type="button"
+            data-section="seasons"
+            @click="loadSeasons()"
+          >
+            {{ seriesError ? 'Retry' : 'Load seasons' }}
+          </button>
+          <div v-else class="series-pickers">
+            <label>
+              Season
+              <select
+                v-model="selectedSeason"
+                aria-label="Season"
+                @change="selectSeason(selectedSeason)"
+              >
+                <option v-for="season in seasons" :key="season.Id" :value="season.Id">
+                  {{ season.Name }}
+                </option>
+              </select>
+            </label>
+
+            <label>
+              Episode
+              <select
+                v-model="chosenEpisode"
+                aria-label="Episode"
+                :disabled="episodesLoading || !episodes.length"
+                @change="openChosenEpisode"
+              >
+                <option value="">
+                  {{ episodesLoading ? 'Loading…' : episodes.length ? 'Choose an episode…' : 'No episodes' }}
+                </option>
+                <option
+                  v-for="episode in episodes"
+                  :key="episode.Id"
+                  :value="episode.Id"
+                  :data-episode-id="episode.Id"
+                >
+                  {{ episodeLabel(episode) }}
+                </option>
+              </select>
+            </label>
+
+            <p v-if="episodes.length" class="series-count">
+              {{ episodes.length }} Episode{{ episodes.length === 1 ? '' : 's' }}
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
     <div v-if="loading" role="status">Loading title…</div>
     <div v-else-if="error" role="alert">{{ error }}</div>
     <template v-else-if="details">
@@ -137,137 +270,6 @@
       </section>
       <section v-if="details.Studios?.length"><h3>Studios</h3><p>{{ details.Studios.map((studio) => studio.Name).join(' · ') }}</p></section>
       <section v-if="tagNames.length"><h3>Tags</h3><p>{{ tagNames.join(' · ') }}</p></section>
-      <!-- One toolbar row, and one popover showing one section at a time.
-           Each button used to render its own block underneath, so opening all
-           three left all three stacked forever with nothing to close them.
-           One toolbar row. These were two stacked sections with their own
-           headings, and between the headings, the button row, the two selects
-           and the episode count they cost four vertical bands for what is one
-           set of controls. -->
-      <section
-        class="detail-toolbar"
-        @mouseleave="scheduleSectionClose"
-        @mouseenter="cancelSectionClose"
-        @keydown.esc="closeSection"
-      >
-        <div class="toolbar-group section-buttons">
-          <button
-            v-for="section in optionalSections"
-            :key="section.id"
-            type="button"
-            :data-section="section.id"
-            class="section-btn"
-            :class="{ active: openSection === section.id }"
-            :aria-expanded="openSection === section.id"
-            :aria-controls="`section-panel-${section.id}`"
-            @click="toggleSection(section.id)"
-          >
-            {{ section.label }}
-          </button>
-
-          <div
-            v-if="openSection"
-            :id="`section-panel-${openSection}`"
-            class="section-popover"
-            role="dialog"
-            :aria-label="openSectionLabel"
-          >
-            <header class="section-popover-head">
-              <h4>{{ openSectionLabel }}</h4>
-              <button
-                type="button"
-                class="section-close"
-                aria-label="Close"
-                @click="closeSection"
-              >
-                ×
-              </button>
-            </header>
-            <p v-if="sectionErrors[openSection]" role="alert">{{ sectionErrors[openSection] }}</p>
-            <p v-else-if="sectionLoading === openSection" role="status">
-              Loading {{ openSectionLabel.toLowerCase() }}…
-            </p>
-            <ul v-else-if="sectionItems[openSection]?.length" class="section-grid">
-              <li v-for="item in sectionItems[openSection]" :key="item.Id">
-                <button type="button" class="section-item" @click="$emit('open', item)">
-                  <span class="section-thumb">
-                    <img
-                      v-if="item.ImageTags?.Primary"
-                      :src="api.imageUrl(item.Id, 'Primary', { maxWidth: 120, maxHeight: 180, quality: 80 })"
-                      :alt="''"
-                      loading="lazy"
-                    />
-                    <span v-else class="section-thumb-fallback">{{ item.Name.charAt(0) }}</span>
-                  </span>
-                  <span class="section-text">
-                    <span class="section-name">{{ item.Name }}</span>
-                    <span v-if="itemMeta(item)" class="section-meta">{{ itemMeta(item) }}</span>
-                  </span>
-                </button>
-              </li>
-            </ul>
-            <p v-else class="section-empty">None available.</p>
-          </div>
-        </div>
-
-        <!-- Same row, divider between. Seasons load with the title, so this
-             appears without anyone pressing anything; the button survives only
-             as the way back from a failure. The error sits outside the loaded
-             branch because a seasons failure leaves seasonsLoaded false, which
-             is exactly when it needs to be visible. -->
-        <div v-if="details.Type === 'Series'" class="toolbar-group series-group">
-          <p v-if="seriesError" class="toolbar-error" role="alert">{{ seriesError }}</p>
-          <p v-if="seasonsLoading && !seasonsLoaded" role="status">Loading seasons…</p>
-          <button
-            v-else-if="!seasonsLoaded"
-            type="button"
-            data-section="seasons"
-            @click="loadSeasons()"
-          >
-            {{ seriesError ? 'Retry' : 'Load seasons' }}
-          </button>
-          <div v-else class="series-pickers">
-          <label>
-            Season
-            <select
-              v-model="selectedSeason"
-              aria-label="Season"
-              @change="selectSeason(selectedSeason)"
-            >
-              <option v-for="season in seasons" :key="season.Id" :value="season.Id">
-                {{ season.Name }}
-              </option>
-            </select>
-          </label>
-
-          <label>
-            Episode
-            <select
-              v-model="chosenEpisode"
-              aria-label="Episode"
-              :disabled="episodesLoading || !episodes.length"
-              @change="openChosenEpisode"
-            >
-              <option value="">
-                {{ episodesLoading ? 'Loading…' : episodes.length ? 'Choose an episode…' : 'No episodes' }}
-              </option>
-              <option
-                v-for="episode in episodes"
-                :key="episode.Id"
-                :value="episode.Id"
-                :data-episode-id="episode.Id"
-              >
-                {{ episodeLabel(episode) }}
-              </option>
-            </select>
-          </label>
-
-            <p v-if="episodes.length" class="series-count">
-              {{ episodes.length }} Episode{{ episodes.length === 1 ? '' : 's' }}
-            </p>
-          </div>
-        </div>
-      </section>
     </template>
   </article>
 </template>
@@ -864,12 +866,38 @@ onUnmounted(() => {
 /* One row for both control groups. Two stacked sections with their own
    headings cost four vertical bands for a single set of controls, on a page
    whose whole complaint was that it kept extending downwards. */
+/* Back | section buttons ......... season and episode, hard right.
+ *
+ * Pinned to the top with the Back button rather than sitting after the
+ * description, where its position moved with the length of the overview: on a
+ * long synopsis the controls were pushed off the fold entirely, so where you
+ * looked for them depended on the title. */
+.detail-topbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem .9rem;
+  margin-bottom: 1rem;
+}
+
+.detail-topbar .back-to-library {
+  /* A divider, not a gap, so Back reads as separate from the controls rather
+     than as the first of them. */
+  padding-right: .9rem;
+  border-right: 1px solid var(--border-subtle);
+  border-radius: 0;
+}
+
 .detail-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: .75rem 1.25rem;
-  padding: .5rem 0;
+  gap: .5rem 1rem;
+  /* Claims the rest of the row so the series group has something to be pushed
+     to the far end of. */
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
 }
 
 .toolbar-group {
@@ -879,9 +907,11 @@ onUnmounted(() => {
   gap: .4rem .6rem;
 }
 
-/* A divider rather than a heading: it separates the groups without adding a
-   line of its own. Dropped once the row wraps, where it would sit sideways. */
+/* Pushed to the far right of the row, with a divider rather than a heading so
+   it separates the groups without adding a line of its own. The divider is
+   dropped once the row wraps, where it would sit sideways. */
 .series-group {
+  margin-left: auto;
   border-left: 1px solid var(--border-subtle);
   padding-left: 1.25rem;
 }
@@ -900,9 +930,11 @@ onUnmounted(() => {
 
 .section-popover {
   position: absolute;
-  /* Upwards. This section sits low in the detail view, so a downward panel
-     opened into the page fold and pushed everything after it out of sight. */
-  bottom: calc(100% + 10px);
+  /* Downwards again, now that the toolbar is pinned to the top of the view.
+     Opening upward from here would put the panel above the viewport. It floats
+     over the content below rather than displacing it, so the page still does
+     not grow. */
+  top: calc(100% + 10px);
   left: 0;
   z-index: 50;
   /* One wide panel rather than a narrow strip: these are poster rows, and at
