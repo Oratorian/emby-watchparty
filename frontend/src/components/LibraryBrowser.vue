@@ -223,7 +223,10 @@ const ALPHABET_BAR_MIN_ITEMS = 30
 interface EmbyItem {
   Id: string
   Name: string
-  Type: string
+  // Nullable, like the LibraryItem contract it mirrors. Emby returns rows
+  // with no Type, and this local copy asserting otherwise is why the guard
+  // below appears in one branch and not its neighbour.
+  Type: string | null
   CollectionType?: string
   ImageTags?: { Primary?: string }
   PrimaryImageAspectRatio?: number
@@ -806,7 +809,7 @@ async function fetchItems(
       (it) => it.Type && displayableTypes.has(it.Type),
     )
     const newItems = hasDisplayable
-      ? rawItems.filter((it) => displayableTypes.has(it.Type))
+      ? rawItems.filter((it) => Boolean(it.Type) && displayableTypes.has(it.Type!))
       : rawItems
     const responseStart = data.StartIndex ?? startIndex
     if (prepend) {
@@ -875,17 +878,17 @@ async function handleItemClick(item: EmbyItem, browse = false) {
     )
     return
   }
-  if (!browse && (playableTypes.has(item.Type) || item.Type === 'Series')) {
+  if (!browse && ((item.Type && playableTypes.has(item.Type)) || item.Type === 'Series')) {
     openDetails(item)
     return
   }
 
-  if (browsableTypes.has(item.Type)) {
+  if (item.Type && browsableTypes.has(item.Type)) {
     bumpNavToken(`handleItemClick:${item.Type}:${item.Id}`)
     breadcrumbs.value.push({
       id: item.Id,
       name: item.Name,
-      type: item.Type,
+      type: item.Type ?? undefined,
       collectionType: item.CollectionType,
     })
     currentParentType.value = item.Type

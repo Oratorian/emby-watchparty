@@ -19,6 +19,7 @@
         "audio_index": {
           "anyOf": [
             {
+              "minimum": 0,
               "type": "integer"
             },
             {
@@ -59,6 +60,7 @@
         "subtitle_index": {
           "anyOf": [
             {
+              "minimum": -1,
               "type": "integer"
             },
             {

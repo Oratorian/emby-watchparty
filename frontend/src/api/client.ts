@@ -89,7 +89,12 @@ export interface VersionResponse {
 export interface LibraryItem {
   Id: string
   Name: string
-  Type: string
+  // Nullable, matching the backend contract. Emby does return rows with no
+  // Type, and declaring it a plain string here was a lie the compiler then
+  // enforced on every consumer: LibraryBrowser guards `it.Type &&` in one
+  // place and omits the guard in its neighbour, which only reads as safe
+  // because the type claimed it could not be null.
+  Type: string | null
   CollectionType?: string
   Overview?: string
   RunTimeTicks?: number
@@ -114,6 +119,19 @@ export interface LibraryItem {
   MediaSources?: JsonObject[]
   MediaStreams?: JsonObject[]
   MediaSourceCount?: number
+  // Episode and season linkage. The backend has always sent these; the
+  // frontend type never declared them, so components that needed the parent
+  // series had to reach for a locally redeclared shape instead. The
+  // contract assertion in types/contract.assertions.ts now catches that.
+  SeriesId?: string
+  SeriesName?: string
+  SeasonId?: string
+  SeasonName?: string
+  ParentId?: string
+  ServerId?: string
+  IsFolder?: boolean
+  IndexNumber?: number
+  ParentIndexNumber?: number
   UserData?: {
     PlaybackPositionTicks?: number
     PlayedPercentage?: number

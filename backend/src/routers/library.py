@@ -117,8 +117,12 @@ async def api_items(
     parent_id: str | None = Query(None, alias="parentId"),
     type: str | None = None,
     recursive: bool = False,
-    start_index: int | None = Query(None, alias="startIndex"),
-    limit: int | None = None,
+    # Same bounds LibraryQueryPage puts on the POST twin. This route forwards
+    # both straight to Emby, so without them a negative offset or an unbounded
+    # limit reached the upstream server: one viewer could ask the operator's
+    # Emby for the entire library in a single request.
+    start_index: int | None = Query(None, alias="startIndex", ge=0),
+    limit: int | None = Query(None, ge=1, le=200),
     sort_mode: str = Query("default", alias="sortMode", pattern="^(default|alphabetical)$"),
     anchor_prefix: str | None = Query(None, alias="anchorPrefix", min_length=1, max_length=8),
     party_session: PartySession = Depends(require_party_unlocked),
