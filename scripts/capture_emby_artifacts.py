@@ -17,7 +17,19 @@ import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "tests" / "artifacts" / "emby" / "4.9.5.0"
-PRIVATE_KEY_PARTS = ("token", "password", "path", "username", "providerid")
+PRIVATE_KEY_PARTS = ("token", "password", "path", "username", "providerid", "filename")
+# Anonymised consistently rather than blanked, so two fields naming the same
+# title still agree. Everything outside this set now default-denies, which is
+# what SortName, ForcedSortName, FileName and ServerName needed: they are not
+# titles worth keeping distinct, they are further copies of the real name.
+TITLE_STRINGS = {
+    "Name",
+    "OriginalTitle",
+    "SeriesName",
+    "Album",
+    "Tagline",
+    "Overview",
+}
 SEMANTIC_STRINGS = {
     "Type",
     "MediaType",
@@ -53,28 +65,43 @@ class Sanitizer:
             table[value] = f"<{prefix}-{len(table) + 1:03d}>"
         return table[value]
 
-    def value(self, value: Any, key: str = "") -> Any:
+    def value(self, value: Any, key: str = "", private: bool = False) -> Any:
+        lowered = key.casefold()
+        # Inherited down the tree. ProviderIds is a dict, so while this test
+        # sat below the dict branch it could never fire and every external id
+        # shipped verbatim. An external id re-identifies a title on its own,
+        # which defeats the renaming done everywhere else. Carrying the flag
+        # into the recursion redacts the leaves while leaving the dict a dict,
+        # so the corpus still locks the shape it exists to lock.
+        private = private or any(part in lowered for part in PRIVATE_KEY_PARTS)
+
         if isinstance(value, dict):
-            return {item_key: self.value(item, item_key) for item_key, item in value.items()}
+            return {
+                item_key: self.value(item, item_key, private) for item_key, item in value.items()
+            }
         if isinstance(value, list):
-            return [self.value(item, key) for item in value]
+            return [self.value(item, key, private) for item in value]
         if not isinstance(value, str):
             return value
 
-        lowered = key.casefold()
-        if any(part in lowered for part in PRIVATE_KEY_PARTS):
+        if private:
             return f"<{re.sub(r'[^a-z0-9]+', '-', lowered).strip('-') or 'private'}>"
         if key == "Id" or lowered.endswith(("id", "ids")):
             return self._mapped(value, self.ids, "id")
         if key in SEMANTIC_STRINGS:
             return value
-        if key in {"Name", "OriginalTitle", "SeriesName", "Album", "Tagline", "Overview"}:
+        if key in TITLE_STRINGS:
             return self._mapped(value, self.names, "text")
         if value.startswith(("http://", "https://")):
             return "<url>"
         if re.match(r"^[A-Za-z]:[\\/]", value) or value.startswith(("/", "\\\\")):
             return "<path>"
-        return value
+        # DEFAULT DENY. This previously fell through to `return value`, which
+        # published SortName, ForcedSortName, FileName and ServerName beside
+        # the very Name they were meant to anonymise. A capture tool writing
+        # into a public repo has to be an allowlist: an unrecognised key is a
+        # key nobody has decided is safe.
+        return f"<{re.sub(r'[^a-z0-9]+', '-', lowered).strip('-') or 'redacted'}>"
 
 
 def _canonical(payload: Any) -> bytes:
