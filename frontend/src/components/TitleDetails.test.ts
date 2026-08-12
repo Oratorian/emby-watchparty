@@ -132,25 +132,41 @@ describe('TitleDetails', () => {
     vi.spyOn(api, 'itemDetails').mockResolvedValue({
       Id: 'series-1', Name: 'Artifact Series', Type: 'Series',
     })
+    // Two seasons, and episodes that differ by season. With one season the
+    // prop was indistinguishable from loadSeasons' `seasons[0]` fallback, so
+    // dropping selectedSeasonId entirely still passed -- and returning to a
+    // series from season 3 would silently reopen season 1.
     vi.spyOn(api, 'seriesSeasons').mockResolvedValue({
-      items: [{ Id: 'season-1', Name: 'Season 1', Type: 'Season' }],
+      items: [
+        { Id: 'season-1', Name: 'Season 1', Type: 'Season' },
+        { Id: 'season-2', Name: 'Season 2', Type: 'Season' },
+      ],
     })
-    vi.spyOn(api, 'seriesEpisodes').mockResolvedValue({
-      items: [{ Id: 'episode-1', Name: 'Pilot', Type: 'Episode' }],
-    })
+    const seriesEpisodes = vi.spyOn(api, 'seriesEpisodes').mockImplementation(
+      async (_series: string, seasonId?: string) => ({
+        items: seasonId === 'season-2'
+          ? [{ Id: 'episode-25', Name: 'Second Season Opener', Type: 'Episode' }]
+          : [{ Id: 'episode-1', Name: 'Pilot', Type: 'Episode' }],
+      }) as never,
+    )
     const wrapper = mount(TitleDetails, {
       props: {
         item: { Id: 'series-1', Name: 'Artifact Series', Type: 'Series' },
         isHost: false,
-        selectedSeasonId: 'season-1',
+        selectedSeasonId: 'season-2',
       },
     })
 
     // Episodes are a select now, not a button per row. A 24-episode season
     // rendered 24 stacked rows and pushed the rest of the page out of view.
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Pilot'))
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Second Season Opener'))
+    expect(seriesEpisodes).toHaveBeenCalledWith('series-1', 'season-2')
+    const seasonSelect = wrapper.get('select[aria-label="Season"]')
+    expect((seasonSelect.element as HTMLSelectElement).value).toBe('season-2')
+    expect(wrapper.text()).not.toContain('Pilot')
+
     const episodeSelect = wrapper.get('select[aria-label="Episode"]')
-    await episodeSelect.setValue('episode-1')
-    expect(wrapper.emitted('open')?.[0]?.[0]).toMatchObject({ Id: 'episode-1' })
+    await episodeSelect.setValue('episode-25')
+    expect(wrapper.emitted('open')?.[0]?.[0]).toMatchObject({ Id: 'episode-25' })
   })
 })

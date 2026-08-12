@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '@/api/client'
@@ -317,7 +318,14 @@ describe('the seasons and episodes pickers', () => {
     expect(wrapper.get('select[aria-label="Season"]').findAll('option')).toHaveLength(2)
     // Episode options plus the placeholder.
     expect(wrapper.get('select[aria-label="Episode"]').findAll('option')).toHaveLength(3)
-    expect(wrapper.findAll('button[data-episode-id]')).toHaveLength(0)
+    // Asserted positively on the markup that exists. Counting the deleted
+    // per-episode buttons held for any conceivable template, including one
+    // that had dropped data-episode-id -- the only thing tying an option back
+    // to its Emby item id -- altogether.
+    expect(
+      wrapper.findAll('option[data-episode-id]').map((option) => option.attributes('data-episode-id')),
+    ).toEqual(['ep-1', 'ep-2'])
+    expect(wrapper.findAll('select[aria-label="Episode"]')).toHaveLength(1)
   })
 
   it('numbers each episode so a title alone is not the only handle', async () => {
@@ -348,12 +356,23 @@ describe('the seasons and episodes pickers', () => {
 
     expect(wrapper.emitted('open')?.[0]?.[0]).toMatchObject({ Id: 'ep-2' })
 
-    // The control resets, so the same episode can be chosen again. A select
-    // that kept its value would not fire change a second time, which is the
-    // behaviour that matters rather than what the DOM node reads.
-    await wrapper.get('select[aria-label="Episode"]').setValue('ep-2')
+    // Re-selecting and counting emits proved nothing: setValue dispatches
+    // `change` whether or not the value moved, so that assertion was satisfied
+    // by Vue Test Utils and held with the reset deleted.
+    //
+    // The reset is observable, but only after some later render. The handler
+    // writes '' back over the value v-model just set, so the ref ends the tick
+    // reading exactly what it rendered as last time and Vue schedules no
+    // update -- the element keeps showing the picked episode until something
+    // else re-renders. Harmless in practice, since choosing an episode
+    // navigates away immediately. A prop change is the cheapest way to get
+    // that render here.
+    await wrapper.setProps({ isHost: true })
     await flushPromises()
-    expect(wrapper.emitted('open')).toHaveLength(2)
+
+    const episodeSelect = wrapper.get('select[aria-label="Episode"]')
+    expect((episodeSelect.element as HTMLSelectElement).value).toBe('')
+    expect((episodeSelect.element as HTMLSelectElement).selectedIndex).toBe(0)
   })
 
   it('reports how many episodes the season has', async () => {
@@ -363,5 +382,73 @@ describe('the seasons and episodes pickers', () => {
     await wrapper.get('select[aria-label="Season"]').setValue('season-2')
     await flushPromises()
     expect(wrapper.get('.series-count').text()).toBe('1 Episode')
+  })
+
+  it('offers nothing to pick while a season is still loading', async () => {
+    // Held open deliberately. The window between picking a season and its
+    // episodes arriving is the whole point: an enabled, empty-looking select
+    // invites a click that does nothing.
+    let release!: (value: { items: typeof S2 }) => void
+    vi.spyOn(api, 'seriesEpisodes').mockImplementation(
+      async (_series: string, seasonId?: string) => {
+        if (seasonId !== 'season-2') return { items: S1 } as never
+        return (await new Promise<{ items: typeof S2 }>((resolve) => {
+          release = resolve
+        })) as never
+      },
+    )
+    const wrapper = await loadedSeries()
+
+    await wrapper.get('select[aria-label="Season"]').setValue('season-2')
+    await nextTick()
+
+    const episodeSelect = wrapper.get('select[aria-label="Episode"]')
+    expect(episodeSelect.attributes('disabled')).toBeDefined()
+    expect(episodeSelect.text()).toContain('Loading…')
+
+    // And the previous season's episodes are gone before the new ones land,
+    // not merely replaced once they do. Left in place, they are pickable, and
+    // picking one opens an episode of the season just navigated away from.
+    expect(wrapper.findAll('option[data-episode-id]')).toHaveLength(0)
+    expect(episodeSelect.text()).not.toContain('Maomao')
+    expect(wrapper.find('.series-count').exists()).toBe(false)
+
+    release({ items: S2 })
+    await flushPromises()
+    expect(wrapper.get('select[aria-label="Episode"]').text()).toContain('The New Pure Consort')
+  })
+
+  it('says so when a season genuinely has no episodes', async () => {
+    vi.spyOn(api, 'seriesEpisodes').mockResolvedValue({ items: [] } as never)
+    const wrapper = await loadedSeries()
+
+    const episodeSelect = wrapper.get('select[aria-label="Episode"]')
+    expect(episodeSelect.attributes('disabled')).toBeDefined()
+    expect(episodeSelect.findAll('option')).toHaveLength(1)
+    expect(episodeSelect.text()).toContain('No episodes')
+    expect(wrapper.find('.series-count').exists()).toBe(false)
+  })
+
+  it('recovers the pickers when Retry succeeds', async () => {
+    const seasons = vi.spyOn(api, 'seriesSeasons')
+      .mockRejectedValueOnce(new Error('Seasons unavailable.'))
+      .mockResolvedValue({ items: SEASONS } as never)
+    const wrapper = await loadedSeries()
+
+    expect(wrapper.get('.toolbar-error').text()).toContain('Seasons unavailable.')
+    const retry = wrapper.get('button[data-section="seasons"]')
+    expect(retry.text()).toBe('Retry')
+
+    // The button exists only as the way back from a failure, and nothing
+    // asserted that pressing it did anything. Wiring it to clear the error
+    // without refetching would leave a dead 'Load seasons' button and no
+    // seasons at all.
+    await retry.trigger('click')
+    await flushPromises()
+
+    expect(seasons).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('.toolbar-error').exists()).toBe(false)
+    expect(wrapper.find('select[aria-label="Season"]').exists()).toBe(true)
+    expect(wrapper.find('select[aria-label="Episode"]').exists()).toBe(true)
   })
 })
