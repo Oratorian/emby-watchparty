@@ -38,8 +38,52 @@ const partyLimitUnit = ref('per hour')
 const apiLimitValue = ref(1000)
 const apiLimitUnit = ref('per minute')
 
+// The four limits below default to windows the old three-option dropdown could
+// not express ("per 15 minutes", "per 3 seconds"), which is why they shipped as
+// free text. One shared list covers every window in use plus the obvious
+// neighbours, so all six controls behave the same way.
+const RATE_WINDOWS = [
+  'per second',
+  'per 3 seconds',
+  'per 10 seconds',
+  'per 30 seconds',
+  'per minute',
+  'per 5 minutes',
+  'per 15 minutes',
+  'per 30 minutes',
+  'per hour',
+  'per day',
+] as const
+
+const TEXT_RATE_FIELDS = [
+  ['Admin Login Limit', 'RATE_LIMIT_LOGIN'],
+  ['Avatar Recovery Limit', 'RATE_LIMIT_AVATAR_RECOVERY'],
+  ['Chat Limit', 'RATE_LIMIT_CHAT'],
+  ['Socket Connection Limit', 'RATE_LIMIT_SOCKET_CONNECTIONS'],
+] as const
+
+type RateFieldKey = (typeof TEXT_RATE_FIELDS)[number][1]
+
+const rateValues = ref<Record<string, number>>({})
+const rateUnits = ref<Record<string, string>>({})
+
+/** Windows offered for a field, including one the config already holds.
+ *
+ * An operator can set any window through the environment, and dropping an
+ * unrecognised one would silently rewrite their configuration the first time
+ * the panel was saved. Keeping it as an option means the value round-trips.
+ */
+function windowsFor(current: string): string[] {
+  return RATE_WINDOWS.includes(current as (typeof RATE_WINDOWS)[number])
+    ? [...RATE_WINDOWS]
+    : [current, ...RATE_WINDOWS]
+}
+
 function parseRateLimit(str: string): { value: number; unit: string } {
-  const match = (str || '').match(/^(\d+)\s*(per\s+\w+)$/i)
+  // The tail is captured whole rather than as a single word, so a multiplied
+  // window ("per 15 minutes") survives. Matching \w+ dropped the number and
+  // turned every one of these into "per minute".
+  const match = (str || '').match(/^\s*(\d+)\s+(per\s+.+?)\s*$/i)
   if (match) return { value: parseInt(match[1]!), unit: match[2]!.toLowerCase() }
   return { value: 0, unit: 'per minute' }
 }
@@ -51,11 +95,19 @@ function syncRateLimitsFromConfig() {
   const api2 = parseRateLimit(config.value.RATE_LIMIT_API_CALLS || '1000 per minute')
   apiLimitValue.value = api2.value
   apiLimitUnit.value = api2.unit
+  for (const [, key] of TEXT_RATE_FIELDS) {
+    const parsed = parseRateLimit(config.value[key as RateFieldKey] || '')
+    rateValues.value[key] = parsed.value
+    rateUnits.value[key] = parsed.unit
+  }
 }
 
 function syncRateLimitsToConfig() {
   config.value.RATE_LIMIT_PARTY_CREATION = `${partyLimitValue.value} ${partyLimitUnit.value}`
   config.value.RATE_LIMIT_API_CALLS = `${apiLimitValue.value} ${apiLimitUnit.value}`
+  for (const [, key] of TEXT_RATE_FIELDS) {
+    config.value[key as RateFieldKey] = `${rateValues.value[key]} ${rateUnits.value[key]}`
+  }
 }
 
 function ensureQualityDict(cfg: AdminConfig) {
@@ -140,13 +192,12 @@ function validate(): string | null {
   if (c.LOG_MAX_SIZE < 1) return 'Max Log Size must be at least 1 MB'
   if (partyLimitValue.value < 1) return 'Party Creation Limit must be at least 1'
   if (apiLimitValue.value < 1) return 'API Rate Limit must be at least 1'
-  for (const [label, value] of [
-    ['Login', c.RATE_LIMIT_LOGIN],
-    ['Avatar recovery', c.RATE_LIMIT_AVATAR_RECOVERY],
-    ['Chat', c.RATE_LIMIT_CHAT],
-    ['Socket connection', c.RATE_LIMIT_SOCKET_CONNECTIONS],
-  ] as const) {
-    if (!ratePattern.test(value)) return `${label} rate limit is invalid`
+  for (const [label, key] of TEXT_RATE_FIELDS) {
+    const count = rateValues.value[key]
+    if (!count || count < 1) return `${label} must be at least 1`
+    if (!ratePattern.test(`${count} ${rateUnits.value[key]}`)) {
+      return `${label} is invalid`
+    }
   }
   if (!c.LOG_FILE || !c.LOG_FILE.trim()) return 'Log File path cannot be empty'
   return null
@@ -438,20 +489,28 @@ loadConfig()
           </div>
         </div>
         <div
-          v-for="field in ([
-            ['Admin Login Limit', 'RATE_LIMIT_LOGIN'],
-            ['Avatar Recovery Limit', 'RATE_LIMIT_AVATAR_RECOVERY'],
-            ['Chat Limit', 'RATE_LIMIT_CHAT'],
-            ['Socket Connection Limit', 'RATE_LIMIT_SOCKET_CONNECTIONS'],
-          ] as const)"
+          v-for="field in TEXT_RATE_FIELDS"
           :key="field[1]"
           class="setting-row"
         >
           <div class="setting-label">
             <span>{{ field[0] }}</span>
-            <span class="setting-hint">Format: “10 per 15 minutes”</span>
+            <span class="setting-hint">Max per IP</span>
           </div>
-          <input v-model="config[field[1]]" type="text" class="setting-input" />
+          <div class="rate-limit-group">
+            <input
+              v-model.number="rateValues[field[1]]"
+              type="number"
+              min="1"
+              class="setting-input setting-input-xs"
+              :aria-label="field[0]"
+            />
+            <select v-model="rateUnits[field[1]]" :aria-label="`${field[0]} window`">
+              <option v-for="window in windowsFor(rateUnits[field[1]] || '')" :key="window" :value="window">
+                {{ window }}
+              </option>
+            </select>
+          </div>
         </div>
       </div>
 
