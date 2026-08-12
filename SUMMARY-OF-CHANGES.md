@@ -6,17 +6,291 @@ The 2.0 "Midnight Premiere" log (beta1 through beta18, every Added / Changed / F
 
 ---
 
-## [Unreleased]
+## [3.0.0-beta3] - Unreleased Internal beta - Director's Cut
 
-Three bodies of work since beta1. Two are **[dnordel](https://github.com/dnordel)**'s, both
+Two bodies of work. A UX pass over the title detail view and the party header,
+driven by using beta2's library rather than by a report; and an audit of the
+test suite itself, which is the larger half and the reason this section is
+mostly about tests.
+
+Neither is in a published image. `:3.0.0-beta1`, `:devel` and `:nightly` all still
+point at beta1.
+
+---
+
+### The UX pass
+
+Nine commits, all on `TitleDetails.vue`, `PartyView.vue` and `AdminPanel.vue`.
+The detail view's controls were correct and badly placed: sections expanded
+downwards and stacked, a series rendered one row per episode, and the whole
+group sat below the synopsis so its position moved with the length of the
+synopsis. They are now one popover opening upward, two dropdowns, and a
+`.detail-topbar` beside Back.
+
+Three of these were placement problems rather than behaviour problems, which is
+worth recording because the existing tests could not have caught any of them:
+they selected buttons and popovers globally and so constrained nothing about
+where anything lived.
+
+Two smaller pieces landed alongside. Party visibility is host-controlled and
+parties now start hidden, with a **known consequence accepted at the time**: a
+party that has never had a host cannot be listed by anyone, so Active Parties
+stays empty until a host logs in and opts in. Previously every party with
+members was listed, hostless ones included, shown as locked. And the admin
+rate-limit fields became number-plus-window pairs matching the two that already
+worked that way.
+
+---
+
+### The test-suite audit
+
+The suite was green throughout: 270 backend, 85 frontend, 27 e2e. The question
+was not whether it passed but whether it could fail. Six read-only agents over
+six areas, each area's findings then put to an adversarial verifier told to
+refute by default and to treat coverage hiding in an unexpected file as the
+most likely reason a "missing" finding is wrong.
+
+**66 raw findings, 47 confirmed.** Categories were fixed rather than counted:
+`stale` (asserts on markup the redesign deleted), `vacuous` (cannot fail), and
+`missing` (nothing covers it at all). A finding was only accepted with a named
+mutation to the **source** that the whole suite would not notice.
+
+Every fix was then checked by applying that mutation for real. **64 mutations,
+64 caught.** Two survived on the first attempt and are the more interesting
+half of the exercise:
+
+- The sanitizer's privacy inheritance could be removed without any test
+  failing, because default-deny caught the leak anyway. The two rules only come
+  apart under a key that is otherwise allowed through verbatim, so the probe was
+  rewritten to use one.
+- The episode-control reset could not be observed the way the audit proposed.
+  The handler writes `''` back over what `v-model` just set, so the ref ends the
+  tick reading what it last rendered and Vue schedules no update; the element
+  keeps showing the picked episode until something else re-renders. Harmless,
+  since choosing an episode navigates away, but the suggested assertion fails
+  against correct code and the test now forces the render instead.
+
+#### Two real bugs, not coverage gaps
+
+**A dead-party flag outlived its view.** The party store deliberately survives
+`PartyView` unmounting, and `leave()` never cleared `partyMissing`. After the
+countdown returned a viewer to the index, the next party they opened rendered
+"This party no longer exists" on mount, and rendered it frozen, because the
+countdown is driven by a watcher that fires on the transition into missing and
+that had already happened. Only "Go now" got them out. Cleared in `leave()`, and
+again at the top of `join()` before its first await so navigating straight from
+a dead party to a live one does not show the card for the duration of the join.
+
+**`streams_changed` reported the wrong position.** The clamp added in beta2
+starts a switched stream at a corrected offset, but the event kept sending the
+raw party clock, and the client maps the new stream's `t=0` onto whatever that
+field says. Switching to a version shorter than the current position therefore
+left the viewer's reported position minutes ahead of the frame on screen with
+drift correction fighting the gap. The frontend comment stated the assumption
+outright and had simply stopped being true. Found because the audit noted its
+proposed assertion would fail against the source; that failure was the finding.
+
+#### What kept recurring
+
+Three shapes, all of which had produced real incidents on this project before:
+
+1. **An assertion that survived its subject.** `findAll('button[data-episode-id]')
+   .toHaveLength(0)` counted markup the redesign had deleted, so it held for any
+   template, including one that had dropped the attribute entirely.
+2. **A test satisfied by the framework.** Re-selecting a `<select>` option and
+   counting emits proves nothing: `setValue` dispatches `change` whether or not
+   the value moved.
+3. **An expectation derived from its subject.** The clamp asserted
+   `start == 7200.0 - END_OF_MEDIA_BUFFER_SECONDS`, leaving the constant's size
+   unpinned in both directions. `1800.0` passed.
+
+#### The gaps that mattered most
+
+- **The artifact sanitizer had no coverage at all**, which is the tool behind
+  the leak recorded in beta2. `test_emby_artifacts` checks the committed corpus,
+  which only proves today's files are clean; it says nothing about what the next
+  capture writes, and captures run against a real private Emby and land in a
+  public repo. All three defects behind that incident were invisible from the
+  output side. Now 11 tests, written as properties rather than as a list of the
+  fields that leaked, because Emby adds fields between versions.
+- **Contract drift was structurally invisible to pytest.** The only
+  `--check` ran in one CI step, so removing an event from `INBOUND_MODELS` /
+  `OUTBOUND_MODELS` kept every render-based test agreeing with itself while the
+  frontend stayed typed for an event the backend no longer accepts. Both
+  generators are now checked from the suite.
+- **`video_codecs` on `join_party` had no assertion anywhere.** Dropping it, or
+  hardcoding it, left the suite green while every viewer silently fell back to
+  h264 and every HEVC source was re-encoded for people whose hardware would have
+  played it. A merge on this branch nearly did exactly that.
+- **The identity-collision message is one contract in two languages.** The
+  frontend matches the backend's sentence verbatim to decide whether to rotate
+  onto a tab-scoped client id and retry. Rewording the Python left both suites
+  green while second tabs stopped recovering. Asserted from pytest, the only
+  side that can read both files.
+- **`select_video`'s `resume_mode` and its host-only `binge` rule** were
+  untested. Both fail quietly, and the binge one let any joined member arm
+  auto-advance for the whole room.
+
+#### The e2e specs, which no suite runs
+
+These had never run against the redesigned UI, because nothing on this branch
+has been pushed. Rather than reading selectors, all four Playwright projects
+were run locally: chromium 18, ios-webkit 3, firefox 3, webkit 3, all passing.
+The specs drive by role and test-id rather than by the classes the redesign
+moved, which is why they survived.
+
+Two real problems in them, both found by reading rather than running:
+
+- `getByRole('button', { name: 'Close chat' })` resolved to the `.chat-backdrop`
+  overlay, whose `aria-label` is that string, rather than to the drawer's close
+  button, whose accessible name is its text. Nothing proved the button did
+  anything. Both exits are now asserted by effect.
+- Every desktop spec ran at 1138px, inside beta2's compact-desktop media query,
+  so the layout most people use had no coverage. Widening that query to swallow
+  the ordinary desktop failed nothing.
+
+#### Verification posture
+
+| | beta2 | beta3 |
+|---|---|---|
+| backend (pytest) | 270 | 298 |
+| frontend (vitest) | 85 | 152 |
+| e2e (playwright) | 27 | 28 |
+
+Plus ruff check and format, mypy over 48 files, `vue-tsc`, eslint, and both
+generated-contract drift checks, which now run under pytest rather than only in
+CI.
+
+#### The shared toggle had no name
+
+`ToggleSwitch` renders its `<input>` inside its own `<label>`, but every one of
+its eleven call sites puts the wording in a sibling element outside that label,
+so the association never formed. All eleven announced as "checkbox, not
+checked" with nothing saying which setting was about to change; on the admin
+panel that is nine consecutive identical controls.
+
+The `label` prop is **required** rather than optional, so `vue-tsc` refuses a
+call site that forgets it. Optional would have let the next one reintroduce the
+same silence. The input also carries `role="switch"`, which is what it is: a
+screen reader then says on/off rather than checked/not checked, while the
+element stays a real checkbox so keyboard behaviour and the `:checked` styling
+remain the browser's.
+
+`CONTRIBUTING.md` was reworded in the same pass to tell contributors to add a
+`## [Unreleased]` heading rather than to file under one that only exists
+between releases.
+
+#### Recorded rather than quietly fixed
+
+Three process notes, kept because each was a mistake in this cycle:
+
+- One batch was committed with `git add -A` under a message describing only the
+  source fix in it. Reset and split into three.
+- `npx` rewrote `frontend/package.json` and `package-lock.json` mid-session,
+  adding `playwright` to `dependencies` where `@playwright/test` already sat in
+  dev. Reverted rather than committed. A subsequent `npm ci` installed from that
+  mangled lock and produced a broken jsdom, which was briefly misdiagnosed as
+  the committed lockfile being at fault; it is not, and `3.0-dev`'s is sound too.
+- The frontend suite was exiting non-zero while reporting 152 passed: a new
+  `playing: true` case made `loadedmetadata` call `video.play()`, which jsdom
+  does not implement, raising an unhandled rejection that fails the run without
+  failing a test.
+
+#### Still open
+
+- `frontend/package.json` and `backend/src/__init__.py` still read
+  `3.0.0-beta1`.
+- The artifact leak's external half is unchanged and not ours to close:
+  dnordel's fork branch `codex/emby-library-parity`, and `refs/pull/60/head` on
+  `Oratorian/emby-watchparty`, which needs GitHub Support.
+
+---
+
+## [3.0.0-beta2] - Unreleased Internal beta - Director's Cut
+
+Four bodies of work since beta1. Three are **[dnordel](https://github.com/dnordel)**'s, all
 landed on `3.0-dev` via their branch after an audit rather than through a PR merge:
-appliance deployment ([#58](https://github.com/Oratorian/emby-watchparty/pull/58)) and
-migration diagnostics ([#57](https://github.com/Oratorian/emby-watchparty/pull/57)). The
-third is per-viewer codec negotiation ([#61](https://github.com/Oratorian/emby-watchparty/issues/61)),
-built on the stable line and forward-ported.
+appliance deployment ([#58](https://github.com/Oratorian/emby-watchparty/pull/58)),
+migration diagnostics ([#57](https://github.com/Oratorian/emby-watchparty/pull/57)) and
+library parity ([#59](https://github.com/Oratorian/emby-watchparty/pull/59) +
+[#60](https://github.com/Oratorian/emby-watchparty/pull/60)). The fourth is per-viewer codec
+negotiation ([#61](https://github.com/Oratorian/emby-watchparty/issues/61)), built on the
+stable line and forward-ported.
 
 None of it is in a published image. `:3.0.0-beta1`, `:devel` and `:nightly` all still point
 at beta1.
+
+---
+
+### Library parity
+
+**[dnordel](https://github.com/dnordel)**'s, as [#59](https://github.com/Oratorian/emby-watchparty/pull/59) and [#60](https://github.com/Oratorian/emby-watchparty/pull/60): 39 commits over 89 files, `+23872 / -226`, of which roughly 17000 lines are a captured corpus of real Emby 4.9.5.0 responses rather than code. Filters driven by server capability, an A-Z jump backed by Emby's prefix index, grouped search, a full title detail view, and host actions for played/favourite/playlists.
+
+#### The stacking, and why neither could merge
+
+#60 targets #59's branch rather than `3.0-dev`, so one blocked merge blocked both. #59 branched before the codec negotiation landed and conflicted with it in `SUMMARY-OF-CHANGES.md`, which is all GitHub needed to refuse. Assembled locally instead; both PRs are closed with that explanation.
+
+Only one conflict needed judgement rather than a side. #60 moved the `join_party` emit inside `if (bound)`, so a tab that failed to bind no longer announces a join, while the codec work had added `video_codecs` to that emit while it still sat outside the block. Taking #60's version drops `video_codecs` and silently returns every viewer to h264-only with no test failing; taking the other leaves two emits so every successful join fires twice.
+
+#### The audit
+
+Twelve dimension finders over the merged diff, each finding then put to three adversarial verifiers on different lenses (is it reachable, is it handled elsewhere, does anything actually break) with the default set to refuted. 229 agents, 77 candidates, **64 confirmed**: 6 critical, 26 high, 26 medium, 6 low. All fixed here.
+
+The `authz-writes` dimension came back clean, which is worth recording: the new `PUT favorite`, `PUT played` and `POST playlists` routes act on the host's Emby account from a party containing untrusted guests, and that was the sharpest question going in.
+
+#### Two merge blockers that were green, not red
+
+Neither showed as a failure, which is why they matter more than the count suggests.
+
+The 80% changed-line coverage gate matched **zero** Python lines and reported 100%. coverage.py names each file relative to its `--cov` root (`src/app.py`) while the diff produces repo-relative paths (`backend/src/app.py`), so the two sets could never intersect. Measured on this branch's own diff: 2946 changed Python lines, 0 matched. Its unit test could not catch it because the fixture hand-wrote a path shape coverage.py never emits. A per-language breakdown now prints on every run, because a gate measuring nothing is indistinguishable from a gate passing.
+
+The `container` job could never go green: it starts the fake Emby on loopback and then points the containerised app at the docker bridge gateway. `ci-gate` requires that job, so every PR was blocked. Demonstrated by connecting from this machine's own non-loopback address rather than by reading the config.
+
+#### A public, permanent leak
+
+`scripts/capture_emby_artifacts.py` pulls from a real Emby into a corpus committed to a public repository, and its sanitizer was **default-allow**: any key nobody had explicitly listed passed through. `SortName`, `ForcedSortName` and `FileName` shipped verbatim beside the `<text-037>` placeholders meant to anonymise them, so `"…And Justice for All"` and `24 S01e01 1200 A.M. - 100 A.M..mkv` sat next to their own redactions. `system-info.json` carried the capture machine's hostname.
+
+The `providerid` rule was dead code. `ProviderIds` is a dict and the key check sat below the dict-recursion branch, so it could never fire: 97 raw Imdb, Tmdb, Tvdb, TvRage and Zap2It ids shipped, and an external id re-identifies a title on its own.
+
+The leak test could not fail. `PRIVATE_MARKERS` listed `api_key`, `access_token`, `password` and two IP prefixes, every one of them a string the sanitizer already redacts unconditionally, so the assertion had nothing to match and passed over a corpus containing all of the above.
+
+All three had to hold simultaneously for this to ship. The sanitizer now default-denies with the private flag inherited through the recursion, the test asserts the positive property (every string leaf under a title key, a private ancestor, or matching a content-betraying shape must be a placeholder), and the committed corpus is repaired in place: 169 values across 10 files.
+
+The branch history was then rewritten so that no commit on it ever carried the raw corpus. 28 of its 60 commits did; all 28 now hold the sanitized version. Verified by walking every commit for the hostname and the external ids, both now zero, with the final tree byte-identical to the pre-rewrite branch. The local refs that held the raw blobs are deleted and the objects pruned.
+
+Worth stating precisely, because the first framing of this was too broad: the raw corpus has **never** been on any Oratorian branch, pushed or local. `3.0-dev` and `main` do not contain it, so nothing published ever carried it and no force-push is needed. The remaining exposure is dnordel's fork branch and the `refs/pull/60/head` that GitHub retains for the closed PR, neither of which a rewrite here can reach. Clearing those needs dnordel to delete the fork branch and GitHub support to purge the PR ref.
+
+#### Both recurring patterns, again
+
+Third cycle for both, and together they account for most of the yield.
+
+*The harness is more permissive than the real server.* Seven detail endpoints ran `del item_id` and answered any id with a fully shaped payload. `_filter_artifact` truncated every captured catalogue to a single row, so the fake could not express a filter control with more than one option. The fake served no Images route at all, so `/api/image` answered 404 in every run and the artwork proxy had no executable coverage, which is what hid `item_id` being the one value interpolated raw into the upstream URL while type and index were both constrained. Failure injection was wired into five legacy handlers and none of the library ones, so every new upstream-failure path was untestable in principle.
+
+Four tests were confirmed unable to fail. `test_filter_options_are_capability_driven_from_emby` passed with every scoping parameter deleted. The multi-value filter test sent one element per list, and a single-element list joins to itself under any separator, so all fourteen could have been replaced with garbage.
+
+*The twin path.* `_normalize_items_response` guarded the POST twin but not GET, which hits the same upstream endpoint and 500d on the exact row the guard was written for. `/api/search` took an uncapped `q` where `/search/grouped` capped at 200, and ranking is O(len(q) x len(title)) on a single event loop. `GET /api/items` forwarded `startIndex` and `limit` to Emby unbounded where the POST twin bounds both. `ChangeStreamsPayload` left stream indices unbounded where `SelectVideoPayload` bounds them. The version switch passed the raw party clock as a start time where both sibling paths clamp.
+
+The audit named eight routes missing the upstream-error mapping; enumerating the router found **thirteen**. Rather than write a thirteenth copy, it is registered once for the whole application, which is the shape of most of these fixes: one authority instead of N copies. `query_items` now calls the same scope resolver `GET /api/items` uses; `clamp_start_seconds` is one shared helper; the REST contract is checked by the compiler.
+
+#### What the fixes exposed on their own
+
+Three defects the audit did not find, surfaced by the repairs.
+
+`get_libraries` swallowed upstream errors and returned `{"Items": []}`, which the UI renders as "No items found." An unreachable Emby was reported to the viewer as an empty media server, the one diagnosis guaranteed to send them looking in the wrong place.
+
+`LibraryItem.Type` was declared `string` while the backend declares `str | None`. The lie was load-bearing: `LibraryBrowser` guards `it.Type &&` in one branch and omits it in the neighbouring line, which only reads as safe because the type claimed null was impossible. Found by wiring the generated REST types into the build.
+
+That same assertion found nine fields the backend has always sent that the frontend type never declared, `SeriesId` among them, so components needing the parent series redeclared a local shape instead.
+
+#### Verification posture
+
+Every fix for a real defect has a test proven to fail against the code it replaces, by reverting the source and rerunning. Where a test passes on both sides it is labelled a guard rather than passed off as coverage: two of the four `VideoControls` tests are guards, and the commit says so.
+
+Two fixes initially shipped without a test, flagged rather than implied, and both now have one. The party-rejoin hang mounts `PartyView` against a store that already knows the party and asserts the join is re-emitted; restoring the old guard fails that case while the other two keep passing, which is precisely the reported symptom. The filter-panel wipe drives an aborted fetch, leaves the library and returns, and asserts the second visit refetches; restoring the old catch fails it with one call instead of two. A second case pins that a genuine failure still empties the controls, so the abort path cannot become a way to swallow real errors.
+
+One test was written, found to be a tautology that re-implemented the clamp arithmetic it was meant to check, and deleted in favour of one driving real Emby tick payloads. A `vue-tsc` error was committed and caught one commit later, because the exit code had been read through a pipe and reported `tail`'s status.
+
+State after this work: **267 backend tests** across 36 modules, **70 Vitest** across 23 files, **16 Playwright**. `ruff check` and `ruff format --check` clean over 90 files, `mypy` clean over 48, eslint and `vue-tsc` clean, the socket contract, the REST contract and the deployment artifacts all free of drift. All on 3.12.10, run with CI's exact commands.
 
 ---
 
@@ -65,6 +339,35 @@ The browser-matrix fixture originally recorded the second Chrome as lacking HEVC
 #### Still open
 
 The README section on what decides whether a viewer gets HEVC exists on `main` and has not been carried here.
+
+---
+
+### PR #59 follow-up: responsive library navigation
+
+Mobile library browsing had two independent failures. The party header kept a fixed
+80-pixel height while its controls wrapped into several rows, so those rows overlaid the
+library breadcrumb and made the route back to all libraries unreachable. The A-Z rail
+then built its enabled state from the current 50-item page and bucketed display `Name`,
+even though Emby orders libraries by `SortName`; letters outside that first page were
+therefore disabled on desktop and mobile.
+
+The mobile library-open state now uses a compact **All Libraries / current folder / Hide
+Library** bar and gives the library the remaining dynamic viewport height. Search, a
+responsive two-column poster grid and the sticky prefix rail stay within the viewport.
+Desktop keeps the full party header.
+
+Alphabet navigation now has an authenticated `/api/items/prefixes` boundary backed by
+Emby's `/Items/Prefixes`, plus an alphabetical item mode using `SortBy=SortName`.
+Selecting a prefix resolves its absolute offset through `NameLessThan`, fetches only that
+page, and keeps top and bottom sentinels so earlier and later pages remain reachable
+without loading the whole poster catalog. Season and episode views retain their numeric
+ordering. Prefix failures hide the shortcut without breaking ordinary browsing.
+
+Contract tests pin Emby scope, prefix forwarding and anchored offsets. Chromium proves a
+jump into an unloaded mixed-letter catalog and upward paging; iPhone WebKit proves the
+compact header, root navigation, visible search/prefix controls and overflow bounds. A
+checked local `docker-compose.dev.yml` is also included for building and running this checkout
+with credentials supplied only through environment variables.
 
 ---
 
@@ -197,7 +500,7 @@ One near-miss is worth recording. `chat.py` emits `rate_limited` with `to=sid`, 
 
 Every fix for a real defect has a test proven to fail against the code it replaced, by reverting the source and rerunning; tests that pass on both sides are labelled guards rather than passed off as regression coverage. The audit's own findings were adversarially refuted before being accepted, with lenses assigned by severity, and vote splits recorded rather than collapsed.
 
-Current state after all three bodies of work: **212 backend tests** across 28 modules, **37 Vitest** across 13 files, **16 Playwright**. `ruff check` and `ruff format --check` clean over 78 files, `mypy` clean over the 44 it covers (`backend` and `scripts`), eslint and `vue-tsc` clean, the socket contract free of drift, and the generated deployment artifacts in sync with the schema. All on 3.12.10, run with CI's exact commands against the merged tree.
+Current state after all four bodies of work: **267 backend tests** across 36 modules, **65 Vitest** across 21 files, **16 Playwright**. `ruff check` and `ruff format --check` clean over 90 files, `mypy` clean over the 48 it covers (`backend` and `scripts`), eslint and `vue-tsc` clean, the socket contract and the REST contract free of drift, and the generated deployment artifacts in sync with the schema. All on 3.12.10, run with CI's exact commands against the merged tree.
 
 That last clause is not decoration. The first draft of this section claimed `ruff format` was clean having only ever run `ruff check`, and CI runs both; the merged tree was red on the format step until a fact-check pass caught it. The gap and its correction are recorded here rather than quietly fixed, because "the checks pass" is the one claim a reader cannot verify without redoing the work.
 

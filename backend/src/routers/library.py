@@ -6,23 +6,49 @@ a party-bound session cookie AND the party must have a current host
 whose Emby access_token signs the upstream call.
 """
 
+from typing import Literal
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from backend.src.dependencies import (
+    PARTY_HOST_RESPONSES,
     PARTY_UNLOCKED_RESPONSES,
     PartySession,
     get_emby_client,
     get_logger,
+    require_party_host,
     require_party_unlocked,
 )
 from backend.src.schemas import (
+    ActionSuccessResponse,
+    FavoriteRequest,
+    FavoriteResponse,
+    FilterOptionsResponse,
+    GroupedSearchResponse,
+    ItemChildrenResponse,
     ItemDetailsResponse,
+    ItemSectionResponse,
     LibraryItemsResponse,
+    LibraryPrefixesResponse,
+    LibraryQueryRequest,
+    PlayedRequest,
+    PlayedResponse,
+    PlaylistAddRequest,
+    PlaylistCreateRequest,
+    PlaylistCreateResponse,
+    PlaylistListResponse,
     StreamsResponse,
 )
 
-router = APIRouter(prefix="/api", tags=["library"])
+# 502 is declared on the router, not repeated on eighteen routes. Every route
+# here reaches Emby, and an upstream transport failure is mapped to 502 by a
+# single application-level handler, so /docs and /redoc would otherwise
+# document a contract the server does not honour. Declaring it centrally is
+# also what stops it drifting as routes are added.
+UPSTREAM_RESPONSES: dict = {502: {"description": "Emby upstream unavailable"}}
+
+router = APIRouter(prefix="/api", tags=["library"], responses=UPSTREAM_RESPONSES)
 
 
 def _host_creds(party_session: PartySession) -> tuple[str, str]:
@@ -33,6 +59,23 @@ def _host_creds(party_session: PartySession) -> tuple[str, str]:
     if access_token is None or user_id is None:
         raise HTTPException(status_code=423, detail="Party library is locked")
     return access_token, user_id
+
+
+def _normalize_items_response(payload: dict) -> dict:
+    """Keep permissive Emby rows from violating the strict viewer contract."""
+    raw_items = payload.get("Items")
+    if not isinstance(raw_items, list):
+        return payload
+    items = [
+        item for item in raw_items if isinstance(item, dict) and str(item.get("Name") or "").strip()
+    ]
+    if len(items) == len(raw_items):
+        return payload
+    normalized = {**payload, "Items": items}
+    total = payload.get("TotalRecordCount")
+    if isinstance(total, int):
+        normalized["TotalRecordCount"] = max(0, total - (len(raw_items) - len(items)))
+    return normalized
 
 
 @router.get(
@@ -49,6 +92,27 @@ async def api_libraries(
 
 
 @router.get(
+    "/items/prefixes",
+    response_model=LibraryPrefixesResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
+async def api_item_prefixes(
+    parent_id: str | None = Query(None, alias="parentId"),
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    prefixes = await emby_client.get_item_prefixes(
+        parent_id=parent_id,
+        access_token=access_token,
+        user_id=user_id,
+    )
+    return {
+        "Prefixes": [row["Name"] for row in prefixes if isinstance(row, dict) and row.get("Name")]
+    }
+
+
+@router.get(
     "/items",
     response_model=LibraryItemsResponse,
     responses={
@@ -61,28 +125,243 @@ async def api_items(
     parent_id: str | None = Query(None, alias="parentId"),
     type: str | None = None,
     recursive: bool = False,
-    start_index: int | None = Query(None, alias="startIndex"),
-    limit: int | None = None,
+    # Same bounds LibraryQueryPage puts on the POST twin. This route forwards
+    # both straight to Emby, so without them a negative offset or an unbounded
+    # limit reached the upstream server: one viewer could ask the operator's
+    # Emby for the entire library in a single request.
+    start_index: int | None = Query(None, alias="startIndex", ge=0),
+    limit: int | None = Query(None, ge=1, le=200),
+    sort_mode: str = Query("default", alias="sortMode", pattern="^(default|alphabetical)$"),
+    anchor_prefix: str | None = Query(None, alias="anchorPrefix", min_length=1, max_length=8),
     party_session: PartySession = Depends(require_party_unlocked),
     emby_client=Depends(get_emby_client),
 ):
     access_token, user_id = _host_creds(party_session)
     response.headers["Cache-Control"] = "no-store"
     try:
-        return await emby_client.get_items(
+        payload = await emby_client.get_items(
             parent_id=parent_id,
             item_type=type,
             recursive=recursive,
             start_index=start_index,
             limit=limit,
+            sort_mode=sort_mode,
+            anchor_prefix=anchor_prefix,
             access_token=access_token,
             user_id=user_id,
         )
+        # Same upstream endpoint as POST /items/query, so it meets the same
+        # nameless rows. The guard was wired into the query twin only, which
+        # left the default browse to 500 on the exact row it was written for.
+        return _normalize_items_response(payload)
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=502,
             detail="Emby upstream unavailable",
         ) from exc
+
+
+@router.post(
+    "/items/query",
+    response_model=LibraryItemsResponse,
+    responses={
+        **PARTY_UNLOCKED_RESPONSES,
+        502: {"description": "Emby upstream unavailable"},
+    },
+)
+async def api_query_items(
+    query: LibraryQueryRequest,
+    response: Response,
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        payload = await emby_client.query_items(
+            query.model_dump(), access_token=access_token, user_id=user_id
+        )
+        return _normalize_items_response(payload)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Emby upstream unavailable") from exc
+
+
+@router.post(
+    "/items/prefixes/query",
+    response_model=LibraryPrefixesResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
+async def api_query_prefixes(
+    query: LibraryQueryRequest,
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    rows = await emby_client.query_items(
+        query.model_dump(),
+        access_token=access_token,
+        user_id=user_id,
+        prefixes=True,
+    )
+    return {"Prefixes": [row["Name"] for row in rows if isinstance(row, dict) and row.get("Name")]}
+
+
+def _filter_values(payload: dict | None, *, uppercase_labels: bool = False) -> list[dict[str, str]]:
+    if not payload:
+        return []
+    return [
+        {
+            "value": str(item["Name"]),
+            "label": (str(item["Name"]).upper() if uppercase_labels else str(item["Name"])),
+        }
+        for item in payload.get("Items", [])
+        if item.get("Name")
+    ]
+
+
+_US_MOVIE_RATING_ORDER = (
+    "G",
+    "PG",
+    "PG-13",
+    "R",
+    "NC-17",
+    "NR",
+    "NOT RATED",
+)
+
+
+def _prioritize_parental_ratings(
+    values: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Put familiar US movie ratings first, preserving all other source order."""
+    priority = {rating: index for index, rating in enumerate(_US_MOVIE_RATING_ORDER)}
+    return sorted(
+        values,
+        key=lambda value: priority.get(value["value"].strip().upper(), len(priority)),
+    )
+
+
+@router.get(
+    "/items/filter-options",
+    response_model=FilterOptionsResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
+async def api_filter_options(
+    parent_id: str | None = Query(None, alias="parentId"),
+    include_item_types: str | None = Query(None, alias="includeItemTypes"),
+    media_types: str | None = Query(None, alias="mediaTypes"),
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    catalogs = await emby_client.get_filter_options(
+        parent_id=parent_id,
+        include_item_types=include_item_types,
+        media_types=media_types,
+        access_token=access_token,
+        user_id=user_id,
+    )
+    controls: list[dict] = [
+        {
+            "id": "playstate",
+            "label": "Playstate",
+            "kind": "select",
+            "values": [
+                {"value": "any", "label": "Any"},
+                {"value": "unplayed", "label": "Unplayed"},
+                {"value": "played", "label": "Played"},
+                {"value": "resumable", "label": "In progress"},
+            ],
+        },
+        {"id": "favorite", "label": "Favorite", "kind": "toggle", "values": []},
+        {"id": "duplicates", "label": "Duplicates", "kind": "toggle", "values": []},
+    ]
+    labels = {
+        "genre": "Genre",
+        "studio": "Studio",
+        "tag": "Tag",
+        "year": "Year",
+        "official_rating": "Parental rating",
+        "container": "Container",
+        "video_codec": "Video codec",
+        "audio_codec": "Audio codec",
+        "audio_layout": "Audio layout",
+        "subtitle_codec": "Subtitle codec",
+    }
+    for control_id, label in labels.items():
+        values = _filter_values(
+            catalogs.get(control_id),
+            uppercase_labels=control_id
+            in {
+                "container",
+                "video_codec",
+                "audio_codec",
+                "audio_layout",
+                "subtitle_codec",
+            },
+        )
+        if control_id == "official_rating":
+            values = _prioritize_parental_ratings(values)
+        if values:
+            controls.append({"id": control_id, "label": label, "kind": "multi", "values": values})
+    controls.extend(
+        [
+            {
+                "id": "video_type",
+                "label": "Video type",
+                "kind": "multi",
+                "values": [
+                    {"value": value, "label": value}
+                    for value in ("VideoFile", "Bluray", "Dvd", "Iso")
+                ],
+            },
+            {
+                "id": "resolution",
+                "label": "Resolution",
+                "kind": "select",
+                "values": [{"value": "any", "label": "Any"}]
+                + [{"value": value, "label": value} for value in ("4K", "1080p", "720p", "SD")],
+            },
+            {"id": "is_3d", "label": "3D", "kind": "toggle", "values": []},
+        ]
+    )
+    for control_id, label in (
+        ("subtitles", "Subtitles"),
+        ("trailers", "Trailers"),
+        ("extras", "Extras"),
+        ("theme_songs", "Theme songs"),
+        ("theme_videos", "Theme videos"),
+        ("locked", "Locked"),
+        ("overview", "Overview"),
+    ):
+        positive_value, negative_value = (
+            ("yes", "no") if control_id == "locked" else ("with", "without")
+        )
+        controls.append(
+            {
+                "id": control_id,
+                "label": label,
+                "kind": "select",
+                "values": [
+                    {"value": "any", "label": "Any"},
+                    {"value": positive_value, "label": "With"},
+                    {"value": negative_value, "label": "Without"},
+                ],
+            }
+        )
+    controls.append(
+        {
+            "id": "missing_provider_ids",
+            "label": "Missing metadata",
+            "kind": "multi",
+            "values": [
+                {"value": "imdb", "label": "IMDb Id"},
+                {"value": "tmdb", "label": "MovieDb Id"},
+                {"value": "tvdb", "label": "Tvdb Id"},
+            ],
+        }
+    )
+    return {"controls": controls}
 
 
 @router.get(
@@ -91,7 +370,11 @@ async def api_items(
     responses=PARTY_UNLOCKED_RESPONSES,
 )
 async def api_search(
-    q: str = Query(""),
+    # Capped like its /search/grouped sibling. search_items ranks candidates
+    # with a pure-Python edit distance, so cost grows with len(q) x len(title)
+    # on a single event loop; an uncapped q stalls socket sync and HLS proxying
+    # for every viewer in every party, not just the caller.
+    q: str = Query("", min_length=0, max_length=200),
     party_session: PartySession = Depends(require_party_unlocked),
     emby_client=Depends(get_emby_client),
 ):
@@ -99,6 +382,48 @@ async def api_search(
         return {"Items": []}
     access_token, user_id = _host_creds(party_session)
     return await emby_client.search_items(q.strip(), access_token=access_token, user_id=user_id)
+
+
+@router.get(
+    "/search/grouped",
+    response_model=GroupedSearchResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
+async def api_grouped_search(
+    q: str = Query("", min_length=0, max_length=200),
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    query = q.strip()
+    if len(query) < 2:
+        return {"query": query, "groups": []}
+    access_token, user_id = _host_creds(party_session)
+    result = await emby_client.search_items(
+        query,
+        access_token=access_token,
+        user_id=user_id,
+        include_item_types="Movie,Series,Episode,Person,BoxSet",
+    )
+    definitions = (
+        ("movies", "Movies", {"Movie"}),
+        ("series", "Series", {"Series"}),
+        ("episodes", "Episodes", {"Episode"}),
+        ("people", "People", {"Person"}),
+        ("collections", "Collections", {"BoxSet"}),
+    )
+    items = result.get("Items", [])
+    return {
+        "query": query,
+        "groups": [
+            {
+                "id": group_id,
+                "label": label,
+                "items": [item for item in items if item.get("Type") in types],
+            }
+            for group_id, label, types in definitions
+            if any(item.get("Type") in types for item in items)
+        ],
+    }
 
 
 @router.get(
@@ -124,6 +449,154 @@ async def api_item_details(
     # {"error": "..."} return tripped FastAPI response validation
     # and surfaced as a 500. 404 is the honest answer.
     raise HTTPException(status_code=404, detail="Item not found")
+
+
+@router.get(
+    "/item/{item_id}/sections/{section}",
+    response_model=ItemSectionResponse,
+    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Optional section unavailable"}},
+)
+async def api_item_section(
+    item_id: str,
+    section: Literal["related", "trailers", "extras"],
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    try:
+        items = await emby_client.get_item_section(
+            item_id,
+            section,
+            access_token=access_token,
+            user_id=user_id,
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"{section.title()} unavailable") from exc
+    return {"section": section, "items": items}
+
+
+@router.get(
+    "/item/{series_id}/seasons",
+    response_model=ItemChildrenResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
+async def api_series_seasons(
+    series_id: str,
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    items = await emby_client.get_series_seasons(
+        series_id, access_token=access_token, user_id=user_id
+    )
+    return {"items": items}
+
+
+@router.get(
+    "/item/{series_id}/episodes",
+    response_model=ItemChildrenResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
+async def api_series_episodes(
+    series_id: str,
+    season_id: str | None = Query(None, alias="seasonId"),
+    party_session: PartySession = Depends(require_party_unlocked),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    items = await emby_client.get_series_episodes(
+        series_id,
+        season_id,
+        access_token=access_token,
+        user_id=user_id,
+    )
+    return {"items": items}
+
+
+@router.put(
+    "/item/{item_id}/favorite",
+    response_model=FavoriteResponse,
+    responses=PARTY_HOST_RESPONSES,
+)
+async def api_set_favorite(
+    item_id: str,
+    body: FavoriteRequest,
+    party_session: PartySession = Depends(require_party_host),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    await emby_client.set_favorite(
+        item_id, body.favorite, access_token=access_token, user_id=user_id
+    )
+    return {"success": True, "favorite": body.favorite}
+
+
+@router.put(
+    "/item/{item_id}/played",
+    response_model=PlayedResponse,
+    responses=PARTY_HOST_RESPONSES,
+)
+async def api_set_played(
+    item_id: str,
+    body: PlayedRequest,
+    party_session: PartySession = Depends(require_party_host),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    await emby_client.set_played(item_id, body.played, access_token=access_token, user_id=user_id)
+    return {"success": True, "played": body.played}
+
+
+@router.get(
+    "/playlists",
+    response_model=PlaylistListResponse,
+    responses=PARTY_HOST_RESPONSES,
+)
+async def api_playlists(
+    party_session: PartySession = Depends(require_party_host),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    items = await emby_client.get_playlists(access_token=access_token, user_id=user_id)
+    return {"items": items}
+
+
+@router.post(
+    "/playlists",
+    response_model=PlaylistCreateResponse,
+    responses=PARTY_HOST_RESPONSES,
+)
+async def api_create_playlist(
+    body: PlaylistCreateRequest,
+    party_session: PartySession = Depends(require_party_host),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    playlist_id = await emby_client.create_playlist(
+        body.name, access_token=access_token, user_id=user_id
+    )
+    return {"id": playlist_id, "name": body.name}
+
+
+@router.post(
+    "/playlists/{playlist_id}/items",
+    response_model=ActionSuccessResponse,
+    responses=PARTY_HOST_RESPONSES,
+)
+async def api_add_playlist_item(
+    playlist_id: str,
+    body: PlaylistAddRequest,
+    party_session: PartySession = Depends(require_party_host),
+    emby_client=Depends(get_emby_client),
+):
+    access_token, user_id = _host_creds(party_session)
+    await emby_client.add_to_playlist(
+        playlist_id,
+        body.item_id,
+        access_token=access_token,
+        user_id=user_id,
+    )
+    return {"success": True}
 
 
 @router.get(

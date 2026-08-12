@@ -200,6 +200,15 @@ class Party:
     host_is_admin: bool = False
     host_username: str | None = None
     host_left_at: str | None = None
+    # Kept off the public index listing. A party is still fully reachable by
+    # its code; this only stops it being advertised.
+    #
+    # Defaults to hidden. A party code is shared deliberately, with the people
+    # who are meant to be there, so advertising every new room to anyone
+    # loading the index makes the private case the one needing action. The
+    # host opts in to being listed instead, which is the safer direction to
+    # get wrong.
+    hidden: bool = True
     binge_watch_active: bool = False
     episode_list: list[EpisodeRef] | None = None
     episode_list_season_id: str | None = None

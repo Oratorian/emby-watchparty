@@ -19,6 +19,7 @@ from backend.src.dependencies import (
     get_sio,
     party_host_session_matches,
 )
+from backend.src.emby_client import EmbyUnavailableError
 from backend.src.schemas import (
     AuthStatusResponse,
     LoginRequest,
@@ -123,14 +124,20 @@ async def api_login(
     # backend restarts. Loud WARNING on every use so it never goes
     # unnoticed if accidentally left set in a non-dev environment.
     dev_user, dev_pw = _env_dev_host_creds(config)
-    if dev_user and dev_pw:
-        logger.warning(
-            f"Party {party_id}: host login auto-promoted via dev gate "
-            f"(EMBY_WATCHPARTY_X_DEV_HOST set, body credentials ignored)"
+    try:
+        if dev_user and dev_pw:
+            logger.warning(
+                f"Party {party_id}: host login auto-promoted via dev gate "
+                f"(EMBY_WATCHPARTY_X_DEV_HOST set, body credentials ignored)"
+            )
+            auth = await emby_client.authenticate(dev_user, dev_pw)
+        else:
+            auth = await emby_client.authenticate(body.username, body.password)
+    except EmbyUnavailableError:
+        return LoginResponse(
+            success=False,
+            message="Emby server unavailable; ask the operator to verify EMBY_SERVER_URL",
         )
-        auth = await emby_client.authenticate(dev_user, dev_pw)
-    else:
-        auth = await emby_client.authenticate(body.username, body.password)
     if not auth:
         return LoginResponse(success=False, message="Invalid Emby credentials")
 

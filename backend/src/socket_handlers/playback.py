@@ -39,6 +39,32 @@ class EpisodeContext(TypedDict):
     next_item_title: str | None
 
 
+# Never start at the very last frame: Emby answers a start at or past the end
+# with a zero-length manifest, which the player reports as an immediate `ended`.
+END_OF_MEDIA_BUFFER_SECONDS = 5.0
+
+
+def media_source_run_time(media_source: dict | None) -> float:
+    """Runtime of an Emby media source in seconds, 0.0 when it does not say."""
+    if not isinstance(media_source, dict):
+        return 0.0
+    return (media_source.get("RunTimeTicks") or 0) / 10_000_000
+
+
+def clamp_start_seconds(start_seconds: float | None, run_time: float | None) -> float:
+    """Hold a resume offset inside the runtime of the source being started.
+
+    One definition shared by every path that resumes playback. It existed in
+    two places and was missing from a third: the in-player version switch,
+    which is the one route that can change WHICH source is playing, and so the
+    one most able to hand Emby a start time past the end of media.
+    """
+    clamped = max(0.0, float(start_seconds or 0))
+    if run_time:
+        clamped = min(clamped, max(0.0, float(run_time) - END_OF_MEDIA_BUFFER_SECONDS))
+    return clamped
+
+
 def register(ctx):
     sio = ctx["sio"]
     emby_client = ctx["emby_client"]
@@ -400,6 +426,9 @@ def register(ctx):
         item_overview,
         media_source_id=None,
         start_seconds=0,
+        audio_index=None,
+        subtitle_index=None,
+        quality=None,
         reservation=None,
     ):
         """Fetch fresh media info, stop existing streams, create per-user
@@ -437,6 +466,8 @@ def register(ctx):
         access_token, user_id = _host_creds(party)
         playback_info = await emby_client.get_playback_info(
             item_id,
+            audio_index=audio_index,
+            subtitle_index=subtitle_index,
             media_source_id=media_source_id,
             access_token=access_token,
             user_id=user_id,
@@ -466,7 +497,13 @@ def register(ctx):
         # consistently (otherwise the late-join rejoin path would
         # silently re-default if Emby ever flips its default ordering).
         resolved_media_source_id = media_source.get("Id") or media_source_id
-        default_audio = _default_audio_index(media_source)
+        selected_audio = (
+            audio_index if audio_index is not None else _default_audio_index(media_source)
+        )
+        selected_quality = normalise_quality_id(
+            quality or DEFAULT_QUALITY_ID,
+            force_transcode=bool(config.FORCE_TRANSCODE),
+        )
         run_time_ticks = media_source.get("RunTimeTicks", 0)
         run_time_seconds = run_time_ticks / 10_000_000 if run_time_ticks else None
 
@@ -501,14 +538,11 @@ def register(ctx):
             next_item_title=episode_ctx["next_item_title"],
         )
 
-        # Clamp the requested resume offset to a safe window inside the
-        # runtime so a stale UserData.PlaybackPositionTicks (e.g. from
-        # a media re-encode that shortened the file) can't push past
-        # the end of media or back below zero. Leave a 5s buffer at
-        # the end so we never start at the very last frame.
-        resume_offset = max(0.0, float(start_seconds or 0))
-        if run_time_seconds:
-            resume_offset = min(resume_offset, max(0.0, run_time_seconds - 5))
+        # Clamp the requested resume offset to a safe window inside the runtime
+        # so a stale UserData.PlaybackPositionTicks (e.g. from a media
+        # re-encode that shortened the file) can't push past the end of media
+        # or back below zero.
+        resume_offset = clamp_start_seconds(start_seconds, run_time_seconds)
 
         committed_party = await party_manager.commit_video_selection(
             party_id,
@@ -548,9 +582,9 @@ def register(ctx):
                 user_sid,
                 item_id,
                 media_source,
-                audio_index=default_audio,
-                subtitle_index=None,
-                quality=DEFAULT_QUALITY_ID,
+                audio_index=selected_audio,
+                subtitle_index=subtitle_index,
+                quality=selected_quality,
                 start_seconds=resume_offset,
                 media_source_id=resolved_media_source_id,
             )
@@ -588,11 +622,11 @@ def register(ctx):
                         "title": item_name,
                         "overview": item_overview,
                         "stream_url": stream_url,
-                        "audio_index": default_audio,
-                        "subtitle_index": None,
+                        "audio_index": stream.audio_index,
+                        "subtitle_index": stream.subtitle_index,
                         "media_source_id": stream.media_source_id,
                         "selected_by": selector_client_id,
-                        "quality": DEFAULT_QUALITY_ID,
+                        "quality": stream.quality,
                         "item_type": episode_ctx["item_type"],
                         "series_id": episode_ctx["series_id"],
                         "season_id": episode_ctx["season_id"],
@@ -646,6 +680,11 @@ def register(ctx):
         # modal. None for single-version items (or when the selector
         # didn't pick); the helper falls back to Emby's default source.
         media_source_id = data.get("media_source_id")
+        audio_index = data.get("audio_index")
+        subtitle_index = data.get("subtitle_index")
+        quality = data.get("quality")
+        resume_mode = data.get("resume_mode", "start_over")
+        binge = data.get("binge")
         # Optional resume position in seconds. The frontend reads
         # UserData.PlaybackPositionTicks from the library response and
         # offers the host a Resume / Start-over choice when it's > 0
@@ -657,6 +696,8 @@ def register(ctx):
         except (TypeError, ValueError):
             start_seconds = 0.0
         if start_seconds < 0:
+            start_seconds = 0.0
+        if resume_mode == "start_over":
             start_seconds = 0.0
 
         if not party_manager.exists(party_id):
@@ -703,6 +744,9 @@ def register(ctx):
                 item_overview,
                 media_source_id=media_source_id,
                 start_seconds=start_seconds,
+                audio_index=audio_index,
+                subtitle_index=subtitle_index,
+                quality=quality,
                 reservation=reservation,
             )
         finally:
@@ -710,6 +754,14 @@ def register(ctx):
         if not success:
             await sio.emit("error", {"message": "Failed to load video"}, to=sid)
             return
+        if binge is not None and party.host_client_id == selector_client_id:
+            active = bool(binge) and bool(config.BINGE_WATCH_ENABLED)
+            await party_manager.set_binge_watch(party_id, active)
+            await sio.emit(
+                "binge_watch_state_changed",
+                {"available": bool(config.BINGE_WATCH_ENABLED), "active": active},
+                room=party_id,
+            )
 
     @sio.on("stop_video")
     async def handle_stop_video(sid, data):
@@ -751,21 +803,19 @@ def register(ctx):
 
     @sio.on("change_streams")
     async def handle_change_streams(sid, data):
-        """Per-user stream change (audio / subtitle / quality).
+        """Per-user stream change (version / audio / subtitle / quality).
 
         Silent swap of the requesting user's stream. Other users keep
         playing normally; no party-wide pause, no ready check.
 
-        The alternate Emby version (issue #43) is fixed party-wide at
-        select_video time and stored on `current_video.media_source_id`,
-        so audio / subtitle / quality changes always re-use that
-        version automatically. Callers do not pass `media_source_id`
-        here.
+        The selected version defaults to the party selection, but callers
+        may choose another source for their own stream during playback.
         """
         party_id = data.get("party_id", "").strip().upper()
         audio_index = data.get("audio_index")
         subtitle_index = data.get("subtitle_index")
         quality = data.get("quality")
+        requested_media_source_id = data.get("media_source_id")
 
         party = party_manager.get(party_id)
         if not party or not party.current_video:
@@ -787,7 +837,7 @@ def register(ctx):
         # The version was locked at select_video time. Pull from the
         # party's current_video so every per-user stream stays on the
         # same Emby source for the whole playback.
-        media_source_id = current_video.media_source_id
+        media_source_id = requested_media_source_id or current_video.media_source_id
         access_token, user_id = _host_creds(party)
 
         # Resolve / sanitise the requested quality. A client can send the
@@ -847,6 +897,13 @@ def register(ctx):
             except (TypeError, ValueError):
                 pass
 
+        # Clamped against the source we are switching TO, not the one the party
+        # clock was measured against. This route honours a caller-supplied
+        # media_source_id, so switching a 150-minute extended cut to a
+        # 120-minute theatrical at 02:20:00 asked Emby to start past the end of
+        # media. The runtime is already in hand from the fetch above.
+        start_seconds = clamp_start_seconds(current_time, media_source_run_time(media_source))
+
         stream = await _create_user_stream(
             party,
             party_id,
@@ -856,7 +913,7 @@ def register(ctx):
             audio_index=audio_index,
             subtitle_index=subtitle_index,
             quality=quality,
-            start_seconds=current_time,
+            start_seconds=start_seconds,
             media_source_id=media_source_id,
         )
         if not stream:
@@ -882,7 +939,14 @@ def register(ctx):
                     "selected_by": current_video.selected_by,
                     "quality": quality,
                 },
-                "current_time": current_time,
+                # The position the new stream ACTUALLY starts at, which is the
+                # clamped value, not the raw party clock. The client maps this
+                # stream's t=0 onto it, so sending the unclamped clock after a
+                # switch to a shorter version left this viewer's reported
+                # position minutes ahead of the frame on screen -- and drift
+                # correction then fought the gap. Identical to current_time
+                # whenever the clamp does not fire, which is the normal case.
+                "current_time": start_seconds,
                 "was_playing": was_playing,
             },
             to=sid,
@@ -1246,6 +1310,38 @@ def register(ctx):
         )
         logger.info(
             f"Binge-watch {'enabled' if active else 'disabled'} in party {party_id} "
+            f"by {party.username_for_sid(sid, '?')}"
+        )
+
+    @sio.on("set_party_hidden")
+    async def handle_set_party_hidden(sid, data):
+        """Keep this party off the public index listing.
+
+        Unlisted rather than private: anyone holding the code can still join,
+        exactly as before. The listing is a convenience for finding an open
+        room, and a host running a private evening should not have to choose
+        between being advertised and being reachable.
+        """
+        party_id = data.get("party_id", "").strip().upper()
+        hidden = bool(data.get("hidden"))
+        party = party_manager.get(party_id)
+        if not party:
+            return
+
+        # Host-only, same rule as the binge switch above: the control is not
+        # rendered for anyone else, so a request from a non-host is a client
+        # that should not have sent it and gets no reply.
+        caller_client_id = _client_id_for_sid(party, sid)
+        if not caller_client_id or party.host_client_id != caller_client_id:
+            return
+
+        await party_manager.set_hidden(party_id, hidden)
+        # Broadcast to the room, not just the caller: the host may have the
+        # party open in more than one tab, and a stale switch there would
+        # misreport whether the party is advertised.
+        await sio.emit("party_visibility_changed", {"hidden": hidden}, room=party_id)
+        logger.info(
+            f"Party {party_id} {'hidden from' if hidden else 'listed in'} the index "
             f"by {party.username_for_sid(sid, '?')}"
         )
 

@@ -67,16 +67,29 @@ class SelectVideoPayload(PartyPayload):
     media_source_id: str | None = None
     start_seconds: float = 0.0
     quality: str | None = None
+    audio_index: int | None = Field(default=None, ge=0)
+    subtitle_index: int | None = Field(default=None, ge=-1)
+    resume_mode: Literal["resume", "start_over"] = "start_over"
+    binge: bool | None = None
 
 
 class ChangeStreamsPayload(PartyPayload):
-    audio_index: int | None = None
-    subtitle_index: int | None = None
+    # Same bounds as SelectVideoPayload above. Both feed these two values into
+    # the same Emby stream calls, so bounding one and not the other left the
+    # constraint depending on which event a client happened to send. -1 is the
+    # real "subtitles off" value, which is why the floor differs.
+    audio_index: int | None = Field(default=None, ge=0)
+    subtitle_index: int | None = Field(default=None, ge=-1)
     quality: str | None = None
+    media_source_id: str | None = None
 
 
 class BingeWatchPayload(PartyPayload):
     active: bool
+
+
+class PartyVisibilityPayload(PartyPayload):
+    hidden: bool
 
 
 INBOUND_MODELS: dict[str, type[SocketPayload]] = {
@@ -92,6 +105,7 @@ INBOUND_MODELS: dict[str, type[SocketPayload]] = {
     "video_ended": PartyPayload,
     "auto_advance_cancel": PartyPayload,
     "set_binge_watch_active": BingeWatchPayload,
+    "set_party_hidden": PartyVisibilityPayload,
     "report_progress": TimedPartyPayload,
     "stream_ready": PartyPayload,
     "heartbeat": TimedPartyPayload,
@@ -179,6 +193,7 @@ class SyncStateOutbound(OutboundPayload):
     users: list[str] = []
     binge_watch: BingeWatchStateOutbound | None = None
     pending_auto_advance: PendingAutoAdvanceOutbound | None = None
+    hidden: bool = False
 
 
 class VideoOutbound(OutboundPayload):
@@ -268,6 +283,10 @@ class BingeStateOutbound(OutboundPayload):
     active: bool
 
 
+class PartyVisibilityOutbound(OutboundPayload):
+    hidden: bool
+
+
 class AutoAdvancePendingOutbound(OutboundPayload):
     next_item_id: str
     next_title: str
@@ -326,6 +345,7 @@ OUTBOUND_MODELS: dict[str, type[OutboundPayload]] = {
     "join_vote_resolved": VoteResolvedOutbound,
     "join_rejected": JoinRejectedOutbound,
     "binge_watch_state_changed": BingeStateOutbound,
+    "party_visibility_changed": PartyVisibilityOutbound,
     "auto_advance_pending": AutoAdvancePendingOutbound,
     "auto_advance_cancelled": AutoAdvanceCancelledOutbound,
     "auto_advance_fired": AutoAdvanceFiredOutbound,

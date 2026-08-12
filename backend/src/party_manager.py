@@ -665,6 +665,18 @@ class PartyManager:
             party.binge_watch_active = active
             return True
 
+    async def set_hidden(self, party_id: str, hidden: bool) -> bool:
+        """Hide or unhide a party from the public index listing."""
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing:
+                return False
+            party.hidden = hidden
+            return True
+
     def create_party(self) -> str:
         """Create a new party with a generated ID. Returns party_id."""
         party_id = generate_party_code(self.watch_parties)

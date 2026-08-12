@@ -194,8 +194,8 @@ WIP
 1. **Update documentation** - If your change affects usage, update the README,
    and `docker-compose.yml.example` or `.env.example` if you touched
    configuration.
-2. **Add a changelog entry** - Document your change in `CHANGELOG.md` under
-   `## [Unreleased]`, in the matching subsection (`Added`, `Changed`, `Fixed`,
+2. **Add a changelog entry** - Document your change in `CHANGELOG.md` as
+   `## [Unreleased]`, add subsection (`Added`, `Changed`, `Fixed`,
    `Removed`). One line, written for a user rather than a reviewer. This is
    checked during review and is easy to forget.
 

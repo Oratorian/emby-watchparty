@@ -142,12 +142,57 @@ function chatAvatarSrc(msg: { username: string; avatar_uuid?: string | null }): 
 const STORAGE_KEY = 'emby-watchparty-username'
 const usernameInput = ref('')
 const joined = ref(false)
+
+// Seconds left before a viewer on a dead party is sent back to the start page.
+// Long enough to read why they are being moved, short enough that nobody sits
+// on a screen with nothing to do on it.
+const PARTY_GONE_SECONDS = 8
+const partyGoneCountdown = ref(PARTY_GONE_SECONDS)
+let partyGoneTimer: ReturnType<typeof setInterval> | null = null
+
+function leaveForIndex() {
+  if (partyGoneTimer) clearInterval(partyGoneTimer)
+  partyGoneTimer = null
+  // Clears the party-bound cookie on the way out. Without it the stale
+  // binding follows the viewer to the next party they join.
+  party.leave()
+  router.push('/')
+}
+
+// Starts on the transition into "gone", not on a timer set up front, because
+// the party is usually fine and this state is normally never reached.
+watch(() => party.partyMissing, (missing) => {
+  if (!missing) {
+    if (partyGoneTimer) clearInterval(partyGoneTimer)
+    partyGoneTimer = null
+    partyGoneCountdown.value = PARTY_GONE_SECONDS
+    return
+  }
+  if (partyGoneTimer) return
+  partyGoneCountdown.value = PARTY_GONE_SECONDS
+  partyGoneTimer = setInterval(() => {
+    partyGoneCountdown.value -= 1
+    if (partyGoneCountdown.value <= 0) leaveForIndex()
+  }, 1000)
+})
 // We only need the username modal when we have nothing to auto-join with.
 // Without this flag, the modal flashes on every mount before the socket
 // confirms the auto-join, even when localStorage has a saved name.
 const awaitingAutoJoin = ref(!!localStorage.getItem(STORAGE_KEY))
 const showLibrary = ref(false)
-const copyLabel = ref('Copy')
+const libraryLocation = ref('Libraries')
+const libraryBrowser = ref<{ goToRoot: () => Promise<void> } | null>(null)
+// Drives both the tooltip and the pill's own icon/tint, so the result of a
+// click is visible without hovering. The design refresh moved the old
+// "Copied!" button text into a title attribute, which never shows after a
+// click -- the pointer is already stationary, so no new tooltip is raised.
+const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
+const COPY_MESSAGES = {
+  idle: 'Copy party code',
+  copied: 'Copied!',
+  failed: 'Copy failed',
+} as const
+let copyResetTimer: ReturnType<typeof setTimeout> | null = null
 const showVersionModal = ref(false)
 const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const currentTime = ref(0)
@@ -174,19 +219,24 @@ const {
 const versionInfo = ref({ version: '', codename: '' })
 
 onMounted(async () => {
+  // Snapshot persisted intent before any startup await. A manual Join can
+  // complete while version/avatar requests are still pending and writes the
+  // username to storage; reading storage afterward mistakes that new value
+  // for a preexisting auto-join and claims the same socket identity twice.
+  const savedUsernameAtMount = localStorage.getItem(STORAGE_KEY)
   socket.connect()
   party.setupListeners()
   attachReconnect()
   auth.attachSocketListeners()
 
-  try {
-    await auth.refresh()
-  } catch { /* ignore */ }
-
-  try {
-    const v = await api.version()
+  // These requests are informational and must not delay socket listener
+  // registration. A fast join/play can arrive while either request is
+  // still in flight; registering below only after awaiting them used to
+  // drop that first playback event entirely.
+  void auth.refresh().catch(() => { /* ignore */ })
+  void api.version().then((v) => {
     versionInfo.value = { version: v.current_version || v.version || '', codename: v.codename || '' }
-  } catch { /* ignore */ }
+  }).catch(() => { /* ignore */ })
 
   attachChat()
   attachVoting()
@@ -596,15 +646,32 @@ onMounted(async () => {
     })
   })
 
-  // Auto-join with saved username
-  const saved = localStorage.getItem(STORAGE_KEY)
-  if (saved) {
-    joinWithName(saved)
+  // Auto-join with saved username.
+  //
+  // Gated on this component's own `joined`, NOT on party.partyId. The store
+  // deliberately survives unmount (see onUnmounted below), so after any in-app
+  // navigation -- the Full Version Info link, Admin's "Back to Watch Party" --
+  // partyId is still set on return while this component is freshly mounted and
+  // has emitted no join_party. Nothing then reassigns party.users, the watcher
+  // that sets `joined` never fires, and the user is stuck behind the "Joining
+  // party..." overlay with no video, chat, controls or Leave button until they
+  // reload the page.
+  //
+  // The double-join this guard was reaching for is already prevented by
+  // savedUsernameAtMount being a mount-time snapshot.
+  if (savedUsernameAtMount && !joined.value) {
+    joinWithName(savedUsernameAtMount)
   }
 })
 
 onUnmounted(() => {
   disposeChat()
+  // Would otherwise keep ticking after the view is gone and push a route the
+  // user has already navigated away from.
+  if (partyGoneTimer) clearInterval(partyGoneTimer)
+  partyGoneTimer = null
+  if (copyResetTimer) clearTimeout(copyResetTimer)
+  copyResetTimer = null
   if (pendingPauseTimer) {
     cancelPlaybackTimer(pendingPauseTimer)
     pendingPauseTimer = null
@@ -655,8 +722,14 @@ function submitJoin() {
 async function copyPartyId() {
   const id = (route.params.id as string) || ''
   const ok = await copyToClipboard(id)
-  copyLabel.value = ok ? 'Copied!' : 'Failed'
-  setTimeout(() => { copyLabel.value = 'Copy' }, 2000)
+  copyState.value = ok ? 'copied' : 'failed'
+  // Restart the window on every click. Without this, a second click at 1.9s
+  // inherits the first timer and the confirmation vanishes 100ms later.
+  if (copyResetTimer) clearTimeout(copyResetTimer)
+  copyResetTimer = setTimeout(() => {
+    copyState.value = 'idle'
+    copyResetTimer = null
+  }, 2000)
 }
 
 async function leaveParty() {
@@ -696,7 +769,12 @@ function onVideoPlay() {
   // once HLS.js auto-plays the new manifest. Broadcasting that to the
   // party would be a no-op at best and a "Andrew started playback"
   // chat spam at worst.
-  if (!party.partyId || isForcePausing || isInitialSync || myStreamReloading.value) return
+  if (!party.partyId || isForcePausing || isInitialSync) return
+  // A reload-generated play only needs suppressing when the room was
+  // already playing. If the room is paused, a playing media element is
+  // a real local action (including one pressed during stream settling)
+  // and must be broadcast instead of silently desynchronising this tab.
+  if (myStreamReloading.value && party.playbackState.playing) return
   if (pendingPauseTimer) {
     cancelPlaybackTimer(pendingPauseTimer)
     pendingPauseTimer = null
@@ -889,17 +967,14 @@ watch(() => party.currentVideo, (newVal, oldVal) => {
   }
 })
 
-function onChangeStreams(opts: { audioIndex?: number; subtitleIndex?: number; quality?: string }) {
+function onChangeStreams(opts: { audioIndex?: number; subtitleIndex?: number; quality?: string; mediaSourceId?: string }) {
   if (!party.partyId) return
-  // The alternate Emby version (issue #43) is locked at select_video
-  // time on the backend (current_video.media_source_id), so this emit
-  // never needs to carry it -- audio/subtitle/quality changes always
-  // resolve to the same version automatically.
   socket.emit('change_streams', {
     party_id: party.partyId,
     audio_index: opts.audioIndex,
     subtitle_index: opts.subtitleIndex,
     quality: opts.quality,
+    media_source_id: opts.mediaSourceId,
   })
 }
 
@@ -911,6 +986,12 @@ function onVideoEnded() {
   // per-user transcodes and (when binge-watching is on) queue the
   // auto-advance to the next episode.
   if (!party.partyId || !party.currentVideo) return
+  // A stream being rebuilt fires a synthetic `ended` before the new manifest
+  // attaches. onVideoPlay and onVideoPause both guard on this; this handler did
+  // not, and it is the most destructive of the three: from the selector it
+  // stops every viewer's transcode and clears the party's video, so one
+  // viewer's quality or version change could end the film for the room.
+  if (myStreamReloading.value) return
   const myClientId = getClientId()
   if (party.currentVideo.selected_by !== myClientId) return
   socket.emit('video_ended', { party_id: party.partyId })
@@ -981,6 +1062,10 @@ function toggleLibrary() {
   }
 }
 
+function goToAllLibraries() {
+  void libraryBrowser.value?.goToRoot()
+}
+
 function libraryButtonAction() {
   if (auth.partyUnlocked) {
     toggleLibrary()
@@ -1028,7 +1113,40 @@ async function submitBecomeHost(payload: { username: string; password: string })
        waiting on the socket to confirm the join. Suppresses the name
        modal flash-of-stale-UI on every mount / refresh. -->
   <div v-if="!joined && awaitingAutoJoin" class="modal-overlay">
-    <div class="modal-card join-spinner">
+    <!-- A party that no longer exists is not a retryable failure. Retrying it
+         can never succeed, so the old card left the viewer pressing a button
+         that was guaranteed to do nothing, with no route out of the page. This
+         says what happened and takes them back on its own. Reached by a stale
+         link, and by every link after the server restarts. -->
+    <div v-if="party.partyMissing" class="modal-card party-gone">
+      <h2>This party no longer exists</h2>
+      <p>
+        It has ended, or the server restarted since the link was made.
+        Party codes are not kept once a party closes.
+      </p>
+      <p class="party-gone-countdown" role="status">
+        Taking you back in {{ partyGoneCountdown }}s
+      </p>
+      <button class="btn btn-primary" type="button" @click="leaveForIndex">
+        Go now
+      </button>
+    </div>
+    <div v-else-if="party.sessionError" class="modal-card">
+      <h2>Could not join party</h2>
+      <p role="alert">{{ party.sessionError }}</p>
+      <button
+        class="btn btn-primary"
+        :disabled="party.sessionRetrying || party.sessionRetryAfter > 0"
+        @click="party.retrySession()"
+      >
+        {{ party.sessionRetrying
+          ? 'Retrying…'
+          : party.sessionRetryAfter > 0
+            ? `Retry in ${party.sessionRetryAfter}s`
+            : 'Retry' }}
+      </button>
+    </div>
+    <div v-else class="modal-card join-spinner">
       <span class="spinner" />
       <p>Joining party…</p>
     </div>
@@ -1045,7 +1163,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
   </div>
 
   <!-- Party room -->
-  <div v-if="joined" class="party-container">
+  <div v-if="joined" class="party-container" :class="{ 'library-open': showLibrary }">
     <!-- Reconnecting banner: shown when the socket has dropped and
          socket.io-client is attempting to reconnect. Without this, a
          mid-party disconnect looks identical to a healthy connection
@@ -1130,13 +1248,22 @@ async function submitBecomeHost(payload: { username: string; password: string })
         </button>
         <button
           class="party-pill"
+          :class="{ 'is-copied': copyState === 'copied', 'is-failed': copyState === 'failed' }"
           @click="copyPartyId"
-          :title="copyLabel === 'Copy' ? 'Copy party code' : copyLabel"
+          :title="COPY_MESSAGES[copyState]"
+          aria-label="Copy party code"
         >
           <span class="party-pill-label">Code</span>
           <code class="party-pill-code">{{ route.params.id }}</code>
+          <!-- Same 22px box in every state so confirming a copy never reflows
+               the header. -->
           <span class="party-pill-copy" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            <svg v-if="copyState === 'copied'" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            <svg v-else-if="copyState === 'failed'" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </span>
+          <span class="party-pill-status" role="status">
+            {{ copyState === 'idle' ? '' : COPY_MESSAGES[copyState] }}
           </span>
         </button>
         <span v-if="auth.hostUsername" class="host-badge" :title="`Host: ${auth.hostUsername}`">
@@ -1176,6 +1303,31 @@ async function submitBecomeHost(payload: { username: string; password: string })
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         </button>
+        <!-- Always rendered, so everyone can see whether the room is being
+             advertised, but only the host can change it. Disabled rather than
+             hidden: the server refuses a non-host anyway, so a live-looking
+             button would silently do nothing, and with no host at all the
+             state still matters to the people already in the room.
+             Unlisted, not private: the code keeps working either way. -->
+        <button
+          type="button"
+          class="ico-btn"
+          :class="{ 'ico-btn-active': party.hidden }"
+          :disabled="!auth.isHost"
+          :aria-pressed="party.hidden"
+          :title="!auth.isHost
+            ? (party.hidden
+              ? 'Hidden from Active Parties. Only the host can change this.'
+              : 'Listed in Active Parties. Only the host can change this.')
+            : (party.hidden
+              ? 'Hidden from Active Parties. Anyone with the code can still join. Click to list it.'
+              : 'Listed in Active Parties. Click to hide it.')"
+          :aria-label="party.hidden ? 'Party is hidden from Active Parties' : 'Party is listed in Active Parties'"
+          @click="party.setHidden(!party.hidden)"
+        >
+          <svg v-if="party.hidden" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><path d="M1 1l22 22"/></svg>
+          <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
         <button @click="showMobileChat = true" class="chip-btn mobile-chat-toggle">Chat</button>
         <button @click="leaveParty" class="btn-leave" title="Leave party">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
@@ -1184,12 +1336,26 @@ async function submitBecomeHost(payload: { username: string; password: string })
       </div>
     </header>
 
+    <header v-if="showLibrary" class="mobile-library-header">
+      <button type="button" class="mobile-library-btn" @click="goToAllLibraries">
+        All Libraries
+      </button>
+      <span class="mobile-library-location" :title="libraryLocation">
+        {{ libraryLocation }}
+      </span>
+      <button type="button" class="mobile-library-btn" @click="toggleLibrary">
+        Hide Library
+      </button>
+    </header>
+
     <div class="party-content">
       <!-- Library panel -->
       <LibraryBrowser
         v-if="showLibrary"
+        ref="libraryBrowser"
         class="library-panel"
         @select-video="selectVideo"
+        @navigation-change="libraryLocation = $event"
       />
 
       <!-- Video area -->
@@ -1243,6 +1409,8 @@ async function submitBecomeHost(payload: { username: string; password: string })
             :quality="party.currentVideo.quality || '1080p-high'"
             :current-time="currentTime"
             :media-source-id="party.currentVideo.media_source_id ?? undefined"
+            :audio-index="party.currentVideo.audio_index ?? null"
+            :subtitle-index="party.currentVideo.subtitle_index ?? null"
             :run-time-seconds="party.currentVideo.run_time_seconds ?? undefined"
             :binge-available="party.bingeWatch.available"
             :binge-active="party.bingeWatch.active"
@@ -1499,6 +1667,22 @@ async function submitBecomeHost(payload: { username: string; password: string })
   box-shadow: var(--shadow-lg);
 }
 
+/* Reuses .modal-card so it sits exactly where the failure card it replaces
+   did. Only the countdown needs styling of its own. */
+.party-gone p {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.party-gone-countdown {
+  margin: var(--space-md) 0 var(--space-sm);
+  color: var(--text-muted);
+  font-size: .85rem;
+  /* Tabular figures so the number does not jitter the line as it counts
+     down, which is distracting on text nobody chose to look at. */
+  font-variant-numeric: tabular-nums;
+}
+
 .modal-card h2 {
   margin-bottom: var(--space-sm);
 }
@@ -1664,6 +1848,10 @@ async function submitBecomeHost(payload: { username: string; password: string })
   z-index: 10;
 }
 
+.mobile-library-header {
+  display: none;
+}
+
 .header-left {
   display: flex;
   align-items: center;
@@ -1728,6 +1916,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
 /* Party-code pill: surface bg, cyan code text, copy icon on the right.
    The whole pill is clickable, copy icon is a visual hint only. */
 .party-pill {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -1774,6 +1963,43 @@ async function submitBecomeHost(payload: { username: string; password: string })
 .party-pill:hover .party-pill-copy {
   background: var(--bg-surface-hover);
   color: var(--accent-primary);
+}
+
+/* Post-click confirmation. The icon swap alone is 12px of line art in a
+   header full of other icons, so the border and chip carry the colour and
+   make the change register peripherally. Reverts after 2s. The :hover
+   duplicates outrank the hover rule above, which would otherwise repaint the
+   chip cyan for exactly the users who just clicked and still have the pointer
+   on it. */
+.party-pill.is-copied {
+  border-color: var(--color-success);
+}
+
+.party-pill.is-copied .party-pill-copy,
+.party-pill:hover.is-copied .party-pill-copy {
+  background: var(--color-success-dim);
+  color: var(--color-success);
+}
+
+.party-pill.is-failed {
+  border-color: var(--color-danger);
+}
+
+.party-pill.is-failed .party-pill-copy,
+.party-pill:hover.is-failed .party-pill-copy {
+  background: var(--color-danger-dim);
+  color: var(--color-danger);
+}
+
+/* Announced by screen readers, never laid out -- the pill has no room for
+   the text and growing it would shift the header. */
+.party-pill-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .header-actions {
@@ -1882,6 +2108,26 @@ async function submitBecomeHost(payload: { username: string; password: string })
   color: var(--text-secondary);
   cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+/* Readable but clearly not actionable for non-hosts. The state is worth
+   showing everyone; the ability to change it is not. */
+.ico-btn:disabled {
+  cursor: default;
+  opacity: .75;
+}
+.ico-btn:disabled:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-subtle);
+}
+
+/* Hidden is a state the host is holding, not a momentary action, so the
+   control stays lit while it applies. Without this the only way to tell an
+   unlisted party from a listed one is to squint at which icon is showing. */
+.ico-btn-active {
+  background: var(--accent-primary-dim, rgba(0, 224, 255, .12));
+  border-color: var(--accent-primary, #00e0ff);
+  color: var(--accent-primary, #00e0ff);
 }
 
 .ico-btn:hover {
@@ -2393,7 +2639,115 @@ async function submitBecomeHost(payload: { username: string; password: string })
   display: none;
 }
 
+/* Browser zoom and compact desktop windows can leave fewer than 1,100
+   CSS pixels even on a physically large monitor. A permanent 320px chat
+   column then starves the player and makes the controls wrap vertically.
+   Use the existing chat drawer at this intermediate breakpoint while
+   retaining the normal desktop library layout. */
+@media (max-width: 1280px) {
+  .brand-name {
+    display: none;
+  }
+
+  .party-header,
+  .header-left,
+  .header-actions {
+    gap: var(--space-sm);
+  }
+
+  .mobile-chat-toggle {
+    display: inline-flex;
+  }
+
+  .chat-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(92vw, 360px);
+    max-width: 100vw;
+    z-index: 1001;
+    transform: translateX(100%);
+    transition: transform var(--transition-fast);
+    box-shadow: var(--shadow-lg);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .chat-panel.chat-mobile-open {
+    transform: translateX(0);
+  }
+
+  .chat-close-btn {
+    display: inline-flex;
+  }
+
+  .chat-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.45);
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1280px) {
+  .video-wrapper {
+    overflow-y: auto;
+  }
+
+  .video-wrapper :deep(.video-player) {
+    flex: 0 0 100%;
+    min-height: 100%;
+  }
+}
+
 @media (max-width: 760px) {
+  .party-container.library-open .party-header {
+    display: none;
+  }
+
+  .mobile-library-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-shrink: 0;
+    min-height: calc(52px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top)
+      max(var(--space-sm), env(safe-area-inset-right)) 0
+      max(var(--space-sm), env(safe-area-inset-left));
+    background: rgba(11, 14, 28, 0.92);
+    border-bottom: 1px solid var(--border-subtle);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    z-index: 10;
+  }
+
+  .mobile-library-btn {
+    flex-shrink: 0;
+    min-height: 36px;
+    padding: 6px 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 9px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font: 600 12px var(--font-sans);
+    cursor: pointer;
+  }
+
+  .mobile-library-location {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
   .party-header {
     align-items: flex-start;
     gap: var(--space-sm);
@@ -2420,6 +2774,12 @@ async function submitBecomeHost(payload: { username: string; password: string })
   .library-panel {
     width: 100%;
     min-width: 0;
+    height: 100%;
+    overflow-x: hidden;
+  }
+
+  .party-container.library-open .video-area {
+    display: none;
   }
 
   .chat-panel {

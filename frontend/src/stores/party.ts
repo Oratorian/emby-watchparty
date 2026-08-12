@@ -15,6 +15,8 @@ export interface MemberInfo {
 type VideoInfo = ServerToClientPayloads['video_selected']['video']
 
 const CLIENT_ID_STORAGE_KEY = 'emby-watchparty-client-id'
+const TAB_CLIENT_ID_STORAGE_KEY = 'emby-watchparty-tab-client-id'
+const IDENTITY_IN_USE_MESSAGE = 'Participant identity is already in use'
 
 // The session cookie holds exactly one party id, and cookies are shared
 // across every tab in a browser profile. So a second tab joining a
@@ -26,11 +28,19 @@ const CLIENT_ID_STORAGE_KEY = 'emby-watchparty-client-id'
 const PARTY_BINDING_CHANNEL = 'emby-watchparty-party-binding'
 
 function getClientId(): string {
+  const tabClientId = sessionStorage.getItem(TAB_CLIENT_ID_STORAGE_KEY)
+  if (tabClientId) return tabClientId
   let clientId = localStorage.getItem(CLIENT_ID_STORAGE_KEY)
   if (clientId) return clientId
 
   clientId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
   localStorage.setItem(CLIENT_ID_STORAGE_KEY, clientId)
+  return clientId
+}
+
+function rotateClientIdForTab(): string {
+  const clientId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  sessionStorage.setItem(TAB_CLIENT_ID_STORAGE_KEY, clientId)
   return clientId
 }
 
@@ -64,6 +74,12 @@ export const usePartyStore = defineStore('party', () => {
   // silently; surfacing it is the difference between a self-service
   // retry and an unreproducible "video won't load for one person".
   const sessionError = ref<string | null>(null)
+  // Set only when the server confirms the party is gone, which is a different
+  // situation from "could not authenticate" and needs a different answer.
+  // Retrying a party that no longer exists can never succeed, so offering a
+  // Retry button leaves the viewer pressing it forever. A restarted server and
+  // a pasted stale link both land here.
+  const partyMissing = ref(false)
   const sessionRetrying = ref(false)
   const sessionRetryAfter = ref(0)
   let sessionRetryTimer: ReturnType<typeof setInterval> | null = null
@@ -123,6 +139,10 @@ export const usePartyStore = defineStore('party', () => {
     available: false, active: false,
   })
 
+  // Whether this party is kept off the public index listing. Unlisted, not
+  // private: the code still works for anyone who has it.
+  const hidden = ref(false)
+
   // Pending auto-advance modal state. Non-null only between video_ended
   // and the next video_selected / video_stopped, while the countdown
   // is running. timeoutAt is the absolute deadline (ms since epoch);
@@ -164,7 +184,13 @@ export const usePartyStore = defineStore('party', () => {
     const normalisedId = id.toUpperCase()
     partyId.value = normalisedId
     username.value = name
-    const clientId = getClientId()
+    // Cleared before the first await, not just on a successful bind:
+    // going straight from a dead party to a live one would otherwise leave
+    // the "no longer exists" card up for the whole join, avatar load
+    // included -- and leave it frozen, since the countdown watcher fires on
+    // the transition into missing, which already happened.
+    partyMissing.value = false
+    let clientId = getClientId()
     // Load the persisted avatar id (IndexedDB or localStorage) so it
     // can ride along on the join. Safe to call repeatedly.
     if (!avatar.uuid) {
@@ -175,16 +201,21 @@ export const usePartyStore = defineStore('party', () => {
     // Announce only once the cookie is actually bound. A tab that failed
     // to bind never repointed anything, so it must not make a healthy
     // tab believe it has been superseded.
-    if (await bindSession(clientId, name, avatarUuid)) {
-      announceBinding(normalisedId)
+    let bound = await bindSession(clientId, name, avatarUuid)
+    if (!bound && sessionError.value === IDENTITY_IN_USE_MESSAGE) {
+      clientId = rotateClientIdForTab()
+      bound = await bindSession(clientId, name, avatarUuid)
     }
-    socket.emit('join_party', {
-      party_id: partyId.value,
-      username: name,
-      client_id: clientId,
-      avatar_uuid: avatarUuid,
-      video_codecs: detectVideoCodecs(),
-    })
+    if (bound) {
+      announceBinding(normalisedId)
+      socket.emit('join_party', {
+        party_id: partyId.value,
+        username: name,
+        client_id: clientId,
+        avatar_uuid: avatarUuid,
+        video_codecs: detectVideoCodecs(),
+      })
+    }
   }
 
   // Remembered so retrySession() can re-run the join without the caller
@@ -200,12 +231,49 @@ export const usePartyStore = defineStore('party', () => {
    * surfaced rather than swallowed, because socket-only auth is no
    * longer enough to play video.
    */
+  /**
+   * Ask the server whether the party is actually gone.
+   *
+   * A join can fail for reasons that are worth retrying (a blip, a rate
+   * limit, a server still coming up) and for one that never is. Only the
+   * server can tell them apart, and a failure to reach it is not evidence
+   * either way, so anything other than a definite "no" leaves the normal
+   * retry path in place.
+   */
+  function setHidden(next: boolean) {
+    if (!partyId.value) return
+    // Optimistic, then corrected by the broadcast. The server is the
+    // authority; a refused toggle (non-host) simply never echoes back.
+    hidden.value = next
+    useSocketStore().emit('set_party_hidden', { party_id: partyId.value, hidden: next })
+  }
+
+  async function checkPartyMissing() {
+    if (!partyId.value) return
+    try {
+      const { exists } = await api.partyExists(partyId.value)
+      partyMissing.value = !exists
+    } catch {
+      // Could not ask. Assume it is still there rather than sending someone
+      // back to the index over a network blip.
+      partyMissing.value = false
+    }
+  }
+
   async function bindSession(clientId: string, name: string, avatarUuid: string | null) {
     lastJoinArgs = { clientId, name, avatarUuid }
     const auth = useAuthStore()
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        await api.joinParty(partyId.value!, clientId, name || 'Guest', avatarUuid)
+        const result = await api.joinParty(partyId.value!, clientId, name || 'Guest', avatarUuid)
+        if (!result.success) {
+          sessionError.value = result.message || 'Could not join the party.'
+          // Asked rather than inferred from the message text, which is prose
+          // the server may reword at any time. This endpoint exists to answer
+          // exactly this question.
+          await checkPartyMissing()
+          return false
+        }
         // The cookie is now bound. Re-read auth state so partyUnlocked
         // and hostUsername reflect this party, not the empty pre-join
         // status. Otherwise late joiners briefly render "Party is
@@ -213,6 +281,7 @@ export const usePartyStore = defineStore('party', () => {
         // for a party that was already unlocked when they joined).
         try { await auth.refresh() } catch { /* ignore */ }
         sessionError.value = null
+        partyMissing.value = false
         clearSessionRetryCountdown()
         return true
       } catch (e: unknown) {
@@ -229,6 +298,7 @@ export const usePartyStore = defineStore('party', () => {
         // A fetch-layer failure gives "Failed to fetch", which explains
         // nothing to a viewer and displaces the banner's own guidance.
         sessionError.value = e instanceof ApiError ? e.message : 'Could not reach the server.'
+        await checkPartyMissing()
       }
     }
     return false
@@ -287,6 +357,12 @@ export const usePartyStore = defineStore('party', () => {
     sessionError.value = null
     clearSessionRetryCountdown()
     supersededBy.value = null
+    // This store outlives PartyView. Left set, the next party the viewer
+    // opens renders the "no longer exists" card on mount -- and renders it
+    // frozen, because the watcher that drives the countdown only fires on a
+    // transition into `missing`, which already happened.
+    partyMissing.value = false
+    hidden.value = false
   }
 
   function submitVote(vote: 'yes' | 'no') {
@@ -309,7 +385,7 @@ export const usePartyStore = defineStore('party', () => {
       'user_joined', 'user_left', 'sync_state', 'video_selected',
       'video_stopped', 'video_ended', 'play', 'pause', 'seek',
       'streams_changed', 'members_update', 'ready_check_update', 'all_ready',
-      'binge_watch_state_changed', 'auto_advance_pending',
+      'binge_watch_state_changed', 'party_visibility_changed', 'auto_advance_pending',
       'auto_advance_cancelled', 'auto_advance_fired', 'binge_finished',
     ] as const
     for (const e of events) socket.off(e)
@@ -366,6 +442,7 @@ export const usePartyStore = defineStore('party', () => {
           active: !!data.binge_watch.active,
         }
       }
+      hidden.value = !!data.hidden
       // Hydrate a running binge countdown so a rejoiner during the
       // countdown window sees the modal (and Cancel button). Without
       // this, the watchdog fires unattended and the selector loses
@@ -427,6 +504,12 @@ export const usePartyStore = defineStore('party', () => {
       }
     })
 
+    // Broadcast to the room rather than the caller, so a host with the party
+    // open in two tabs does not leave a stale switch in the other one.
+    socket.on('party_visibility_changed', (data: ServerToClientPayloads['party_visibility_changed']) => {
+      hidden.value = !!data.hidden
+    })
+
     socket.on('binge_watch_state_changed', (data: ServerToClientPayloads['binge_watch_state_changed']) => {
       bingeWatch.value = {
         available: !!data.available,
@@ -470,8 +553,11 @@ export const usePartyStore = defineStore('party', () => {
 
     socket.on('streams_changed', (data: ServerToClientPayloads['streams_changed']) => {
       // Per-user: only this user receives their updated stream.
-      // Backend restarts the transcode with StartTimeTicks=current_time,
-      // so the new stream's time 0 maps to current_time media position.
+      // `current_time` is the position the backend actually started the new
+      // transcode at, so this stream's time 0 maps onto it. It is the party
+      // clock in the normal case, but a switch to a version shorter than the
+      // current position is clamped to land inside the new source, and the
+      // offset has to follow the stream rather than the clock.
       currentVideo.value = data.video
       if (data.video?.stream_url) {
         myStreamUrl.value = data.video.stream_url
@@ -550,8 +636,8 @@ export const usePartyStore = defineStore('party', () => {
     partyId, username, users, members, currentVideo, playbackState, userCount,
     myStreamUrl, streamOffset, readyCheckActive, readyUsers, waitingUsers,
     pendingVote,
-    bingeWatch, pendingAutoAdvance,
-    sessionError, sessionRetrying, sessionRetryAfter, supersededBy,
+    bingeWatch, pendingAutoAdvance, hidden, setHidden,
+    sessionError, partyMissing, sessionRetrying, sessionRetryAfter, supersededBy,
     join, leave, setupListeners, submitVote, retrySession,
     setBingeWatchActive, cancelAutoAdvance,
   }

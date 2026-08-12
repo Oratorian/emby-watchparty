@@ -14,5 +14,11 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.ts'],
     restoreMocks: true,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      include: ['src/**/*.{ts,vue}'],
+      exclude: ['src/**/*.test.ts', 'src/types/socket.generated.ts', 'src/env.d.ts'],
+    },
   },
 })

@@ -18,12 +18,32 @@ test('host creates party and a second browser joins', async ({ browser, page }) 
 
   const guestContext = await browser.newContext()
   const guest = await guestContext.newPage()
+  const joinClientIds: string[] = []
+  let rejectReservedIdentity = true
+  await guest.route('**/api/party/*/join', async (route) => {
+    const body = route.request().postDataJSON() as { client_id: string }
+    joinClientIds.push(body.client_id)
+    if (rejectReservedIdentity) {
+      rejectReservedIdentity = false
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          message: 'Participant identity is already in use',
+        }),
+      })
+      return
+    }
+    await route.continue()
+  })
   await guest.goto(partyUrl)
   await guest.getByPlaceholder('Your name (optional)').fill('Bob')
   await guest.getByRole('button', { name: 'Join', exact: true }).click()
 
   await expect(page.getByText('2 watching')).toBeVisible()
   await expect(guest.getByText('2 watching')).toBeVisible()
+  expect([...new Set(joinClientIds)]).toHaveLength(2)
 
   await page.context().setOffline(true)
   await page.evaluate(() => window.dispatchEvent(new Event('offline')))

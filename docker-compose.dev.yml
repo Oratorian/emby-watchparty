@@ -1,0 +1,51 @@
+# Local development compose: builds this checkout and runs it on loopback.
+#
+# NOT the deployment example. Copy docker-compose.yml.example for that; it is
+# generated from deploy/schema.json and guarded by a CI drift check, while this
+# file is hand-maintained and deliberately outside that gate.
+#
+# Named .dev.yml on purpose. As docker-compose.yml it was Compose's default
+# file, so `docker compose up` in the repo ran this instead of the operator's
+# own, and it occupied the exact filename docs/deployment/compose.md tells
+# people to create.
+#
+#   docker compose -f docker-compose.dev.yml up --build
+#
+# Every value below has a development default, so it boots from a bare
+# checkout. Unset variables expand to empty strings in Compose, not to
+# "absent", and the config parser rejects an empty SESSION_COOKIE_SECURE or
+# BEHIND_PROXY outright ("Must be true or false") while an empty APP_ENV is
+# neither development nor production. Without defaults this file could not
+# start at all.
+services:
+  emby-watchparty:
+    build: .
+    image: emby-watchparty:local
+    container_name: emby-watchparty
+    environment:
+      WATCH_PARTY_BIND: 0.0.0.0
+      WATCH_PARTY_PORT: "5000"
+      APP_PREFIX: ${APP_PREFIX:-}
+      SESSION_EXPIRY: ${SESSION_EXPIRY:-86400}
+      # The only two with no sensible default: point them at your Emby.
+      EMBY_SERVER_URL: ${EMBY_SERVER_URL:?set EMBY_SERVER_URL in .env}
+      EMBY_API_KEY: ${EMBY_API_KEY:?set EMBY_API_KEY in .env}
+      APP_ENV: ${APP_ENV:-development}
+      # Ephemeral by default. Fine for local work, where losing sessions on
+      # restart costs nothing; production refuses to boot without a real one.
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      # false, because the cookie is served over plain http on loopback here
+      # and a Secure cookie would be discarded silently.
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+      ENABLE_HLS_TOKEN_VALIDATION: ${ENABLE_HLS_TOKEN_VALIDATION:-true}
+      BEHIND_PROXY: ${BEHIND_PROXY:-false}
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - ./data:/app/data
+      - ./images/avatars:/app/images/avatars
+      - ./logs:/app/logs
+      - ./config.json:/app/config.json
+    restart: unless-stopped

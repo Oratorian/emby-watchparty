@@ -33,12 +33,13 @@ wheels/
 *.swp
 *.swo
 *~
-.claude
 .venv
 *.code-workspace
 .mypy_cache
 .pytest_cache
 .ruff_cache
+.coverage
+coverage/
 
 # OS
 .DS_Store
@@ -46,9 +47,6 @@ Thumbs.db
 
 # Logs
 logs/
-old160
-old152
-merge-to-main.ps1
 *.backup
 
 #Configurations
@@ -56,6 +54,7 @@ config.json
 backend/static
 frontend/playwright-report/
 frontend/test-results/
+frontend/coverage/
 
 # Runtime data (avatar SQLite + uploaded files)
 data/
@@ -63,4 +62,3 @@ images/avatars
 
 # Documentation
 TODO.md
-workflow-findings.md

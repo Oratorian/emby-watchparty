@@ -50,6 +50,7 @@
   --color-warning: #f59e0b;
   --color-warning-dim: rgba(245, 158, 11, 0.15);
   --color-success: #10b981;
+  --color-success-dim: rgba(16, 185, 129, 0.15);
   --color-info: #3b82f6;
 
   /* Shadows */

@@ -186,6 +186,19 @@ def require_host_token(
     return party_session
 
 
+def require_party_host(
+    party_session: PartySession = Depends(require_party_unlocked),
+) -> PartySession:
+    """Require the current caller to hold the party's opaque host grant."""
+    if not party_host_session_matches(
+        party_session.party,
+        party_session.client_id,
+        party_session.host_session_grant,
+    ):
+        raise HTTPException(status_code=403, detail="Host only")
+    return party_session
+
+
 def require_admin(
     party_session: PartySession = Depends(require_party_session),
 ) -> PartySession:
@@ -293,6 +306,14 @@ PARTY_UNLOCKED_RESPONSES: dict = {
     401: {"description": "No party-bound session cookie"},
     404: {"description": "Party no longer exists"},
     423: {"description": "Party has no host (LOCKED)"},
+}
+
+# Routes gated by `require_party_host` -- everything require_party_unlocked
+# needs, plus proof the caller holds the party's host grant. The write routes
+# that mutate the host's Emby account are on this gate.
+PARTY_HOST_RESPONSES: dict = {
+    **PARTY_UNLOCKED_RESPONSES,
+    403: {"description": "Host only"},
 }
 
 # Routes gated by `require_host_token` -- must have a cookie AND the

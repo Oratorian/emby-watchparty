@@ -1,6 +1,6 @@
 import { nextTick, onUnmounted, ref, watch } from 'vue'
 import { api } from '@/api/client'
-import type { LibraryItem, StreamsResponse } from '@/api/client'
+import type { LibraryItem, PlaybackSelection, StreamsResponse } from '@/api/client'
 import type { usePartyStore } from '@/stores/party'
 import type { useSocketStore } from '@/stores/socket'
 import { withPrefix } from '@/utils/appPrefix'
@@ -61,7 +61,12 @@ export function usePartyStream(
     return api.itemStreams(itemId, undefined, selectionController.signal)
   }
 
-  function emitSelection(item: LibraryItem, mediaSourceId?: string, startSeconds = 0) {
+  function emitSelection(
+    item: LibraryItem,
+    mediaSourceId?: string,
+    startSeconds = 0,
+    options?: Partial<PlaybackSelection>,
+  ) {
     if (!party.partyId) return
     onSelectionEmitted()
     socket.emit('select_video', {
@@ -69,9 +74,13 @@ export function usePartyStream(
       item_id: item.Id,
       item_name: item.Name,
       item_overview: item.Overview || '',
-      quality: '1080p-high',
+      quality: options?.quality || '1080p-high',
       media_source_id: mediaSourceId,
       start_seconds: startSeconds,
+      audio_index: options?.audioIndex,
+      subtitle_index: options?.subtitleIndex,
+      resume_mode: options?.resumeMode || (startSeconds > 0 ? 'resume' : 'start_over'),
+      binge: options?.binge,
     })
   }
 
@@ -90,8 +99,13 @@ export function usePartyStream(
     emitSelection(item, undefined, startSeconds)
   }
 
-  async function selectVideo(item: LibraryItem) {
+  async function selectVideo(input: LibraryItem | PlaybackSelection) {
     if (!party.partyId) return
+    if ('item' in input) {
+      emitSelection(input.item, input.mediaSourceId, input.startSeconds, input)
+      return
+    }
+    const item = input
     const positionTicks = Number(item.UserData?.PlaybackPositionTicks ?? 0)
     if (positionTicks > 0) {
       resumePromptState.value = {
@@ -158,11 +172,21 @@ export function usePartyStream(
 
       try {
         const streams = await loadSubtitleStreams(itemId, mediaSourceId)
+        if (lastSubtitlePreloadKey !== key) return
+        video.querySelectorAll('track').forEach((track) => track.remove())
         const textSubtitles = streams.subtitles.filter(
           (stream) => !stream.isPGS && stream.isTextSubtitleStream,
         )
         if (isNewItem) {
-          const defaultSubtitle = textSubtitles.find((stream) => stream.isDefault)
+          // The party's own choice wins over the source's default. The detail
+          // view can pick a text subtitle for everyone before playback starts,
+          // and seeding only from isDefault discarded it: the selection reached
+          // the backend, but no viewer ever displayed the track.
+          const partyIndex = party.currentVideo?.subtitle_index ?? null
+          const partyChoice = partyIndex === null
+            ? undefined
+            : textSubtitles.find((stream) => stream.index === partyIndex)
+          const defaultSubtitle = partyChoice ?? textSubtitles.find((stream) => stream.isDefault)
           if (defaultSubtitle) selectedTextSubIndex.value = defaultSubtitle.index
         }
         const targetIndex = selectedTextSubIndex.value

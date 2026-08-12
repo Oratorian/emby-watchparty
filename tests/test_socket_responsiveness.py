@@ -106,17 +106,21 @@ async def _exercise_progress_coalescing(live_watchparty) -> None:
             await realtime.emit("report_progress", {"party_id": party_id, "time": 12.0})
             await realtime.emit("report_progress", {"party_id": party_id, "time": 34.0})
 
+            progress_reports = []
             for _ in range(50):
                 state = (await client.get(f"/api/party/{party_id}/info")).json()
-                if state["playback_state"]["time"] == 34.0:
+                progress_reports = [
+                    request
+                    for request in live_watchparty.fake.state.requests
+                    if request["path"] == "/emby/Sessions/Playing/Progress"
+                ]
+                # Party state commits before the async Emby report finishes.
+                # Wait for both observable effects; checking the request list
+                # immediately after state advanced raced on faster CI hosts.
+                if state["playback_state"]["time"] == 34.0 and progress_reports:
                     break
                 await asyncio.sleep(0.02)
             assert state["playback_state"]["time"] == 34.0
-            progress_reports = [
-                request
-                for request in live_watchparty.fake.state.requests
-                if request["path"] == "/emby/Sessions/Playing/Progress"
-            ]
             assert len(progress_reports) == 1
             # WHICH report survived, not just how many. The handler throttles
             # by dropping anything inside the window, so the report that

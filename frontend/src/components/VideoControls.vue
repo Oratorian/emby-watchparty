@@ -29,10 +29,7 @@ interface StreamsResponse {
   audio: AudioStream[]
   subtitles: SubtitleStream[]
   media_source_id: string | null
-  // `versions` is still in the response shape (issue #43) but the
-  // version picker now lives in the library, not in this controls
-  // strip -- the host locks the version at select_video time. We
-  // ignore the field here intentionally.
+  versions: Array<{ id: string; name: string; container: string | null; run_time_ticks: number | null }>
 }
 
 interface IntroData {
@@ -47,6 +44,13 @@ const props = defineProps<{
   quality: string
   currentTime: number
   mediaSourceId?: string
+  // The party's current selection, exactly as `quality` already works. The
+  // detail view can set a non-default audio or subtitle track for everyone,
+  // and without these the strip seeded itself from the source's IsDefault
+  // instead, then re-emitted change_streams with that stale index and reverted
+  // the party's choice for this viewer.
+  audioIndex?: number | null
+  subtitleIndex?: number | null
   // Optional total runtime in seconds. Used to clamp the
   // jump-to-timestamp input so a typo can't seek past the end of
   // media. When null the popover still works but the validation
@@ -65,7 +69,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'change-streams': [payload: { audioIndex: number; subtitleIndex: number; quality: string }]
+  'change-streams': [payload: { audioIndex: number; subtitleIndex: number; quality: string; mediaSourceId?: string }]
   'change-text-subtitle': [payload: { index: number; url: string | null }]
   'skip-intro': [endTime: number]
   // Relative jump in seconds. Sign indicates direction (-30, -10, +10,
@@ -85,6 +89,8 @@ const subtitleTracks = ref<SubtitleStream[]>([])
 const selectedAudio = ref<number>(0)
 const selectedSubtitle = ref<number>(-1)
 const selectedQuality = ref(props.quality)
+const versions = ref<StreamsResponse['versions']>([])
+const selectedVersion = ref(props.mediaSourceId || '')
 const intro = ref<IntroData | null>(null)
 const appliedInitialSubtitleKey = ref<string | null>(null)
 
@@ -173,7 +179,7 @@ function applyInitialSubtitleSelection() {
   appliedInitialSubtitleKey.value = key
 }
 
-async function fetchStreams() {
+async function fetchStreams(mediaSourceId = props.mediaSourceId) {
   if (!props.itemId) return
   try {
     // Scope to the current version so audio/subtitle dropdowns reflect
@@ -183,21 +189,42 @@ async function fetchStreams() {
     // party is on.
     const data: StreamsResponse = await api.itemStreams(
       props.itemId,
-      props.mediaSourceId,
+      mediaSourceId,
     )
     audioTracks.value = data.audio || []
     subtitleTracks.value = data.subtitles || []
+    versions.value = data.versions || []
+    selectedVersion.value = data.media_source_id || mediaSourceId || data.versions?.[0]?.id || ''
 
-    const defaultAudio = audioTracks.value.find((t) => t.isDefault)
-    if (defaultAudio) selectedAudio.value = defaultAudio.index
+    // The party's selection wins over the source's default, the same
+    // precedence `quality` already has. Falling back to IsDefault
+    // unconditionally is what reverted a track chosen in the detail view.
+    const partyAudio = props.audioIndex
+    const partyAudioExists =
+      partyAudio != null && audioTracks.value.some((t) => t.index === partyAudio)
+    if (partyAudioExists) {
+      selectedAudio.value = partyAudio
+    } else {
+      const defaultAudio = audioTracks.value.find((t) => t.isDefault)
+      if (defaultAudio) selectedAudio.value = defaultAudio.index
+    }
 
-    const defaultSub = subtitleTracks.value.find((t) => t.isDefault)
-    selectedSubtitle.value = defaultSub ? defaultSub.index : -1
+    const partySubtitle = props.subtitleIndex
+    const partySubtitleExists =
+      partySubtitle != null &&
+      (partySubtitle === -1 || subtitleTracks.value.some((t) => t.index === partySubtitle))
+    if (partySubtitleExists) {
+      selectedSubtitle.value = partySubtitle
+    } else {
+      const defaultSub = subtitleTracks.value.find((t) => t.isDefault)
+      selectedSubtitle.value = defaultSub ? defaultSub.index : -1
+    }
     appliedInitialSubtitleKey.value = null
     applyInitialSubtitleSelection()
   } catch {
     audioTracks.value = []
     subtitleTracks.value = []
+    versions.value = []
     appliedInitialSubtitleKey.value = null
   }
 }
@@ -221,6 +248,7 @@ function onAudioChange() {
     audioIndex: selectedAudio.value,
     subtitleIndex: selectedBurnedSubtitleIndex(),
     quality: selectedQuality.value,
+    mediaSourceId: selectedVersion.value || undefined,
   })
 }
 
@@ -247,6 +275,7 @@ function onSubtitleChange() {
         audioIndex: selectedAudio.value,
         subtitleIndex: -1,
         quality: selectedQuality.value,
+        mediaSourceId: selectedVersion.value || undefined,
       })
     }
     wasBurnedSub = false
@@ -257,19 +286,21 @@ function onSubtitleChange() {
       audioIndex: selectedAudio.value,
       subtitleIndex: idx,
       quality: selectedQuality.value,
+      mediaSourceId: selectedVersion.value || undefined,
     })
     wasBurnedSub = true
   } else {
     // Text-based sub -- load locally per user. Only rebuild the
     // stream if leaving a burned sub (to remove the burn).
-    if (!props.mediaSourceId) return
-    const url = withPrefix(`/api/subtitles/${props.itemId}/${props.mediaSourceId}/${idx}`)
+    if (!selectedVersion.value) return
+    const url = withPrefix(`/api/subtitles/${props.itemId}/${selectedVersion.value}/${idx}`)
     emit('change-text-subtitle', { index: idx, url })
     if (wasBurnedSub) {
       emit('change-streams', {
         audioIndex: selectedAudio.value,
         subtitleIndex: -1,
         quality: selectedQuality.value,
+        mediaSourceId: selectedVersion.value || undefined,
       })
     }
     wasBurnedSub = false
@@ -281,6 +312,17 @@ function onQualityChange() {
     audioIndex: selectedAudio.value,
     subtitleIndex: selectedBurnedSubtitleIndex(),
     quality: selectedQuality.value,
+    mediaSourceId: selectedVersion.value || undefined,
+  })
+}
+
+async function onVersionChange() {
+  await fetchStreams(selectedVersion.value)
+  emit('change-streams', {
+    audioIndex: selectedAudio.value,
+    subtitleIndex: selectedBurnedSubtitleIndex(),
+    quality: selectedQuality.value,
+    mediaSourceId: selectedVersion.value || undefined,
   })
 }
 
@@ -463,6 +505,12 @@ onMounted(() => {
 
 <template>
   <div class="video-controls">
+    <div class="control-group" v-if="versions.length > 1">
+      <label for="version-select">Version</label>
+      <select id="version-select" v-model="selectedVersion" @change="onVersionChange">
+        <option v-for="version in versions" :key="version.id" :value="version.id">{{ version.name }}</option>
+      </select>
+    </div>
     <div class="control-group" v-if="audioTracks.length">
       <label for="audio-select">Audio</label>
       <select id="audio-select" v-model="selectedAudio" @change="onAudioChange">

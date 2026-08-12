@@ -3,9 +3,10 @@
 Platform guides: [Compose](compose.md), [CasaOS](casaos.md), [Portainer](portainer.md), and
 [TrueNAS SCALE](truenas.md).
 
-Unraid is deliberately outside this artifact set. Its Community Apps repository owns the
-container template and exposes its flags through the Unraid WebUI; review that packaging in its
-own repository instead of generating a second template here.
+Unraid is deliberately outside this artifact set. The maintainer owns its separate templates
+repository; Community Apps indexes that repository through `TemplateURL` and exposes the template's
+flags through the Unraid WebUI. Review that packaging there instead of generating a second template
+here.
 
 ## Preflight interpretation
 

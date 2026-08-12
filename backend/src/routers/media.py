@@ -1,11 +1,12 @@
-"""
-Media Router - Intro info, image proxy, subtitle proxy.
+"""Media Router - Intro info, image proxy, subtitle proxy.
 
 `/intro` requires require_party_unlocked (the host's library is being
 queried). `/image` and `/subtitles` only require require_host_token so
 that the poster art and subtitles of the in-flight video keep working
 during the PLAYING-ONLY state after the host leaves.
 """
+
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
@@ -23,7 +24,13 @@ from backend.src.dependencies import (
 )
 from backend.src.schemas import IntroResponse
 
-router = APIRouter(prefix="/api", tags=["media"])
+# Every route here reaches Emby, so 502 is declared once on the router rather
+# than repeated per route. See the same note in routers/library.py.
+router = APIRouter(
+    prefix="/api",
+    tags=["media"],
+    responses={502: {"description": "Emby upstream unavailable"}},
+)
 
 
 @router.get(
@@ -77,7 +84,8 @@ async def get_intro_info(
 )
 async def api_image(
     item_id: str,
-    type: str = Query("Primary"),
+    type: Literal["Primary", "Backdrop", "Logo", "Thumb", "Art", "Banner"] = Query("Primary"),
+    index: int | None = Query(None, ge=0, le=99),
     # Optional sizing forwarded to Emby. Library card thumbnails only
     # need ~240x360, but the original 2.0 endpoint proxied the full
     # poster bytes (often ~1000px wide / hundreds of KB) which made
@@ -102,6 +110,7 @@ async def api_image(
         max_width=max_width,
         max_height=max_height,
         quality=quality,
+        image_index=index,
     )
     try:
         emby_resp = await emby_gateway.get(
