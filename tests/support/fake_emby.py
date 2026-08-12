@@ -178,12 +178,12 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         unreachable from a test: the 502 mappings and the filter-option
         degradation could not be exercised even in principle.
         """
-        if not request.url.path.startswith("/__test__"):
-            if failure := await state.before(request):
-                # The handler never runs, so it cannot record the attempt.
-                # Retry tests count attempts, and a failed one still happened.
-                state.record(request)
-                return failure
+        is_upstream = not request.url.path.startswith("/__test__")
+        if is_upstream and (failure := await state.before(request)):
+            # The handler never runs, so it cannot record the attempt. Retry
+            # tests count attempts, and a failed one still happened.
+            state.record(request)
+            return failure
         return await call_next(request)
 
     @app.get("/__test__/requests")
