@@ -836,19 +836,31 @@ onUnmounted(() => {
  * and nesting one inside another makes the click target ambiguous. The height
  * matches the select boxes so the row reads as one band of controls; the
  * container aligns to the controls rather than their captions. */
+/* A control box, not bare text beside a switch.
+ *
+ * ToggleSwitch is intrinsically 22px and the row's controls are 36px, so the
+ * switch alone still read as shorter than everything next to it even once the
+ * row was aligned. Giving it the same bordered box as its neighbours makes the
+ * heights match without resizing a component that AdminPanel also uses at its
+ * current size. */
 .binge-toggle {
   display: flex;
   align-items: center;
   gap: .55rem;
-  /* Same height as the controls beside it, so bottom-aligning the row also
-     centres the switch against the select and the button. Without this the
-     span shrank to its text and floated above the shared baseline. */
   height: var(--control-height);
-  padding: 0;
+  box-sizing: border-box;
+  padding: 0 .75rem;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, .18));
+  border-radius: 8px;
+  background: rgba(18, 20, 28, .9);
   color: var(--text-primary);
   font-size: .85rem;
   white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--transition-fast, .15s);
 }
+.binge-toggle:hover,
+.binge-toggle:focus-within { border-color: var(--accent-primary, #00e0ff); }
 /* One row for both control groups. Two stacked sections with their own
    headings cost four vertical bands for a single set of controls, on a page
    whose whole complaint was that it kept extending downwards. */
