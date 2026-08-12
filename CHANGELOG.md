@@ -130,7 +130,7 @@ The client probes with `MediaSource.isTypeSupported` for the hls.js path and `ca
 
 Four things differ from the 2.1.2 change, all because 3.0 has diverged underneath it. `join_party` is a validated typed contract, so `video_codecs` is declared on `JoinPartyPayload` and the schema and TypeScript types are regenerated; strict inbound validation then makes the payload the first gate and the allowlist the second. The party is a typed aggregate, so codecs are a domain field rather than a dict key. The reconnect join lives in `usePartyReconnect`, so there are three emit sites rather than two. And a client that sends nothing gets the default empty list, which reads as H.264-only, which is exactly what an un-upgraded frontend sends.
 
-Test coverage since beta1: **267 backend tests** across 36 modules (was 116), **65 Vitest** across 21 files (was 17), **16 Playwright** (was 14), with `ruff check`, `ruff format` and `eslint` clean, `mypy` clean over 48 source files, and both generated contracts free of drift.
+Test coverage since beta1: **267 backend tests** across 36 modules (was 116), **70 Vitest** across 23 files (was 17), **16 Playwright** (was 14), with `ruff check`, `ruff format` and `eslint` clean, `mypy` clean over 48 source files, and both generated contracts free of drift.
 
 ---
 

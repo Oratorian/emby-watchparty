@@ -54,7 +54,11 @@ The `providerid` rule was dead code. `ProviderIds` is a dict and the key check s
 
 The leak test could not fail. `PRIVATE_MARKERS` listed `api_key`, `access_token`, `password` and two IP prefixes, every one of them a string the sanitizer already redacts unconditionally, so the assertion had nothing to match and passed over a corpus containing all of the above.
 
-All three had to hold simultaneously for this to ship. The sanitizer now default-denies with the private flag inherited through the recursion, the test asserts the positive property (every string leaf under a title key, a private ancestor, or matching a content-betraying shape must be a placeholder), and the committed corpus is repaired in place: 169 values across 10 files. **The working tree is clean; git history is not.** Removing it there needs a history rewrite, which is the maintainer's call.
+All three had to hold simultaneously for this to ship. The sanitizer now default-denies with the private flag inherited through the recursion, the test asserts the positive property (every string leaf under a title key, a private ancestor, or matching a content-betraying shape must be a placeholder), and the committed corpus is repaired in place: 169 values across 10 files.
+
+The branch history was then rewritten so that no commit on it ever carried the raw corpus. 28 of its 60 commits did; all 28 now hold the sanitized version. Verified by walking every commit for the hostname and the external ids, both now zero, with the final tree byte-identical to the pre-rewrite branch. The local refs that held the raw blobs are deleted and the objects pruned.
+
+Worth stating precisely, because the first framing of this was too broad: the raw corpus has **never** been on any Oratorian branch, pushed or local. `3.0-dev` and `main` do not contain it, so nothing published ever carried it and no force-push is needed. The remaining exposure is dnordel's fork branch and the `refs/pull/60/head` that GitHub retains for the closed PR, neither of which a rewrite here can reach. Clearing those needs dnordel to delete the fork branch and GitHub support to purge the PR ref.
 
 #### Both recurring patterns, again
 
@@ -82,11 +86,11 @@ That same assertion found nine fields the backend has always sent that the front
 
 Every fix for a real defect has a test proven to fail against the code it replaces, by reverting the source and rerunning. Where a test passes on both sides it is labelled a guard rather than passed off as coverage: two of the four `VideoControls` tests are guards, and the commit says so.
 
-Two fixes have **no** automated test and are flagged rather than implied: the party-rejoin hang and the filter-panel wipe both need a mounted `PartyView` or a genuinely aborted in-flight request, and neither could be written to a standard worth trusting over the reasoning.
+Two fixes initially shipped without a test, flagged rather than implied, and both now have one. The party-rejoin hang mounts `PartyView` against a store that already knows the party and asserts the join is re-emitted; restoring the old guard fails that case while the other two keep passing, which is precisely the reported symptom. The filter-panel wipe drives an aborted fetch, leaves the library and returns, and asserts the second visit refetches; restoring the old catch fails it with one call instead of two. A second case pins that a genuine failure still empties the controls, so the abort path cannot become a way to swallow real errors.
 
 One test was written, found to be a tautology that re-implemented the clamp arithmetic it was meant to check, and deleted in favour of one driving real Emby tick payloads. A `vue-tsc` error was committed and caught one commit later, because the exit code had been read through a pipe and reported `tail`'s status.
 
-State after this work: **267 backend tests** across 36 modules, **65 Vitest** across 21 files, **16 Playwright**. `ruff check` and `ruff format --check` clean over 90 files, `mypy` clean over 48, eslint and `vue-tsc` clean, the socket contract, the REST contract and the deployment artifacts all free of drift. All on 3.12.10, run with CI's exact commands.
+State after this work: **267 backend tests** across 36 modules, **70 Vitest** across 23 files, **16 Playwright**. `ruff check` and `ruff format --check` clean over 90 files, `mypy` clean over 48, eslint and `vue-tsc` clean, the socket contract, the REST contract and the deployment artifacts all free of drift. All on 3.12.10, run with CI's exact commands.
 
 ---
 
