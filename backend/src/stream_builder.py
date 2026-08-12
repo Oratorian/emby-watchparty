@@ -34,6 +34,7 @@ class StreamBuilder:
         subtitle_index: int | None,
         quality: str,
         start_time_ticks: int | None = None,
+        client_codecs: set[str] | None = None,
     ) -> list:
         """Build HLS URL parameters for Emby.
 
@@ -42,6 +43,14 @@ class StreamBuilder:
         or a `<resolution>-<kbps>` id like `1080p-15000`. Unknown or
         legacy ids fall back to the closest current equivalent via
         `resolve_quality`.
+
+        `client_codecs` is the set of video codecs this specific viewer
+        reported it can decode, e.g. `{"h264", "hevc"}`. Streams are built
+        per viewer, so this is per viewer too: whether the source stays in
+        its own codec is a property of the browser asking, not of the
+        party. `None` means the client told us nothing, which is treated
+        as h264-only because that is the one codec every target browser
+        decodes.
 
         Returns a list of `key=value` parameter strings (joined later by
         `build_stream_url`).
@@ -64,13 +73,28 @@ class StreamBuilder:
                 )
                 break
 
+        # Which codec this viewer actually gets. Historically this was
+        # always h264: a lowest-common-denominator choice made server-side
+        # with no idea what the browser could decode, so an HEVC source was
+        # re-encoded even for a client that would have played it directly
+        # (#61). The client now reports what it can decode, and because
+        # streams are already built per viewer, the answer can differ
+        # between two people in the same party.
+        #
+        # Falling back to h264 whenever the client said nothing keeps the
+        # old behaviour for any client that has not been updated, and for
+        # the ones that genuinely cannot decode anything else.
+        supported = {codec.lower() for codec in (client_codecs or ())} or {"h264"}
+        keep_source_codec = bool(source_video_codec) and source_video_codec in supported
+        target_video_codec = source_video_codec if keep_source_codec else "h264"
+
         # TranscodeReasons is informational -- Emby uses it for logging
         # and telemetry, not for the transcode-or-copy decision itself.
-        # We only set it when we actually want a transcode (h265 source,
-        # or the user picked an explicit bitrate cap). Auto + h264 leaves
-        # it empty so Emby can stream-copy.
+        # We only set it when we actually want a transcode (a source the
+        # viewer cannot decode, or an explicit bitrate cap). Leaving it
+        # empty is what lets Emby stream-copy.
         transcode_reasons = []
-        if source_video_codec and source_video_codec != "h264":
+        if not keep_source_codec and source_video_codec and source_video_codec != "h264":
             transcode_reasons.append("VideoCodecNotSupported")
         elif bitrate_kbps is not None:
             transcode_reasons.append("ContainerBitrateExceedsLimit")
@@ -95,7 +119,7 @@ class StreamBuilder:
             "MinSegments=1",
             "h264-profile=high,main,baseline,constrainedbaseline",
             "h264-level=62",
-            "VideoCodec=h264",
+            f"VideoCodec={target_video_codec}",
         ]
 
         if max_width is not None:
@@ -124,21 +148,33 @@ class StreamBuilder:
                 target_bitrate = source_video_bitrate
             params.append(f"VideoBitrate={target_bitrate}")
 
-        # Human-readable summary of what we asked Emby to do.
-        if source_video_codec and source_video_codec != "h264":
+        # Human-readable summary of what we asked Emby to do. These read
+        # the same values that built the params, so the log cannot claim a
+        # transcode the URL did not request; the codec line was previously
+        # written independently and went stale the moment the parameter
+        # changed (#61).
+        if keep_source_codec and source_video_codec != "h264":
+            self._logger.info(
+                f"Source is {source_video_codec} and the client decodes it; "
+                f"keeping {source_video_codec}"
+                + (f" at {target_bitrate // 1000} kbps" if target_bitrate else " (no bitrate cap)")
+            )
+        elif source_video_codec and source_video_codec != "h264":
             if target_bitrate is not None:
                 self._logger.info(
-                    f"Source is {source_video_codec}, transcoding to h264 at "
+                    f"Source is {source_video_codec}, client cannot decode it, "
+                    f"transcoding to h264 at "
                     f"{max_width}x{max_height} / {target_bitrate // 1000} kbps"
                 )
             elif max_width is not None:
                 self._logger.info(
-                    f"Source is {source_video_codec}, transcoding to h264 at "
-                    f"{max_width}x{max_height} (no bitrate cap)"
+                    f"Source is {source_video_codec}, client cannot decode it, "
+                    f"transcoding to h264 at {max_width}x{max_height} (no bitrate cap)"
                 )
             else:
                 self._logger.info(
-                    f"Source is {source_video_codec}, transcoding to h264 (Auto, no caps)"
+                    f"Source is {source_video_codec}, client cannot decode it, "
+                    f"transcoding to h264 (Auto, no caps)"
                 )
         elif target_bitrate is not None:
             if max_width is not None and source_width and source_width > max_width:
@@ -215,6 +251,7 @@ class StreamBuilder:
         subtitle_index: int | None,
         quality: str,
         start_time_ticks: int | None = None,
+        client_codecs: set[str] | None = None,
     ) -> str:
         """Build the full relative HLS stream URL"""
         params = self.build_params(
@@ -225,6 +262,7 @@ class StreamBuilder:
             subtitle_index,
             quality,
             start_time_ticks,
+            client_codecs=client_codecs,
         )
         param_string = "&".join(params)
         prefix = app_prefix or ""

@@ -23,6 +23,7 @@ export interface ClientToServerPayloads {
     "username"?: string
     "client_id"?: string
     "avatar_uuid"?: string | null
+    "video_codecs"?: string[]
   }
   "join_vote": {
     "party_id": string

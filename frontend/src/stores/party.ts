@@ -5,6 +5,7 @@ import { useAvatarStore } from './avatar'
 import { useAuthStore } from './auth'
 import { ApiError, api } from '@/api/client'
 import type { ServerToClientPayloads } from '@/types/socket.generated'
+import { detectVideoCodecs } from '@/utils/videoCodecs'
 
 export interface MemberInfo {
   username: string
@@ -182,6 +183,7 @@ export const usePartyStore = defineStore('party', () => {
       username: name,
       client_id: clientId,
       avatar_uuid: avatarUuid,
+      video_codecs: detectVideoCodecs(),
     })
   }
 
@@ -252,6 +254,7 @@ export const usePartyStore = defineStore('party', () => {
           username: name,
           client_id: clientId,
           avatar_uuid: avatarUuid,
+          video_codecs: detectVideoCodecs(),
         })
       }
       return ok

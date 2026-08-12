@@ -6,7 +6,7 @@ from functools import wraps
 from time import perf_counter
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 if TYPE_CHECKING:
     import logging
@@ -34,6 +34,13 @@ class JoinPartyPayload(PartyPayload):
     username: str = ""
     client_id: str = ""
     avatar_uuid: str | None = None
+    # Video codecs this viewer's browser reported it can decode. Streams are
+    # built per viewer, so this decides whether an HEVC source stays HEVC for
+    # this person or is transcoded to h264 (#61). Typed loosely on purpose:
+    # the handler allowlists the contents, because the value reaches an Emby
+    # stream URL. Defaults to empty, which reads as h264-only, so a client
+    # that predates this still joins and still gets a playable stream.
+    video_codecs: list[str] = Field(default_factory=list)
 
 
 class JoinVotePayload(PartyPayload):

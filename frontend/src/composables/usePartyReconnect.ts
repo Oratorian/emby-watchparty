@@ -2,6 +2,7 @@ import { onUnmounted } from 'vue'
 import type { useAvatarStore } from '@/stores/avatar'
 import type { usePartyStore } from '@/stores/party'
 import type { useSocketStore } from '@/stores/socket'
+import { detectVideoCodecs } from '@/utils/videoCodecs'
 
 type SocketStore = ReturnType<typeof useSocketStore>
 type PartyStore = ReturnType<typeof usePartyStore>
@@ -36,6 +37,9 @@ export function usePartyReconnect(
       username: party.username,
       client_id: clientId(),
       avatar_uuid: avatar.uuid,
+      // Re-sent on every rejoin: the server keys codecs on client_id, but a
+      // reconnect after a server restart finds no stored party at all.
+      video_codecs: detectVideoCodecs(),
     })
   }
 
