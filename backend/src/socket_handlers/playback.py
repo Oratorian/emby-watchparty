@@ -39,6 +39,32 @@ class EpisodeContext(TypedDict):
     next_item_title: str | None
 
 
+# Never start at the very last frame: Emby answers a start at or past the end
+# with a zero-length manifest, which the player reports as an immediate `ended`.
+END_OF_MEDIA_BUFFER_SECONDS = 5.0
+
+
+def media_source_run_time(media_source: dict | None) -> float:
+    """Runtime of an Emby media source in seconds, 0.0 when it does not say."""
+    if not isinstance(media_source, dict):
+        return 0.0
+    return (media_source.get("RunTimeTicks") or 0) / 10_000_000
+
+
+def clamp_start_seconds(start_seconds: float | None, run_time: float | None) -> float:
+    """Hold a resume offset inside the runtime of the source being started.
+
+    One definition shared by every path that resumes playback. It existed in
+    two places and was missing from a third: the in-player version switch,
+    which is the one route that can change WHICH source is playing, and so the
+    one most able to hand Emby a start time past the end of media.
+    """
+    clamped = max(0.0, float(start_seconds or 0))
+    if run_time:
+        clamped = min(clamped, max(0.0, float(run_time) - END_OF_MEDIA_BUFFER_SECONDS))
+    return clamped
+
+
 def register(ctx):
     sio = ctx["sio"]
     emby_client = ctx["emby_client"]
@@ -512,14 +538,11 @@ def register(ctx):
             next_item_title=episode_ctx["next_item_title"],
         )
 
-        # Clamp the requested resume offset to a safe window inside the
-        # runtime so a stale UserData.PlaybackPositionTicks (e.g. from
-        # a media re-encode that shortened the file) can't push past
-        # the end of media or back below zero. Leave a 5s buffer at
-        # the end so we never start at the very last frame.
-        resume_offset = max(0.0, float(start_seconds or 0))
-        if run_time_seconds:
-            resume_offset = min(resume_offset, max(0.0, run_time_seconds - 5))
+        # Clamp the requested resume offset to a safe window inside the runtime
+        # so a stale UserData.PlaybackPositionTicks (e.g. from a media
+        # re-encode that shortened the file) can't push past the end of media
+        # or back below zero.
+        resume_offset = clamp_start_seconds(start_seconds, run_time_seconds)
 
         committed_party = await party_manager.commit_video_selection(
             party_id,
@@ -874,6 +897,13 @@ def register(ctx):
             except (TypeError, ValueError):
                 pass
 
+        # Clamped against the source we are switching TO, not the one the party
+        # clock was measured against. This route honours a caller-supplied
+        # media_source_id, so switching a 150-minute extended cut to a
+        # 120-minute theatrical at 02:20:00 asked Emby to start past the end of
+        # media. The runtime is already in hand from the fetch above.
+        start_seconds = clamp_start_seconds(current_time, media_source_run_time(media_source))
+
         stream = await _create_user_stream(
             party,
             party_id,
@@ -883,7 +913,7 @@ def register(ctx):
             audio_index=audio_index,
             subtitle_index=subtitle_index,
             quality=quality,
-            start_seconds=current_time,
+            start_seconds=start_seconds,
             media_source_id=media_source_id,
         )
         if not stream:

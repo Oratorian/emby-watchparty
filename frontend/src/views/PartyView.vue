@@ -931,6 +931,12 @@ function onVideoEnded() {
   // per-user transcodes and (when binge-watching is on) queue the
   // auto-advance to the next episode.
   if (!party.partyId || !party.currentVideo) return
+  // A stream being rebuilt fires a synthetic `ended` before the new manifest
+  // attaches. onVideoPlay and onVideoPause both guard on this; this handler did
+  // not, and it is the most destructive of the three: from the selector it
+  // stops every viewer's transcode and clears the party's video, so one
+  // viewer's quality or version change could end the film for the room.
+  if (myStreamReloading.value) return
   const myClientId = getClientId()
   if (party.currentVideo.selected_by !== myClientId) return
   socket.emit('video_ended', { party_id: party.partyId })
