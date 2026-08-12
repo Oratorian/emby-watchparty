@@ -14,6 +14,10 @@ party it leaves exactly one person with a black video.
 import logging
 from types import SimpleNamespace
 
+import pytest
+from pydantic import ValidationError
+
+from backend.src.socket_protocol import JoinPartyPayload
 from backend.src.stream_builder import StreamBuilder
 
 
@@ -138,3 +142,40 @@ def test_client_codec_claims_are_allowlisted_before_they_reach_the_builder():
     assert _parse_client_codecs("hevc") == {"h264"}
     assert _parse_client_codecs({"hevc": True}) == {"h264"}
     assert _parse_client_codecs([1, None, {"x": 1}]) == {"h264"}
+
+
+def test_a_join_that_predates_this_field_still_validates():
+    """join_party is a strict typed contract here, unlike on 2.x.
+
+    So the field being optional is not a nicety: if a missing video_codecs
+    failed validation, an unpatched client could not join the party at all.
+    Losing the party is a far worse outcome than losing a stream copy.
+    """
+    payload = JoinPartyPayload.model_validate(
+        {"party_id": "p-1", "username": "Alice", "client_id": "c-1"}
+    )
+
+    assert payload.video_codecs == []
+
+    from backend.src.socket_handlers.party import _parse_client_codecs
+
+    assert _parse_client_codecs(payload.video_codecs) == {"h264"}
+
+
+@pytest.mark.parametrize("malformed", ["hevc", None, [1], {"hevc": True}, [None]])
+def test_strict_validation_rejects_a_codec_list_of_the_wrong_shape(malformed):
+    """Strict validation is the first gate, ahead of the allowlist.
+
+    _parse_client_codecs defends against these shapes too, and keeps doing so
+    because it is also reachable from the 2.x-shaped payload, but on 3.0
+    nothing of the wrong type gets that far. Pinned so that a later loosening
+    of the contract cannot quietly move the trust boundary.
+    """
+    with pytest.raises(ValidationError):
+        JoinPartyPayload.model_validate({"party_id": "p-1", "video_codecs": malformed})
+
+
+def test_a_declared_codec_list_reaches_the_handler_uncoerced():
+    payload = JoinPartyPayload.model_validate({"party_id": "p-1", "video_codecs": ["hevc", "h264"]})
+
+    assert payload.video_codecs == ["hevc", "h264"]
