@@ -61,21 +61,28 @@ async function search() {
     groups.value = []
     submitted.value = false
     loading.value = false
-    emit('results', { query: value, groups: [] })
+    // Empty for the same reason as the watcher above: no search ran.
+    emit('results', { query: '', groups: [] })
     return
   }
   const token = ++requestToken
-  controller = new AbortController()
+  // Held locally as well. cancel() nulls the shared `controller`, so by the
+  // time an aborted request rejects, `controller?.signal.aborted` reads
+  // undefined and the AbortError fell through to the error branch: every
+  // keystroke that superseded an in-flight search raised a "Search
+  // unavailable." alert, and nothing cleared it.
+  const myController = new AbortController()
+  controller = myController
   loading.value = true
   submitted.value = true
   error.value = ''
   try {
-    const response = await api.groupedSearch(value, controller.signal)
+    const response = await api.groupedSearch(value, myController.signal)
     if (token !== requestToken) return
     groups.value = response.groups
     emit('results', response)
   } catch (cause) {
-    if (token !== requestToken || controller?.signal.aborted) return
+    if (token !== requestToken || myController.signal.aborted) return
     groups.value = []
     error.value = cause instanceof Error ? cause.message : 'Search unavailable.'
   } finally {
@@ -88,7 +95,12 @@ watch(query, () => {
   if (query.value.trim().length < 2) {
     groups.value = []
     submitted.value = false
-    emit('results', { query: query.value.trim(), groups: [] })
+    // Reported as an EMPTY query, not as the one character typed. Below the
+    // minimum no search has run, so the parent must restore the library. It
+    // keys "no search active" off an empty query, and sending "s" instead was
+    // read as a live search that matched nothing, wiping the grid to "No
+    // items found." on the way down from two characters to one.
+    emit('results', { query: '', groups: [] })
     return
   }
   timer = setTimeout(() => void search(), 300)

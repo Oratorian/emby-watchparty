@@ -101,7 +101,10 @@ export interface LibraryItem {
   CriticRating?: number
   OfficialRating?: string
   Genres?: string[]
-  Tags?: string[]
+  // Emby 4.9.5.0 sends TagItems, never a flat Tags array; confirmed against
+  // every captured detail response. The Tags section read the field that does
+  // not arrive, so it never rendered for any title.
+  TagItems?: Array<{ Id?: string; Name?: string }>
   People?: Array<{ Id?: string; Name?: string; Type?: string; Role?: string }>
   Studios?: Array<{ Id?: string; Name?: string }>
   ImageTags?: Record<string, string>

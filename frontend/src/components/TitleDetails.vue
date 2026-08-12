@@ -134,7 +134,7 @@
         <p>{{ details.People.map((person) => person.Name).filter(Boolean).join(' · ') }}</p>
       </section>
       <section v-if="details.Studios?.length"><h3>Studios</h3><p>{{ details.Studios.map((studio) => studio.Name).join(' · ') }}</p></section>
-      <section v-if="details.Tags?.length"><h3>Tags</h3><p>{{ details.Tags.join(' · ') }}</p></section>
+      <section v-if="tagNames.length"><h3>Tags</h3><p>{{ tagNames.join(' · ') }}</p></section>
       <section class="optional-sections">
         <h3>More</h3>
         <button
@@ -157,8 +157,13 @@
       </section>
       <section v-if="details.Type === 'Series'" class="series-browser">
         <h3>Seasons & episodes</h3>
+        <!-- Outside the loaded branch on purpose. A SEASONS failure leaves
+             seasonsLoaded false, so an error rendered only inside v-else was
+             invisible in exactly the case it existed for: the user pressed
+             Load seasons and nothing happened, with no message anywhere. -->
+        <p v-if="seriesError" role="alert">{{ seriesError }}</p>
         <button v-if="!seasonsLoaded" type="button" data-section="seasons" @click="loadSeasons()">
-          Load seasons
+          {{ seriesError ? 'Retry' : 'Load seasons' }}
         </button>
         <div v-else>
           <button
@@ -170,8 +175,7 @@
           >
             {{ season.Name }}
           </button>
-          <p v-if="seriesError" role="alert">{{ seriesError }}</p>
-          <ul v-else>
+          <ul v-if="!seriesError">
             <li v-for="episode in episodes" :key="episode.Id">
               <button type="button" :data-episode-id="episode.Id" @click="$emit('open', episode)">
                 {{ episode.Name }}
@@ -405,10 +409,35 @@ const runtime = computed(() => {
 const backdropUrl = computed(() => details.value
   ? api.imageUrl(details.value.Id, 'Backdrop', { maxWidth: 1600, maxHeight: 900, quality: 85 })
   : '')
+const tagNames = computed(() => (details.value?.TagItems ?? [])
+  .map((tag) => tag.Name)
+  .filter((name): name is string => Boolean(name)))
+
+function resetForNewItem() {
+  // Every piece of per-item state, not just `details`.
+  //
+  // This component is reused across item navigation rather than re-created,
+  // so anything left behind belongs to the previous title. loadSection
+  // early-returns when a section is already populated, which meant an episode
+  // opened from a series rendered the SERIES' Related, Extras and Trailers and
+  // could never refetch its own. The season list and episode list persisted
+  // the same way.
+  sectionControllers.forEach((sectionController) => sectionController.abort())
+  sectionControllers.clear()
+  sectionItems.value = {}
+  sectionErrors.value = {}
+  sectionLoading.value = null
+  seasons.value = []
+  seasonsLoaded.value = false
+  episodes.value = []
+  selectedSeason.value = ''
+  seriesError.value = ''
+}
 
 async function load() {
   controller?.abort()
   controller = new AbortController()
+  resetForNewItem()
   loading.value = true
   error.value = ''
   try {
