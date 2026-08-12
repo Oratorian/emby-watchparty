@@ -33,7 +33,6 @@ wheels/
 *.swp
 *.swo
 *~
-.claude
 .venv
 *.code-workspace
 .mypy_cache
@@ -48,9 +47,6 @@ Thumbs.db
 
 # Logs
 logs/
-old160
-old152
-merge-to-main.ps1
 *.backup
 
 #Configurations
@@ -66,4 +62,3 @@ images/avatars
 
 # Documentation
 TODO.md
-workflow-findings.md

@@ -6,7 +6,7 @@ The 2.0 "Midnight Premiere" log (beta1 through beta18, every Added / Changed / F
 
 ---
 
-## [Unreleased]
+## [3.0.0-beta2] - Unreleased Internal beta - Director's Cut
 
 Three bodies of work since beta1. Two are **[dnordel](https://github.com/dnordel)**'s, both
 landed on `3.0-dev` via their branch after an audit rather than through a PR merge:

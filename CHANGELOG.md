@@ -16,7 +16,7 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
-## [Unreleased]
+## [3.0.0-beta2] - Unreleased Internal beta - Director's Cut
 
 **Not published.** Nothing here is in `:3.0.0-beta1`, `:devel` or `:nightly` yet; pulling any of those still gets beta1. This section is what the next beta will carry.
 
