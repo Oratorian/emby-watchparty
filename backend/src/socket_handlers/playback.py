@@ -939,7 +939,14 @@ def register(ctx):
                     "selected_by": current_video.selected_by,
                     "quality": quality,
                 },
-                "current_time": current_time,
+                # The position the new stream ACTUALLY starts at, which is the
+                # clamped value, not the raw party clock. The client maps this
+                # stream's t=0 onto it, so sending the unclamped clock after a
+                # switch to a shorter version left this viewer's reported
+                # position minutes ahead of the frame on screen -- and drift
+                # correction then fought the gap. Identical to current_time
+                # whenever the clamp does not fire, which is the normal case.
+                "current_time": start_seconds,
                 "was_playing": was_playing,
             },
             to=sid,

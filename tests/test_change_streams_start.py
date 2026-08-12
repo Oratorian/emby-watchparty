@@ -66,6 +66,12 @@ async def _start_ticks(fake_url: str) -> list[int]:
 
 async def _exercise_clamped(base_url: str, fake_url: str) -> None:
     client, realtime, party_id = await _playing_host(base_url)
+    changed: list[dict] = []
+
+    @realtime.on("streams_changed")
+    async def on_changed(data):
+        changed.append(data)
+
     try:
         # Park the party clock past the end of this source. Reached in
         # practice by switching from a longer version to a shorter one.
@@ -90,6 +96,13 @@ async def _exercise_clamped(base_url: str, fake_url: str) -> None:
         # that nobody sees a rewind.
         assert start_seconds < MOVIE_RUN_TIME_SECONDS
         assert start_seconds >= MOVIE_RUN_TIME_SECONDS - 10
+
+        # And the client is told where the stream really starts, not where the
+        # party clock is. It maps this stream's t=0 onto this number, so the
+        # raw clock left the viewer's reported position minutes ahead of the
+        # frame actually on screen, with drift correction fighting the gap.
+        assert changed, "the switcher was never told their stream changed"
+        assert changed[-1]["current_time"] == start_seconds
     finally:
         await realtime.disconnect()
         await client.aclose()

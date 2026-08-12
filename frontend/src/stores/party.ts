@@ -553,8 +553,11 @@ export const usePartyStore = defineStore('party', () => {
 
     socket.on('streams_changed', (data: ServerToClientPayloads['streams_changed']) => {
       // Per-user: only this user receives their updated stream.
-      // Backend restarts the transcode with StartTimeTicks=current_time,
-      // so the new stream's time 0 maps to current_time media position.
+      // `current_time` is the position the backend actually started the new
+      // transcode at, so this stream's time 0 maps onto it. It is the party
+      // clock in the normal case, but a switch to a version shorter than the
+      // current position is clamped to land inside the new source, and the
+      // offset has to follow the stream rather than the clock.
       currentVideo.value = data.video
       if (data.video?.stream_url) {
         myStreamUrl.value = data.video.stream_url
