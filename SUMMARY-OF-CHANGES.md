@@ -92,7 +92,7 @@ ordering. Prefix failures hide the shortcut without breaking ordinary browsing.
 Contract tests pin Emby scope, prefix forwarding and anchored offsets. Chromium proves a
 jump into an unloaded mixed-letter catalog and upward paging; iPhone WebKit proves the
 compact header, root navigation, visible search/prefix controls and overflow bounds. A
-checked local `docker-compose.yml` is also included for building and running this checkout
+checked local `docker-compose.dev.yml` is also included for building and running this checkout
 with credentials supplied only through environment variables.
 
 ---
