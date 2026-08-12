@@ -251,15 +251,29 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
                     "Name": "Movies",
                     "Type": "CollectionFolder",
                     "CollectionType": "movies",
-                }
+                },
+                # A real deployment has more than one collection type, and the
+                # scope resolvers behave differently per type. With only a
+                # movies library present, a wrong Series scope was untestable.
+                {
+                    "Id": "library-2",
+                    "Name": "TV Shows",
+                    "Type": "CollectionFolder",
+                    "CollectionType": "tvshows",
+                },
             ],
-            "TotalRecordCount": 1,
+            "TotalRecordCount": 2,
         }
 
     @app.get("/emby/Library/MediaFolders")
     async def media_folders(request: Request):
         state.record(request)
-        return {"Items": [{"Id": "library-1", "Name": "Movies", "CollectionType": "movies"}]}
+        return {
+            "Items": [
+                {"Id": "library-1", "Name": "Movies", "CollectionType": "movies"},
+                {"Id": "library-2", "Name": "TV Shows", "CollectionType": "tvshows"},
+            ]
+        }
 
     @app.get("/emby/Items/Prefixes")
     async def item_prefixes(request: Request):

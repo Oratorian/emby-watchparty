@@ -71,3 +71,52 @@ def test_letter_jump_returns_an_absolute_page_in_alphabetical_order(live_watchpa
     assert count_query["SortBy"] == "SortName"
     assert page_query["SortBy"] == "SortName"
     assert "SortName" in page_query["Fields"].split(",")
+
+
+def _scope_of(recorded, path_suffix: str) -> dict:
+    rows = [dict(row["query"]) for row in recorded if row["path"].endswith(path_suffix)]
+    assert rows, f"no upstream request to {path_suffix}"
+    return rows[-1]
+
+
+def test_filtered_and_unfiltered_browsing_resolve_the_same_scope(live_watchparty) -> None:
+    """The two paths must agree about what a library contains.
+
+    GET /api/items resolves item types from the collection type server-side.
+    POST /api/items/query used to take them from a second map maintained in the
+    frontend, and the two disagreed: the query path sent MediaTypes=Video for a
+    tvshows library, but a real Emby Series carries no MediaType at all, so the
+    grid went empty the moment a user applied any filter or changed the sort.
+    """
+    client = _unlocked_client(live_watchparty)
+    try:
+        browse = client.get("/api/items", params={"parentId": "library-2"})
+        assert browse.status_code == 200
+        recorded = httpx.get(f"{live_watchparty.fake.url}/__test__/requests").json()["requests"]
+        browse_query = _scope_of(recorded, "/Items")
+
+        queried = client.post(
+            "/api/items/query",
+            json={
+                "scope": {
+                    "parent_id": "library-2",
+                    "include_item_types": [],
+                    "media_types": [],
+                    "recursive": False,
+                },
+                "page": {"start_index": 0, "limit": 50},
+                "sort": {"field": "SortName", "direction": "Ascending"},
+                "filters": {"favorite": True},
+            },
+        )
+        assert queried.status_code == 200
+        recorded = httpx.get(f"{live_watchparty.fake.url}/__test__/requests").json()["requests"]
+        query_scope = _scope_of(recorded, "/Items")
+    finally:
+        client.close()
+
+    assert browse_query["IncludeItemTypes"] == "Series"
+    assert query_scope["IncludeItemTypes"] == browse_query["IncludeItemTypes"]
+    assert query_scope["Recursive"] == browse_query["Recursive"] == "true"
+    # A Series has no MediaType, so sending one matches zero rows upstream.
+    assert "MediaTypes" not in query_scope

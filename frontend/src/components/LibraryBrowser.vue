@@ -452,27 +452,22 @@ function queryFilters(): LibraryQueryRequest['filters'] {
 }
 
 function queryScope(parentId: string): LibraryQueryRequest['scope'] {
-  const root = breadcrumbs.value[0]
-  const atLibraryRoot = breadcrumbs.value.length === 1 && root?.id === parentId
-  if (!atLibraryRoot || root.type !== 'CollectionFolder') {
-    return {
-      parent_id: parentId,
-      include_item_types: [],
-      media_types: [],
-      recursive: false,
-    }
-  }
-  const itemTypes: Record<string, string[]> = {
-    movies: ['Movie'],
-    tvshows: ['Series'],
-    boxsets: ['BoxSet'],
-    playlists: ['Playlist'],
-  }
+  // Deliberately sends no types and no recursion: the backend resolves both
+  // from the library's collection type, the same way it already does for the
+  // unfiltered GET /api/items browse.
+  //
+  // This used to carry a second, independently written copy of that map, and
+  // the two disagreed. It sent MediaTypes=Video for tvshows, but a real Emby
+  // Series carries no MediaType at all (confirmed in the captured 4.9.5.0
+  // corpus), so IncludeItemTypes=Series + MediaTypes=Video matched nothing and
+  // any filter or sort change emptied a TV library. It also knew only four
+  // collection types where the backend knows six, so music, homevideos and
+  // photos silently changed meaning the moment a filter was applied.
   return {
     parent_id: parentId,
-    include_item_types: itemTypes[root.collectionType ?? ''] ?? [],
-    media_types: ['movies', 'tvshows'].includes(root.collectionType ?? '') ? ['Video'] : [],
-    recursive: true,
+    include_item_types: [],
+    media_types: [],
+    recursive: false,
   }
 }
 

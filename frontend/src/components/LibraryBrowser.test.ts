@@ -200,12 +200,16 @@ describe('LibraryBrowser search routing', () => {
     await wrapper.get('input[value="Drama"]').setValue(true)
     await flushPromises()
 
+    // Scope is deliberately empty: the backend resolves item types from the
+    // library's collection type, the same resolver the unfiltered browse uses.
+    // This previously asserted a second copy of that map maintained here, which
+    // sent MediaTypes=Video for TV libraries and matched zero rows upstream.
     expect(queryItems).toHaveBeenCalledWith(expect.objectContaining({
       scope: {
         parent_id: 'library-1',
-        include_item_types: ['Movie'],
-        media_types: ['Video'],
-        recursive: true,
+        include_item_types: [],
+        media_types: [],
+        recursive: false,
       },
     }), expect.any(AbortSignal))
     expect(wrapper.get('[role="alert"]').text()).toContain('Could not load library')

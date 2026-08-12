@@ -287,8 +287,21 @@ class EmbyClient:
         page = query["page"]
         sort = query["sort"]
         filters = query["filters"]
+
+        # Same resolver GET /api/items uses. The caller sends no item types for
+        # a library root and this decides them from the collection type, so the
+        # filtered view and the unfiltered browse cannot disagree about which
+        # items the same on-screen library contains.
+        include_item_types = ",".join(scope["include_item_types"])
+        effective_recursive = scope["recursive"]
+        if not include_item_types and not effective_recursive and scope["parent_id"]:
+            resolved_type, effective_recursive = await self._resolve_item_scope(
+                scope["parent_id"], None, False, access_token, user_id
+            )
+            include_item_types = resolved_type or ""
+
         params: dict[str, str | int] = {
-            "Recursive": str(scope["recursive"]).lower(),
+            "Recursive": str(effective_recursive).lower(),
             "Fields": (
                 "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,"
                 "ParentIndexNumber,SeriesId,SeasonId,UserData,MediaSourceCount"
@@ -301,7 +314,7 @@ class EmbyClient:
 
         scalar_values = {
             "ParentId": scope["parent_id"],
-            "IncludeItemTypes": ",".join(scope["include_item_types"]),
+            "IncludeItemTypes": include_item_types,
             "MediaTypes": ",".join(scope["media_types"]),
             "SearchTerm": query.get("search_term"),
         }
