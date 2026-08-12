@@ -184,6 +184,12 @@ export const usePartyStore = defineStore('party', () => {
     const normalisedId = id.toUpperCase()
     partyId.value = normalisedId
     username.value = name
+    // Cleared before the first await, not just on a successful bind:
+    // going straight from a dead party to a live one would otherwise leave
+    // the "no longer exists" card up for the whole join, avatar load
+    // included -- and leave it frozen, since the countdown watcher fires on
+    // the transition into missing, which already happened.
+    partyMissing.value = false
     let clientId = getClientId()
     // Load the persisted avatar id (IndexedDB or localStorage) so it
     // can ride along on the join. Safe to call repeatedly.
@@ -351,6 +357,12 @@ export const usePartyStore = defineStore('party', () => {
     sessionError.value = null
     clearSessionRetryCountdown()
     supersededBy.value = null
+    // This store outlives PartyView. Left set, the next party the viewer
+    // opens renders the "no longer exists" card on mount -- and renders it
+    // frozen, because the watcher that drives the countdown only fires on a
+    // transition into `missing`, which already happened.
+    partyMissing.value = false
+    hidden.value = false
   }
 
   function submitVote(vote: 'yes' | 'no') {
