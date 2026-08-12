@@ -64,13 +64,14 @@ describe('TitleDetails across item navigation', () => {
       props: { item: { Id: 'series-1', Name: 'A Series', Type: 'Series' }, isHost: false },
     })
     await flushPromises()
-    await wrapper.get('button[data-section="seasons"]').trigger('click')
-    await flushPromises()
 
     // A seasons failure leaves seasonsLoaded false, so an error rendered only
     // inside the loaded branch was invisible in exactly the case it existed
-    // for: the button did nothing and said nothing.
+    // for: nothing happened and nothing was said. Seasons now load with the
+    // title, so the failure surfaces without anyone pressing anything, and the
+    // button survives purely as the way back from it.
     expect(wrapper.get('[role="alert"]').text()).toContain('Seasons unavailable.')
+    expect(wrapper.get('button[data-section="seasons"]').text()).toBe('Retry')
   })
 
   it('renders tags from the field Emby actually sends', async () => {
@@ -269,5 +270,98 @@ describe('the More popover presentation', () => {
     await wrapper.get('.section-close').trigger('click')
 
     expect(wrapper.find('.section-popover').exists()).toBe(false)
+  })
+})
+
+describe('the seasons and episodes pickers', () => {
+  const SEASONS = [
+    { Id: 'season-1', Name: 'Season 1', Type: 'Season' },
+    { Id: 'season-2', Name: 'Season 2', Type: 'Season' },
+  ]
+  const S1 = [
+    { Id: 'ep-1', Name: 'Maomao', Type: 'Episode', IndexNumber: 1 },
+    { Id: 'ep-2', Name: 'Chilly Apothecary', Type: 'Episode', IndexNumber: 2 },
+  ]
+  const S2 = [{ Id: 'ep-25', Name: 'The New Pure Consort', Type: 'Episode', IndexNumber: 1 }]
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.spyOn(api, 'itemDetails').mockResolvedValue({
+      Id: 'series-1', Name: 'A Series', Type: 'Series',
+    } as never)
+    vi.spyOn(api, 'qualityOptions').mockResolvedValue({
+      options: [{ id: 'auto', label: 'Auto' }], default_id: 'auto',
+    } as never)
+    vi.spyOn(api, 'seriesSeasons').mockResolvedValue({ items: SEASONS } as never)
+    vi.spyOn(api, 'seriesEpisodes').mockImplementation(
+      async (_series: string, seasonId?: string) =>
+        ({ items: seasonId === 'season-2' ? S2 : S1 }) as never,
+    )
+  })
+
+  async function loadedSeries() {
+    const wrapper = mount(TitleDetails, {
+      props: { item: { Id: 'series-1', Name: 'A Series', Type: 'Series' }, isHost: false },
+    })
+    await flushPromises()
+    // No click: seasons load with the title now.
+    return wrapper
+  }
+
+  it('offers seasons and episodes as two selects, not a wall of rows', async () => {
+    // Reported from a real series: Load seasons rendered every episode of the
+    // season as its own stacked row, which for a 24-episode season pushed the
+    // rest of the page out of view entirely.
+    const wrapper = await loadedSeries()
+
+    expect(wrapper.get('select[aria-label="Season"]').findAll('option')).toHaveLength(2)
+    // Episode options plus the placeholder.
+    expect(wrapper.get('select[aria-label="Episode"]').findAll('option')).toHaveLength(3)
+    expect(wrapper.findAll('button[data-episode-id]')).toHaveLength(0)
+  })
+
+  it('numbers each episode so a title alone is not the only handle', async () => {
+    const wrapper = await loadedSeries()
+
+    const options = wrapper.get('select[aria-label="Episode"]').findAll('option')
+    expect(options[1]!.text()).toBe('1. Maomao')
+    expect(options[2]!.text()).toBe('2. Chilly Apothecary')
+  })
+
+  it('replaces the episode list when another season is picked', async () => {
+    const wrapper = await loadedSeries()
+
+    await wrapper.get('select[aria-label="Season"]').setValue('season-2')
+    await flushPromises()
+
+    const text = wrapper.get('select[aria-label="Episode"]').text()
+    expect(text).toContain('The New Pure Consort')
+    // The previous season's episodes must be gone, not merely appended to.
+    expect(text).not.toContain('Maomao')
+  })
+
+  it('opens the chosen episode and resets the control', async () => {
+    const wrapper = await loadedSeries()
+
+    await wrapper.get('select[aria-label="Episode"]').setValue('ep-2')
+    await flushPromises()
+
+    expect(wrapper.emitted('open')?.[0]?.[0]).toMatchObject({ Id: 'ep-2' })
+
+    // The control resets, so the same episode can be chosen again. A select
+    // that kept its value would not fire change a second time, which is the
+    // behaviour that matters rather than what the DOM node reads.
+    await wrapper.get('select[aria-label="Episode"]').setValue('ep-2')
+    await flushPromises()
+    expect(wrapper.emitted('open')).toHaveLength(2)
+  })
+
+  it('reports how many episodes the season has', async () => {
+    const wrapper = await loadedSeries()
+    expect(wrapper.get('.series-count').text()).toBe('2 episodes')
+
+    await wrapper.get('select[aria-label="Season"]').setValue('season-2')
+    await flushPromises()
+    expect(wrapper.get('.series-count').text()).toBe('1 episode')
   })
 })

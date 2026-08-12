@@ -213,26 +213,62 @@
              invisible in exactly the case it existed for: the user pressed
              Load seasons and nothing happened, with no message anywhere. -->
         <p v-if="seriesError" role="alert">{{ seriesError }}</p>
-        <button v-if="!seasonsLoaded" type="button" data-section="seasons" @click="loadSeasons()">
+        <!-- Seasons load with the title. The button that used to gate this was
+             a step with no decision behind it: nobody opens a series detail
+             view and does not want its episodes. It survives only as a retry,
+             because a failed load does need a way back. -->
+        <p v-if="seasonsLoading && !seasonsLoaded" role="status">Loading seasons…</p>
+        <button
+          v-else-if="!seasonsLoaded"
+          type="button"
+          data-section="seasons"
+          @click="loadSeasons()"
+        >
           {{ seriesError ? 'Retry' : 'Load seasons' }}
         </button>
-        <div v-else>
-          <button
-            v-for="season in seasons"
-            :key="season.Id"
-            type="button"
-            :class="{ active: selectedSeason === season.Id }"
-            @click="selectSeason(season.Id)"
-          >
-            {{ season.Name }}
-          </button>
-          <ul v-if="!seriesError">
-            <li v-for="episode in episodes" :key="episode.Id">
-              <button type="button" :data-episode-id="episode.Id" @click="$emit('open', episode)">
-                {{ episode.Name }}
-              </button>
-            </li>
-          </ul>
+        <!-- Two selects rather than a button per season and a bulleted list of
+             every episode. A season of 24 episodes rendered 24 stacked rows
+             that pushed the rest of the page out of view, and a long-running
+             series made that unusable. -->
+        <div v-else class="series-pickers">
+          <label>
+            Season
+            <select
+              v-model="selectedSeason"
+              aria-label="Season"
+              @change="selectSeason(selectedSeason)"
+            >
+              <option v-for="season in seasons" :key="season.Id" :value="season.Id">
+                {{ season.Name }}
+              </option>
+            </select>
+          </label>
+
+          <label>
+            Episode
+            <select
+              v-model="chosenEpisode"
+              aria-label="Episode"
+              :disabled="episodesLoading || !episodes.length"
+              @change="openChosenEpisode"
+            >
+              <option value="">
+                {{ episodesLoading ? 'Loading…' : episodes.length ? 'Choose an episode…' : 'No episodes' }}
+              </option>
+              <option
+                v-for="episode in episodes"
+                :key="episode.Id"
+                :value="episode.Id"
+                :data-episode-id="episode.Id"
+              >
+                {{ episodeLabel(episode) }}
+              </option>
+            </select>
+          </label>
+
+          <p v-if="episodes.length" class="series-count">
+            {{ episodes.length }} episode{{ episodes.length === 1 ? '' : 's' }}
+          </p>
         </div>
       </section>
     </template>
@@ -352,8 +388,28 @@ const resumeSeconds = computed(() => Number(details.value?.UserData?.PlaybackPos
 const seasons = ref<LibraryItem[]>([])
 const episodes = ref<LibraryItem[]>([])
 const seasonsLoaded = ref(false)
+const seasonsLoading = ref(false)
 const selectedSeason = ref('')
 const seriesError = ref('')
+// Bound to the episode select. Held separately from `episodes` so the control
+// resets to its placeholder after opening one, rather than showing a stale
+// selection for a title the user has already navigated away from.
+const chosenEpisode = ref('')
+const episodesLoading = ref(false)
+
+/** "3. The Threat", falling back to the name when Emby gives no number. */
+function episodeLabel(episode: LibraryItem): string {
+  const number = episode.IndexNumber
+  return number === undefined || number === null
+    ? episode.Name
+    : `${number}. ${episode.Name}`
+}
+
+function openChosenEpisode() {
+  const episode = episodes.value.find((candidate) => candidate.Id === chosenEpisode.value)
+  chosenEpisode.value = ''
+  if (episode) emit('open', episode)
+}
 
 function setBusy(action: string, busy: boolean) {
   const next = new Set(busyActions.value)
@@ -536,8 +592,11 @@ function resetForNewItem() {
   closeSection()
   seasons.value = []
   seasonsLoaded.value = false
+  seasonsLoading.value = false
   episodes.value = []
   selectedSeason.value = ''
+  chosenEpisode.value = ''
+  episodesLoading.value = false
   seriesError.value = ''
 }
 
@@ -549,8 +608,8 @@ async function load() {
   error.value = ''
   try {
     details.value = await api.itemDetails(props.item.Id, controller.signal)
-    if (details.value.Type === 'Series' && props.selectedSeasonId) {
-      await loadSeasons(props.selectedSeasonId)
+    if (details.value.Type === 'Series') {
+      await loadSeasons(props.selectedSeasonId ?? undefined)
     }
   } catch (cause) {
     if (controller.signal.aborted) return
@@ -563,6 +622,7 @@ async function load() {
 async function loadSeasons(initialSeason?: string) {
   if (!details.value) return
   seriesError.value = ''
+  seasonsLoading.value = true
   try {
     seasons.value = (await api.seriesSeasons(details.value.Id)).items
     seasonsLoaded.value = true
@@ -570,6 +630,8 @@ async function loadSeasons(initialSeason?: string) {
     if (seasonId) await selectSeason(seasonId)
   } catch (cause) {
     seriesError.value = cause instanceof Error ? cause.message : 'Seasons unavailable.'
+  } finally {
+    seasonsLoading.value = false
   }
 }
 
@@ -577,11 +639,19 @@ async function selectSeason(seasonId: string) {
   if (!details.value) return
   selectedSeason.value = seasonId
   seriesError.value = ''
+  // Cleared before the fetch, not after: leaving the previous season's list in
+  // place would let someone pick an episode that belongs to the season they
+  // just navigated away from.
+  episodes.value = []
+  chosenEpisode.value = ''
+  episodesLoading.value = true
   try {
     episodes.value = (await api.seriesEpisodes(details.value.Id, seasonId)).items
   } catch (cause) {
     episodes.value = []
     seriesError.value = cause instanceof Error ? cause.message : 'Episodes unavailable.'
+  } finally {
+    episodesLoading.value = false
   }
 }
 
@@ -747,6 +817,16 @@ onUnmounted(() => {
 .section-meta { font-size: .78rem; color: var(--text-secondary, #9aa0aa); }
 
 .section-empty { margin: 0; color: var(--text-secondary, #9aa0aa); }
+
+.series-pickers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: .75rem 1rem;
+}
+.series-pickers label { display: flex; flex-direction: column; gap: .25rem; }
+.series-pickers select { min-width: 12rem; max-width: 22rem; }
+.series-count { margin: 0; color: var(--text-secondary, #9aa0aa); font-size: .82rem; }
 
 @media (max-width: 640px) {
   .section-popover { width: calc(100vw - 2rem); }

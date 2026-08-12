@@ -146,8 +146,11 @@ describe('TitleDetails', () => {
       },
     })
 
+    // Episodes are a select now, not a button per row. A 24-episode season
+    // rendered 24 stacked rows and pushed the rest of the page out of view.
     await vi.waitFor(() => expect(wrapper.text()).toContain('Pilot'))
-    await wrapper.get('button[data-episode-id="episode-1"]').trigger('click')
+    const episodeSelect = wrapper.get('select[aria-label="Episode"]')
+    await episodeSelect.setValue('episode-1')
     expect(wrapper.emitted('open')?.[0]?.[0]).toMatchObject({ Id: 'episode-1' })
   })
 })
