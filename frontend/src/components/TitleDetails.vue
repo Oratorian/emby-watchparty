@@ -6,6 +6,7 @@
     <template v-else-if="details">
       <header
         class="detail-hero"
+        :class="{ 'has-backdrop': !!details.BackdropImageTags?.length }"
         :style="details.BackdropImageTags?.length ? { backgroundImage: `url(${backdropUrl})` } : {}"
       >
         <img
@@ -692,9 +693,102 @@ onUnmounted(() => {
 .title-details button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 .title-details button:disabled { cursor: wait; opacity: .6; }
 .back-to-library { justify-self: start; }
-.detail-hero { display: grid; grid-template-columns: minmax(9rem, 15rem) 1fr; gap: 1.5rem; padding: 1.5rem; border-radius: 12px; background-size: cover; background-position: center; background-color: var(--bg-surface); background-blend-mode: multiply; }
+.detail-hero {
+  display: grid;
+  grid-template-columns: minmax(9rem, 15rem) 1fr;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  border-radius: 12px;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--bg-surface);
+  position: relative;
+  /* Keeps the scrim's stacking context local, so it cannot slide over
+     anything outside the hero. */
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* A scrim, not a blend mode.
+ *
+ * This used to rely on background-blend-mode: multiply against --bg-surface,
+ * which darkens a dark backdrop and does almost nothing to a bright one. The
+ * result was white text sitting on a sunlit sky: the title, the facts row and
+ * the genre line all became unreadable on exactly the artwork most likely to
+ * be bright.
+ *
+ * A fixed gradient is deterministic. Sampling the image to pick a text colour
+ * would be per-title guesswork that still fails wherever the artwork is busy
+ * rather than uniformly light, and it cannot help mid-image where text crosses
+ * both. Guaranteeing the surface under the text is dark solves it for every
+ * backdrop, including ones this library has not seen yet.
+ *
+ * Strongest on the left where the content sits, easing right so the artwork
+ * still reads as artwork.
+ */
+.detail-hero.has-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(
+    100deg,
+    rgba(8, 9, 14, .94) 0%,
+    rgba(8, 9, 14, .88) 38%,
+    rgba(8, 9, 14, .7) 68%,
+    rgba(8, 9, 14, .45) 100%
+  );
+}
+
+/* Above the scrim. Without this the grid children paint underneath it. */
+.detail-hero > * { position: relative; z-index: 1; }
+
+/* Cheap second line of defence for the largest text, which is the part that
+   overhangs furthest into the lighter half of the gradient. Only with a
+   backdrop: on the plain surface it is unnecessary and muddies the type. */
+/* Tighten the text block above the actions. The default paragraph margins put
+   more air between the title, tagline, facts and genres than between the
+   action rows below them, which is what made the buttons look crushed
+   together by comparison. */
+.detail-hero h2 { margin: 0 0 .3rem; }
+.detail-hero .tagline { margin: 0 0 .45rem; }
+.detail-hero .facts { margin: 0 0 .35rem; }
+.detail-hero .facts + p { margin: 0; }
+
+.detail-hero.has-backdrop h2 { text-shadow: 0 1px 3px rgba(0, 0, 0, .75); }
+.detail-hero.has-backdrop .facts,
+.detail-hero.has-backdrop .tagline { text-shadow: 0 1px 2px rgba(0, 0, 0, .7); }
+
+/* Buttons carried the same problem: a translucent fill reads as whatever is
+   behind it, so they disappeared over bright artwork. An opaque surface of
+   their own, with a border, makes them legible on any backdrop. */
+.detail-hero button {
+  background: rgba(18, 20, 28, .88);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, .18));
+  color: var(--text-primary, #f2f4f8);
+  backdrop-filter: blur(3px);
+}
+.detail-hero button:hover:not(:disabled) { background: rgba(30, 33, 44, .94); }
+.detail-hero button:disabled { opacity: .55; }
+/* The primary action keeps its accent fill, which is already opaque. */
+.detail-hero .play-title, .detail-hero .start-playback { backdrop-filter: none; }
+
+.detail-hero select, .detail-hero input {
+  background: rgba(18, 20, 28, .9);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, .18));
+  color: var(--text-primary, #f2f4f8);
+}
+
 .detail-poster { width: 100%; border-radius: 8px; }
 .facts, .primary-actions, .personal-actions { display: flex; gap: .65rem; flex-wrap: wrap; }
+/* The two action rows had gap between buttons but nothing between the rows
+   themselves, so Browse sat directly on top of Favorite with the borders
+   touching. The row gap is larger than the button gap on purpose: it is what
+   makes them read as two groups rather than one wrapped set. */
+.primary-actions { margin-top: .9rem; }
+.personal-actions { margin-top: .65rem; }
+.detail-hero .primary-actions button,
+.detail-hero .personal-actions button { padding: .45rem .9rem; line-height: 1.25; }
 .play-title, .start-playback { background: var(--accent-primary) !important; border-color: transparent !important; color: var(--bg-deep) !important; }
 .playlist-picker, .playback-options { display: flex; align-items: end; gap: .65rem; flex-wrap: wrap; margin-top: .85rem; }
 .playlist-picker label, .playback-options label { display: grid; gap: .25rem; color: var(--text-secondary); font-size: .8rem; }
