@@ -178,7 +178,15 @@ export function usePartyStream(
           (stream) => !stream.isPGS && stream.isTextSubtitleStream,
         )
         if (isNewItem) {
-          const defaultSubtitle = textSubtitles.find((stream) => stream.isDefault)
+          // The party's own choice wins over the source's default. The detail
+          // view can pick a text subtitle for everyone before playback starts,
+          // and seeding only from isDefault discarded it: the selection reached
+          // the backend, but no viewer ever displayed the track.
+          const partyIndex = party.currentVideo?.subtitle_index ?? null
+          const partyChoice = partyIndex === null
+            ? undefined
+            : textSubtitles.find((stream) => stream.index === partyIndex)
+          const defaultSubtitle = partyChoice ?? textSubtitles.find((stream) => stream.isDefault)
           if (defaultSubtitle) selectedTextSubIndex.value = defaultSubtitle.index
         }
         const targetIndex = selectedTextSubIndex.value

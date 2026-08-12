@@ -71,10 +71,14 @@
         {{ itemsError }}
       </div>
 
-      <div v-else-if="items.length === 0" class="empty">No items found.</div>
-
       <div v-else class="library-content" :class="{ 'library-home': !currentParentId }">
-        <div class="items-grid">
+        <!-- The empty state lives INSIDE library-content so the A-Z rail below
+             survives it. An anchor jump can legitimately land on an offset at
+             or past TotalRecordCount, and unmounting the whole panel took the
+             rail with it: the grid was empty and the only control that could
+             navigate back out had disappeared with it. -->
+        <div v-if="items.length === 0" class="empty">No items found.</div>
+        <div v-else class="items-grid">
           <div v-if="hasPrevious" ref="topSentinel" class="sentinel sentinel-top">
             <span v-if="loadingPrevious">Loading earlier titles...</span>
           </div>

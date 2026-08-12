@@ -108,13 +108,21 @@ Three of these are defects a beta1 user can actually hit today.
 - **HEVC and other non-H.264 sources are no longer transcoded unconditionally.** `VideoCodec=h264` was hardcoded into every stream URL. It is now chosen per viewer from what that viewer's browser reported. Reported by **[miakkia](https://github.com/miakkia)** in [#61](https://github.com/Oratorian/emby-watchparty/issues/61), including a measurement showing Emby reporting Direct Play once the source codec was preserved.
 - **The transcode log line no longer goes stale.** "Source is hevc, transcoding to h264" was written independently of the parameter that actually decides, so it kept claiming a transcode that was no longer being requested. Both now come from the same decision, and the message says whether the client could decode the source.
 
+### Browse your library the way Emby does
+
+The library browser gains filters driven by what your server actually reports, a A-Z jump bar backed by Emby's own prefix index rather than the posters already on screen, a grouped search across every library, and a full detail view for a title with its cast, related items, extras, trailers, seasons and episodes. A host can mark items played or favourite and build playlists without leaving the party.
+
+Everything it sends to Emby is pinned against a corpus of real 4.9.5.0 responses, so a change that would have altered a request is caught by a test rather than by a viewer.
+
+Two things to know if you are watching for them: filtering or sorting a TV library, and jumping to a letter in a large one, were both broken in the first cut of this work and are fixed. The details are in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+
 The rest of the rate-limit surfacing was written and corrected inside this cycle, so no published image ever carried these; they are listed because the code is on `3.0-dev` and reviewable, not because you are running them. A viewer's first join could be refused as "too many join attempts", the chat "message not sent" warning outlived its countdown, two refused chat messages merged into one reversed line, ordinary socket reconnects painted a red `xhr poll error` alert, and a stale party-list warning blamed rate limiting for the rest of a server outage. All are described with their causes in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
 
 ### Technical details
 
-Two of the three bodies of work here are **[dnordel](https://github.com/dnordel)**'s: the rate-limit surfacing and the preflight as [#57](https://github.com/Oratorian/emby-watchparty/pull/57), 25 commits over 45 files, and the deployment schema as [#58](https://github.com/Oratorian/emby-watchparty/pull/58), 16 commits over 20 files. Both landed on `3.0-dev` via their branches after an audit rather than through a PR merge.
+Three of the four bodies of work here are **[dnordel](https://github.com/dnordel)**'s: the rate-limit surfacing and the preflight as [#57](https://github.com/Oratorian/emby-watchparty/pull/57), 25 commits over 45 files, the deployment schema as [#58](https://github.com/Oratorian/emby-watchparty/pull/58), 16 commits over 20 files, and the library parity work as [#59](https://github.com/Oratorian/emby-watchparty/pull/59) and [#60](https://github.com/Oratorian/emby-watchparty/pull/60), 39 commits over 89 files. All landed on `3.0-dev` via their branches after an audit rather than through a PR merge.
 
-Those audits found 20 defects in the first and 13 in the second, all fixed before either landed. Their methodology, the defect classes, and the two failure patterns now recurring across cycles are in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+Those audits found 20 defects in the first, 13 in the second and 64 in the third, all fixed before any of them landed. Their methodology, the defect classes, and the two failure patterns now recurring across cycles are in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
 
 The codec negotiation is the third, built on the stable line for 2.1.2 and forward-ported here rather than written twice. `TranscodeReasons` was not the cause, despite being the obvious suspect: Emby treats it as informational, so removing `VideoCodecNotSupported` alone changes nothing. The forcing was the hardcoded `VideoCodec=h264`.
 
@@ -122,7 +130,7 @@ The client probes with `MediaSource.isTypeSupported` for the hls.js path and `ca
 
 Four things differ from the 2.1.2 change, all because 3.0 has diverged underneath it. `join_party` is a validated typed contract, so `video_codecs` is declared on `JoinPartyPayload` and the schema and TypeScript types are regenerated; strict inbound validation then makes the payload the first gate and the allowlist the second. The party is a typed aggregate, so codecs are a domain field rather than a dict key. The reconnect join lives in `usePartyReconnect`, so there are three emit sites rather than two. And a client that sends nothing gets the default empty list, which reads as H.264-only, which is exactly what an un-upgraded frontend sends.
 
-Test coverage since beta1: **212 backend tests** across 28 modules (was 116), **37 Vitest** (was 17), **16 Playwright** (was 14), with `ruff check`, `ruff format` and `eslint` clean, and `mypy` clean over 44 source files.
+Test coverage since beta1: **267 backend tests** across 36 modules (was 116), **65 Vitest** across 21 files (was 17), **16 Playwright** (was 14), with `ruff check`, `ruff format` and `eslint` clean, `mypy` clean over 48 source files, and both generated contracts free of drift.
 
 ---
 

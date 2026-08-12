@@ -456,3 +456,67 @@ def test_filtered_prefixes_forward_the_same_filter_contract(live_watchparty) -> 
     assert upstream["path"] == "/emby/Items/Prefixes"
     assert ("Genres", "Drama") in upstream["query"]
     assert ("Filters", "IsUnplayed") in upstream["query"]
+
+
+def test_multi_value_filters_use_the_separator_emby_expects(live_watchparty) -> None:
+    """Every list filter was sent with exactly one element.
+
+    A single-element list joins to itself under any separator, so all fourteen
+    could be replaced with garbage and the suite stayed green. Emby splits the
+    name-like filters on '|' and the id-like ones on ',', and getting that
+    wrong silently returns the wrong titles rather than erroring.
+    """
+    client = _unlocked_client(live_watchparty)
+    try:
+        response = client.post(
+            "/api/items/query",
+            json={
+                "scope": {
+                    "parent_id": "library-1",
+                    "include_item_types": ["Movie"],
+                    "media_types": ["Video"],
+                    "recursive": True,
+                },
+                "page": {"start_index": 0, "limit": 25},
+                "sort": {"field": "SortName", "direction": "Ascending"},
+                "filters": {
+                    "genres": ["Drama", "Sci-Fi"],
+                    "official_ratings": ["PG-13", "R"],
+                    "studios": ["Studio A", "Studio B"],
+                    "tags": ["Featured", "Classic"],
+                    "person_ids": ["person-1", "person-2"],
+                    "years": [2023, 2024],
+                    "containers": ["mkv", "mp4"],
+                    "video_codecs": ["h264", "hevc"],
+                    "video_types": ["VideoFile", "Dvd"],
+                    "audio_codecs": ["aac", "ac3"],
+                    "audio_layouts": ["stereo", "5.1"],
+                    "audio_languages": ["eng", "spa"],
+                    "subtitle_codecs": ["subrip", "ass"],
+                    "subtitle_languages": ["eng", "spa"],
+                },
+            },
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    recorded = httpx.get(f"{live_watchparty.fake.url}/__test__/requests").json()["requests"]
+    query = dict(next(row for row in reversed(recorded) if row["path"].endswith("/Items"))["query"])
+
+    # Pipe-separated: values that may themselves contain a comma.
+    assert query["Genres"] == "Drama|Sci-Fi"
+    assert query["OfficialRatings"] == "PG-13|R"
+    assert query["Studios"] == "Studio A|Studio B"
+    assert query["Tags"] == "Featured|Classic"
+    # Comma-separated: ids and enumerated tokens.
+    assert query["PersonIds"] == "person-1,person-2"
+    assert query["Years"] == "2023,2024"
+    assert query["Containers"] == "mkv,mp4"
+    assert query["VideoCodecs"] == "h264,hevc"
+    assert query["VideoTypes"] == "VideoFile,Dvd"
+    assert query["AudioCodecs"] == "aac,ac3"
+    assert query["AudioLayouts"] == "stereo,5.1"
+    assert query["AudioLanguages"] == "eng,spa"
+    assert query["SubtitleCodecs"] == "subrip,ass"
+    assert query["SubtitleLanguages"] == "eng,spa"
