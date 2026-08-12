@@ -84,3 +84,118 @@ describe('TitleDetails across item navigation', () => {
     expect(wrapper.text()).toContain('Featured')
   })
 })
+
+describe('the More section popover', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.spyOn(api, 'itemDetails').mockImplementation(async (id: string) =>
+      (id === 'series-1' ? SERIES : EPISODE) as never)
+    vi.spyOn(api, 'qualityOptions').mockResolvedValue({
+      options: [{ id: 'auto', label: 'Auto' }],
+      default_id: 'auto',
+    } as never)
+    vi.spyOn(api, 'itemSection').mockImplementation(async (_id: string, section: string) => ({
+      section,
+      items: section === 'related'
+        ? [{ Id: 'related-1', Name: 'Rocky II', Type: 'Movie' }]
+        : [],
+    }) as never)
+  })
+
+  async function openDetails() {
+    const wrapper = mount(TitleDetails, {
+      props: { item: { Id: 'series-1', Name: 'A Series', Type: 'Series' }, isHost: false },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  it('shows one section at a time instead of stacking them', async () => {
+    // Reported from a real session: each button rendered its own block below,
+    // so opening all three left all three on screen at once, with two
+    // "None available." lines trailing the one list that had content.
+    const wrapper = await openDetails()
+
+    await wrapper.get('button[data-section="related"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Rocky II')
+
+    await wrapper.get('button[data-section="extras"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Rocky II')
+    expect(wrapper.findAll('.section-popover')).toHaveLength(1)
+    expect(wrapper.text()).toContain('None available.')
+  })
+
+  it('closes when the same button is pressed again', async () => {
+    const wrapper = await openDetails()
+
+    await wrapper.get('button[data-section="related"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.section-popover').exists()).toBe(true)
+
+    await wrapper.get('button[data-section="related"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.section-popover').exists()).toBe(false)
+  })
+
+  it('closes when the pointer leaves, after a grace period', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = await openDetails()
+      await wrapper.get('button[data-section="related"]').trigger('click')
+      await flushPromises()
+
+      await wrapper.get('.optional-sections').trigger('mouseleave')
+      // Not immediately: moving diagonally towards the panel briefly exits
+      // the group, and closing on that would make it unusable.
+      expect(wrapper.find('.section-popover').exists()).toBe(true)
+
+      await vi.advanceTimersByTimeAsync(500)
+      expect(wrapper.find('.section-popover').exists()).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stays open if the pointer comes back before the grace period ends', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = await openDetails()
+      await wrapper.get('button[data-section="related"]').trigger('click')
+      await flushPromises()
+
+      await wrapper.get('.optional-sections').trigger('mouseleave')
+      await vi.advanceTimersByTimeAsync(200)
+      await wrapper.get('.optional-sections').trigger('mouseenter')
+      await vi.advanceTimersByTimeAsync(1000)
+
+      expect(wrapper.find('.section-popover').exists()).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('closes on Escape, which is the only exit a keyboard user has', async () => {
+    const wrapper = await openDetails()
+    await wrapper.get('button[data-section="related"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('.optional-sections').trigger('keydown.esc')
+
+    expect(wrapper.find('.section-popover').exists()).toBe(false)
+  })
+
+  it('does not carry the panel across item navigation', async () => {
+    const wrapper = await openDetails()
+    await wrapper.get('button[data-section="related"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.section-popover').exists()).toBe(true)
+
+    await wrapper.setProps({ item: EPISODE })
+    await flushPromises()
+
+    expect(wrapper.find('.section-popover').exists()).toBe(false)
+  })
+})

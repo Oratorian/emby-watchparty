@@ -135,24 +135,52 @@
       </section>
       <section v-if="details.Studios?.length"><h3>Studios</h3><p>{{ details.Studios.map((studio) => studio.Name).join(' · ') }}</p></section>
       <section v-if="tagNames.length"><h3>Tags</h3><p>{{ tagNames.join(' · ') }}</p></section>
-      <section class="optional-sections">
+      <!-- One popover, one section at a time. Each button used to render its
+           own block underneath, so opening all three left all three stacked
+           forever with nothing to close them and two "None available." lines
+           trailing the one list that had content. -->
+      <section
+        class="optional-sections"
+        @mouseleave="scheduleSectionClose"
+        @mouseenter="cancelSectionClose"
+        @keydown.esc="closeSection"
+      >
         <h3>More</h3>
-        <button
-          v-for="section in optionalSections"
-          :key="section.id"
-          type="button"
-          :data-section="section.id"
-          @click="loadSection(section.id)"
-        >
-          {{ section.label }}
-        </button>
-        <div v-for="section in optionalSections" :key="`${section.id}-content`">
-          <p v-if="sectionErrors[section.id]" role="alert">{{ sectionErrors[section.id] }}</p>
-          <p v-else-if="sectionLoading === section.id" role="status">Loading {{ section.label.toLowerCase() }}…</p>
-          <ul v-else-if="sectionItems[section.id]">
-            <li v-for="item in sectionItems[section.id]" :key="item.Id">{{ item.Name }}</li>
-            <li v-if="!sectionItems[section.id]?.length">None available.</li>
-          </ul>
+        <div class="section-buttons">
+          <button
+            v-for="section in optionalSections"
+            :key="section.id"
+            type="button"
+            :data-section="section.id"
+            class="section-btn"
+            :class="{ active: openSection === section.id }"
+            :aria-expanded="openSection === section.id"
+            :aria-controls="`section-panel-${section.id}`"
+            @click="toggleSection(section.id)"
+          >
+            {{ section.label }}
+          </button>
+
+          <div
+            v-if="openSection"
+            :id="`section-panel-${openSection}`"
+            class="section-popover"
+            role="dialog"
+            :aria-label="openSectionLabel"
+          >
+            <p v-if="sectionErrors[openSection]" role="alert">{{ sectionErrors[openSection] }}</p>
+            <p v-else-if="sectionLoading === openSection" role="status">
+              Loading {{ openSectionLabel.toLowerCase() }}…
+            </p>
+            <ul v-else-if="sectionItems[openSection]?.length">
+              <li v-for="item in sectionItems[openSection]" :key="item.Id">
+                <button type="button" class="section-item" @click="$emit('open', item)">
+                  {{ item.Name }}
+                </button>
+              </li>
+            </ul>
+            <p v-else class="section-empty">None available.</p>
+          </div>
         </div>
       </section>
       <section v-if="details.Type === 'Series'" class="series-browser">
@@ -225,6 +253,46 @@ const optionalSections: Array<{ id: ItemSection; label: string }> = [
 const sectionItems = ref<Partial<Record<ItemSection, LibraryItem[]>>>({})
 const sectionErrors = ref<Partial<Record<ItemSection, string>>>({})
 const sectionLoading = ref<ItemSection | null>(null)
+
+// Which optional section is showing. Exactly one, or none.
+const openSection = ref<ItemSection | null>(null)
+const openSectionLabel = computed(
+  () => optionalSections.find((section) => section.id === openSection.value)?.label ?? '',
+)
+let sectionCloseTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelSectionClose() {
+  if (sectionCloseTimer) clearTimeout(sectionCloseTimer)
+  sectionCloseTimer = null
+}
+
+function closeSection() {
+  cancelSectionClose()
+  openSection.value = null
+}
+
+/**
+ * Close shortly after the pointer leaves, not instantly.
+ *
+ * The grace period matters because the popover sits below its button: moving
+ * diagonally towards it briefly exits the group, and closing on that would
+ * make the thing impossible to actually use.
+ */
+function scheduleSectionClose() {
+  cancelSectionClose()
+  sectionCloseTimer = setTimeout(closeSection, 400)
+}
+
+function toggleSection(section: ItemSection) {
+  cancelSectionClose()
+  if (openSection.value === section) {
+    closeSection()
+    return
+  }
+  openSection.value = section
+  // Cached after the first fetch, so reopening is instant.
+  void loadSection(section)
+}
 const busyActions = ref(new Set<string>())
 const mutationError = ref('')
 const showPlaylists = ref(false)
@@ -427,6 +495,7 @@ function resetForNewItem() {
   sectionItems.value = {}
   sectionErrors.value = {}
   sectionLoading.value = null
+  closeSection()
   seasons.value = []
   seasonsLoaded.value = false
   episodes.value = []
@@ -498,6 +567,7 @@ async function loadSection(section: ItemSection) {
 
 watch(() => props.item.Id, () => void load(), { immediate: true })
 onUnmounted(() => {
+  cancelSectionClose()
   controller?.abort()
   sectionControllers.forEach((sectionController) => sectionController.abort())
   sectionControllers.clear()
@@ -525,7 +595,59 @@ onUnmounted(() => {
 .play-title, .start-playback { background: var(--accent-primary) !important; border-color: transparent !important; color: var(--bg-deep) !important; }
 .playlist-picker, .playback-options { display: flex; align-items: end; gap: .65rem; flex-wrap: wrap; margin-top: .85rem; }
 .playlist-picker label, .playback-options label { display: grid; gap: .25rem; color: var(--text-secondary); font-size: .8rem; }
-.optional-sections > button { margin: 0 .4rem .4rem 0; }
+/* Anchor for the absolutely-positioned popover, so it floats relative to the
+   button row rather than the page. */
+.section-buttons {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+
+.section-btn { margin: 0; }
+.section-btn.active {
+  border-color: var(--color-accent-cyan, #00e0ff);
+  box-shadow: 0 0 0 2px rgba(0, 224, 255, .2);
+}
+
+.section-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 50;
+  min-width: 15rem;
+  /* Bounded, and scrolls internally. The old inline blocks grew the page
+     without limit, which is what pushed everything below them off screen. */
+  max-width: min(26rem, 100%);
+  max-height: 18rem;
+  overflow-y: auto;
+  background: var(--bg-secondary, #181820);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: .6rem .7rem;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, .55),
+              0 0 0 1px rgba(0, 224, 255, .1) inset;
+}
+
+.section-popover ul { list-style: none; margin: 0; padding: 0; }
+.section-popover li + li { margin-top: .15rem; }
+
+.section-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  padding: .3rem .4rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+.section-item:hover,
+.section-item:focus-visible { background: var(--bg-surface, rgba(255, 255, 255, .06)); }
+
+.section-empty { margin: 0; color: var(--text-secondary, #9aa0aa); }
 .tagline { font-style: italic; }
 @media (max-width: 640px) { .detail-hero { grid-template-columns: 1fr; } .detail-poster { max-width: 14rem; } }
 </style>
