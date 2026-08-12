@@ -182,7 +182,17 @@ const awaitingAutoJoin = ref(!!localStorage.getItem(STORAGE_KEY))
 const showLibrary = ref(false)
 const libraryLocation = ref('Libraries')
 const libraryBrowser = ref<{ goToRoot: () => Promise<void> } | null>(null)
-const copyLabel = ref('Copy')
+// Drives both the tooltip and the pill's own icon/tint, so the result of a
+// click is visible without hovering. The design refresh moved the old
+// "Copied!" button text into a title attribute, which never shows after a
+// click -- the pointer is already stationary, so no new tooltip is raised.
+const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
+const COPY_MESSAGES = {
+  idle: 'Copy party code',
+  copied: 'Copied!',
+  failed: 'Copy failed',
+} as const
+let copyResetTimer: ReturnType<typeof setTimeout> | null = null
 const showVersionModal = ref(false)
 const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const currentTime = ref(0)
@@ -660,6 +670,8 @@ onUnmounted(() => {
   // user has already navigated away from.
   if (partyGoneTimer) clearInterval(partyGoneTimer)
   partyGoneTimer = null
+  if (copyResetTimer) clearTimeout(copyResetTimer)
+  copyResetTimer = null
   if (pendingPauseTimer) {
     cancelPlaybackTimer(pendingPauseTimer)
     pendingPauseTimer = null
@@ -710,8 +722,14 @@ function submitJoin() {
 async function copyPartyId() {
   const id = (route.params.id as string) || ''
   const ok = await copyToClipboard(id)
-  copyLabel.value = ok ? 'Copied!' : 'Failed'
-  setTimeout(() => { copyLabel.value = 'Copy' }, 2000)
+  copyState.value = ok ? 'copied' : 'failed'
+  // Restart the window on every click. Without this, a second click at 1.9s
+  // inherits the first timer and the confirmation vanishes 100ms later.
+  if (copyResetTimer) clearTimeout(copyResetTimer)
+  copyResetTimer = setTimeout(() => {
+    copyState.value = 'idle'
+    copyResetTimer = null
+  }, 2000)
 }
 
 async function leaveParty() {
@@ -1230,13 +1248,22 @@ async function submitBecomeHost(payload: { username: string; password: string })
         </button>
         <button
           class="party-pill"
+          :class="{ 'is-copied': copyState === 'copied', 'is-failed': copyState === 'failed' }"
           @click="copyPartyId"
-          :title="copyLabel === 'Copy' ? 'Copy party code' : copyLabel"
+          :title="COPY_MESSAGES[copyState]"
+          aria-label="Copy party code"
         >
           <span class="party-pill-label">Code</span>
           <code class="party-pill-code">{{ route.params.id }}</code>
+          <!-- Same 22px box in every state so confirming a copy never reflows
+               the header. -->
           <span class="party-pill-copy" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            <svg v-if="copyState === 'copied'" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            <svg v-else-if="copyState === 'failed'" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </span>
+          <span class="party-pill-status" role="status">
+            {{ copyState === 'idle' ? '' : COPY_MESSAGES[copyState] }}
           </span>
         </button>
         <span v-if="auth.hostUsername" class="host-badge" :title="`Host: ${auth.hostUsername}`">
@@ -1889,6 +1916,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
 /* Party-code pill: surface bg, cyan code text, copy icon on the right.
    The whole pill is clickable, copy icon is a visual hint only. */
 .party-pill {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -1935,6 +1963,43 @@ async function submitBecomeHost(payload: { username: string; password: string })
 .party-pill:hover .party-pill-copy {
   background: var(--bg-surface-hover);
   color: var(--accent-primary);
+}
+
+/* Post-click confirmation. The icon swap alone is 12px of line art in a
+   header full of other icons, so the border and chip carry the colour and
+   make the change register peripherally. Reverts after 2s. The :hover
+   duplicates outrank the hover rule above, which would otherwise repaint the
+   chip cyan for exactly the users who just clicked and still have the pointer
+   on it. */
+.party-pill.is-copied {
+  border-color: var(--color-success);
+}
+
+.party-pill.is-copied .party-pill-copy,
+.party-pill:hover.is-copied .party-pill-copy {
+  background: var(--color-success-dim);
+  color: var(--color-success);
+}
+
+.party-pill.is-failed {
+  border-color: var(--color-danger);
+}
+
+.party-pill.is-failed .party-pill-copy,
+.party-pill:hover.is-failed .party-pill-copy {
+  background: var(--color-danger-dim);
+  color: var(--color-danger);
+}
+
+/* Announced by screen readers, never laid out -- the pill has no room for
+   the text and growing it would shift the header. */
+.party-pill-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .header-actions {
