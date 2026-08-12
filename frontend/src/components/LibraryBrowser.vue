@@ -316,6 +316,13 @@ const breadcrumbs = ref<Breadcrumb[]>([])
 const hasMore = ref(false)
 const hasPrevious = ref(false)
 const loadedStartIndex = ref(0)
+// How many upstream rows the loaded window spans, which is NOT items.length.
+// Two things make the rendered count an unreliable measure of position: the
+// client-side displayableTypes filter drops shadowing Folder rows, and the
+// backend drops rows with no Name. Deriving the next offset from items.length
+// therefore skipped or re-requested a block. It is tracked separately so the
+// paging arithmetic stays in upstream coordinates.
+const loadedCount = ref(0)
 const totalRecordCount = ref(0)
 const currentParentId = ref<string | null>(null)
 const currentParentType = ref<string | null>(null)
@@ -641,6 +648,7 @@ async function goToRoot() {
   hasMore.value = false
   hasPrevious.value = false
   loadedStartIndex.value = 0
+  loadedCount.value = 0
   totalRecordCount.value = 0
   availablePrefixes.value = new Set()
   currentParentId.value = null
@@ -670,6 +678,7 @@ async function fetchLibraries() {
     items.value = data.Items ?? data ?? []
     totalRecordCount.value = data.TotalRecordCount ?? items.value.length
     loadedStartIndex.value = 0
+    loadedCount.value = items.value.length
     hasPrevious.value = false
     hasMore.value = false
     clearLibraryState()
@@ -747,12 +756,19 @@ async function fetchItems(
     const startIndex = prepend
       ? Math.max(0, loadedStartIndex.value - PAGE_SIZE)
       : append
-        ? loadedStartIndex.value + items.value.length
+        ? loadedStartIndex.value + loadedCount.value
         : 0
+    // Request exactly the gap above the loaded window, not a full page. An
+    // alphabet jump lands on a server-computed NameLessThan offset, which is
+    // never page-aligned, so the clamp at 0 left the final prepend overlapping
+    // rows already held: they arrived twice, the span inflated, and the next
+    // append started past the real end of the window, skipping a whole block
+    // that no further scrolling could reach.
+    const limit = prepend ? Math.max(1, loadedStartIndex.value - startIndex) : PAGE_SIZE
     const params: Record<string, string | number | boolean> = {
       parentId,
       startIndex,
-      limit: PAGE_SIZE,
+      limit,
       sortMode: alphabeticalMode.value ? 'alphabetical' : 'default',
     }
     if (anchorPrefix) params.anchorPrefix = anchorPrefix
@@ -765,7 +781,7 @@ async function fetchItems(
           scope: {
             ...queryScope(parentId),
           },
-          page: { start_index: startIndex, limit: PAGE_SIZE },
+          page: { start_index: startIndex, limit },
           sort: { field: sortField.value, direction: sortDirection.value },
           filters: queryFilters(),
           anchor_prefix: anchorPrefix,
@@ -795,6 +811,7 @@ async function fetchItems(
     const responseStart = data.StartIndex ?? startIndex
     if (prepend) {
       items.value.unshift(...newItems)
+      loadedCount.value += rawItems.length
       loadedStartIndex.value = responseStart
       await nextTick()
       if (previousPanel) {
@@ -802,13 +819,18 @@ async function fetchItems(
       }
     } else if (append) {
       items.value.push(...newItems)
+      loadedCount.value += rawItems.length
     } else {
       items.value = newItems
+      loadedCount.value = rawItems.length
       loadedStartIndex.value = responseStart
     }
     totalRecordCount.value = data.TotalRecordCount ?? newItems.length
     hasPrevious.value = loadedStartIndex.value > 0
-    hasMore.value = loadedStartIndex.value + items.value.length < totalRecordCount.value
+    // Both bounds are in upstream row coordinates. Using items.length here
+    // unmounted the bottom sentinel while unfetched rows remained, which made
+    // the tail of a library unreachable outright.
+    hasMore.value = loadedStartIndex.value + loadedCount.value < totalRecordCount.value
     // Only pin the current location as the restore target when the
     // response actually contained items. An empty response is ambiguous
     // with a mid-scan Emby state (files replaced, indexer hasn't caught
