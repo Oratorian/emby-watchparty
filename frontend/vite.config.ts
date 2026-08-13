@@ -52,6 +52,9 @@ export default defineConfig({
     proxy: {
       '/api': backendTarget,
       '/hls': backendTarget,
+      '/docs': backendTarget,
+      '/redoc': backendTarget,
+      '/openapi.json': backendTarget,
       '/socket.io': {
         target: backendTarget,
         ws: true,
