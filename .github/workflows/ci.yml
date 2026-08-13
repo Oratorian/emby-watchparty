@@ -36,10 +36,19 @@ jobs:
         env:
           ACTIONLINT_VERSION: "1.7.7"
         run: |
-          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_x86_64.tar.gz"
-          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/checksums.txt"
-          grep " actionlint_${ACTIONLINT_VERSION}_linux_x86_64.tar.gz$" checksums.txt | sha256sum -c -
-          tar -xzf "actionlint_${ACTIONLINT_VERSION}_linux_x86_64.tar.gz" actionlint
+          # Two asset names here were wrong, and both 404'd: actionlint
+          # publishes the linux x86-64 build as `linux_amd64`, never
+          # `linux_x86_64`, and its checksum file is `actionlint_<version>_
+          # checksums.txt`, not a bare `checksums.txt`. This is the first step
+          # in the job, so every run failed here and the contract drift,
+          # Compose manifest and image tag checks below never ran at all.
+          ARCHIVE="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          CHECKSUMS="actionlint_${ACTIONLINT_VERSION}_checksums.txt"
+          BASE="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}"
+          curl -fsSLO "${BASE}/${ARCHIVE}"
+          curl -fsSLO "${BASE}/${CHECKSUMS}"
+          grep " ${ARCHIVE}$" "${CHECKSUMS}" | sha256sum -c -
+          tar -xzf "${ARCHIVE}" actionlint
           # Existing release workflow intentionally remains outside this CI-only change.
           ./actionlint -color -ignore 'SC2016|SC2086'
       - name: Generated contract drift
