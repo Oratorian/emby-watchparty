@@ -16,9 +16,13 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
-## [3.0.0-beta3] - Unreleased Internal beta - Director's Cut
+## [3.0.0-beta3] - 2026-08-13 - Director's Cut
 
-**Not published.** Nothing in beta2 or beta3 is in `:3.0.0-beta1`, `:devel` or `:nightly` yet; pulling any of those still gets beta1.
+**Published to GHCR as `:3.0.0-beta3`, and tracked by `:devel` and `:nightly`.** It does **not** move `:latest`, which stays on the 2.1.x stable line, so a deployment pinned to `:latest` will not pick this up by accident.
+
+Betas are image-only, as beta1 and the whole 2.0 beta cycle were: no git tag, no GitHub Release and no release assets, so the release list keeps showing 2.1.1 as the current stable.
+
+This image is the first to carry the beta2 work as well. No `:3.0.0-beta2` image was ever published, so everything in both sections below reaches you here for the first time.
 
 beta2 brought the library work in. beta3 is about living with it. Everything here came out of actually using the new title view, plus one long pass over the test suite asking a narrower question than usual: not "does it pass", but "could it fail".
 
@@ -59,9 +63,9 @@ See [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md) for the test-suite audit behi
 
 ---
 
-## [3.0.0-beta2] - Unreleased Internal beta - Director's Cut
+## [3.0.0-beta2] - 2026-08-13 - Director's Cut
 
-**Not published.** Nothing here is in `:3.0.0-beta1`, `:devel` or `:nightly` yet; pulling any of those still gets beta1. This section is what the next beta will carry.
+**Never published as its own image.** There is no `:3.0.0-beta2` tag on GHCR; this work ships inside `:3.0.0-beta3`, which is why both sections carry the same date.
 
 beta1 said the change most likely to be noticed was rate limiting becoming enforced, **and that it is silent when it bites**: a third person tries to join movie night and simply cannot, with nothing in the interface naming a limit. This is the release that stops it being silent.
 
@@ -87,7 +91,7 @@ A read-only command that reads your existing configuration, whether it reaches 3
 
 It resolves values with the same loader the application boots with and takes its verdict from the same startup validation, so **it cannot clear a configuration that 3.0 would then refuse**. It reports the settings that decide a 2.1.x migration, the proxy, HLS, session-expiry and rate-limit values, saying which are in effect and where each came from; the rest of your configuration is deliberately kept out of the report so a secret cannot reach it. It also gives the one-worker rule, the paths to preserve, the health and readiness URLs to check afterwards, and the backup and rollback steps that stay manual.
 
-Run it **after** pointing your Compose file at a 3.0 image carrying this work and pulling it. The command ships inside that image, and no published image has it yet, `:3.0.0-beta1`, `:devel` and `:nightly` included; a 2.1.x image has no such module either. [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) carries the step order along with Compose, appliance, plain Docker, source and Windows invocations.
+Run it **after** pointing your Compose file at a 3.0 image carrying this work and pulling it. The command ships inside `:3.0.0-beta3`, `:devel` and `:nightly`; `:3.0.0-beta1` predates it and a 2.1.x image has no such module either. [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) carries the step order along with Compose, appliance, plain Docker, source and Windows invocations.
 
 ### One command that says whether playback works
 
@@ -364,6 +368,7 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
+- **v3.0.0-beta3**  (2026-08-13): Library parity, the detail-view UX pass, host-controlled party visibility, and a test-suite audit that found two real bugs on a green suite. Carries the beta2 work, which never shipped as its own image. Image-only, does not move `:latest`.
 - **v3.0.0-beta1**  (2026-08-05): Architecture release, first beta -- typed socket/REST contracts with runtime validation, application factory, production readiness gate, and a fake-Emby test suite. Configuration is environment-only. The 2.1.0 authorization work is re-established, and the audit backlog is closed. Does not move `:latest`.
 - **v2.1.0**  (2026-08-03): Security -- `/hls` now session-gated with a cookie/token party match, and the Emby admin token moved out of the session cookie.
 - **v2.0.2**  (2026-08-01): HLS token rewriting fixed for CRLF playlists (playback stuck buffering at 0:00) + first HLS proxy tests.

@@ -6,15 +6,16 @@ The 2.0 "Midnight Premiere" log (beta1 through beta18, every Added / Changed / F
 
 ---
 
-## [3.0.0-beta3] - Unreleased Internal beta - Director's Cut
+## [3.0.0-beta3] - 2026-08-13 - Director's Cut
 
 Two bodies of work. A UX pass over the title detail view and the party header,
 driven by using beta2's library rather than by a report; and an audit of the
 test suite itself, which is the larger half and the reason this section is
 mostly about tests.
 
-Neither is in a published image. `:3.0.0-beta1`, `:devel` and `:nightly` all still
-point at beta1.
+Published as `:3.0.0-beta3`, and tracked by `:devel` and `:nightly`. Image-only, as
+every beta on this project has been: no git tag, no GitHub Release, no release
+assets. `:latest` stays on the 2.1.x stable line.
 
 ---
 
@@ -206,7 +207,7 @@ Three process notes, kept because each was a mistake in this cycle:
 
 ---
 
-## [3.0.0-beta2] - Unreleased Internal beta - Director's Cut
+## [3.0.0-beta2] - 2026-08-13 - Director's Cut
 
 Four bodies of work since beta1. Three are **[dnordel](https://github.com/dnordel)**'s, all
 landed on `3.0-dev` via their branch after an audit rather than through a PR merge:
@@ -217,8 +218,8 @@ library parity ([#59](https://github.com/Oratorian/emby-watchparty/pull/59) +
 negotiation ([#61](https://github.com/Oratorian/emby-watchparty/issues/61)), built on the
 stable line and forward-ported.
 
-None of it is in a published image. `:3.0.0-beta1`, `:devel` and `:nightly` all still point
-at beta1.
+Never published as its own image. There is no `:3.0.0-beta2` tag on GHCR; this work
+ships inside `:3.0.0-beta3`, which is why both sections carry the same date.
 
 ---
 
@@ -411,7 +412,7 @@ The 44 tests shipped with the PR all passed against artifacts that could not be 
 
 ### Migration diagnostics
 
-Not published. `:3.0.0-beta1`, `:devel` and `:nightly` all still point at beta1.
+Ships in `:3.0.0-beta3`; no `:3.0.0-beta2` image was ever published.
 
 31 commits over 46 files, +2466 / -111. 21 of those files are tests.
 
