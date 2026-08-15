@@ -267,7 +267,7 @@ class EmbyClient:
         recursive: bool = False,
         access_token: str | None = None,
         user_id: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> list[dict[str, Any]]:
         effective_type, effective_recursive = await self._resolve_item_scope(
             parent_id, item_type, recursive, access_token, user_id
         )
@@ -296,7 +296,7 @@ class EmbyClient:
         user_id: str | None = None,
         *,
         prefixes: bool = False,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | list[dict[str, Any]]:
         """Run a strict watchparty library query through Emby's allowlisted API."""
         if not user_id:
             return {"Items": [], "TotalRecordCount": 0, "StartIndex": 0}
