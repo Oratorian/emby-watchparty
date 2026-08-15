@@ -1,3 +1,4 @@
+import os
 import re
 import shutil
 import subprocess
@@ -152,11 +153,22 @@ def test_added_line_beginning_with_plus_plus_is_not_read_as_a_file_header(
     assert "Changed-line coverage: 1/2 (50.00%); required: 80.00%" in capsys.readouterr().out
 
 
-def test_git_diff_is_decoded_as_utf8_from_real_repository(tmp_path: Path, monkeypatch) -> None:
+def test_git_diff_is_decoded_as_utf8_from_real_repository(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
     git = shutil.which("git")
     assert git is not None
     repo = tmp_path / "repo"
     repo.mkdir()
+
+    # Ignore the contributor's own git config. A global commit.gpgsign or
+    # core.hooksPath would otherwise fail the commits below on their machine
+    # and nowhere else.
+    env = {
+        **os.environ,
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_SYSTEM": os.devnull,
+    }
 
     def run_git(*args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(  # noqa: S603  # fixed executable and test-controlled argv
@@ -165,6 +177,7 @@ def test_git_diff_is_decoded_as_utf8_from_real_repository(tmp_path: Path, monkey
             check=True,
             capture_output=True,
             encoding="utf-8",
+            env=env,
         )
 
     run_git("init")
@@ -178,7 +191,15 @@ def test_git_diff_is_decoded_as_utf8_from_real_repository(tmp_path: Path, monkey
 
     # Cyrillic capital A encodes to D0 90. Byte 0x90 is undefined in cp1252,
     # reproducing the Windows decoder crash against Git's real stdout pipe.
+    #
+    # It has to be committed. The script diffs `<base>...HEAD`, which compares
+    # two revisions and never looks at the working tree, so leaving this
+    # uncommitted produces an empty diff, decodes nothing, and passes whether
+    # or not the fix is present.
     fixture.write_text("title = '\u0410'\n", encoding="utf-8")
+    run_git("add", "fixture.py")
+    run_git("commit", "-m", "cyrillic")
+
     python_report = tmp_path / "coverage.xml"
     python_report.write_text(
         f"""<coverage>
@@ -209,6 +230,65 @@ def test_git_diff_is_decoded_as_utf8_from_real_repository(tmp_path: Path, monkey
         )
         == 0
     )
+    # An empty diff also exits 0, so the return code alone cannot tell a
+    # decoded diff from one that was never produced. Pin the changed line.
+    assert "python: 1 executable of 1 changed line(s)" in capsys.readouterr().out
+
+
+def test_changed_line_diff_is_pinned_to_utf8_rather_than_the_ambient_locale(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The real-git test above cannot fail on a UTF-8 host.
+
+    Every CI runner this repo uses is one, and so is any Windows box in UTF-8
+    mode, so that test only ever exercises the bug on a cp1252 machine. This
+    one asserts the kwarg directly, which is what keeps a revert to
+    `text=True` from passing everywhere the crash cannot be reproduced.
+    """
+    recorded: dict[str, object] = {}
+    real_run = subprocess.run
+
+    def spy(argv, **kwargs):  # type: ignore[no-untyped-def]
+        if "diff" in argv:
+            recorded.update(kwargs)
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return real_run(argv, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", spy)
+
+    python_report = tmp_path / "coverage.xml"
+    python_report.write_text(
+        f"""<coverage>
+  <sources><source>{tmp_path}</source></sources>
+  <packages><package><classes></classes></package></packages>
+</coverage>
+""",
+        encoding="utf-8",
+    )
+    frontend_report = tmp_path / "lcov.info"
+    frontend_report.write_text("", encoding="utf-8")
+
+    coverage_main(
+        [
+            "--base",
+            "HEAD",
+            "--python-report",
+            str(python_report),
+            "--frontend-report",
+            str(frontend_report),
+            "--repo-root",
+            str(tmp_path),
+        ]
+    )
+
+    assert recorded, "the git diff subprocess was never invoked"
+    assert recorded.get("encoding") == "utf-8", (
+        "check_diff_coverage must decode git's stdout as UTF-8 explicitly, got "
+        f"encoding={recorded.get('encoding')!r} text={recorded.get('text')!r}. "
+        "text=True defers to locale.getpreferredencoding(False), which is cp1252 "
+        "on a default Windows host and raises UnicodeDecodeError on a UTF-8 diff."
+    )
+    assert not recorded.get("text"), "text=True re-introduces the locale-dependent decode"
 
 
 def test_vulnerability_exception_requires_owner_reason_and_expiry(tmp_path: Path, capsys) -> None:
