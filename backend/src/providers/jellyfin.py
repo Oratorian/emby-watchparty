@@ -131,6 +131,26 @@ class JellyfinProvider:
         )
         return normalize_page({"Items": items, "TotalRecordCount": len(items)})
 
+    async def set_favorite(
+        self, item_id: str, favorite: bool, credentials: ProviderCredentials
+    ) -> None:
+        await self._client.set_favorite(
+            item_id,
+            favorite,
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+        )
+
+    async def set_played(
+        self, item_id: str, played: bool, credentials: ProviderCredentials
+    ) -> None:
+        await self._client.set_played(
+            item_id,
+            played,
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+        )
+
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan:
         bitrate_match = re.search(r"-(\d+)$", request.quality)
         max_bitrate = int(bitrate_match.group(1)) * 1000 if bitrate_match else 10_000_000

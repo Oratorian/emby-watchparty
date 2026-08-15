@@ -20,6 +20,7 @@ from backend.src.dependencies import (
     require_party_host,
     require_party_unlocked,
 )
+from backend.src.providers.models import ProviderCredentials
 from backend.src.schemas import (
     ActionSuccessResponse,
     FavoriteRequest,
@@ -526,7 +527,9 @@ async def api_set_favorite(
 ):
     access_token, user_id = _host_creds(party_session)
     await emby_client.set_favorite(
-        item_id, body.favorite, access_token=access_token, user_id=user_id
+        item_id,
+        body.favorite,
+        ProviderCredentials(access_token=access_token, user_id=user_id),
     )
     return {"success": True, "favorite": body.favorite}
 
@@ -543,7 +546,11 @@ async def api_set_played(
     emby_client=Depends(get_emby_client),
 ):
     access_token, user_id = _host_creds(party_session)
-    await emby_client.set_played(item_id, body.played, access_token=access_token, user_id=user_id)
+    await emby_client.set_played(
+        item_id,
+        body.played,
+        ProviderCredentials(access_token=access_token, user_id=user_id),
+    )
     return {"success": True, "played": body.played}
 
 

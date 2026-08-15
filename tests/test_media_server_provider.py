@@ -620,3 +620,46 @@ def test_jellyfin_v2_series_episodes_are_season_scoped_and_normalized(tmp_path) 
         "UserId": "jellyfin-user-1",
         "SeasonId": "season-1",
     }
+
+
+def test_jellyfin_v2_host_updates_favorite_and_played_state(tmp_path) -> None:
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            favorite = await client.put("/api/v2/items/movie-1/favorite", json={"favorite": True})
+            played = await client.put("/api/v2/items/movie-1/played", json={"played": True})
+
+            assert favorite.status_code == 200
+            assert favorite.json() == {"success": True, "favorite": True}
+            assert played.status_code == 200
+            assert played.json() == {"success": True, "played": True}
+
+    asyncio.run(exercise())
+    mutations = [
+        (row["method"], row["path"])
+        for row in fake_state.requests
+        if "FavoriteItems" in row["path"] or "PlayedItems" in row["path"]
+    ]
+    assert mutations == [
+        ("POST", "/Users/jellyfin-user-1/FavoriteItems/movie-1"),
+        ("POST", "/Users/jellyfin-user-1/PlayedItems/movie-1"),
+    ]

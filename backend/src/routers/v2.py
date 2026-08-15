@@ -7,6 +7,7 @@ from dataclasses import asdict
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from backend.src.dependencies import (
+    PARTY_HOST_RESPONSES,
     PARTY_UNLOCKED_RESPONSES,
     PartySession,
     get_config,
@@ -14,6 +15,7 @@ from backend.src.dependencies import (
     get_media_server,
     get_party_manager,
     get_sio,
+    require_party_host,
     require_party_unlocked,
 )
 from backend.src.providers.models import (
@@ -26,11 +28,15 @@ from backend.src.providers.models import (
 from backend.src.routers.auth import api_login
 from backend.src.v2_schemas import (
     CatalogQueryV2,
+    FavoriteMutationV2,
+    FavoriteResultV2,
     LoginRequest,
     LoginResponseV2,
     MediaItemDetailsV2,
     MediaPageV2,
     MediaServerInfoV2,
+    PlayedMutationV2,
+    PlayedResultV2,
 )
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
@@ -191,3 +197,43 @@ async def series_episodes(
     )
     page = await provider.get_episodes(series_id, season_id, credentials)
     return MediaPageV2.model_validate(asdict(page))
+
+
+@router.put(
+    "/items/{item_id}/favorite",
+    response_model=FavoriteResultV2,
+    responses=PARTY_HOST_RESPONSES,
+)
+async def set_favorite(
+    item_id: str,
+    body: FavoriteMutationV2,
+    party_session: PartySession = Depends(require_party_host),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    await provider.set_favorite(item_id, body.favorite, credentials)
+    return FavoriteResultV2(success=True, favorite=body.favorite)
+
+
+@router.put(
+    "/items/{item_id}/played",
+    response_model=PlayedResultV2,
+    responses=PARTY_HOST_RESPONSES,
+)
+async def set_played(
+    item_id: str,
+    body: PlayedMutationV2,
+    party_session: PartySession = Depends(require_party_host),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    await provider.set_played(item_id, body.played, credentials)
+    return PlayedResultV2(success=True, played=body.played)

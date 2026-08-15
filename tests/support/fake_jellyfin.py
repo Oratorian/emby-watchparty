@@ -167,6 +167,20 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             "TotalRecordCount": 1,
         }
 
+    @app.api_route("/Users/{user_id}/FavoriteItems/{item_id}", methods=["POST", "DELETE"])
+    async def favorite(user_id: str, item_id: str, request: Request):
+        assert user_id
+        assert item_id
+        state.record(request)
+        return {}
+
+    @app.api_route("/Users/{user_id}/PlayedItems/{item_id}", methods=["POST", "DELETE"])
+    async def played(user_id: str, item_id: str, request: Request):
+        assert user_id
+        assert item_id
+        state.record(request)
+        return {}
+
     @app.post("/Items/{item_id}/PlaybackInfo")
     async def playback_info(item_id: str, request: Request):
         body = await request.json()

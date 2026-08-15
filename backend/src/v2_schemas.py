@@ -115,12 +115,34 @@ class LoginResponseV2(V2Model):
     media_server_type: Literal["emby", "jellyfin"]
 
 
+class FavoriteMutationV2(V2Model):
+    favorite: bool
+
+
+class FavoriteResultV2(V2Model):
+    success: bool
+    favorite: bool
+
+
+class PlayedMutationV2(V2Model):
+    played: bool
+
+
+class PlayedResultV2(V2Model):
+    success: bool
+    played: bool
+
+
 __all__ = [
     "CatalogQueryV2",
+    "FavoriteMutationV2",
+    "FavoriteResultV2",
     "LoginRequest",
     "LoginResponseV2",
     "MediaItemDetailsV2",
     "MediaItemV2",
     "MediaPageV2",
     "MediaServerInfoV2",
+    "PlayedMutationV2",
+    "PlayedResultV2",
 ]
