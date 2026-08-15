@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.src.dependencies import (
     PARTY_UNLOCKED_RESPONSES,
@@ -28,6 +28,7 @@ from backend.src.v2_schemas import (
     CatalogQueryV2,
     LoginRequest,
     LoginResponseV2,
+    MediaItemDetailsV2,
     MediaPageV2,
     MediaServerInfoV2,
 )
@@ -106,3 +107,28 @@ async def query_items(
     )
     page = await provider.query_catalog(query, credentials)
     return MediaPageV2.model_validate(asdict(page))
+
+
+@router.get(
+    "/items/{item_id}",
+    response_model=MediaItemDetailsV2,
+    responses={
+        **PARTY_UNLOCKED_RESPONSES,
+        404: {"description": "Item not found"},
+        502: {"description": "Media server unavailable"},
+    },
+)
+async def item_details(
+    item_id: str,
+    party_session: PartySession = Depends(require_party_unlocked),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    item = await provider.get_details(item_id, credentials)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return MediaItemDetailsV2.model_validate(asdict(item))

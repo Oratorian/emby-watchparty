@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 import re
+from dataclasses import fields
 
-from backend.src.providers.models import CatalogQuery, MediaItem, MediaPage, UserMediaState
+from backend.src.providers.models import (
+    CatalogQuery,
+    MediaItem,
+    MediaItemDetails,
+    MediaPage,
+    UserMediaState,
+)
 
 _PLAYABLE = frozenset(
     {"audio", "episode", "livetvprogram", "movie", "musicvideo", "trailer", "video"}
@@ -76,6 +83,35 @@ def normalize_page(raw: dict) -> MediaPage:
         items=tuple(normalize_item(item) for item in raw.get("Items", [])),
         total=raw.get("TotalRecordCount"),
         start=int(raw.get("StartIndex") or 0),
+    )
+
+
+def normalize_details(raw: dict) -> MediaItemDetails:
+    item = normalize_item(raw)
+    people = tuple(
+        {
+            "id": str(person.get("Id") or ""),
+            "name": str(person.get("Name") or ""),
+            "kind": _snake(person.get("Type")),
+        }
+        for person in raw.get("People", [])
+        if isinstance(person, dict) and person.get("Name")
+    )
+    studios = tuple(
+        str(studio.get("Name") if isinstance(studio, dict) else studio)
+        for studio in raw.get("Studios", [])
+        if (studio.get("Name") if isinstance(studio, dict) else studio)
+    )
+    item_values = {field.name: getattr(item, field.name) for field in fields(MediaItem)}
+    return MediaItemDetails(
+        **item_values,
+        genres=tuple(str(value) for value in raw.get("Genres", []) if value),
+        tags=tuple(str(value) for value in raw.get("Tags", []) if value),
+        people=people,
+        studios=studios,
+        official_rating=raw.get("OfficialRating"),
+        community_rating=raw.get("CommunityRating"),
+        critic_rating=raw.get("CriticRating"),
     )
 
 

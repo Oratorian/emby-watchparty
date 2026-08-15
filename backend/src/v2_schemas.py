@@ -45,6 +45,22 @@ class MediaItemV2(V2Model):
     media_source_count: int = 0
 
 
+class PersonV2(V2Model):
+    id: str
+    name: str
+    kind: str
+
+
+class MediaItemDetailsV2(MediaItemV2):
+    genres: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    people: list[PersonV2] = Field(default_factory=list)
+    studios: list[str] = Field(default_factory=list)
+    official_rating: str | None = None
+    community_rating: float | None = None
+    critic_rating: float | None = None
+
+
 class MediaPageV2(V2Model):
     items: list[MediaItemV2]
     total: int | None = None
@@ -103,6 +119,7 @@ __all__ = [
     "CatalogQueryV2",
     "LoginRequest",
     "LoginResponseV2",
+    "MediaItemDetailsV2",
     "MediaItemV2",
     "MediaPageV2",
     "MediaServerInfoV2",

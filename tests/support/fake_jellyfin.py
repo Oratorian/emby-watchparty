@@ -10,11 +10,15 @@ class FakeJellyfinState:
     requests: list[dict] = field(default_factory=list)
 
     def record(self, request: Request) -> None:
+        query = {
+            key: "<redacted>" if key.lower() in {"api_key", "access_token"} else value
+            for key, value in request.query_params.items()
+        }
         self.requests.append(
             {
                 "method": request.method,
                 "path": request.url.path,
-                "query": dict(request.query_params),
+                "query": query,
             }
         )
 
@@ -93,6 +97,30 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             ],
             "TotalRecordCount": 1,
             "StartIndex": int(request.query_params.get("StartIndex", "0")),
+        }
+
+    @app.get("/Users/{user_id}/Items/{item_id}")
+    async def item_details(user_id: str, item_id: str, request: Request):
+        assert user_id
+        state.record(request)
+        return {
+            "Id": item_id,
+            "Name": "Arrival",
+            "Type": "Movie",
+            "Overview": "A linguist meets visitors.",
+            "RunTimeTicks": 6_960_000_000,
+            "ProductionYear": 2016,
+            "OfficialRating": "PG-13",
+            "CommunityRating": 7.9,
+            "CriticRating": 94,
+            "Genres": ["Drama", "Science Fiction"],
+            "Tags": ["First contact"],
+            "People": [{"Id": "person-1", "Name": "Amy Adams", "Type": "Actor"}],
+            "Studios": [{"Name": "Paramount"}],
+            "ImageTags": {"Primary": "movie-image"},
+            "BackdropImageTags": ["backdrop-image"],
+            "UserData": {"IsFavorite": True, "Played": False},
+            "MediaSourceCount": 1,
         }
 
     return app

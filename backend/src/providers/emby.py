@@ -13,7 +13,11 @@ from backend.src.providers.models import (
     ProviderIdentity,
     ProviderReadiness,
 )
-from backend.src.providers.normalization import emby_family_query, normalize_page
+from backend.src.providers.normalization import (
+    emby_family_query,
+    normalize_details,
+    normalize_page,
+)
 
 if TYPE_CHECKING:
     from backend.src.emby_client import EmbyClient
@@ -72,3 +76,11 @@ class EmbyProvider:
             user_id=credentials.user_id,
         )
         return normalize_page(payload)
+
+    async def get_details(self, item_id: str, credentials: ProviderCredentials):
+        payload = await self._client.get_item_details(
+            item_id,
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+        )
+        return normalize_details(payload) if payload else None
