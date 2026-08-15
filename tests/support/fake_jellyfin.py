@@ -128,6 +128,23 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             "MediaSourceCount": 1,
         }
 
+    @app.get("/Shows/{series_id}/Seasons")
+    async def seasons(series_id: str, request: Request):
+        state.record(request)
+        return {
+            "Items": [
+                {
+                    "Id": "season-1",
+                    "Name": "Season 1",
+                    "Type": "Season",
+                    "SeriesId": series_id,
+                    "IndexNumber": 1,
+                    "IsFolder": True,
+                }
+            ],
+            "TotalRecordCount": 1,
+        }
+
     @app.post("/Items/{item_id}/PlaybackInfo")
     async def playback_info(item_id: str, request: Request):
         body = await request.json()

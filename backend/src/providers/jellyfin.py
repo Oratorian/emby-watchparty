@@ -109,6 +109,14 @@ class JellyfinProvider:
         )
         return normalize_details(payload) if payload else None
 
+    async def get_seasons(self, series_id: str, credentials: ProviderCredentials):
+        items = await self._client.get_series_seasons(
+            series_id,
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+        )
+        return normalize_page({"Items": items, "TotalRecordCount": len(items)})
+
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan:
         bitrate_match = re.search(r"-(\d+)$", request.quality)
         max_bitrate = int(bitrate_match.group(1)) * 1000 if bitrate_match else 10_000_000

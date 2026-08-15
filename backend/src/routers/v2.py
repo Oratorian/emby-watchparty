@@ -152,3 +152,22 @@ async def item_details(
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
     return MediaItemDetailsV2.model_validate(asdict(item))
+
+
+@router.get(
+    "/items/{series_id}/seasons",
+    response_model=MediaPageV2,
+    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+)
+async def series_seasons(
+    series_id: str,
+    party_session: PartySession = Depends(require_party_unlocked),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    page = await provider.get_seasons(series_id, credentials)
+    return MediaPageV2.model_validate(asdict(page))
