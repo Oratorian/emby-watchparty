@@ -7,6 +7,7 @@ from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
 from tests.support.asgi import asgi_client
 from tests.support.credentials import TEST_SESSION_SECRET
+from tests.support.fake_jellyfin import create_fake_jellyfin_app
 
 
 def test_ready_reports_named_checks_through_running_app(live_watchparty) -> None:
@@ -15,7 +16,58 @@ def test_ready_reports_named_checks_through_running_app(live_watchparty) -> None
     assert response.status_code == 200
     assert response.json() == {
         "status": "ready",
-        "checks": {"config": True, "storage": True, "emby": True},
+        "checks": {
+            "config": True,
+            "storage": True,
+            "media_server_reachable": True,
+            "media_server_credentials": True,
+            "emby": True,
+        },
+    }
+
+
+def test_ready_reports_neutral_jellyfin_checks(tmp_path: Path) -> None:
+    config = Config(
+        EnvConfig(
+            WATCH_PARTY_BIND="127.0.0.1",
+            WATCH_PARTY_PORT=5000,
+            APP_PREFIX="",
+            SESSION_EXPIRY=3600,
+            EMBY_SERVER_URL="",
+            EMBY_API_KEY="",
+            MEDIA_SERVER_TYPE="jellyfin",
+            JELLYFIN_SERVER_URL="http://jellyfin.test",
+            JELLYFIN_API_KEY="jellyfin-api-key",
+            APP_ENV="development",
+            SESSION_SECRET=TEST_SESSION_SECRET,
+            SESSION_COOKIE_SECURE=False,
+            CORS_ALLOWED_ORIGINS=("*",),
+            TRUSTED_PROXY_CIDRS=(),
+        ),
+        RuntimeConfig(LOG_TO_FILE=False),
+    )
+    app = create_app(
+        config=config,
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app()),
+    )
+
+    async def exercise() -> httpx.Response:
+        async with asgi_client(app) as client:
+            return await client.get("/api/ready")
+
+    response = asyncio.run(exercise())
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ready",
+        "checks": {
+            "config": True,
+            "storage": True,
+            "media_server_reachable": True,
+            "media_server_credentials": True,
+        },
     }
 
 

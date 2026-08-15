@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import httpx
+
 from backend.src.emby_client import EmbyClient
 from backend.src.emby_gateway import MediaServerGateway
-from backend.src.providers.models import ProviderCredentials, ProviderIdentity
+from backend.src.providers.models import (
+    ProviderCredentials,
+    ProviderIdentity,
+    ProviderReadiness,
+)
 from backend.src.providers.normalization import normalize_page
 
 
@@ -25,6 +31,19 @@ class JellyfinProvider:
     @property
     def client(self) -> EmbyClient:
         return self._client
+
+    async def readiness(self) -> ProviderReadiness:
+        try:
+            public = await self._client.gateway.get("/System/Info/Public", timeout=2.0)
+            authenticated = await self._client.gateway.get(
+                "/System/Info", headers=self._client._headers(), timeout=2.0
+            )
+        except httpx.HTTPError:
+            return ProviderReadiness(reachable=False, credentials_valid=False)
+        return ProviderReadiness(
+            reachable=public.status_code == 200,
+            credentials_valid=authenticated.status_code == 200,
+        )
 
     async def get_libraries(self, access_token=None, user_id=None):
         response = await self._client.gateway.get(
