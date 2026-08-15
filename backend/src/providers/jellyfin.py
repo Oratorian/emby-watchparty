@@ -13,6 +13,8 @@ from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers.models import (
     CatalogQuery,
     HLSResource,
+    PlaybackEvent,
+    PlaybackEventType,
     PlaybackMethod,
     PlaybackPlan,
     PlaybackPlanError,
@@ -185,6 +187,37 @@ class JellyfinProvider:
                 key: str(value) for key, value in (source.get("RequiredHttpHeaders") or {}).items()
             },
         )
+
+    async def report_playback(self, event: PlaybackEvent) -> bool:
+        path = {
+            PlaybackEventType.START: "/Sessions/Playing",
+            PlaybackEventType.PROGRESS: "/Sessions/Playing/Progress",
+        }.get(event.type)
+        if path is None:
+            raise ValueError("stop events must use stop_playback")
+        return await self._send_playback_event(path, event)
+
+    async def stop_playback(self, event: PlaybackEvent) -> bool:
+        return await self._send_playback_event("/Sessions/Playing/Stopped", event)
+
+    async def _send_playback_event(self, path: str, event: PlaybackEvent) -> bool:
+        response = await self._client.gateway.post(
+            path,
+            headers=self._client._headers(
+                event.credentials.access_token,
+                event.credentials.user_id,
+            ),
+            json={
+                "ItemId": event.item_id,
+                "MediaSourceId": event.media_source_id,
+                "PlaySessionId": event.play_session_id,
+                "PositionTicks": round(event.position_seconds * 10_000_000),
+                "IsPaused": event.is_paused,
+                "CanSeek": True,
+            },
+        )
+        response.raise_for_status()
+        return True
 
     def resolve_hls_resource(
         self, plan: PlaybackPlan, parent: HLSResource, uri: str

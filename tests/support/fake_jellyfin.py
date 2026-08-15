@@ -12,6 +12,7 @@ from tests.support.credentials import TEST_JELLYFIN_ACCESS_TOKEN
 class FakeJellyfinState:
     requests: list[dict] = field(default_factory=list)
     playback_requests: list[dict] = field(default_factory=list)
+    playback_reports: list[dict] = field(default_factory=list)
 
     def record(self, request: Request) -> None:
         query = {
@@ -189,5 +190,15 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             media_type="video/MP2T",
             headers={"Accept-Ranges": "bytes", "Content-Length": "10"},
         )
+
+    async def record_playback_report(request: Request):
+        body = await request.json()
+        state.record(request)
+        state.playback_reports.append({"path": request.url.path, "body": body})
+        return {}
+
+    app.post("/Sessions/Playing")(record_playback_report)
+    app.post("/Sessions/Playing/Progress")(record_playback_report)
+    app.post("/Sessions/Playing/Stopped")(record_playback_report)
 
     return app

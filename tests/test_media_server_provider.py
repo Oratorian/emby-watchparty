@@ -9,6 +9,8 @@ from backend.src.config import Config, EnvConfig, RuntimeConfig
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers import EmbyProvider, JellyfinProvider, create_provider
 from backend.src.providers.models import (
+    PlaybackEvent,
+    PlaybackEventType,
     PlaybackMethod,
     PlaybackRequest,
     ProviderCredentials,
@@ -384,3 +386,58 @@ def test_jellyfin_hls_children_are_same_origin_and_item_scoped(tmp_path) -> None
                     provider.resolve_hls_resource(plan, plan.master, unsafe)
 
     asyncio.run(exercise())
+
+
+def test_jellyfin_reports_complete_playback_lifecycle(tmp_path) -> None:
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+    credentials = ProviderCredentials(
+        access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+        user_id="jellyfin-user-1",
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app):
+            provider = app.state.media_server
+            for event_type, position, paused in (
+                (PlaybackEventType.START, 12.5, False),
+                (PlaybackEventType.PROGRESS, 18.0, True),
+                (PlaybackEventType.STOP, 21.25, False),
+            ):
+                event = PlaybackEvent(
+                    type=event_type,
+                    item_id="movie-1",
+                    media_source_id="source-1",
+                    play_session_id="session-1",
+                    position_seconds=position,
+                    credentials=credentials,
+                    is_paused=paused,
+                )
+                if event_type is PlaybackEventType.STOP:
+                    assert await provider.stop_playback(event)
+                else:
+                    assert await provider.report_playback(event)
+
+    asyncio.run(exercise())
+    assert [report["path"] for report in fake_state.playback_reports] == [
+        "/Sessions/Playing",
+        "/Sessions/Playing/Progress",
+        "/Sessions/Playing/Stopped",
+    ]
+    assert [report["body"]["PositionTicks"] for report in fake_state.playback_reports] == [
+        125_000_000,
+        180_000_000,
+        212_500_000,
+    ]
+    assert all(
+        report["body"]["ItemId"] == "movie-1"
+        and report["body"]["MediaSourceId"] == "source-1"
+        and report["body"]["PlaySessionId"] == "session-1"
+        for report in fake_state.playback_reports
+    )
+    assert fake_state.playback_reports[1]["body"]["IsPaused"] is True
