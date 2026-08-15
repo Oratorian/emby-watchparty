@@ -578,3 +578,45 @@ def test_jellyfin_v2_series_seasons_are_normalized(tmp_path) -> None:
     asyncio.run(exercise())
     request = next(row for row in fake_state.requests if row["path"] == "/Shows/series-1/Seasons")
     assert request["query"] == {"UserId": "jellyfin-user-1"}
+
+
+def test_jellyfin_v2_series_episodes_are_season_scoped_and_normalized(tmp_path) -> None:
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            response = await client.get("/api/v2/items/series-1/episodes?season_id=season-1")
+
+            assert response.status_code == 200
+            episode = response.json()["items"][0]
+            assert episode["id"] == "episode-1"
+            assert episode["kind"] == "episode"
+            assert episode["series_id"] == "series-1"
+            assert episode["season_id"] == "season-1"
+            assert episode["index_number"] == 1
+            assert episode["runtime_seconds"] == 240.0
+
+    asyncio.run(exercise())
+    request = next(row for row in fake_state.requests if row["path"] == "/Shows/series-1/Episodes")
+    assert request["query"] == {
+        "UserId": "jellyfin-user-1",
+        "SeasonId": "season-1",
+    }

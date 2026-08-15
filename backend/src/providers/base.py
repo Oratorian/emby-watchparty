@@ -49,6 +49,13 @@ class MediaServerProvider(Protocol):
 
     async def get_seasons(self, series_id: str, credentials: ProviderCredentials) -> MediaPage: ...
 
+    async def get_episodes(
+        self,
+        series_id: str,
+        season_id: str | None,
+        credentials: ProviderCredentials,
+    ) -> MediaPage: ...
+
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan: ...
 
     async def report_playback(self, event: PlaybackEvent) -> bool: ...

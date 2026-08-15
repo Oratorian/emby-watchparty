@@ -171,3 +171,23 @@ async def series_seasons(
     )
     page = await provider.get_seasons(series_id, credentials)
     return MediaPageV2.model_validate(asdict(page))
+
+
+@router.get(
+    "/items/{series_id}/episodes",
+    response_model=MediaPageV2,
+    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+)
+async def series_episodes(
+    series_id: str,
+    season_id: str | None = None,
+    party_session: PartySession = Depends(require_party_unlocked),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    page = await provider.get_episodes(series_id, season_id, credentials)
+    return MediaPageV2.model_validate(asdict(page))

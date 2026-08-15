@@ -118,6 +118,20 @@ class EmbyProvider:
         )
         return normalize_page({"Items": items, "TotalRecordCount": len(items)})
 
+    async def get_episodes(
+        self,
+        series_id: str,
+        season_id: str | None,
+        credentials: ProviderCredentials,
+    ):
+        items = await self._client.get_series_episodes(
+            series_id,
+            season_id,
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+        )
+        return normalize_page({"Items": items, "TotalRecordCount": len(items)})
+
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan:
         from backend.src.quality import resolve_quality
         from backend.src.stream_builder import StreamBuilder
