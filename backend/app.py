@@ -268,6 +268,7 @@ async def lifespan(application: FastAPI):
             stream_builder,
             config,
             logger,
+            hls_registry=hls_registry,
             session_secret=application.state.session_secret,
             rate_limiter=rate_limiter,
         )

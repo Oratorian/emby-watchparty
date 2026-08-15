@@ -15,12 +15,19 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 
+import httpx
+
 from backend.src.domain import (
     AutoAdvance,
     EpisodeRef,
     PlaybackState,
     SelectedMedia,
     UserStream,
+)
+from backend.src.providers.models import (
+    PlaybackPlanError,
+    PlaybackRequest,
+    ProviderCredentials,
 )
 from backend.src.quality import (
     DEFAULT_QUALITY_ID,
@@ -68,6 +75,8 @@ def clamp_start_seconds(start_seconds: float | None, run_time: float | None) -> 
 def register(ctx):
     sio = ctx["sio"]
     emby_client = ctx["emby_client"]
+    media_server = ctx["media_server"]
+    hls_registry = ctx.get("hls_registry")
     config = ctx["config"]
     logger = ctx["logger"]
     party_manager = ctx["party_manager"]
@@ -248,7 +257,6 @@ def register(ctx):
         Returns the stream info dict, or None on failure.
         """
         access_token, user_id = _host_creds(party)
-        start_ticks_for_info = int(start_seconds * 10_000_000) if start_seconds > 0 else 0
         # Normalise so a stale / unknown quality stored on the party can't
         # break stream creation; resolve to a max bitrate (None for Auto
         # and the resolution-only tiers -- get_playback_info treats None
@@ -257,28 +265,6 @@ def register(ctx):
             quality,
             force_transcode=bool(config.FORCE_TRANSCODE),
         )
-        _, _, bitrate_kbps = resolve_quality(normalised)
-        max_streaming_bitrate = bitrate_kbps * 1000 if bitrate_kbps else None
-        playback_info = await emby_client.get_playback_info(
-            item_id,
-            audio_index=audio_index,
-            subtitle_index=subtitle_index,
-            media_source_id=media_source_id,
-            max_streaming_bitrate=max_streaming_bitrate,
-            start_time_ticks=start_ticks_for_info,
-            access_token=access_token,
-            user_id=user_id,
-        )
-        if not playback_info or "MediaSources" not in playback_info:
-            logger.error(f"Failed to get playback info for user stream (sid={sid})")
-            return None
-
-        user_media_source = playback_info["MediaSources"][0]
-        media_source_id = user_media_source["Id"]
-        play_session_id = playback_info.get("PlaySessionId")
-
-        start_ticks = int(start_seconds * 10_000_000) if start_seconds > 0 else None
-
         # Per-viewer codec capability. Streams are already per viewer, so
         # two people in the same party can legitimately get different
         # codecs: the one whose browser decodes HEVC keeps it, the one
@@ -286,27 +272,39 @@ def register(ctx):
         # never reported, which build_params treats as h264-only.
         client_id = _client_id_for_sid(party, sid)
         client_codecs = party.client_codecs.get(client_id) if client_id else None
+        try:
+            plan = await media_server.prepare_playback(
+                PlaybackRequest(
+                    item_id=item_id,
+                    credentials=ProviderCredentials(
+                        access_token=access_token or "",
+                        user_id=user_id or "",
+                    ),
+                    media_source_id=media_source_id,
+                    audio_index=audio_index,
+                    subtitle_index=subtitle_index,
+                    quality=normalised,
+                    start_seconds=start_seconds,
+                    client_codecs=frozenset(client_codecs or {"h264"}),
+                    force_transcode=bool(config.FORCE_TRANSCODE),
+                )
+            )
+        except (httpx.HTTPError, PlaybackPlanError, KeyError, ValueError) as exc:
+            logger.error("Failed to prepare user stream sid=%s error=%s", sid, type(exc).__name__)
+            return None
 
-        from backend.src.stream_builder import StreamBuilder
-
-        builder = StreamBuilder(emby_client, logger, config)
-        stream_url_base = builder.build_stream_url(
-            item_id=item_id,
-            app_prefix=config.APP_PREFIX,
-            media_source=user_media_source,
-            media_source_id=media_source_id,
-            play_session_id=play_session_id,
-            audio_index=audio_index,
-            subtitle_index=subtitle_index,
-            quality=normalised,
-            start_time_ticks=start_ticks,
-            client_codecs=client_codecs,
-        )
+        media_source_id = plan.media_source_id
+        play_session_id = plan.play_session_id
+        provider_opaque_path = f"/hls/{plan.stream_id}/master.m3u8"
+        opaque_path = f"{config.APP_PREFIX}{provider_opaque_path}"
+        uses_opaque_registry = plan.browser_path in {None, provider_opaque_path}
+        stream_url_base = opaque_path if uses_opaque_registry else plan.browser_path
 
         stream_info = UserStream(
             play_session_id=play_session_id,
             media_source_id=media_source_id,
             stream_url_base=stream_url_base,
+            stream_id=plan.stream_id,
             audio_index=audio_index,
             subtitle_index=subtitle_index,
             quality=normalised,
@@ -319,6 +317,9 @@ def register(ctx):
                 access_token=access_token,
             )
             return None
+
+        if hls_registry is not None and uses_opaque_registry:
+            hls_registry.install(plan)
 
         run_time_seconds = party.current_video.run_time_seconds
         await emby_client.report_playback_start(

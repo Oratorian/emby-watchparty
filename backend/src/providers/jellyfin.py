@@ -175,14 +175,16 @@ class JellyfinProvider:
             raise PlaybackPlanError("Jellyfin returned an unsafe HLS playback plan")
         reasons = source.get("TranscodingReasons") or []
         method = PlaybackMethod.HLS_TRANSCODE if reasons else PlaybackMethod.HLS_REMUX
+        stream_id = secrets.token_urlsafe(18)
         return PlaybackPlan(
-            stream_id=secrets.token_urlsafe(18),
+            stream_id=stream_id,
             item_id=request.item_id,
             media_source_id=str(source["Id"]),
             play_session_id=str(play_session_id),
             method=method,
             master=HLSResource(master_url),
             credentials=request.credentials,
+            browser_path=f"/hls/{stream_id}/master.m3u8",
             upstream_headers={
                 key: str(value) for key, value in (source.get("RequiredHttpHeaders") or {}).items()
             },

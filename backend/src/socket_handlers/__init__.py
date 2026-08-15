@@ -20,6 +20,7 @@ def register_all(
     stream_builder,
     config,
     logger,
+    hls_registry=None,
     session_secret=None,
     rate_limiter=None,
 ):
@@ -33,6 +34,7 @@ def register_all(
         "stream_builder": stream_builder,
         "config": config,
         "logger": logger,
+        "hls_registry": hls_registry,
         "session_secret": session_secret,
         "rate_limiter": rate_limiter,
     }

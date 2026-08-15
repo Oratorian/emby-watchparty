@@ -155,6 +155,7 @@ class PlaybackPlan:
     method: PlaybackMethod
     master: HLSResource
     credentials: ProviderCredentials = field(repr=False)
+    browser_path: str | None = None
     upstream_headers: dict[str, str] = field(default_factory=dict, repr=False)
     resources: dict[str, HLSResource] = field(default_factory=dict, repr=False)
 
@@ -168,6 +169,9 @@ class PlaybackEvent:
     position_seconds: float
     credentials: ProviderCredentials
     is_paused: bool = False
+    audio_index: int | None = None
+    subtitle_index: int | None = None
+    run_time_seconds: float | None = None
 
 
 @dataclass(frozen=True)

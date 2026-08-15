@@ -20,7 +20,7 @@ def create_provider(
     client = EmbyClient(config.MEDIA_SERVER_URL, config.MEDIA_SERVER_API_KEY, logger, gateway)
     if config.MEDIA_SERVER_TYPE == "jellyfin":
         return JellyfinProvider(client)
-    return EmbyProvider(client)
+    return EmbyProvider(client, config)
 
 
 __all__ = [

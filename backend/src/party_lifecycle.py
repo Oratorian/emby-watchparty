@@ -9,12 +9,19 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from backend.src.domain import Party
 
+from backend.src.providers.models import (
+    PlaybackEvent,
+    PlaybackEventType,
+    ProviderCredentials,
+)
+
 
 class PartyLifecycle:
     def __init__(self, ctx: dict):
         self._ctx = ctx
         self._sio = ctx["sio"]
-        self._emby = ctx["emby_client"]
+        self._provider = ctx["media_server"]
+        self._hls_registry = ctx.get("hls_registry")
         self._parties = ctx["party_manager"]
         self._tokens = ctx["token_manager"]
         self._limiter = ctx.get("rate_limiter")
@@ -101,22 +108,24 @@ class PartyLifecycle:
             play_session_id = stream.play_session_id
             if not play_session_id:
                 continue
-            if video:
+            if video and access_token and user_id:
                 with suppress(Exception):
-                    await self._emby.report_playback_stopped(
-                        item_id=video.item_id,
-                        media_source_id=stream.media_source_id,
-                        play_session_id=play_session_id,
-                        position_seconds=position,
-                        run_time_seconds=video.run_time_seconds,
-                        access_token=access_token,
-                        user_id=user_id,
+                    await self._provider.stop_playback(
+                        PlaybackEvent(
+                            type=PlaybackEventType.STOP,
+                            credentials=ProviderCredentials(access_token, user_id),
+                            audio_index=stream.audio_index,
+                            subtitle_index=stream.subtitle_index,
+                            run_time_seconds=video.run_time_seconds,
+                            is_paused=False,
+                            item_id=video.item_id,
+                            media_source_id=stream.media_source_id,
+                            play_session_id=play_session_id,
+                            position_seconds=position,
+                        )
                     )
-            with suppress(Exception):
-                await self._emby.stop_active_encodings(
-                    play_session_id=play_session_id,
-                    access_token=access_token,
-                )
+            if self._hls_registry is not None and stream.stream_id:
+                self._hls_registry.revoke(stream.stream_id)
 
         revoked_tokens = self._tokens.revoke_party(party_id)
         cleared_limiters = 0
