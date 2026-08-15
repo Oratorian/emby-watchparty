@@ -237,3 +237,21 @@ async def set_played(
     )
     await provider.set_played(item_id, body.played, credentials)
     return PlayedResultV2(success=True, played=body.played)
+
+
+@router.get(
+    "/playlists",
+    response_model=MediaPageV2,
+    responses=PARTY_HOST_RESPONSES,
+)
+async def playlists(
+    party_session: PartySession = Depends(require_party_host),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    page = await provider.list_playlists(credentials)
+    return MediaPageV2.model_validate(asdict(page))

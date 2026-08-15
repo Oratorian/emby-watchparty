@@ -87,6 +87,20 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
     async def user_items(user_id: str, request: Request):
         assert user_id
         state.record(request)
+        if request.query_params.get("IncludeItemTypes") == "Playlist":
+            return {
+                "Items": [
+                    {
+                        "Id": "playlist-1",
+                        "Name": "Movie Night",
+                        "Type": "Playlist",
+                        "IsFolder": True,
+                        "UserData": {"IsFavorite": False, "Played": False},
+                    }
+                ],
+                "TotalRecordCount": 1,
+                "StartIndex": 0,
+            }
         return {
             "Items": [
                 {
