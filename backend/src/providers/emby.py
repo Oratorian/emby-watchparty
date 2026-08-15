@@ -87,6 +87,21 @@ class EmbyProvider:
         )
         return normalize_page(payload)
 
+    async def search_catalog(self, term: str, limit: int, credentials: ProviderCredentials):
+        from backend.src.providers.models import CatalogPage, CatalogScope
+
+        return await self.query_catalog(
+            CatalogQuery(
+                scope=CatalogScope(
+                    include_kinds=("movie", "series", "episode", "person", "box_set"),
+                    recursive=True,
+                ),
+                page=CatalogPage(limit=limit),
+                search_term=term,
+            ),
+            credentials,
+        )
+
     async def get_details(self, item_id: str, credentials: ProviderCredentials):
         payload = await self._client.get_item_details(
             item_id,

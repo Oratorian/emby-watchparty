@@ -501,3 +501,45 @@ def test_socket_creates_registered_per_viewer_jellyfin_plan(tmp_path) -> None:
         "/Sessions/Playing",
         "/Sessions/Playing/Stopped",
     ]
+
+
+def test_jellyfin_v2_search_is_normalized_and_bounded(tmp_path) -> None:
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            response = await client.get("/api/v2/items/search?q=Arrival&limit=7")
+
+            assert response.status_code == 200
+            assert [
+                (item["id"], item["name"], item["kind"]) for item in response.json()["items"]
+            ] == [("movie-1", "Arrival", "movie")]
+
+    asyncio.run(exercise())
+    request = next(
+        row
+        for row in fake_state.requests
+        if row["path"] == "/Users/jellyfin-user-1/Items"
+        and row["query"].get("SearchTerm") == "Arrival"
+    )
+    assert request["query"]["Recursive"] == "true"
+    assert request["query"]["Limit"] == "7"
+    assert request["query"]["IncludeItemTypes"] == "Movie,Series,Episode,Person,BoxSet"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from backend.src.dependencies import (
     PARTY_UNLOCKED_RESPONSES,
@@ -106,6 +106,26 @@ async def query_items(
         search_term=body.search_term,
     )
     page = await provider.query_catalog(query, credentials)
+    return MediaPageV2.model_validate(asdict(page))
+
+
+@router.get(
+    "/items/search",
+    response_model=MediaPageV2,
+    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+)
+async def search_items(
+    q: str = Query(min_length=1, max_length=200),
+    limit: int = Query(default=50, ge=1, le=100),
+    party_session: PartySession = Depends(require_party_unlocked),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    page = await provider.search_catalog(q.strip(), limit, credentials)
     return MediaPageV2.model_validate(asdict(page))
 
 

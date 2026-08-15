@@ -39,6 +39,10 @@ class MediaServerProvider(Protocol):
         self, query: CatalogQuery, credentials: ProviderCredentials
     ) -> MediaPage: ...
 
+    async def search_catalog(
+        self, term: str, limit: int, credentials: ProviderCredentials
+    ) -> MediaPage: ...
+
     async def get_details(
         self, item_id: str, credentials: ProviderCredentials
     ) -> MediaItemDetails | None: ...
