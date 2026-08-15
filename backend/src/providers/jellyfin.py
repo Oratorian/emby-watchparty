@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import secrets
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import httpx
 
@@ -20,6 +20,7 @@ from backend.src.providers.models import (
     ProviderCredentials,
     ProviderIdentity,
     ProviderReadiness,
+    UnsafeProviderResourceError,
 )
 from backend.src.providers.normalization import (
     emby_family_query,
@@ -167,6 +168,7 @@ class JellyfinProvider:
             resolved.scheme not in {"http", "https"}
             or (resolved.scheme, resolved.netloc) != (configured.scheme, configured.netloc)
             or not resolved.path.lower().endswith(".m3u8")
+            or f"/videos/{request.item_id.lower()}/" not in resolved.path.lower()
         ):
             raise PlaybackPlanError("Jellyfin returned an unsafe HLS playback plan")
         reasons = source.get("TranscodingReasons") or []
@@ -183,6 +185,38 @@ class JellyfinProvider:
                 key: str(value) for key, value in (source.get("RequiredHttpHeaders") or {}).items()
             },
         )
+
+    def resolve_hls_resource(
+        self, plan: PlaybackPlan, parent: HLSResource, uri: str
+    ) -> HLSResource:
+        decoded = uri
+        for _ in range(8):
+            expanded = unquote(decoded)
+            if expanded == decoded:
+                break
+            decoded = expanded
+        else:
+            raise UnsafeProviderResourceError("HLS URI exceeded decoding limit")
+        if not decoded or any(
+            ord(character) < 32 or ord(character) == 127 for character in decoded
+        ):
+            raise UnsafeProviderResourceError("HLS URI contains unsafe characters")
+        path = urlparse(decoded.replace("\\", "/")).path
+        if any(part in {".", ".."} for part in path.split("/")):
+            raise UnsafeProviderResourceError("HLS URI contains traversal")
+
+        child_url = urljoin(parent.url, uri)
+        configured = urlparse(self._client.server_url)
+        child = urlparse(child_url)
+        root = urlparse(plan.master.url).path.rsplit("/", 1)[0] + "/"
+        if (
+            child.scheme not in {"http", "https"}
+            or (child.scheme, child.netloc) != (configured.scheme, configured.netloc)
+            or child.fragment
+            or not child.path.startswith(root)
+        ):
+            raise UnsafeProviderResourceError("HLS URI is outside the playback plan")
+        return HLSResource(child_url)
 
 
 class _JellyfinGateway(MediaServerGateway):

@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from backend.src.providers.models import (
         AuthenticatedUser,
         CatalogQuery,
+        HLSResource,
         MediaItemDetails,
         MediaPage,
         PlaybackEvent,
@@ -46,3 +47,7 @@ class MediaServerProvider(Protocol):
     async def report_playback(self, event: PlaybackEvent) -> bool: ...
 
     async def stop_playback(self, event: PlaybackEvent) -> bool: ...
+
+    def resolve_hls_resource(
+        self, plan: PlaybackPlan, parent: HLSResource, uri: str
+    ) -> HLSResource: ...

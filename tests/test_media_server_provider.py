@@ -2,12 +2,18 @@ import asyncio
 import logging
 
 import httpx
+import pytest
 
 from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers import EmbyProvider, JellyfinProvider, create_provider
-from backend.src.providers.models import PlaybackMethod, PlaybackRequest, ProviderCredentials
+from backend.src.providers.models import (
+    PlaybackMethod,
+    PlaybackRequest,
+    ProviderCredentials,
+    UnsafeProviderResourceError,
+)
 from tests.support.asgi import asgi_client
 from tests.support.credentials import TEST_JELLYFIN_ACCESS_TOKEN
 from tests.support.fake_jellyfin import FakeJellyfinState, create_fake_jellyfin_app
@@ -343,3 +349,38 @@ def test_jellyfin_posted_playback_info_becomes_hls_plan(tmp_path) -> None:
     assert profile["Name"] == "Emby Watch Party HLS"
     assert profile["TranscodingProfiles"][0]["Protocol"] == "hls"
     assert profile["TranscodingProfiles"][0]["Container"] == "ts"
+
+
+def test_jellyfin_hls_children_are_same_origin_and_item_scoped(tmp_path) -> None:
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app()),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app):
+            provider = app.state.media_server
+            plan = await provider.prepare_playback(
+                PlaybackRequest(
+                    item_id="movie-1",
+                    credentials=ProviderCredentials(
+                        access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+                        user_id="jellyfin-user-1",
+                    ),
+                )
+            )
+            child = provider.resolve_hls_resource(plan, plan.master, "nested/MAIN.M3U8?part=1")
+            assert child.url == ("http://jellyfin.test/Videos/movie-1/nested/MAIN.M3U8?part=1")
+
+            for unsafe in (
+                "https://foreign.test/steal.ts",
+                "/Videos/other-item/segment.ts",
+                "nested/%252e%252e/secret.ts",
+                "nested\\..\\secret.ts",
+            ):
+                with pytest.raises(UnsafeProviderResourceError):
+                    provider.resolve_hls_resource(plan, plan.master, unsafe)
+
+    asyncio.run(exercise())
