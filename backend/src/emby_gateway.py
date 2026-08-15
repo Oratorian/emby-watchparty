@@ -1,4 +1,4 @@
-"""Async HTTP boundary for Emby with one timeout and retry policy."""
+"""Async HTTP transport for media-server providers."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ QueryParams = (
 )
 
 
-class EmbyGateway:
+class MediaServerGateway:
     RETRYABLE_STATUSES: ClassVar[frozenset[int]] = frozenset({502, 503, 504})
     RETRY_DELAYS = (0.1, 0.25)
     SAFE_METHODS: ClassVar[frozenset[str]] = frozenset({"GET", "HEAD"})
@@ -137,3 +137,7 @@ class EmbyGateway:
             params=params,
         )
         return await self.client.send(request, stream=True)
+
+
+# Backward-compatible import for existing Emby-focused callers and tests.
+EmbyGateway = MediaServerGateway
