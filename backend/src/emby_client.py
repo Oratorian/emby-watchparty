@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 import httpx
@@ -262,12 +262,12 @@ class EmbyClient:
 
     async def get_item_prefixes(
         self,
-        parent_id=None,
-        item_type=None,
-        recursive=False,
-        access_token=None,
-        user_id=None,
-    ):
+        parent_id: str | None = None,
+        item_type: str | None = None,
+        recursive: bool = False,
+        access_token: str | None = None,
+        user_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         effective_type, effective_recursive = await self._resolve_item_scope(
             parent_id, item_type, recursive, access_token, user_id
         )
@@ -289,7 +289,14 @@ class EmbyClient:
         response.raise_for_status()
         return response.json()
 
-    async def query_items(self, query, access_token=None, user_id=None, *, prefixes=False):
+    async def query_items(
+        self,
+        query: dict[str, Any],
+        access_token: str | None = None,
+        user_id: str | None = None,
+        *,
+        prefixes: bool = False,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
         """Run a strict watchparty library query through Emby's allowlisted API."""
         if not user_id:
             return {"Items": [], "TotalRecordCount": 0, "StartIndex": 0}
@@ -442,13 +449,13 @@ class EmbyClient:
     async def get_filter_options(
         self,
         *,
-        parent_id=None,
-        include_item_types=None,
-        media_types=None,
-        access_token=None,
-        user_id=None,
-    ):
-        params = {
+        parent_id: str | None = None,
+        include_item_types: str | None = None,
+        media_types: str | None = None,
+        access_token: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any | None]:
+        params: dict[str, str | int] = {
             "UserId": user_id or "",
             "Recursive": "true",
             "ParentId": parent_id or "",
@@ -469,7 +476,7 @@ class EmbyClient:
             "subtitle_codec": "/emby/SubtitleCodecs",
         }
 
-        async def fetch(path):
+        async def fetch(path: str) -> Any | None:
             try:
                 response = await self.gateway.get(
                     path,
@@ -484,9 +491,14 @@ class EmbyClient:
         responses = await asyncio.gather(*(fetch(path) for path in paths.values()))
         return dict(zip(paths, responses, strict=True))
 
-    async def get_season_episodes(self, season_id, access_token=None, user_id=None):
+    async def get_season_episodes(
+        self,
+        season_id: str,
+        access_token: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
         path = f"/emby/Users/{user_id}/Items" if user_id else "/emby/Items"
-        params = {
+        params: dict[str, str | int] = {
             "ParentId": season_id,
             "IncludeItemTypes": "Episode",
             "Recursive": "false",
@@ -509,7 +521,12 @@ class EmbyClient:
             self.logger.error("Error fetching season episodes: error=%s", type(exc).__name__)
             return {"Items": [], "TotalRecordCount": 0}
 
-    async def get_item_details(self, item_id, access_token=None, user_id=None):
+    async def get_item_details(
+        self,
+        item_id: str,
+        access_token: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any] | None:
         if not user_id:
             return None
         headers = self._headers(access_token, user_id)
@@ -530,15 +547,15 @@ class EmbyClient:
 
     async def search_items(
         self,
-        query,
-        access_token=None,
-        user_id=None,
-        include_item_types="Movie,Series",
-    ):
+        query: str,
+        access_token: str | None = None,
+        user_id: str | None = None,
+        include_item_types: str = "Movie,Series",
+    ) -> dict[str, Any]:
         if not user_id:
             return {"Items": []}
 
-        params = {
+        params: dict[str, str | int] = {
             "SearchTerm": query,
             "Recursive": "true",
             "Fields": (
@@ -676,7 +693,13 @@ class EmbyClient:
             previous_previous, previous = previous, current
         return previous[-1]
 
-    async def get_item_section(self, item_id, section, access_token=None, user_id=None):
+    async def get_item_section(
+        self,
+        item_id: str,
+        section: str,
+        access_token: str | None = None,
+        user_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         routes = {
             "related": (f"/emby/Items/{item_id}/Similar", {"UserId": user_id, "Limit": 12}),
             "trailers": (f"/emby/Users/{user_id}/Items/{item_id}/LocalTrailers", {}),
@@ -692,7 +715,12 @@ class EmbyClient:
         payload = response.json()
         return payload.get("Items", []) if isinstance(payload, dict) else payload
 
-    async def get_series_seasons(self, series_id, access_token=None, user_id=None):
+    async def get_series_seasons(
+        self,
+        series_id: str,
+        access_token: str | None = None,
+        user_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         response = await self.gateway.get(
             f"/emby/Shows/{series_id}/Seasons",
             headers=self._headers(access_token, user_id),
@@ -701,7 +729,13 @@ class EmbyClient:
         response.raise_for_status()
         return response.json().get("Items", [])
 
-    async def get_series_episodes(self, series_id, season_id=None, access_token=None, user_id=None):
+    async def get_series_episodes(
+        self,
+        series_id: str,
+        season_id: str | None = None,
+        access_token: str | None = None,
+        user_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         params = {"UserId": user_id}
         if season_id:
             params["SeasonId"] = season_id
@@ -713,19 +747,35 @@ class EmbyClient:
         response.raise_for_status()
         return response.json().get("Items", [])
 
-    async def set_favorite(self, item_id, favorite, access_token=None, user_id=None):
+    async def set_favorite(
+        self,
+        item_id: str,
+        favorite: bool,
+        access_token: str | None = None,
+        user_id: str | None = None,
+    ) -> None:
         path = f"/emby/Users/{user_id}/FavoriteItems/{item_id}"
         method = self.gateway.post if favorite else self.gateway.delete
         response = await method(path, headers=self._headers(access_token, user_id))
         response.raise_for_status()
 
-    async def set_played(self, item_id, played, access_token=None, user_id=None):
+    async def set_played(
+        self,
+        item_id: str,
+        played: bool,
+        access_token: str | None = None,
+        user_id: str | None = None,
+    ) -> None:
         path = f"/emby/Users/{user_id}/PlayedItems/{item_id}"
         method = self.gateway.post if played else self.gateway.delete
         response = await method(path, headers=self._headers(access_token, user_id))
         response.raise_for_status()
 
-    async def get_playlists(self, access_token=None, user_id=None):
+    async def get_playlists(
+        self,
+        access_token: str | None = None,
+        user_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         response = await self.gateway.get(
             f"/emby/Users/{user_id}/Items",
             headers=self._headers(access_token, user_id),
@@ -734,7 +784,12 @@ class EmbyClient:
         response.raise_for_status()
         return response.json().get("Items", [])
 
-    async def create_playlist(self, name, access_token=None, user_id=None):
+    async def create_playlist(
+        self,
+        name: str,
+        access_token: str | None = None,
+        user_id: str | None = None,
+    ) -> str:
         response = await self.gateway.post(
             "/emby/Playlists",
             headers=self._headers(access_token, user_id),
@@ -743,7 +798,13 @@ class EmbyClient:
         response.raise_for_status()
         return response.json()["Id"]
 
-    async def add_to_playlist(self, playlist_id, item_id, access_token=None, user_id=None):
+    async def add_to_playlist(
+        self,
+        playlist_id: str,
+        item_id: str,
+        access_token: str | None = None,
+        user_id: str | None = None,
+    ) -> None:
         response = await self.gateway.post(
             f"/emby/Playlists/{playlist_id}/Items",
             headers=self._headers(access_token, user_id),
