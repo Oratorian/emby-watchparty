@@ -159,4 +159,13 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             media_type="application/vnd.apple.mpegurl",
         )
 
+    @app.get("/Videos/{item_id}/main.M3U8")
+    async def media_playlist(item_id: str, request: Request):
+        assert item_id
+        state.record(request)
+        return Response(
+            "#EXTM3U\n#EXTINF:6.0,\nsegments/segment0001.ts?part=1\n",
+            media_type="application/vnd.apple.mpegurl",
+        )
+
     return app

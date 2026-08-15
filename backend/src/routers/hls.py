@@ -418,6 +418,103 @@ async def proxy_hls_master(
 
 
 @router.get(
+    "/{stream_id}/resources/{resource_id}",
+    responses={
+        200: {
+            "content": {"application/vnd.apple.mpegurl": {}},
+            "description": "Registered nested HLS playlist",
+        },
+        **PARTY_HOST_TOKEN_RESPONSES,
+        502: {"description": "Upstream media-server request failed"},
+    },
+)
+async def proxy_hls_resource(
+    stream_id: str,
+    resource_id: str,
+    request: Request,
+    party_session: PartySession = Depends(require_host_token),
+    config=Depends(get_config),
+    media_server=Depends(get_media_server),
+    hls_registry=Depends(get_hls_registry),
+    token_manager=Depends(get_token_manager),
+    party_manager=Depends(get_party_manager),
+    logger=Depends(get_logger),
+):
+    access_token, _, _ = _resolve_host_creds(
+        request,
+        config,
+        token_manager,
+        party_manager,
+        logger,
+        session_party_id=party_session.party_id,
+    )
+    if not access_token:
+        return Response(
+            content='{"error": "Unauthorized"}',
+            status_code=401,
+            media_type="application/json",
+        )
+    token = request.query_params.get("token")
+    if config.ENABLE_HLS_TOKEN_VALIDATION:
+        claims = token_manager.get_claims(token or "")
+        sid = claims[1] if claims else None
+    else:
+        sid = next(
+            (
+                candidate_sid
+                for candidate_sid, client_id in party_session.party.sid_client_ids.items()
+                if client_id == party_session.client_id
+            ),
+            None,
+        )
+    plan = hls_registry.get_plan(stream_id)
+    stream = party_session.party.user_streams.get(sid) if sid else None
+    resource = hls_registry.resolve(stream_id, resource_id)
+    if plan is None or resource is None or stream is None or stream.stream_id != plan.stream_id:
+        return Response(
+            content='{"error": "Unauthorized"}',
+            status_code=401,
+            media_type="application/json",
+        )
+    try:
+        upstream = await media_server.fetch_hls_resource(plan, resource)
+        if upstream.is_redirect:
+            logger.warning("Media server redirected an HLS resource request; not followed")
+            return Response(
+                content='{"error": "Upstream redirect not followed"}',
+                status_code=502,
+                media_type="application/json",
+            )
+        upstream.raise_for_status()
+        if not _is_playlist(urlsplit(resource.url).path):
+            return Response(
+                content='{"error": "Resource is not a playlist"}',
+                status_code=400,
+                media_type="application/json",
+            )
+        playlist = hls_registry.rewrite_playlist(
+            plan,
+            resource,
+            upstream.text,
+            resolve=lambda parent, uri: media_server.resolve_hls_resource(plan, parent, uri),
+            app_prefix=config.APP_PREFIX,
+            token=token or "",
+        )
+        return Response(
+            content=playlist,
+            media_type="application/vnd.apple.mpegurl",
+            headers={"X-Content-Type-Options": "nosniff"},
+        )
+    except (ValueError, httpx.HTTPError) as exc:
+        logger.error("Failed to fetch opaque HLS resource: error=%s", type(exc).__name__)
+        return Response(
+            content='{"error": "Failed to fetch HLS resource"}',
+            status_code=502,
+            media_type="application/json",
+        )
+
+
+@router.get(
     "/{item_id}/{subpath:path}",
     responses={
         200: {
