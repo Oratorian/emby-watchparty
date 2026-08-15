@@ -7,11 +7,12 @@ import httpx
 from backend.src.emby_client import EmbyClient
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers.models import (
+    CatalogQuery,
     ProviderCredentials,
     ProviderIdentity,
     ProviderReadiness,
 )
-from backend.src.providers.normalization import normalize_page
+from backend.src.providers.normalization import emby_family_query, normalize_page
 
 
 class JellyfinProvider:
@@ -58,6 +59,14 @@ class JellyfinProvider:
         payload = await self.get_libraries(
             access_token=credentials.access_token if credentials else None,
             user_id=credentials.user_id if credentials else None,
+        )
+        return normalize_page(payload)
+
+    async def query_catalog(self, query: CatalogQuery, credentials: ProviderCredentials):
+        payload = await self._client.query_items(
+            emby_family_query(query),
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
         )
         return normalize_page(payload)
 

@@ -16,9 +16,16 @@ from backend.src.dependencies import (
     get_sio,
     require_party_unlocked,
 )
-from backend.src.providers.models import ProviderCredentials
+from backend.src.providers.models import (
+    CatalogPage,
+    CatalogQuery,
+    CatalogScope,
+    CatalogSort,
+    ProviderCredentials,
+)
 from backend.src.routers.auth import api_login
 from backend.src.v2_schemas import (
+    CatalogQueryV2,
     LoginRequest,
     LoginResponseV2,
     MediaPageV2,
@@ -68,4 +75,34 @@ async def libraries(
         user_id=party.host_user_id or "",
     )
     page = await provider.browse_libraries(credentials)
+    return MediaPageV2.model_validate(asdict(page))
+
+
+@router.post(
+    "/items/query",
+    response_model=MediaPageV2,
+    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+)
+async def query_items(
+    body: CatalogQueryV2,
+    party_session: PartySession = Depends(require_party_unlocked),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    query = CatalogQuery(
+        scope=CatalogScope(
+            parent_id=body.scope.parent_id,
+            include_kinds=tuple(body.scope.include_kinds),
+            media_kinds=tuple(body.scope.media_kinds),
+            recursive=body.scope.recursive,
+        ),
+        page=CatalogPage(start=body.page.start, limit=body.page.limit),
+        sort=CatalogSort(field=body.sort.field, direction=body.sort.direction),
+        search_term=body.search_term,
+    )
+    page = await provider.query_catalog(query, credentials)
     return MediaPageV2.model_validate(asdict(page))

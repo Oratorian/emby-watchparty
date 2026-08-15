@@ -22,6 +22,7 @@ from backend.src.routers import (  # noqa: E402
     media,
     party,
     quality,
+    v2,
 )
 
 
@@ -107,7 +108,7 @@ def _type(schema: dict[str, Any], *, all_present: bool = False) -> str:
 
 def render() -> str:
     application = FastAPI()
-    for router in (admin, auth, avatar, health, library, media, party, quality):
+    for router in (admin, auth, avatar, health, library, media, party, quality, v2):
         application.include_router(router.router)
     document = application.openapi()
     schemas = document.get("components", {}).get("schemas", {})

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from backend.src.providers.models import (
         AuthenticatedUser,
+        CatalogQuery,
         MediaPage,
         PlaybackEvent,
         PlaybackPlan,
@@ -30,6 +31,10 @@ class MediaServerProvider(Protocol):
     async def verify_user(self, credentials: ProviderCredentials) -> bool: ...
 
     async def browse_libraries(self, credentials: ProviderCredentials | None) -> MediaPage: ...
+
+    async def query_catalog(
+        self, query: CatalogQuery, credentials: ProviderCredentials
+    ) -> MediaPage: ...
 
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan: ...
 

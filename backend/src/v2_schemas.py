@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.src.schemas import LoginRequest
 
@@ -51,6 +51,39 @@ class MediaPageV2(V2Model):
     start: int = 0
 
 
+class CatalogScopeV2(V2Model):
+    parent_id: str | None = None
+    include_kinds: list[str] = Field(default_factory=list)
+    media_kinds: list[str] = Field(default_factory=list)
+    recursive: bool = False
+
+
+class CatalogPageV2(V2Model):
+    start: int = Field(default=0, ge=0)
+    limit: int = Field(default=50, ge=1, le=200)
+
+
+class CatalogSortV2(V2Model):
+    field: Literal[
+        "name",
+        "date_created",
+        "premiere_date",
+        "year",
+        "community_rating",
+        "critic_rating",
+        "runtime",
+        "random",
+    ] = "name"
+    direction: Literal["ascending", "descending"] = "ascending"
+
+
+class CatalogQueryV2(V2Model):
+    scope: CatalogScopeV2 = Field(default_factory=CatalogScopeV2)
+    page: CatalogPageV2 = Field(default_factory=CatalogPageV2)
+    sort: CatalogSortV2 = Field(default_factory=CatalogSortV2)
+    search_term: str | None = Field(default=None, max_length=200)
+
+
 class MediaServerInfoV2(V2Model):
     media_server_type: Literal["emby", "jellyfin"]
     display_name: str
@@ -67,6 +100,7 @@ class LoginResponseV2(V2Model):
 
 
 __all__ = [
+    "CatalogQueryV2",
     "LoginRequest",
     "LoginResponseV2",
     "MediaItemV2",

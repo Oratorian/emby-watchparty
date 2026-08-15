@@ -98,6 +98,34 @@ class MediaPage:
 
 
 @dataclass(frozen=True)
+class CatalogScope:
+    parent_id: str | None = None
+    include_kinds: tuple[str, ...] = ()
+    media_kinds: tuple[str, ...] = ()
+    recursive: bool = False
+
+
+@dataclass(frozen=True)
+class CatalogPage:
+    start: int = 0
+    limit: int = 50
+
+
+@dataclass(frozen=True)
+class CatalogSort:
+    field: str = "name"
+    direction: str = "ascending"
+
+
+@dataclass(frozen=True)
+class CatalogQuery:
+    scope: CatalogScope = field(default_factory=CatalogScope)
+    page: CatalogPage = field(default_factory=CatalogPage)
+    sort: CatalogSort = field(default_factory=CatalogSort)
+    search_term: str | None = None
+
+
+@dataclass(frozen=True)
 class PlaybackRequest:
     item_id: str
     credentials: ProviderCredentials
