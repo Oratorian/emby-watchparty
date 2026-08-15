@@ -218,7 +218,13 @@ class JellyfinProvider:
             raise UnsafeProviderResourceError("HLS URI is outside the playback plan")
         return HLSResource(child_url)
 
-    async def fetch_hls_resource(self, plan: PlaybackPlan, resource: HLSResource) -> httpx.Response:
+    async def fetch_hls_resource(
+        self,
+        plan: PlaybackPlan,
+        resource: HLSResource,
+        *,
+        range_header: str | None = None,
+    ) -> httpx.Response:
         if resource != plan.master and resource not in plan.resources.values():
             raise UnsafeProviderResourceError("HLS resource is not registered")
         headers = self._client._headers(
@@ -226,6 +232,8 @@ class JellyfinProvider:
             plan.credentials.user_id,
         )
         headers.update(plan.upstream_headers)
+        if range_header:
+            headers["Range"] = range_header
         return await self._client.gateway.get(
             resource.url,
             headers=headers,

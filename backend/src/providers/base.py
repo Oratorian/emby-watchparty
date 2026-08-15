@@ -54,5 +54,9 @@ class MediaServerProvider(Protocol):
     ) -> HLSResource: ...
 
     async def fetch_hls_resource(
-        self, plan: PlaybackPlan, resource: HLSResource
+        self,
+        plan: PlaybackPlan,
+        resource: HLSResource,
+        *,
+        range_header: str | None = None,
     ) -> ProviderResponse: ...

@@ -168,4 +168,26 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             media_type="application/vnd.apple.mpegurl",
         )
 
+    @app.get("/Videos/{item_id}/segments/segment0001.ts")
+    async def segment(item_id: str, request: Request):
+        assert item_id
+        state.record(request)
+        content = b"0123456789"
+        if request.headers.get("range") == "bytes=2-5":
+            return Response(
+                content[2:6],
+                status_code=206,
+                media_type="video/MP2T",
+                headers={
+                    "Content-Range": "bytes 2-5/10",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": "4",
+                },
+            )
+        return Response(
+            content,
+            media_type="video/MP2T",
+            headers={"Accept-Ranges": "bytes", "Content-Length": "10"},
+        )
+
     return app

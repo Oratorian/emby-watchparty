@@ -477,7 +477,11 @@ async def proxy_hls_resource(
             media_type="application/json",
         )
     try:
-        upstream = await media_server.fetch_hls_resource(plan, resource)
+        upstream = await media_server.fetch_hls_resource(
+            plan,
+            resource,
+            range_header=request.headers.get("range"),
+        )
         if upstream.is_redirect:
             logger.warning("Media server redirected an HLS resource request; not followed")
             return Response(
@@ -485,12 +489,23 @@ async def proxy_hls_resource(
                 status_code=502,
                 media_type="application/json",
             )
+        response_headers = {"X-Content-Type-Options": "nosniff"}
+        for header in ("Content-Range", "Accept-Ranges", "Content-Length"):
+            if value := upstream.headers.get(header):
+                response_headers[header] = value
+        if upstream.status_code == 416:
+            return Response(status_code=416, headers=response_headers)
         upstream.raise_for_status()
         if not _is_playlist(urlsplit(resource.url).path):
             return Response(
-                content='{"error": "Resource is not a playlist"}',
-                status_code=400,
-                media_type="application/json",
+                content=upstream.content,
+                status_code=upstream.status_code,
+                media_type=(
+                    "video/MP2T"
+                    if _is_segment(urlsplit(resource.url).path)
+                    else "application/octet-stream"
+                ),
+                headers=response_headers,
             )
         playlist = hls_registry.rewrite_playlist(
             plan,
