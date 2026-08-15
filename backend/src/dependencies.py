@@ -19,6 +19,7 @@ from backend.src.config import Config
 from backend.src.domain import Party
 from backend.src.emby_client import EmbyClient
 from backend.src.emby_gateway import EmbyGateway
+from backend.src.hls_registry import HLSResourceRegistry
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.party_manager import PartyManager
 from backend.src.providers.base import MediaServerProvider
@@ -63,6 +64,10 @@ def get_party_manager(request: Request) -> PartyManager:
 
 def get_token_manager(request: Request) -> HLSTokenManager:
     return request.app.state.token_manager
+
+
+def get_hls_registry(request: Request) -> HLSResourceRegistry:
+    return request.app.state.hls_registry
 
 
 def get_stream_builder(request: Request) -> StreamBuilder:

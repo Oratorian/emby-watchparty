@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         ProviderCredentials,
         ProviderIdentity,
         ProviderReadiness,
+        ProviderResponse,
     )
 
 
@@ -51,3 +52,7 @@ class MediaServerProvider(Protocol):
     def resolve_hls_resource(
         self, plan: PlaybackPlan, parent: HLSResource, uri: str
     ) -> HLSResource: ...
+
+    async def fetch_hls_resource(
+        self, plan: PlaybackPlan, resource: HLSResource
+    ) -> ProviderResponse: ...

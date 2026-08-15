@@ -21,6 +21,7 @@ from backend.src.admin_session_store import AdminSessionStore
 from backend.src.avatar_store import AvatarStore
 from backend.src.config import Config
 from backend.src.emby_gateway import MediaServerGateway
+from backend.src.hls_registry import HLSResourceRegistry
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.log_levels import apply_log_levels
 from backend.src.observability import RequestLogMiddleware
@@ -231,6 +232,7 @@ async def lifespan(application: FastAPI):
         )
         party_manager = PartyManager(config, logger)
         token_manager = HLSTokenManager(config, logger)
+        hls_registry = HLSResourceRegistry()
         avatar_store = AvatarStore(
             db_path=root / "data" / "avatars.db",
             avatars_dir=root / "images" / "avatars",
@@ -249,6 +251,7 @@ async def lifespan(application: FastAPI):
         application.state.emby_client = media_server
         application.state.party_manager = party_manager
         application.state.token_manager = token_manager
+        application.state.hls_registry = hls_registry
         application.state.stream_builder = stream_builder
         application.state.avatar_store = avatar_store
         application.state.admin_session_store = admin_session_store

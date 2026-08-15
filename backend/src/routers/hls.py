@@ -21,7 +21,9 @@ from backend.src.dependencies import (
     get_config,
     get_emby_client,
     get_emby_gateway,
+    get_hls_registry,
     get_logger,
+    get_media_server,
     get_party_manager,
     get_token_manager,
     require_host_token,
@@ -297,6 +299,8 @@ async def proxy_hls_master(
     token_manager=Depends(get_token_manager),
     party_manager=Depends(get_party_manager),
     logger=Depends(get_logger),
+    media_server=Depends(get_media_server),
+    hls_registry=Depends(get_hls_registry),
 ):
     try:
         access_token, user_id, _ = _resolve_host_creds(
@@ -312,6 +316,51 @@ async def proxy_hls_master(
                 content='{"error": "Unauthorized"}',
                 status_code=401,
                 media_type="application/json",
+            )
+
+        plan = hls_registry.get_plan(item_id)
+        if plan is not None:
+            token = request.query_params.get("token")
+            if config.ENABLE_HLS_TOKEN_VALIDATION:
+                claims = token_manager.get_claims(token or "")
+                sid = claims[1] if claims else None
+            else:
+                sid = next(
+                    (
+                        candidate_sid
+                        for candidate_sid, client_id in party_session.party.sid_client_ids.items()
+                        if client_id == party_session.client_id
+                    ),
+                    None,
+                )
+            stream = party_session.party.user_streams.get(sid) if sid else None
+            if stream is None or stream.stream_id != plan.stream_id:
+                return Response(
+                    content='{"error": "Unauthorized"}',
+                    status_code=401,
+                    media_type="application/json",
+                )
+            upstream = await media_server.fetch_hls_resource(plan, plan.master)
+            if upstream.is_redirect:
+                logger.warning("Media server redirected an HLS master request; not followed")
+                return Response(
+                    content='{"error": "Upstream redirect not followed"}',
+                    status_code=502,
+                    media_type="application/json",
+                )
+            upstream.raise_for_status()
+            playlist = hls_registry.rewrite_playlist(
+                plan,
+                plan.master,
+                upstream.text,
+                resolve=lambda parent, uri: media_server.resolve_hls_resource(plan, parent, uri),
+                app_prefix=config.APP_PREFIX,
+                token=token or "",
+            )
+            return Response(
+                content=playlist,
+                media_type="application/vnd.apple.mpegurl",
+                headers={"X-Content-Type-Options": "nosniff"},
             )
 
         query_params = _sanitize_query(request.query_params.multi_items(), strict=True)

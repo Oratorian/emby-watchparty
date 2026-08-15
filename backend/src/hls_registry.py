@@ -27,6 +27,11 @@ class HLSResourceRegistry:
     def revoke(self, stream_id: str) -> None:
         self._plans.pop(stream_id, None)
 
+    def revoke_all(self) -> int:
+        count = len(self._plans)
+        self._plans.clear()
+        return count
+
     def get_plan(self, stream_id: str) -> PlaybackPlan | None:
         return self._plans.get(stream_id)
 

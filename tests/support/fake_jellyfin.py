@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from fastapi import FastAPI, Request
+from fastapi.responses import Response
 
 from tests.support.credentials import TEST_JELLYFIN_ACCESS_TOKEN
 
@@ -147,5 +148,15 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
                 }
             ],
         }
+
+    @app.get("/Videos/{item_id}/master.m3u8")
+    async def master_playlist(item_id: str, request: Request):
+        assert item_id
+        state.record(request)
+        return Response(
+            '#EXTM3U\r\n#EXT-X-MEDIA:TYPE=SUBTITLES,URI="subs/en.M3U8?lang=en"\r\n'
+            "main.M3U8?quality=high\r\n",
+            media_type="application/vnd.apple.mpegurl",
+        )
 
     return app

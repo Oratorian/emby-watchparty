@@ -126,6 +126,12 @@ class HLSTokenManager:
             return None
         return data["party_id"]
 
+    def get_claims(self, token: str) -> tuple[str, str] | None:
+        data = self._tokens.get(token)
+        if not data or time.time() > data["expires"]:
+            return None
+        return str(data["party_id"]), str(data["sid"])
+
     def revoke_party(self, party_id: str) -> int:
         """Wipe every token issued for this party. Returns count removed.
 
