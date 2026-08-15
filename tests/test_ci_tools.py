@@ -1,4 +1,6 @@
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 from scripts.check_diff_coverage import main as coverage_main
@@ -148,6 +150,65 @@ def test_added_line_beginning_with_plus_plus_is_not_read_as_a_file_header(
     # Both hunks must be seen. If the second is dropped the run reports 1/1.
     assert result == 1
     assert "Changed-line coverage: 1/2 (50.00%); required: 80.00%" in capsys.readouterr().out
+
+
+def test_git_diff_is_decoded_as_utf8_from_real_repository(tmp_path: Path, monkeypatch) -> None:
+    git = shutil.which("git")
+    assert git is not None
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def run_git(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(  # noqa: S603  # fixed executable and test-controlled argv
+            [git, *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            encoding="utf-8",
+        )
+
+    run_git("init")
+    run_git("config", "user.email", "ci-test@example.invalid")
+    run_git("config", "user.name", "CI Test")
+    fixture = repo / "fixture.py"
+    fixture.write_text("title = 'base'\n", encoding="utf-8")
+    run_git("add", "fixture.py")
+    run_git("commit", "-m", "base")
+    base = run_git("rev-parse", "HEAD").stdout.strip()
+
+    # Cyrillic capital A encodes to D0 90. Byte 0x90 is undefined in cp1252,
+    # reproducing the Windows decoder crash against Git's real stdout pipe.
+    fixture.write_text("title = '\u0410'\n", encoding="utf-8")
+    python_report = tmp_path / "coverage.xml"
+    python_report.write_text(
+        f"""<coverage>
+  <sources><source>{repo}</source></sources>
+  <packages><package><classes>
+    <class filename="fixture.py"><lines><line number="1" hits="1"/></lines></class>
+  </classes></package></packages>
+</coverage>
+""",
+        encoding="utf-8",
+    )
+    frontend_report = tmp_path / "lcov.info"
+    frontend_report.write_text("", encoding="utf-8")
+    monkeypatch.chdir(repo)
+
+    assert (
+        coverage_main(
+            [
+                "--base",
+                base,
+                "--python-report",
+                str(python_report),
+                "--frontend-report",
+                str(frontend_report),
+                "--repo-root",
+                str(repo),
+            ]
+        )
+        == 0
+    )
 
 
 def test_vulnerability_exception_requires_owner_reason_and_expiry(tmp_path: Path, capsys) -> None:
