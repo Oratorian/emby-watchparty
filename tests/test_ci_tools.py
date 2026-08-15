@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from scripts.check_diff_coverage import main as coverage_main
 from scripts.validate_trivy_ignores import main as trivy_ignores_main
@@ -132,6 +133,34 @@ def test_added_line_beginning_with_plus_plus_is_not_read_as_a_file_header(
     # Both hunks must be seen. If the second is dropped the run reports 1/1.
     assert result == 1
     assert "Changed-line coverage: 1/2 (50.00%); required: 80.00%" in capsys.readouterr().out
+
+
+def test_git_diff_is_decoded_as_utf8(tmp_path: Path, monkeypatch) -> None:
+    python_report = tmp_path / "coverage.xml"
+    python_report.write_text("<coverage />", encoding="utf-8")
+    frontend_report = tmp_path / "lcov.info"
+    frontend_report.write_text("", encoding="utf-8")
+
+    def fake_run(*_args, **kwargs):
+        assert kwargs["encoding"] == "utf-8"
+        return SimpleNamespace(stdout="+++ b/fixture.py\n@@ -0,0 +1 @@\n+title = 'Amélie'\n")
+
+    monkeypatch.setattr("scripts.check_diff_coverage.shutil.which", lambda _name: "git")
+    monkeypatch.setattr("scripts.check_diff_coverage.subprocess.run", fake_run)
+
+    assert (
+        coverage_main(
+            [
+                "--base",
+                "HEAD^",
+                "--python-report",
+                str(python_report),
+                "--frontend-report",
+                str(frontend_report),
+            ]
+        )
+        == 0
+    )
 
 
 def test_vulnerability_exception_requires_owner_reason_and_expiry(tmp_path: Path, capsys) -> None:

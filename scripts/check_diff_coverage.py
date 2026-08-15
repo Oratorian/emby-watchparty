@@ -142,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
             [git, "diff", "--unified=0", f"{args.base}...HEAD", "--"],
             check=True,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
         ).stdout
 
     repo_root = args.repo_root.resolve()
