@@ -54,6 +54,7 @@ jobs:
       - name: Generated contract drift
         run: |
           python scripts/generate_socket_types.py --check
+          python scripts/generate_openapi_types.py --check
           python scripts/generate_deployment_artifacts.py --check
           python scripts/validate_trivy_ignores.py
       - name: Compose manifests
