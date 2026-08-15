@@ -201,7 +201,7 @@ WIP
 
 ### Generated Files
 
-Three artifact families are generated and verified in CI. If you change their
+Four artifact families are generated and verified in CI. If you change their
 sources and do not regenerate, the build fails.
 
 - **Deployment artifacts.** After editing `deploy/schema.json` or the deployment
@@ -218,6 +218,10 @@ sources and do not regenerate, the build fails.
   `frontend/src/types/socket.generated.ts`. To check without writing, use
   `python scripts/generate_socket_types.py --check`, which exits non-zero and
   names the stale files.
+- **REST API types.** After editing FastAPI routes or response models, run
+  `python scripts/generate_openapi_types.py` and commit
+  `frontend/src/types/api.generated.ts`. To check without writing, use
+  `python scripts/generate_openapi_types.py --check`.
 - **Dependency locks.** See step 3 of Development Setup.
 
 ## Testing
@@ -240,6 +244,8 @@ python -m ruff format --check backend scripts tests
 python -m mypy
 python -m pytest
 python scripts/generate_socket_types.py --check
+python scripts/generate_openapi_types.py --check
+python scripts/generate_deployment_artifacts.py --check
 ```
 
 **Frontend**, from `frontend/`:

@@ -1,7 +1,10 @@
+import re
 from pathlib import Path
 
 from scripts.check_diff_coverage import main as coverage_main
 from scripts.validate_trivy_ignores import main as trivy_ignores_main
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_changed_executable_lines_must_meet_threshold(tmp_path: Path, capsys) -> None:
@@ -71,6 +74,19 @@ end_of_record
     # The Python half must actually be counted. Before the source-root fix the
     # totals here were 1/1 (100%) from the frontend alone and the gate passed.
     assert "python: 2 executable of 2 changed line(s)" in output
+
+
+def test_generated_check_commands_agree_across_contributor_surfaces() -> None:
+    pattern = re.compile(r"python scripts/(generate_[a-z_]+\.py) --check")
+    paths = (
+        ROOT / "CONTRIBUTING.md",
+        ROOT / ".github" / "PULL_REQUEST_TEMPLATE.md",
+        ROOT / ".github" / "workflows" / "ci.yml",
+    )
+    command_sets = [set(pattern.findall(path.read_text(encoding="utf-8"))) for path in paths]
+
+    assert "generate_openapi_types.py" in command_sets[0]
+    assert command_sets[0] == command_sets[1] == command_sets[2]
 
 
 def test_added_line_beginning_with_plus_plus_is_not_read_as_a_file_header(
