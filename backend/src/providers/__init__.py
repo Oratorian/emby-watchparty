@@ -14,7 +14,9 @@ if TYPE_CHECKING:
     from backend.src.emby_gateway import MediaServerGateway
 
 
-def create_provider(config: Config, logger, gateway: MediaServerGateway) -> MediaServerProvider:
+def create_provider(
+    config: Config, logger, gateway: MediaServerGateway
+) -> EmbyProvider | JellyfinProvider:
     client = EmbyClient(config.MEDIA_SERVER_URL, config.MEDIA_SERVER_API_KEY, logger, gateway)
     if config.MEDIA_SERVER_TYPE == "jellyfin":
         return JellyfinProvider(client)

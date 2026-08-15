@@ -20,12 +20,12 @@ from backend.src import __codename__, __version__
 from backend.src.admin_session_store import AdminSessionStore
 from backend.src.avatar_store import AvatarStore
 from backend.src.config import Config
-from backend.src.emby_client import EmbyClient
-from backend.src.emby_gateway import EmbyGateway
+from backend.src.emby_gateway import MediaServerGateway
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.log_levels import apply_log_levels
 from backend.src.observability import RequestLogMiddleware
 from backend.src.party_manager import PartyManager
+from backend.src.providers import create_provider
 from backend.src.rate_limit import RateLimitMiddleware, SlidingWindowRateLimiter
 from backend.src.routers import admin, auth, avatar, health, hls, library, media, party, quality
 from backend.src.socket_handlers import register_all as register_socket_handlers
@@ -238,13 +238,15 @@ async def lifespan(application: FastAPI):
         )
         admin_session_store = AdminSessionStore(ttl_seconds=config.SESSION_EXPIRY)
         rate_limiter = SlidingWindowRateLimiter()
-        emby_gateway = EmbyGateway(http_client, config.EMBY_SERVER_URL, logger)
-        emby_client = EmbyClient(config.EMBY_SERVER_URL, config.EMBY_API_KEY, logger, emby_gateway)
-        stream_builder = StreamBuilder(emby_client, logger, config)
+        media_server_gateway = MediaServerGateway(http_client, config.MEDIA_SERVER_URL, logger)
+        media_server = create_provider(config, logger, media_server_gateway)
+        stream_builder = StreamBuilder(media_server.client, logger, config)
 
         application.state.config = config
         application.state.logger = logger
-        application.state.emby_client = emby_client
+        application.state.media_server = media_server
+        # Compatibility aliases while v1 routes retain historical dependency names.
+        application.state.emby_client = media_server
         application.state.party_manager = party_manager
         application.state.token_manager = token_manager
         application.state.stream_builder = stream_builder
@@ -252,11 +254,12 @@ async def lifespan(application: FastAPI):
         application.state.admin_session_store = admin_session_store
         application.state.rate_limiter = rate_limiter
         application.state.http_client = http_client
-        application.state.emby_gateway = emby_gateway
+        application.state.media_server_gateway = media_server_gateway
+        application.state.emby_gateway = media_server_gateway
 
         socket_context = register_socket_handlers(
             application.state.sio,
-            emby_client,
+            media_server,
             party_manager,
             token_manager,
             stream_builder,
@@ -277,7 +280,7 @@ async def lifespan(application: FastAPI):
         )
 
         logger.info('Emby Watch Party v%s - "%s"', __version__, __codename__)
-        logger.info("Emby Server: %s", config.EMBY_SERVER_URL)
+        logger.info("%s Server: %s", media_server.identity.display_name, config.MEDIA_SERVER_URL)
         if application.state.session_ephemeral:
             logger.warning(
                 "SESSION_SECRET is empty; using an ephemeral key. Sessions expire on restart."

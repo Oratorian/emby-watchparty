@@ -26,6 +26,7 @@ def register_all(
     """Register all socket event handlers"""
     ctx = {
         "sio": sio,
+        "media_server": emby_client,
         "emby_client": emby_client,
         "party_manager": party_manager,
         "token_manager": token_manager,

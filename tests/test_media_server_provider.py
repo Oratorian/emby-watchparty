@@ -1,7 +1,9 @@
+import asyncio
 import logging
 
 import httpx
 
+from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers import EmbyProvider, JellyfinProvider, create_provider
@@ -52,3 +54,20 @@ def test_factory_selects_jellyfin_adapter() -> None:
     assert isinstance(provider, JellyfinProvider)
     assert provider.identity.type == "jellyfin"
     assert provider.server_url == "http://jellyfin.test"
+
+
+def test_app_lifespan_installs_selected_provider(tmp_path) -> None:
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.MockTransport(lambda _request: httpx.Response(200)),
+    )
+
+    async def exercise() -> None:
+        async with app.router.lifespan_context(app):
+            assert app.state.media_server.identity.type == "jellyfin"
+            assert app.state.emby_client is app.state.media_server
+            assert app.state.socket_context["media_server"] is app.state.media_server
+
+    asyncio.run(exercise())

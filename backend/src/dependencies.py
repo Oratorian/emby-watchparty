@@ -21,6 +21,7 @@ from backend.src.emby_client import EmbyClient
 from backend.src.emby_gateway import EmbyGateway
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.party_manager import PartyManager
+from backend.src.providers.base import MediaServerProvider
 from backend.src.stream_builder import StreamBuilder
 
 LEGACY_ADMIN_SESSION_KEYS = (
@@ -47,7 +48,12 @@ def get_logger(request: Request):
     return request.app.state.logger
 
 
+def get_media_server(request: Request) -> MediaServerProvider:
+    return request.app.state.media_server
+
+
 def get_emby_client(request: Request) -> EmbyClient:
+    """Legacy dependency name retained for v1 routers during migration."""
     return request.app.state.emby_client
 
 
@@ -82,6 +88,10 @@ def get_http_client(request: Request) -> httpx.AsyncClient:
 
 def get_emby_gateway(request: Request) -> EmbyGateway:
     return request.app.state.emby_gateway
+
+
+def get_media_server_gateway(request: Request) -> EmbyGateway:
+    return request.app.state.media_server_gateway
 
 
 # =============================================================================
