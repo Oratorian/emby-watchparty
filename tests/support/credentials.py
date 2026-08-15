@@ -14,6 +14,9 @@ import secrets
 TEST_SESSION_SECRET = secrets.token_hex(32)
 """A valid session secret: 64 hex characters, well over the 32-character minimum."""
 
+TEST_JELLYFIN_ACCESS_TOKEN = secrets.token_urlsafe(24)
+"""Opaque fake-server token generated per test run, never a committed credential."""
+
 # Deliberately below the 32-character minimum, to assert that startup refuses it.
 REJECTED_SESSION_SECRET = "short"  # noqa: S105
 

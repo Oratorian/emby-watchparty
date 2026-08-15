@@ -135,11 +135,15 @@ class PlaybackRequest:
     quality: str = "auto"
     start_seconds: float = 0.0
     client_codecs: frozenset[str] = frozenset({"h264"})
+    force_transcode: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class HLSResource:
     url: str
+
+    def __repr__(self) -> str:
+        return "HLSResource(url=<redacted>)"
 
 
 @dataclass
@@ -150,6 +154,8 @@ class PlaybackPlan:
     play_session_id: str
     method: PlaybackMethod
     master: HLSResource
+    credentials: ProviderCredentials = field(repr=False)
+    upstream_headers: dict[str, str] = field(default_factory=dict, repr=False)
     resources: dict[str, HLSResource] = field(default_factory=dict, repr=False)
 
 

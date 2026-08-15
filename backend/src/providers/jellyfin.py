@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import re
+import secrets
+from urllib.parse import urljoin, urlparse
+
 import httpx
 
 from backend.src.emby_client import EmbyClient
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers.models import (
     CatalogQuery,
+    HLSResource,
+    PlaybackMethod,
+    PlaybackPlan,
+    PlaybackPlanError,
+    PlaybackRequest,
     ProviderCredentials,
     ProviderIdentity,
     ProviderReadiness,
@@ -81,6 +90,99 @@ class JellyfinProvider:
             user_id=credentials.user_id,
         )
         return normalize_details(payload) if payload else None
+
+    async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan:
+        bitrate_match = re.search(r"-(\d+)$", request.quality)
+        max_bitrate = int(bitrate_match.group(1)) * 1000 if bitrate_match else 10_000_000
+        video_codecs = [
+            codec for codec in ("h264", "hevc", "av1", "vp9") if codec in request.client_codecs
+        ]
+        if not video_codecs:
+            video_codecs = ["h264"]
+        body = {
+            "UserId": request.credentials.user_id,
+            "MaxStreamingBitrate": max_bitrate,
+            "StartTimeTicks": round(request.start_seconds * 10_000_000),
+            "AudioStreamIndex": request.audio_index,
+            "SubtitleStreamIndex": request.subtitle_index,
+            "MediaSourceId": request.media_source_id,
+            "EnableDirectPlay": False,
+            "EnableDirectStream": True,
+            "EnableTranscoding": True,
+            "AllowVideoStreamCopy": not request.force_transcode,
+            "AllowAudioStreamCopy": True,
+            "DeviceProfile": {
+                "Name": "Emby Watch Party HLS",
+                "MaxStreamingBitrate": max_bitrate,
+                "DirectPlayProfiles": [],
+                "TranscodingProfiles": [
+                    {
+                        "Container": "ts",
+                        "Type": "Video",
+                        "VideoCodec": ",".join(video_codecs),
+                        "AudioCodec": "aac,mp3,ac3",
+                        "Protocol": "hls",
+                        "Context": "Streaming",
+                        "EnableSubtitlesInManifest": True,
+                        "MinSegments": 1,
+                        "SegmentLength": 6,
+                    }
+                ],
+                "ContainerProfiles": [],
+                "CodecProfiles": [],
+                "SubtitleProfiles": [
+                    {"Format": "vtt", "Method": "External"},
+                    {"Format": "srt", "Method": "External"},
+                ],
+            },
+        }
+        response = await self._client.gateway.post(
+            f"/Items/{request.item_id}/PlaybackInfo",
+            headers=self._client._headers(
+                request.credentials.access_token, request.credentials.user_id
+            ),
+            json=body,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        sources = payload.get("MediaSources") or []
+        source = next(
+            (
+                row
+                for row in sources
+                if request.media_source_id is None or row.get("Id") == request.media_source_id
+            ),
+            None,
+        )
+        play_session_id = payload.get("PlaySessionId")
+        if not source or not source.get("Id") or not play_session_id:
+            raise PlaybackPlanError("Jellyfin returned no playable HLS media source")
+        transcoding_url = source.get("TranscodingUrl")
+        if not transcoding_url or source.get("TranscodingSubProtocol") != "hls":
+            raise PlaybackPlanError("Jellyfin returned a non-HLS playback plan")
+        master_url = urljoin(f"{self._client.server_url}/", transcoding_url)
+        configured = urlparse(self._client.server_url)
+        resolved = urlparse(master_url)
+        if (
+            resolved.scheme not in {"http", "https"}
+            or (resolved.scheme, resolved.netloc) != (configured.scheme, configured.netloc)
+            or not resolved.path.lower().endswith(".m3u8")
+        ):
+            raise PlaybackPlanError("Jellyfin returned an unsafe HLS playback plan")
+        reasons = source.get("TranscodingReasons") or []
+        method = PlaybackMethod.HLS_TRANSCODE if reasons else PlaybackMethod.HLS_REMUX
+        return PlaybackPlan(
+            stream_id=secrets.token_urlsafe(18),
+            item_id=request.item_id,
+            media_source_id=str(source["Id"]),
+            play_session_id=str(play_session_id),
+            method=method,
+            master=HLSResource(master_url),
+            credentials=request.credentials,
+            upstream_headers={
+                key: str(value) for key, value in (source.get("RequiredHttpHeaders") or {}).items()
+            },
+        )
 
 
 class _JellyfinGateway(MediaServerGateway):

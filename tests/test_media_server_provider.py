@@ -7,7 +7,9 @@ from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers import EmbyProvider, JellyfinProvider, create_provider
+from backend.src.providers.models import PlaybackMethod, PlaybackRequest, ProviderCredentials
 from tests.support.asgi import asgi_client
+from tests.support.credentials import TEST_JELLYFIN_ACCESS_TOKEN
 from tests.support.fake_jellyfin import FakeJellyfinState, create_fake_jellyfin_app
 
 
@@ -285,3 +287,59 @@ def test_jellyfin_v2_item_details_do_not_leak_provider_json(tmp_path) -> None:
         row for row in fake_state.requests if row["path"] == "/Users/jellyfin-user-1/Items/movie-1"
     )
     assert detail_request["query"] == {"api_key": "<redacted>"}
+
+
+def test_jellyfin_posted_playback_info_becomes_hls_plan(tmp_path) -> None:
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app):
+            plan = await app.state.media_server.prepare_playback(
+                PlaybackRequest(
+                    item_id="movie-1",
+                    credentials=ProviderCredentials(
+                        access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+                        user_id="jellyfin-user-1",
+                    ),
+                    media_source_id="source-1",
+                    audio_index=2,
+                    subtitle_index=4,
+                    quality="720p-4000",
+                    start_seconds=12.5,
+                    client_codecs=frozenset({"h264", "hevc"}),
+                )
+            )
+
+            assert plan.item_id == "movie-1"
+            assert plan.media_source_id == "source-1"
+            assert plan.play_session_id == "jellyfin-play-session-1"
+            assert plan.method is PlaybackMethod.HLS_TRANSCODE
+            assert plan.master.url == (
+                "http://jellyfin.test/Videos/movie-1/master.m3u8?MediaSourceId=source-1&"
+                f"PlaySessionId=jellyfin-play-session-1&api_key={TEST_JELLYFIN_ACCESS_TOKEN}"
+            )
+            assert TEST_JELLYFIN_ACCESS_TOKEN not in repr(plan)
+
+    asyncio.run(exercise())
+    assert len(fake_state.playback_requests) == 1
+    request = fake_state.playback_requests[0]
+    assert request["UserId"] == "jellyfin-user-1"
+    assert request["MediaSourceId"] == "source-1"
+    assert request["StartTimeTicks"] == 125_000_000
+    assert request["AudioStreamIndex"] == 2
+    assert request["SubtitleStreamIndex"] == 4
+    assert request["MaxStreamingBitrate"] == 4_000_000
+    assert request["EnableDirectPlay"] is False
+    assert request["EnableDirectStream"] is True
+    assert request["EnableTranscoding"] is True
+    assert request["AllowVideoStreamCopy"] is True
+    profile = request["DeviceProfile"]
+    assert profile["Name"] == "Emby Watch Party HLS"
+    assert profile["TranscodingProfiles"][0]["Protocol"] == "hls"
+    assert profile["TranscodingProfiles"][0]["Container"] == "ts"

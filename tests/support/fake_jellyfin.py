@@ -4,10 +4,13 @@ from dataclasses import dataclass, field
 
 from fastapi import FastAPI, Request
 
+from tests.support.credentials import TEST_JELLYFIN_ACCESS_TOKEN
+
 
 @dataclass
 class FakeJellyfinState:
     requests: list[dict] = field(default_factory=list)
+    playback_requests: list[dict] = field(default_factory=list)
 
     def record(self, request: Request) -> None:
         query = {
@@ -42,7 +45,7 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
         body = await request.json()
         state.record(request)
         return {
-            "AccessToken": "jellyfin-user-token",
+            "AccessToken": TEST_JELLYFIN_ACCESS_TOKEN,
             "User": {
                 "Id": "jellyfin-user-1",
                 "Name": body.get("Username", "Alice"),
@@ -121,6 +124,28 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             "BackdropImageTags": ["backdrop-image"],
             "UserData": {"IsFavorite": True, "Played": False},
             "MediaSourceCount": 1,
+        }
+
+    @app.post("/Items/{item_id}/PlaybackInfo")
+    async def playback_info(item_id: str, request: Request):
+        body = await request.json()
+        state.record(request)
+        state.playback_requests.append(body)
+        return {
+            "PlaySessionId": "jellyfin-play-session-1",
+            "MediaSources": [
+                {
+                    "Id": body.get("MediaSourceId") or "source-1",
+                    "TranscodingUrl": (
+                        f"/Videos/{item_id}/master.m3u8?MediaSourceId=source-1&"
+                        "PlaySessionId=jellyfin-play-session-1&"
+                        f"api_key={TEST_JELLYFIN_ACCESS_TOKEN}"
+                    ),
+                    "TranscodingSubProtocol": "hls",
+                    "TranscodingContainer": "ts",
+                    "TranscodingReasons": ["VideoCodecNotSupported"],
+                }
+            ],
         }
 
     return app
