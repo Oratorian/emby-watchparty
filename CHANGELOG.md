@@ -20,7 +20,7 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ### Changed
 
-- Library integrations now validate their request and response shapes during development, catching incompatible Emby client calls before deployment.
+- Library integrations now type-check their request and response shapes during development, catching incompatible Emby client calls before deployment.
 
 ---
 
