@@ -17,6 +17,9 @@ TEST_SESSION_SECRET = secrets.token_hex(32)
 TEST_JELLYFIN_ACCESS_TOKEN = secrets.token_urlsafe(24)
 """Opaque fake-server token generated per test run, never a committed credential."""
 
+TEST_HLS_BROWSER_TOKEN = secrets.token_urlsafe(24)
+"""Opaque browser HLS token generated per test run."""
+
 # Deliberately below the 32-character minimum, to assert that startup refuses it.
 REJECTED_SESSION_SECRET = "short"  # noqa: S105
 
