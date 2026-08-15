@@ -16,6 +16,14 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- Library integrations now validate their request and response shapes during development, catching incompatible Emby client calls before deployment.
+
+---
+
 ## [3.0.0-beta3] - 2026-08-13 - Director's Cut
 
 **Published to GHCR as `:3.0.0-beta3`, and tracked by `:devel` and `:nightly`.** It does **not** move `:latest`, which stays on the 2.1.x stable line, so a deployment pinned to `:latest` will not pick this up by accident.
