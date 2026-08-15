@@ -39,6 +39,23 @@ def test_compose_uses_production_safe_schema_defaults() -> None:
     assert len(compose["services"]) == 1
 
 
+def test_generated_artifacts_expose_explicit_provider_configuration() -> None:
+    artifacts = generate_artifacts(SCHEMA)
+    compose = yaml.safe_load(artifacts[Path("docker-compose.yml.example")])
+    environment = compose["services"]["emby-watchparty"]["environment"]
+
+    assert environment["MEDIA_SERVER_TYPE"] == "${MEDIA_SERVER_TYPE:-emby}"
+    assert environment["EMBY_SERVER_URL"] == "${EMBY_SERVER_URL:-http://emby:8096}"
+    assert environment["EMBY_API_KEY"] == "${EMBY_API_KEY:-}"
+    assert environment["JELLYFIN_SERVER_URL"] == "${JELLYFIN_SERVER_URL:-}"
+    assert environment["JELLYFIN_API_KEY"] == "${JELLYFIN_API_KEY:-}"
+
+    env_example = artifacts[Path(".env.example")]
+    assert "MEDIA_SERVER_TYPE=emby" in env_example
+    assert "JELLYFIN_SERVER_URL=" in env_example
+    assert "JELLYFIN_API_KEY=" in env_example
+
+
 def test_checked_in_platform_artifacts_match_the_schema_contract() -> None:
     paths = (
         Path("docker-compose.yml.example"),

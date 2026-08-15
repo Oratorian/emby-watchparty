@@ -181,6 +181,49 @@ class LegacyBootPrecedenceTests(unittest.TestCase):
 
 
 class ProductionConfigTests(unittest.TestCase):
+    def test_emby_remains_the_default_media_server(self):
+        config = _config(SESSION_SECRET="s" * 32)
+
+        assert config.MEDIA_SERVER_TYPE == "emby"
+        assert config.MEDIA_SERVER_URL == "http://emby.test"
+        assert config.MEDIA_SERVER_API_KEY == "admin-key"
+
+    def test_jellyfin_uses_only_jellyfin_credentials(self):
+        config = _config(
+            SESSION_SECRET="s" * 32,
+            MEDIA_SERVER_TYPE="jellyfin",
+            JELLYFIN_SERVER_URL="https://jellyfin.example/base",
+            JELLYFIN_API_KEY="jellyfin-key",
+            EMBY_SERVER_URL="https://ignored-emby.example",
+            EMBY_API_KEY="ignored-emby-key",
+        )
+
+        config.validate_for_startup()
+        assert config.MEDIA_SERVER_URL == "https://jellyfin.example/base"
+        assert config.MEDIA_SERVER_API_KEY == "jellyfin-key"
+        assert config.boot_warnings() == (
+            "Ignoring inactive provider fields: EMBY_API_KEY, EMBY_SERVER_URL",
+        )
+
+    def test_jellyfin_never_falls_back_to_emby_credentials(self):
+        errors = _config(
+            SESSION_SECRET="s" * 32,
+            MEDIA_SERVER_TYPE="jellyfin",
+            JELLYFIN_SERVER_URL="",
+            JELLYFIN_API_KEY="",
+        ).startup_errors()
+
+        assert "JELLYFIN_SERVER_URL" in errors
+        assert "JELLYFIN_API_KEY" in errors
+
+    def test_unknown_media_server_type_is_rejected(self):
+        errors = _config(
+            SESSION_SECRET="s" * 32,
+            MEDIA_SERVER_TYPE="plex",
+        ).startup_errors()
+
+        assert errors["MEDIA_SERVER_TYPE"] == "must be 'emby' or 'jellyfin'"
+
     def test_production_rejects_missing_session_secret(self):
         with pytest.raises(ValueError, match="SESSION_SECRET"):
             _config().validate_for_startup()

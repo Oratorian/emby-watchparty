@@ -129,6 +129,9 @@ class EnvConfig:
     # single-source deployment. Making the operator state it is what
     # turns the ambiguity into a contradiction we can catch.
     BEHIND_PROXY: bool | None = None
+    MEDIA_SERVER_TYPE: str = "emby"
+    JELLYFIN_SERVER_URL: str = ""
+    JELLYFIN_API_KEY: str = ""
 
     @classmethod
     def from_env(
@@ -159,6 +162,9 @@ class EnvConfig:
             "SESSION_EXPIRY": "86400",
             "EMBY_SERVER_URL": "http://localhost:8096",
             "EMBY_API_KEY": "",
+            "MEDIA_SERVER_TYPE": "emby",
+            "JELLYFIN_SERVER_URL": "",
+            "JELLYFIN_API_KEY": "",
             "APP_ENV": "development",
             "SESSION_SECRET": "",
             "SESSION_COOKIE_SECURE": "false",
@@ -222,6 +228,9 @@ class EnvConfig:
                 "ENABLE_HLS_TOKEN_VALIDATION", legacy_hls_validation
             ),
             BEHIND_PROXY=boolean("BEHIND_PROXY", False) if declared("BEHIND_PROXY") else None,
+            MEDIA_SERVER_TYPE=str(value("MEDIA_SERVER_TYPE")).strip().lower(),
+            JELLYFIN_SERVER_URL=str(value("JELLYFIN_SERVER_URL")).strip(),
+            JELLYFIN_API_KEY=str(value("JELLYFIN_API_KEY")).strip(),
         )
 
 
@@ -564,6 +573,7 @@ class Config:
         *,
         load_errors: dict[str, str] | None = None,
         private_env: dict[str, str] | None = None,
+        declared_provider_fields: set[str] | None = None,
     ):
         # Use object.__setattr__ to avoid triggering __getattr__
         object.__setattr__(self, "_env", env)
@@ -571,16 +581,38 @@ class Config:
         object.__setattr__(self, "_lock", threading.Lock())
         object.__setattr__(self, "_load_errors", dict(load_errors or {}))
         object.__setattr__(self, "_private_env", dict(private_env or {}))
+        if declared_provider_fields is None:
+            inferred = {
+                name
+                for name in (
+                    "EMBY_SERVER_URL",
+                    "EMBY_API_KEY",
+                    "JELLYFIN_SERVER_URL",
+                    "JELLYFIN_API_KEY",
+                )
+                if getattr(env, name, "")
+            }
+        else:
+            inferred = set(declared_provider_fields)
+        object.__setattr__(self, "_declared_provider_fields", inferred)
 
     def __getattr__(self, name: str):
+        env = object.__getattribute__(self, "_env")
+        if name == "MEDIA_SERVER_URL":
+            return (
+                env.JELLYFIN_SERVER_URL
+                if env.MEDIA_SERVER_TYPE == "jellyfin"
+                else env.EMBY_SERVER_URL
+            )
+        if name == "MEDIA_SERVER_API_KEY":
+            return env.JELLYFIN_API_KEY if env.MEDIA_SERVER_TYPE == "jellyfin" else env.EMBY_API_KEY
         if name == "ENABLE_HLS_TOKEN_VALIDATION":
-            return object.__getattribute__(self, "_env").ENABLE_HLS_TOKEN_VALIDATION
+            return env.ENABLE_HLS_TOKEN_VALIDATION
         # Check runtime first (mutable settings), then env (frozen)
         runtime = object.__getattribute__(self, "_runtime")
         if hasattr(runtime, name):
             return getattr(runtime, name)
 
-        env = object.__getattribute__(self, "_env")
         if hasattr(env, name):
             return getattr(env, name)
 
@@ -607,7 +639,26 @@ class Config:
             runtime,
             load_errors=load_errors,
             private_env=private_env,
+            declared_provider_fields={
+                name
+                for name in (
+                    "EMBY_SERVER_URL",
+                    "EMBY_API_KEY",
+                    "JELLYFIN_SERVER_URL",
+                    "JELLYFIN_API_KEY",
+                )
+                if name in os.environ or dot_env.get(name) is not None
+            },
         )
+
+    def boot_warnings(self) -> tuple[str, ...]:
+        """Return value-free warnings for declared inactive provider fields."""
+        inactive_prefix = "JELLYFIN_" if self.MEDIA_SERVER_TYPE == "emby" else "EMBY_"
+        declared = object.__getattribute__(self, "_declared_provider_fields")
+        inactive = sorted(name for name in declared if name.startswith(inactive_prefix))
+        if not inactive:
+            return ()
+        return (f"Ignoring inactive provider fields: {', '.join(inactive)}",)
 
     def update_runtime(self, data: dict) -> tuple[list, list]:
         """Update runtime settings, persist to config.json.
@@ -672,6 +723,8 @@ class Config:
         errors = dict(object.__getattribute__(self, "_load_errors"))
         if self.APP_ENV not in {"development", "production"}:
             errors.setdefault("APP_ENV", "must be 'development' or 'production'")
+        if self.MEDIA_SERVER_TYPE not in {"emby", "jellyfin"}:
+            errors.setdefault("MEDIA_SERVER_TYPE", "must be 'emby' or 'jellyfin'")
         if not (1 <= self.WATCH_PARTY_PORT <= 65535):
             errors.setdefault("WATCH_PARTY_PORT", "must be between 1 and 65535")
         prefix = self.APP_PREFIX
@@ -686,8 +739,12 @@ class Config:
             except ValueError:
                 errors.setdefault("TRUSTED_PROXY_CIDRS", "must contain valid IP networks")
                 break
-        if not _valid_http_url(self.EMBY_SERVER_URL, origin=False):
-            errors.setdefault("EMBY_SERVER_URL", "must be a valid HTTP(S) URL")
+        url_field = (
+            "JELLYFIN_SERVER_URL" if self.MEDIA_SERVER_TYPE == "jellyfin" else "EMBY_SERVER_URL"
+        )
+        key_field = "JELLYFIN_API_KEY" if self.MEDIA_SERVER_TYPE == "jellyfin" else "EMBY_API_KEY"
+        if not _valid_http_url(self.MEDIA_SERVER_URL, origin=False):
+            errors.setdefault(url_field, "must be a valid HTTP(S) URL")
         # Unconditional: the operator has stated they sit behind a proxy
         # and then not said which addresses those proxies are, so the
         # forwarded header is discarded and every viewer keys onto the
@@ -722,8 +779,8 @@ class Config:
                             "CORS_ALLOWED_ORIGINS", "must contain valid HTTP(S) origins"
                         )
                         break
-            if not self.EMBY_API_KEY:
-                errors.setdefault("EMBY_API_KEY", "is required in production")
+            if not self.MEDIA_SERVER_API_KEY:
+                errors.setdefault(key_field, "is required in production")
             if not self.ENABLE_HLS_TOKEN_VALIDATION:
                 errors.setdefault("ENABLE_HLS_TOKEN_VALIDATION", "must be enabled in production")
         return errors

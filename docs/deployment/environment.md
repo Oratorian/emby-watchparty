@@ -1,6 +1,6 @@
 <!-- Generated from deploy/schema.json; do not edit. -->
 <!-- Schema-Version: 1 -->
-<!-- Schema-SHA256: 3d72f870f57b7dde8f468e08dbc1823e8e5e14ebe730af5ff84332064df098ed -->
+<!-- Schema-SHA256: 21fac004a9dafb9c561aeb3dcb231a7c69436a459807f196b66e77fa1f2e7466 -->
 # Deployment environment
 
 Generated from `deploy/schema.json`. Every field requires container recreation.
@@ -20,6 +20,9 @@ Generated from `deploy/schema.json`. Every field requires container recreation.
 | `TRUSTED_PROXY_CIDRS` | csv_cidr | when_proxy | no | <code>{"items":"cidr"}</code> | <code>"192.0.2.0/24"</code> | Comma-separated proxy source networks trusted for forwarded client IPs. |
 | `ENABLE_HLS_TOKEN_VALIDATION` | boolean | always | no | <code>{"allowed_strings":["true","false","1","0","yes","no"]}</code> | <code>true</code> | Validate signed HLS playlist and segment tokens. |
 | `BEHIND_PROXY` | boolean | production | no | <code>{"allowed_strings":["true","false","1","0","yes","no"]}</code> | <code>false</code> | Declare whether a reverse proxy terminates client connections. |
+| `MEDIA_SERVER_TYPE` | enum | always | no | <code>{"allowed_strings":["emby","jellyfin"]}</code> | <code>"emby"</code> | Explicit media-server provider selected at boot. |
+| `JELLYFIN_SERVER_URL` | http_url | optional | no | <code>{"schemes":["http","https"]}</code> | <code>"http://jellyfin:8096"</code> | HTTP(S) URL reachable from the container to Jellyfin when selected. |
+| `JELLYFIN_API_KEY` | string | optional | yes | <code>{"minimum_length":1}</code> | — | Dedicated Jellyfin administrative API key used when Jellyfin is selected. |
 
 BEHIND_PROXY=true requires TRUSTED_PROXY_CIDRS; no universal CIDR is safe.
 Production requires explicit origins, secure cookies, and HLS token validation.

@@ -480,6 +480,108 @@
       },
       "artifact_omit": true,
       "artifact_note": "Required in production, and deliberately has no default: rate limiting keys\non the connecting address, so behind a proxy that is the proxy for every\nviewer and they all share one bucket. Guessing wrong is silent, so 3.0\nrefuses to boot rather than guess. Set true or false explicitly."
+    },
+    {
+      "name": "MEDIA_SERVER_TYPE",
+      "description": "Explicit media-server provider selected at boot.",
+      "type": "enum",
+      "runtime_default": "emby",
+      "artifact_default": "emby",
+      "required": "always",
+      "safe_example": "emby",
+      "secret": false,
+      "production": {
+        "required": true
+      },
+      "restart_required": true,
+      "proxy_relevance": "none",
+      "validation": {
+        "allowed_strings": [
+          "emby",
+          "jellyfin"
+        ]
+      },
+      "display": {
+        "label": "Media Server Type",
+        "group": "Media Server",
+        "order": 20,
+        "advanced": false
+      },
+      "preflight": {
+        "relevant": true,
+        "legacy_source": null
+      },
+      "artifact_omit": false,
+      "artifact_note": "Choose emby or jellyfin explicitly. Changing provider requires a restart."
+    },
+    {
+      "name": "JELLYFIN_SERVER_URL",
+      "description": "HTTP(S) URL reachable from the container to Jellyfin when selected.",
+      "type": "http_url",
+      "runtime_default": "",
+      "artifact_default": "",
+      "required": "optional",
+      "safe_example": "http://jellyfin:8096",
+      "secret": false,
+      "production": {
+        "required_when": {
+          "field": "MEDIA_SERVER_TYPE",
+          "equals": "jellyfin"
+        }
+      },
+      "restart_required": true,
+      "proxy_relevance": "none",
+      "validation": {
+        "schemes": [
+          "http",
+          "https"
+        ]
+      },
+      "display": {
+        "label": "Jellyfin Server URL",
+        "group": "Jellyfin",
+        "order": 30,
+        "advanced": false
+      },
+      "preflight": {
+        "relevant": true,
+        "legacy_source": null
+      },
+      "artifact_omit": false,
+      "artifact_note": "Used only when MEDIA_SERVER_TYPE=jellyfin; otherwise ignored with a value-free warning."
+    },
+    {
+      "name": "JELLYFIN_API_KEY",
+      "description": "Dedicated Jellyfin administrative API key used when Jellyfin is selected.",
+      "type": "string",
+      "runtime_default": "",
+      "artifact_default": "",
+      "required": "optional",
+      "safe_example": null,
+      "secret": true,
+      "production": {
+        "required_when": {
+          "field": "MEDIA_SERVER_TYPE",
+          "equals": "jellyfin"
+        }
+      },
+      "restart_required": true,
+      "proxy_relevance": "none",
+      "validation": {
+        "minimum_length": 1
+      },
+      "display": {
+        "label": "Jellyfin API Key",
+        "group": "Jellyfin",
+        "order": 40,
+        "advanced": false
+      },
+      "preflight": {
+        "relevant": true,
+        "legacy_source": null
+      },
+      "artifact_omit": false,
+      "artifact_note": "Used only when MEDIA_SERVER_TYPE=jellyfin; otherwise ignored with a value-free warning."
     }
   ],
   "artifact_notes": [
