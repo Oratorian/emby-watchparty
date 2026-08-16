@@ -9,7 +9,12 @@
  * works" because withPrefix() is a no-op.
  */
 import { withPrefix } from '@/utils/appPrefix'
-import type { MediaItemDetailsV2, MediaItemV2, MediaPageV2 } from '@/types/api.generated'
+import type {
+  MediaItemDetailsV2,
+  MediaItemV2,
+  MediaPageV2,
+  StreamCatalogV2,
+} from '@/types/api.generated'
 
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]
@@ -494,9 +499,41 @@ export const api = {
   // mediaSourceId optionally scopes the response to one alternate
   // version. When omitted, the audio/subtitle arrays describe Emby's
   // default source and `versions` still lists every alternate.
-  itemStreams: (id: string, mediaSourceId?: string, signal?: AbortSignal) => {
+  itemStreams: async (id: string, mediaSourceId?: string, signal?: AbortSignal) => {
     const qs = mediaSourceId ? `?media_source_id=${encodeURIComponent(mediaSourceId)}` : ''
-    return apiFetch<StreamsResponse>(`/api/item/${id}/streams${qs}`, { signal })
+    const streams = await apiFetch<StreamCatalogV2>(`/api/v2/items/${id}/streams${qs}`, { signal })
+    return {
+      audio: streams.audio.map(stream => ({
+        index: stream.index,
+        language: stream.language,
+        displayLanguage: stream.display_language,
+        codec: stream.codec,
+        channels: stream.channels,
+        isDefault: stream.is_default,
+        title: stream.title,
+      })),
+      subtitles: streams.subtitles.map(stream => ({
+        index: stream.index,
+        language: stream.language,
+        displayLanguage: stream.display_language,
+        codec: stream.codec,
+        isDefault: stream.is_default,
+        isForced: stream.is_forced,
+        isExternal: stream.is_external,
+        isPGS: stream.is_image,
+        isTextSubtitleStream: stream.is_text,
+        title: stream.title,
+      })),
+      media_source_id: streams.media_source_id,
+      versions: streams.versions.map(version => ({
+        id: version.id,
+        name: version.name,
+        container: version.container,
+        run_time_ticks: version.runtime_seconds === null
+          ? null
+          : version.runtime_seconds * 10_000_000,
+      })),
+    } satisfies StreamsResponse
   },
 
   // Media

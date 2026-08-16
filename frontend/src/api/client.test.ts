@@ -204,6 +204,28 @@ describe('apiFetch', () => {
     )
   })
 
+  it('loads normalized stream metadata from v2', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      audio: [{ index: 1, language: 'eng', display_language: 'English', codec: 'aac', channels: 2,
+        is_default: true, title: 'Stereo' }],
+      subtitles: [{ index: 2, language: 'spa', display_language: 'Spanish', codec: 'srt',
+        is_default: false, is_forced: false, is_external: true, is_text: true,
+        is_image: false, title: 'Spanish' }],
+      media_source_id: 'source-1',
+      versions: [{ id: 'source-1', name: 'Main', container: 'mkv', runtime_seconds: 90 }],
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.itemStreams('movie-1', 'source-1')).resolves.toMatchObject({
+      audio: [{ displayLanguage: 'English', isDefault: true }],
+      subtitles: [{ isExternal: true, isTextSubtitleStream: true, isPGS: false }],
+      versions: [{ id: 'source-1', run_time_ticks: 900_000_000 }],
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v2/items/movie-1/streams?media_source_id=source-1', expect.any(Object),
+    )
+  })
+
   it('posts typed library filters without encoding them into a URL', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ Items: [], TotalRecordCount: 0 }),
