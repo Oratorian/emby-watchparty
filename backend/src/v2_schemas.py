@@ -52,6 +52,7 @@ class PersonV2(V2Model):
 
 
 class MediaItemDetailsV2(MediaItemV2):
+    tagline: str | None = None
     genres: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     people: list[PersonV2] = Field(default_factory=list)

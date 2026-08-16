@@ -763,6 +763,7 @@ def test_jellyfin_v2_item_details_do_not_leak_provider_json(tmp_path) -> None:
             assert payload["name"] == "Arrival"
             assert payload["kind"] == "movie"
             assert payload["runtime_seconds"] == 696.0
+            assert payload["tagline"] == "Why are they here?"
             assert payload["genres"] == ["Drama", "Science Fiction"]
             assert payload["tags"] == ["First contact"]
             assert payload["people"] == [{"id": "person-1", "name": "Amy Adams", "kind": "actor"}]

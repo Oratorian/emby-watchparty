@@ -86,6 +86,7 @@ class MediaItem:
 
 @dataclass(frozen=True)
 class MediaItemDetails(MediaItem):
+    tagline: str | None = None
     genres: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
     people: tuple[dict, ...] = ()

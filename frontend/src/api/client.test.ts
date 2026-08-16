@@ -116,6 +116,7 @@ describe('apiFetch', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       id: 'movie-1', name: 'Arrival', kind: 'movie', collection_kind: null,
       overview: 'First contact', runtime_seconds: 120, production_year: 2016,
+      tagline: 'Why are they here?',
       parent_id: null, series_id: null, series_name: null, season_id: null,
       season_name: null, index_number: null, parent_index_number: null,
       is_folder: false, is_playable: true, is_browsable: false,
@@ -130,6 +131,7 @@ describe('apiFetch', () => {
 
     await expect(api.itemDetails('movie-1')).resolves.toMatchObject({
       Id: 'movie-1', Type: 'Movie', Genres: ['Drama'],
+      Tagline: 'Why are they here?',
       TagItems: [{ Name: 'Aliens' }],
       People: [{ Id: 'person-1', Name: 'Amy Adams', Type: 'actor' }],
       Studios: [{ Name: 'Paramount' }], OfficialRating: 'PG-13',

@@ -213,6 +213,7 @@ function projectMediaPage(page: MediaPageV2): LibraryResponse {
 function projectMediaDetails(item: MediaItemDetailsV2): LibraryItem {
   return {
     ...projectMediaItem(item),
+    Tagline: item.tagline ?? undefined,
     Genres: item.genres,
     TagItems: item.tags.map(name => ({ Name: name })),
     People: item.people.map(person => ({

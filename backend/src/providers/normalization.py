@@ -107,8 +107,20 @@ def normalize_details(raw: dict) -> MediaItemDetails:
         if (studio.get("Name") if isinstance(studio, dict) else studio)
     )
     item_values = {field.name: getattr(item, field.name) for field in fields(MediaItem)}
+    singular_tagline = raw.get("Tagline")
+    tagline = str(singular_tagline).strip() if singular_tagline else ""
+    if not tagline:
+        tagline = next(
+            (
+                str(value).strip()
+                for value in raw.get("Taglines", [])
+                if value and str(value).strip()
+            ),
+            "",
+        )
     return MediaItemDetails(
         **item_values,
+        tagline=tagline or None,
         genres=tuple(str(value) for value in raw.get("Genres", []) if value),
         tags=tuple(str(value) for value in raw.get("Tags", []) if value),
         people=people,

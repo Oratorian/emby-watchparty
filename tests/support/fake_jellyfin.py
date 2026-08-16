@@ -140,6 +140,8 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             "Name": "Arrival",
             "Type": "Movie",
             "Overview": "A linguist meets visitors.",
+            "Tagline": "Why are they here?",
+            "Taglines": ["Fallback tagline"],
             "RunTimeTicks": 6_960_000_000,
             "ProductionYear": 2016,
             "OfficialRating": "PG-13",
