@@ -248,6 +248,28 @@ def test_login_required_party_creation_uses_provider_authentication(tmp_path) ->
     asyncio.run(exercise())
 
 
+def test_login_required_party_creation_names_selected_provider(tmp_path) -> None:
+    class ProviderDouble:
+        identity = ProviderIdentity(type="jellyfin", display_name="Jellyfin")
+
+    app = create_app(
+        config=_config("jellyfin", require_login=True),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app()),
+    )
+    app.dependency_overrides[get_media_server] = ProviderDouble
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            response = await client.post("/api/party/create", json={})
+
+            assert response.status_code == 200
+            assert response.json()["message"] == "Jellyfin login is required to create a party"
+
+    asyncio.run(exercise())
+
+
 def test_standalone_admin_login_uses_provider_authentication(tmp_path) -> None:
     authenticate_user = AsyncMock(
         return_value=AuthenticatedUser(

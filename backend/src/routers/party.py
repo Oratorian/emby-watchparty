@@ -200,7 +200,7 @@ async def create_party(
             return CreatePartyResponse(
                 party_id="",
                 url="",
-                message="Emby login is required to create a party",
+                message=f"{provider.identity.display_name} login is required to create a party",
             )
         if not body.client_id:
             return CreatePartyResponse(
