@@ -247,7 +247,7 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             media_type="application/vnd.apple.mpegurl",
         )
 
-    @app.get("/Videos/{item_id}/segments/segment0001.ts")
+    @app.api_route("/Videos/{item_id}/segments/segment0001.ts", methods=["GET", "HEAD"])
     async def segment(item_id: str, request: Request):
         assert item_id
         state.record(request)

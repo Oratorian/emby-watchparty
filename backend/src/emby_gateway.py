@@ -100,6 +100,16 @@ class MediaServerGateway:
     ) -> httpx.Response:
         return await self.request("GET", path, timeout=timeout, headers=headers, params=params)
 
+    async def head(
+        self,
+        path: str,
+        *,
+        timeout: float | httpx.Timeout | None = None,
+        headers: dict[str, str] | None = None,
+        params: QueryParams | None = None,
+    ) -> httpx.Response:
+        return await self.request("HEAD", path, timeout=timeout, headers=headers, params=params)
+
     async def post(
         self,
         path: str,

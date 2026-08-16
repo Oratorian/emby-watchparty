@@ -88,4 +88,5 @@ class MediaServerProvider(Protocol):
         resource: HLSResource,
         *,
         range_header: str | None = None,
+        head: bool = False,
     ) -> ProviderResponse: ...

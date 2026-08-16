@@ -417,8 +417,9 @@ async def proxy_hls_master(
         )
 
 
-@router.get(
+@router.api_route(
     "/{stream_id}/resources/{resource_id}",
+    methods=["GET", "HEAD"],
     responses={
         200: {
             "content": {"application/vnd.apple.mpegurl": {}},
@@ -481,6 +482,7 @@ async def proxy_hls_resource(
             plan,
             resource,
             range_header=request.headers.get("range"),
+            head=request.method == "HEAD",
         )
         if upstream.is_redirect:
             logger.warning("Media server redirected an HLS resource request; not followed")
@@ -496,6 +498,8 @@ async def proxy_hls_resource(
         if upstream.status_code == 416:
             return Response(status_code=416, headers=response_headers)
         upstream.raise_for_status()
+        if request.method == "HEAD":
+            return Response(status_code=upstream.status_code, headers=response_headers)
         if not _is_playlist(urlsplit(resource.url).path):
             return Response(
                 content=upstream.content,

@@ -340,6 +340,7 @@ class JellyfinProvider:
         resource: HLSResource,
         *,
         range_header: str | None = None,
+        head: bool = False,
     ) -> httpx.Response:
         if resource != plan.master and resource not in plan.resources.values():
             raise UnsafeProviderResourceError("HLS resource is not registered")
@@ -350,7 +351,8 @@ class JellyfinProvider:
         headers.update(plan.upstream_headers)
         if range_header:
             headers["Range"] = range_header
-        return await self._client.gateway.get(
+        fetch = self._client.gateway.head if head else self._client.gateway.get
+        return await fetch(
             resource.url,
             headers=headers,
             timeout=30.0,
@@ -369,6 +371,9 @@ class _JellyfinGateway(MediaServerGateway):
 
     async def get(self, path: str, **kwargs):
         return await self._gateway.get(self._path(path), **kwargs)
+
+    async def head(self, path: str, **kwargs):
+        return await self._gateway.head(self._path(path), **kwargs)
 
     async def post(self, path: str, **kwargs):
         return await self._gateway.post(self._path(path), **kwargs)
