@@ -473,7 +473,7 @@ export const api = {
     return { items: projectMediaPage(page).Items }
   },
   setFavorite: (id: string, favorite: boolean, signal?: AbortSignal) =>
-    apiFetch<{ success: boolean; favorite: boolean }>(`/api/item/${id}/favorite`, {
+    apiFetch<{ success: boolean; favorite: boolean }>(`/api/v2/items/${id}/favorite`, {
       method: 'PUT', body: JSON.stringify({ favorite }), signal,
     }),
   setPlayed: (id: string, played: boolean, signal?: AbortSignal) =>
