@@ -80,17 +80,20 @@ describe('apiFetch', () => {
   it('passes an AbortSignal through typed search requests', async () => {
     const controller = new AbortController()
     const fetchMock = vi.fn().mockResolvedValue(new Response(
-      JSON.stringify({ Items: [], TotalRecordCount: 0 }),
+      JSON.stringify({ items: [], total: 0, start: 0 }),
       { status: 200 },
     ))
     vi.stubGlobal('fetch', fetchMock)
 
-    await api.search('matrix', controller.signal)
+    const result = await api.search('matrix', controller.signal)
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/search?q=matrix',
+      '/api/v2/items/search?q=matrix',
       expect.objectContaining({ signal: controller.signal }),
     )
+    expect(result).toEqual({
+      Items: [], TotalRecordCount: 0, StartIndex: 0,
+    })
   })
 
   it('posts typed library filters without encoding them into a URL', async () => {

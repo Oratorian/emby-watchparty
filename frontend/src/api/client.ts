@@ -432,8 +432,8 @@ export const api = {
     apiFetch<LibraryPrefixesResponse>('/api/items/prefixes/query', {
       method: 'POST', body: JSON.stringify(query), signal,
     }),
-  search: (q: string, signal?: AbortSignal) => apiFetch<LibraryResponse>(
-    `/api/search?q=${encodeURIComponent(q)}`, { signal },
+  search: async (q: string, signal?: AbortSignal) => projectMediaPage(
+    await apiFetch<MediaPageV2>(`/api/v2/items/search?q=${encodeURIComponent(q)}`, { signal }),
   ),
   groupedSearch: (q: string, signal?: AbortSignal) => apiFetch<GroupedSearchResponse>(
     `/api/search/grouped?q=${encodeURIComponent(q)}`, { signal },
