@@ -11,6 +11,12 @@ from datetime import UTC, datetime
 from backend.src.config import Config
 
 
+def attach_hls_token(stream_url: str, token: str) -> str:
+    """Attach browser HLS token without corrupting queryless opaque URLs."""
+    separator = "&" if "?" in stream_url else "?"
+    return f"{stream_url}{separator}token={token}"
+
+
 class HLSTokenManager:
     """Manages HLS stream access tokens"""
 

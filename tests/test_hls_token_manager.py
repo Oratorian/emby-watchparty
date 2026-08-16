@@ -1,7 +1,7 @@
 import logging
 
 from backend.src.config import Config, EnvConfig, RuntimeConfig
-from backend.src.hls_token_manager import HLSTokenManager
+from backend.src.hls_token_manager import HLSTokenManager, attach_hls_token
 from tests.support.credentials import TEST_SESSION_SECRET
 
 
@@ -36,3 +36,12 @@ def test_tokens_are_bounded_and_revocable_per_user():
     assert manager.get_party_id(third) == "PARTY"
     assert manager.revoke_user("PARTY", "sid-2") == 1
     assert manager.get_party_id(second) is None
+
+
+def test_hls_token_uses_correct_query_separator():
+    assert attach_hls_token("/hls/stream/master.m3u8", "secret") == (
+        "/hls/stream/master.m3u8?token=secret"
+    )
+    assert attach_hls_token("/hls/master.m3u8?VideoCodec=h264", "secret") == (
+        "/hls/master.m3u8?VideoCodec=h264&token=secret"
+    )

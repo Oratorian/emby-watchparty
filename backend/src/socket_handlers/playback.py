@@ -24,6 +24,7 @@ from backend.src.domain import (
     SelectedMedia,
     UserStream,
 )
+from backend.src.hls_token_manager import attach_hls_token
 from backend.src.providers.models import (
     PlaybackEvent,
     PlaybackEventType,
@@ -618,7 +619,7 @@ def register(ctx):
             if config.ENABLE_HLS_TOKEN_VALIDATION:
                 user_token = token_manager.get_or_create(party_id, user_sid)
                 if user_token:
-                    stream_url += f"&token={user_token}"
+                    stream_url = attach_hls_token(stream_url, user_token)
 
             await sio.emit(
                 "video_selected",
@@ -930,7 +931,7 @@ def register(ctx):
         if config.ENABLE_HLS_TOKEN_VALIDATION:
             user_token = token_manager.get_or_create(party_id, sid)
             if user_token:
-                stream_url += f"&token={user_token}"
+                stream_url = attach_hls_token(stream_url, user_token)
 
         await sio.emit(
             "streams_changed",

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from backend.src.dependencies import party_host_session_matches
 from backend.src.domain import JoinVote
+from backend.src.hls_token_manager import attach_hls_token
 from backend.src.quality import DEFAULT_QUALITY_ID
 from backend.src.utils import generate_random_username
 
@@ -139,7 +140,7 @@ def register(ctx):
         if config.ENABLE_HLS_TOKEN_VALIDATION:
             user_token = token_manager.get_or_create(party_id, sid)
             if user_token:
-                stream_url += f"&token={user_token}"
+                stream_url = attach_hls_token(stream_url, user_token)
 
         return {
             "item_id": current_video.item_id,
