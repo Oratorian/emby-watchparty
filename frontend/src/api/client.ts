@@ -466,12 +466,31 @@ export const api = {
   libraries: async (signal?: AbortSignal) => projectMediaPage(
     await apiFetch<MediaPageV2>('/api/v2/libraries', { signal }),
   ),
-  items: (params: Record<string, string | number | boolean>, signal?: AbortSignal) => {
-    const qs = new URLSearchParams(
-      Object.entries(params).map(([key, value]) => [key, String(value)]),
-    ).toString()
-    return apiFetch<LibraryResponse>(`/api/items?${qs}`, { signal })
-  },
+  items: async (
+    params: Record<string, string | number | boolean>, signal?: AbortSignal,
+  ) => projectMediaPage(await apiFetch<MediaPageV2>('/api/v2/items/query', {
+    method: 'POST',
+    body: JSON.stringify({
+      scope: {
+        parent_id: typeof params.parentId === 'string' ? params.parentId : null,
+        include_kinds: typeof params.type === 'string'
+          ? params.type.split(',').filter(Boolean).map(kind => kind.replace(
+              /([a-z0-9])([A-Z])/g, '$1_$2',
+            ).toLowerCase())
+          : [],
+        media_kinds: [],
+        recursive: params.recursive === true || params.recursive === 'true',
+      },
+      page: {
+        start: typeof params.startIndex === 'number' ? params.startIndex : 0,
+        limit: typeof params.limit === 'number' ? params.limit : 50,
+      },
+      sort: { field: 'name', direction: 'ascending' },
+      filters: {},
+      anchor_prefix: typeof params.anchorPrefix === 'string' ? params.anchorPrefix : undefined,
+    } satisfies CatalogQueryV2),
+    signal,
+  })),
   itemPrefixes: (parentId: string, signal?: AbortSignal) => apiFetch<LibraryPrefixesResponse>(
     `/api/items/prefixes?${new URLSearchParams({ parentId }).toString()}`,
     { signal },

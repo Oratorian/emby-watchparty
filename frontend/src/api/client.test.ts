@@ -263,6 +263,19 @@ describe('apiFetch', () => {
     }))
   })
 
+  it('loads ordinary library browsing through v2 query', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ items: [], total: 0, start: 20 }), { status: 200 },
+    ))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.items({ parentId: 'library-1', type: 'Movie', startIndex: 20, limit: 50 })
+    expect(fetchMock).toHaveBeenCalledWith('/api/v2/items/query', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('"parent_id":"library-1"'),
+    }))
+  })
+
   it('rejects non-success JSON responses with a typed error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ detail: 'Party has no host' }),
