@@ -50,10 +50,27 @@ from backend.src.v2_schemas import (
     PlaylistCreatedV2,
     PlaylistCreateV2,
     PlaylistItemAddV2,
+    PrefixesV2,
     StreamCatalogV2,
 )
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
+
+
+def _catalog_query(body: CatalogQueryV2) -> CatalogQuery:
+    return CatalogQuery(
+        scope=CatalogScope(
+            parent_id=body.scope.parent_id,
+            include_kinds=tuple(body.scope.include_kinds),
+            media_kinds=tuple(body.scope.media_kinds),
+            recursive=body.scope.recursive,
+        ),
+        page=CatalogPage(start=body.page.start, limit=body.page.limit),
+        sort=CatalogSort(field=body.sort.field, direction=body.sort.direction),
+        filters=CatalogFilters(**body.filters.model_dump(mode="python")),
+        search_term=body.search_term,
+        anchor_prefix=body.anchor_prefix,
+    )
 
 
 @router.get("/media-server", response_model=MediaServerInfoV2)
@@ -139,21 +156,27 @@ async def query_items(
         access_token=party.host_access_token or "",
         user_id=party.host_user_id or "",
     )
-    query = CatalogQuery(
-        scope=CatalogScope(
-            parent_id=body.scope.parent_id,
-            include_kinds=tuple(body.scope.include_kinds),
-            media_kinds=tuple(body.scope.media_kinds),
-            recursive=body.scope.recursive,
-        ),
-        page=CatalogPage(start=body.page.start, limit=body.page.limit),
-        sort=CatalogSort(field=body.sort.field, direction=body.sort.direction),
-        filters=CatalogFilters(**body.filters.model_dump(mode="python")),
-        search_term=body.search_term,
-        anchor_prefix=body.anchor_prefix,
-    )
-    page = await provider.query_catalog(query, credentials)
+    page = await provider.query_catalog(_catalog_query(body), credentials)
     return MediaPageV2.model_validate(asdict(page))
+
+
+@router.post(
+    "/items/prefixes",
+    response_model=PrefixesV2,
+    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+)
+async def item_prefixes(
+    body: CatalogQueryV2,
+    party_session: PartySession = Depends(require_party_unlocked),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    prefixes = await provider.query_prefixes(_catalog_query(body), credentials)
+    return PrefixesV2(prefixes=list(prefixes))
 
 
 @router.get(

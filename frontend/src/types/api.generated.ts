@@ -72,6 +72,7 @@ export type PlaylistCreateV2 = { "name": string }
 export type PlaylistCreatedV2 = { "id": string; "name": string }
 export type PlaylistItemAddV2 = { "item_id": string }
 export type PlaylistListResponse = { "items": LibraryItem[] }
+export type PrefixesV2 = { "prefixes": string[] }
 export type QualityOption = { "id": string; "label": string; "resolution": string | null; "width": number | null; "height": number | null; "bitrate_kbps": number | null }
 export type QualityOptionsResponse = { "options": QualityOption[]; "default_id": string }
 export type RecoverRequest = { "code": string }

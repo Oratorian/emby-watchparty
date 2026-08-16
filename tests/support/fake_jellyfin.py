@@ -118,6 +118,11 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             "StartIndex": int(request.query_params.get("StartIndex", "0")),
         }
 
+    @app.get("/Items/Prefixes")
+    async def item_prefixes(request: Request):
+        state.record(request)
+        return [{"Name": "A"}, {"Name": "#"}]
+
     @app.get("/Users/{user_id}/Items/{item_id}")
     async def item_details(user_id: str, item_id: str, request: Request):
         assert user_id

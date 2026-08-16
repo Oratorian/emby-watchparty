@@ -67,6 +67,10 @@ class MediaPageV2(V2Model):
     start: int = 0
 
 
+class PrefixesV2(V2Model):
+    prefixes: list[str]
+
+
 class CatalogScopeV2(V2Model):
     parent_id: str | None = None
     include_kinds: list[str] = Field(default_factory=list)
@@ -265,6 +269,7 @@ __all__ = [
     "PlaylistCreateV2",
     "PlaylistCreatedV2",
     "PlaylistItemAddV2",
+    "PrefixesV2",
     "StreamCatalogV2",
     "SubtitleStreamV2",
 ]

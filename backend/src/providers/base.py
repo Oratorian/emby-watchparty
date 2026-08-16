@@ -42,6 +42,10 @@ class MediaServerProvider(Protocol):
         self, query: CatalogQuery, credentials: ProviderCredentials
     ) -> MediaPage: ...
 
+    async def query_prefixes(
+        self, query: CatalogQuery, credentials: ProviderCredentials
+    ) -> tuple[str, ...]: ...
+
     async def search_catalog(
         self, term: str, limit: int, credentials: ProviderCredentials
     ) -> MediaPage: ...

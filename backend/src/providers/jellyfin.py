@@ -89,6 +89,15 @@ class JellyfinProvider:
         )
         return normalize_page(payload)
 
+    async def query_prefixes(self, query: CatalogQuery, credentials: ProviderCredentials):
+        rows = await self._client.query_items(
+            emby_family_query(query),
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+            prefixes=True,
+        )
+        return tuple(str(row["Name"]) for row in rows if isinstance(row, dict) and row.get("Name"))
+
     async def search_catalog(self, term: str, limit: int, credentials: ProviderCredentials):
         from backend.src.providers.models import CatalogPage, CatalogScope
 
