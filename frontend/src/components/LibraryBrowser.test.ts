@@ -143,6 +143,25 @@ describe('LibraryBrowser search routing', () => {
         critic_rating_min: 80,
       },
     }), expect.any(AbortSignal))
+
+    await wrapper.get('button[aria-label="Open Year filter"]').trigger('click')
+    await wrapper.get('button[aria-label="Exact year mode"]').trigger('click')
+    await wrapper.get('input[aria-label="Exact year"]').setValue('1999')
+    await wrapper.get('button[aria-label="Apply year filter"]').trigger('click')
+    await flushPromises()
+    expect(queryItems).toHaveBeenLastCalledWith(expect.objectContaining({
+      filters: expect.objectContaining({ years: [1999] }),
+    }), expect.any(AbortSignal))
+
+    await wrapper.get('button[aria-label="Decade mode"]').trigger('click')
+    await wrapper.get('select[aria-label="Year decade"]').setValue('2010')
+    await wrapper.get('button[aria-label="Apply year filter"]').trigger('click')
+    await flushPromises()
+    expect(queryItems).toHaveBeenLastCalledWith(expect.objectContaining({
+      filters: expect.objectContaining({
+        years: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019],
+      }),
+    }), expect.any(AbortSignal))
     expect(JSON.parse(localStorage.getItem(
       'emby-watchparty-library-filters:library-1',
     ) || '{}').filters).toEqual(expect.objectContaining({
