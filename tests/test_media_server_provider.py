@@ -6,7 +6,7 @@ import pytest
 
 from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
-from backend.src.domain import SelectedMedia
+from backend.src.domain import Participant, SelectedMedia
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers import EmbyProvider, JellyfinProvider, create_provider
 from backend.src.providers.models import (
@@ -791,6 +791,57 @@ def test_socket_disconnect_revokes_the_viewers_jellyfin_plan(tmp_path) -> None:
             await app.state.sio.handlers["/"]["disconnect"](sid)
 
             assert app.state.hls_registry.get_plan(stream.stream_id) is None
+
+    asyncio.run(exercise())
+
+
+def test_socket_rejoin_revokes_the_replaced_jellyfin_plan(tmp_path) -> None:
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            party_id = (await client.post("/api/party/create", json={})).json()["party_id"]
+            party = app.state.party_manager.get(party_id)
+            assert party is not None
+            old_sid = "old-socket"
+            party.current_video = SelectedMedia(item_id="movie-1", title="Arrival")
+            party.sid_client_ids[old_sid] = "client-1"
+            party.participants["client-1"] = Participant(
+                client_id="client-1", username="Alice", sid=old_sid
+            )
+
+            old_stream = await app.state.socket_context["create_user_stream"](
+                party,
+                party_id,
+                old_sid,
+                "movie-1",
+                None,
+                2,
+                4,
+                "720p-4000",
+                start_seconds=12.5,
+                media_source_id="source-1",
+            )
+            assert old_stream is not None
+            assert old_stream.stream_id
+            assert app.state.hls_registry.get_plan(old_stream.stream_id) is not None
+            # Model a dropped transport whose disconnect callback has not run
+            # before the browser's replacement socket rejoins.
+            party.sid_client_ids.pop(old_sid)
+
+            new_sid = await app.state.sio.manager.connect("new-engine-socket", "/")
+            await app.state.sio.handlers["/"]["join_party"](
+                new_sid,
+                {"party_id": party_id, "username": "Alice", "client_id": "client-1"},
+            )
+
+            assert app.state.hls_registry.get_plan(old_stream.stream_id) is None
 
     asyncio.run(exercise())
 
