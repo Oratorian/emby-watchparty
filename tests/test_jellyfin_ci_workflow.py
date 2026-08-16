@@ -1,4 +1,5 @@
 import io
+import json
 import urllib.error
 from pathlib import Path
 
@@ -28,6 +29,12 @@ def test_ci_runs_pinned_real_jellyfin_matrix_and_gates_it() -> None:
     assert "response.url()).pathname" not in journey
     runner = (ROOT / "scripts" / "run_jellyfin_ci.py").read_text(encoding="utf-8")
     assert 'video = media / "Synthetic HLS.mp4"' in runner
+
+
+def test_default_e2e_suite_excludes_real_jellyfin_journey() -> None:
+    package = json.loads((ROOT / "frontend" / "package.json").read_text(encoding="utf-8"))
+
+    assert package["scripts"]["test:e2e"].endswith("--grep-invert @jellyfin-real")
 
 
 def test_real_jellyfin_wait_tolerates_transient_non_json_http_errors(monkeypatch) -> None:

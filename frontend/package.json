@@ -12,7 +12,7 @@
     "type-check": "vue-tsc --build",
     "test:unit": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --grep-invert @jellyfin-real",
     "test:playback-gate": "playwright test --grep @playback-gate"
   },
   "dependencies": {
