@@ -98,6 +98,22 @@ def _configure_startup(base: str) -> None:
     _post_ok(f"{base}/Startup/Complete", {})
 
 
+def _create_api_key(base: str, admin_token: str) -> str:
+    app_name = "emby-watchparty-ci"
+    query = urllib.parse.urlencode({"app": app_name})
+    status, _ = _request(f"{base}/Auth/Keys?{query}", method="POST", token=admin_token)
+    if status not in {200, 204}:
+        raise RuntimeError(f"Jellyfin API key creation failed ({status})")
+    status, payload = _request(f"{base}/Auth/Keys", token=admin_token)
+    items = payload.get("Items") if isinstance(payload, dict) else None
+    if status != 200 or not isinstance(items, list):
+        raise RuntimeError(f"Jellyfin API key lookup failed ({status})")
+    for item in reversed(items):
+        if isinstance(item, dict) and item.get("AppName") == app_name and item.get("AccessToken"):
+            return str(item["AccessToken"])
+    raise RuntimeError("Jellyfin did not return the created API key")
+
+
 def start(args: argparse.Namespace) -> None:
     work = args.state.parent
     media = work / "media"
@@ -175,6 +191,7 @@ def start(args: argparse.Namespace) -> None:
         raise RuntimeError(f"Jellyfin authentication failed ({status})")
     token = str(auth["AccessToken"])
     user_id = str(auth["User"]["Id"])
+    api_key = _create_api_key(base, token)
     query = urllib.parse.urlencode(
         {"name": "Movies", "collectionType": "movies", "paths": "/media", "refreshLibrary": "true"}
     )
@@ -197,7 +214,7 @@ def start(args: argparse.Namespace) -> None:
                 "APP_ENV=development",
                 "MEDIA_SERVER_TYPE=jellyfin",
                 "JELLYFIN_SERVER_URL=http://jellyfin:8096",
-                f"JELLYFIN_API_KEY={token}",
+                f"JELLYFIN_API_KEY={api_key}",
                 "SESSION_SECRET=jellyfin-ci-session-secret-at-least-32-characters",
                 "SESSION_COOKIE_SECURE=false",
             )

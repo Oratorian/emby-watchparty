@@ -135,3 +135,28 @@ def test_real_jellyfin_requests_identify_the_ci_client(monkeypatch) -> None:
     run_jellyfin_ci._request("http://127.0.0.1:8097/System/Info/Public")
 
     assert captured["authorization"].startswith('MediaBrowser Client="emby-watchparty-ci"')
+
+
+def test_real_jellyfin_runner_creates_dedicated_api_key(monkeypatch) -> None:
+    calls: list[tuple[str, str, str | None]] = []
+
+    def request(url, *, method="GET", body=None, token=None):
+        del body
+        calls.append((method, url, token))
+        if method == "POST":
+            return 204, None
+        return 200, {"Items": [{"AppName": "emby-watchparty-ci", "AccessToken": "dedicated-key"}]}
+
+    monkeypatch.setattr(run_jellyfin_ci, "_request", request)
+
+    assert run_jellyfin_ci._create_api_key("http://127.0.0.1:8097", "admin-token") == (
+        "dedicated-key"
+    )
+    assert calls == [
+        (
+            "POST",
+            "http://127.0.0.1:8097/Auth/Keys?app=emby-watchparty-ci",
+            "admin-token",
+        ),
+        ("GET", "http://127.0.0.1:8097/Auth/Keys", "admin-token"),
+    ]
