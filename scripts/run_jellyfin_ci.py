@@ -80,6 +80,9 @@ def _configure_startup(base: str) -> None:
         f"{base}/Startup/Configuration",
         {"UICulture": "en-US", "MetadataCountryCode": "US", "PreferredMetadataLanguage": "en"},
     )
+    status, payload = _request(f"{base}/Startup/User")
+    if status != 200:
+        raise RuntimeError(f"Jellyfin startup user initialization failed ({status}): {payload!r}")
     _post_ok(f"{base}/Startup/User", {"Name": "Alice", "Password": "password"})
     _post_ok(
         f"{base}/Startup/RemoteAccess",

@@ -46,3 +46,22 @@ def test_real_jellyfin_wait_tolerates_transient_non_json_http_errors(monkeypatch
     monkeypatch.setattr(run_jellyfin_ci.urllib.request, "urlopen", fail)
 
     assert run_jellyfin_ci._request(error.url) == (503, "server starting")
+
+
+def test_real_jellyfin_setup_initializes_first_user_before_updating_it(monkeypatch) -> None:
+    calls: list[tuple[str, str]] = []
+
+    def request(url, *, method="GET", body=None, token=None):
+        del body, token
+        calls.append((method, url))
+        return 200, {"Name": "root"}
+
+    monkeypatch.setattr(run_jellyfin_ci, "_request", request)
+
+    run_jellyfin_ci._configure_startup("http://127.0.0.1:8097")
+
+    user_calls = [call for call in calls if call[1].endswith("/Startup/User")]
+    assert user_calls == [
+        ("GET", "http://127.0.0.1:8097/Startup/User"),
+        ("POST", "http://127.0.0.1:8097/Startup/User"),
+    ]
