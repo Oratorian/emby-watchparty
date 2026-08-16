@@ -744,6 +744,59 @@ def test_socket_creates_registered_per_viewer_jellyfin_plan(tmp_path) -> None:
     ]
 
 
+def test_socket_disconnect_revokes_the_viewers_jellyfin_plan(tmp_path) -> None:
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+            party = app.state.party_manager.get(party_id)
+            assert party is not None
+            sid = "socket-1"
+            party.sid_client_ids[sid] = "client-1"
+            party.current_video = SelectedMedia(item_id="movie-1", title="Arrival")
+
+            stream = await app.state.socket_context["create_user_stream"](
+                party,
+                party_id,
+                sid,
+                "movie-1",
+                None,
+                2,
+                4,
+                "720p-4000",
+                start_seconds=12.5,
+                media_source_id="source-1",
+            )
+            assert stream is not None
+            assert stream.stream_id
+            assert app.state.hls_registry.get_plan(stream.stream_id) is not None
+
+            await app.state.sio.handlers["/"]["disconnect"](sid)
+
+            assert app.state.hls_registry.get_plan(stream.stream_id) is None
+
+    asyncio.run(exercise())
+
+
+
+
 def test_jellyfin_v2_search_is_normalized_and_bounded(tmp_path) -> None:
     fake_state = FakeJellyfinState()
     app = create_app(
