@@ -341,6 +341,24 @@ EMBY_API_KEY=your-dedicated-emby-api-key
 ENABLE_HLS_TOKEN_VALIDATION=true
 ```
 
+Jellyfin 10.10+ uses explicit provider-specific settings:
+
+```env
+MEDIA_SERVER_TYPE=jellyfin
+JELLYFIN_SERVER_URL=http://jellyfin:8096
+JELLYFIN_API_KEY=your-dedicated-jellyfin-api-key
+```
+
+Emby remains default (`MEDIA_SERVER_TYPE=emby`) and keeps using
+`EMBY_SERVER_URL` plus `EMBY_API_KEY`. Selected provider never falls back to
+other provider's variables. Inactive provider variables are ignored with a
+value-free warning. Changing providers requires a restart.
+
+Jellyfin playback is HLS-only: HLS stream copy/remux/transcode are supported.
+Progressive/direct-file playback, Live TV, Jellyfin SyncPlay, and reuse of GPL
+Jellyfin Web code are out of scope. Browser receives opaque local HLS resource
+IDs; Jellyfin credentials remain server-side.
+
 Use this only for local development over plain HTTP. Do not expose this permissive configuration to untrusted networks.
 
 Production reverse-proxy example:
@@ -377,9 +395,12 @@ Boot-essential, restart required.
 | `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for the Socket.IO server (`https://a.example.com,https://b.example.com`). `*` accepts any origin (historical default). Pin to your real origin(s) in production. | `*` |
 | `TRUSTED_PROXY_CIDRS` | Comma-separated proxy CIDRs allowed to supply client-IP forwarding headers. Empty ignores forwarded headers. | (empty) |
 | `ENABLE_HLS_TOKEN_VALIDATION` | Restart-required stream-access protection. Production requires `true`. | `true` |
-| **Emby server** | | |
+| **Media server** | | |
+| `MEDIA_SERVER_TYPE` | Explicit provider: `emby` or `jellyfin` | `emby` |
 | `EMBY_SERVER_URL` | Your Emby server URL | `http://localhost:8096` |
-| `EMBY_API_KEY` | Emby API key (server admin key) | (required) |
+| `EMBY_API_KEY` | Emby API key; required only when Emby is selected | (empty) |
+| `JELLYFIN_SERVER_URL` | Your Jellyfin server URL; used only when Jellyfin is selected | (empty) |
+| `JELLYFIN_API_KEY` | Jellyfin API key; required only when Jellyfin is selected | (empty) |
 
 `REQUIRE_LOGIN` was previously here. It now lives in the admin panel as a runtime, hot-reloadable setting; see the host-provider authentication model in [Architecture](#architecture) for the full semantics.
 
