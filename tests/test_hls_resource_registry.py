@@ -71,9 +71,7 @@ def test_plan_accepts_only_ten_thousand_unique_resources_but_reuses_duplicates()
         play_session_id="session-1",
         method=PlaybackMethod.HLS_TRANSCODE,
         master=HLSResource("https://media.test/master.m3u8"),
-        credentials=ProviderCredentials(
-            access_token=TEST_JELLYFIN_ACCESS_TOKEN, user_id="user-1"
-        ),
+        credentials=ProviderCredentials(access_token=TEST_JELLYFIN_ACCESS_TOKEN, user_id="user-1"),
     )
     registry.install(plan)
 
