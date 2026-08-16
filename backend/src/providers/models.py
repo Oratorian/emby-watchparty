@@ -165,11 +165,44 @@ class CatalogSort:
 
 
 @dataclass(frozen=True)
+class CatalogFilters:
+    playstate: str = "any"
+    favorite: bool | None = None
+    duplicates: bool | None = None
+    genres: tuple[str, ...] = ()
+    official_ratings: tuple[str, ...] = ()
+    studios: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+    person_ids: tuple[str, ...] = ()
+    years: tuple[int, ...] = ()
+    containers: tuple[str, ...] = ()
+    video_codecs: tuple[str, ...] = ()
+    video_types: tuple[str, ...] = ()
+    resolutions: tuple[str, ...] = ()
+    is_3d: bool | None = None
+    audio_codecs: tuple[str, ...] = ()
+    audio_layouts: tuple[str, ...] = ()
+    audio_languages: tuple[str, ...] = ()
+    subtitles: str = "any"
+    subtitle_codecs: tuple[str, ...] = ()
+    subtitle_languages: tuple[str, ...] = ()
+    trailers: str = "any"
+    extras: str = "any"
+    theme_songs: str = "any"
+    theme_videos: str = "any"
+    locked: str = "any"
+    overview: str = "any"
+    missing_provider_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class CatalogQuery:
     scope: CatalogScope = field(default_factory=CatalogScope)
     page: CatalogPage = field(default_factory=CatalogPage)
     sort: CatalogSort = field(default_factory=CatalogSort)
+    filters: CatalogFilters = field(default_factory=CatalogFilters)
     search_term: str | None = None
+    anchor_prefix: str | None = None
 
 
 @dataclass(frozen=True)

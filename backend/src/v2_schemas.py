@@ -93,11 +93,43 @@ class CatalogSortV2(V2Model):
     direction: Literal["ascending", "descending"] = "ascending"
 
 
+class CatalogFiltersV2(V2Model):
+    playstate: Literal["any", "played", "unplayed", "resumable"] = "any"
+    favorite: bool | None = None
+    duplicates: bool | None = None
+    genres: list[str] = Field(default_factory=list)
+    official_ratings: list[str] = Field(default_factory=list)
+    studios: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    person_ids: list[str] = Field(default_factory=list)
+    years: list[int] = Field(default_factory=list)
+    containers: list[str] = Field(default_factory=list)
+    video_codecs: list[str] = Field(default_factory=list)
+    video_types: list[str] = Field(default_factory=list)
+    resolutions: list[Literal["4K", "1080p", "720p", "SD"]] = Field(default_factory=list)
+    is_3d: bool | None = None
+    audio_codecs: list[str] = Field(default_factory=list)
+    audio_layouts: list[str] = Field(default_factory=list)
+    audio_languages: list[str] = Field(default_factory=list)
+    subtitles: Literal["any", "with", "without"] = "any"
+    subtitle_codecs: list[str] = Field(default_factory=list)
+    subtitle_languages: list[str] = Field(default_factory=list)
+    trailers: Literal["any", "with", "without"] = "any"
+    extras: Literal["any", "with", "without"] = "any"
+    theme_songs: Literal["any", "with", "without"] = "any"
+    theme_videos: Literal["any", "with", "without"] = "any"
+    locked: Literal["any", "yes", "no"] = "any"
+    overview: Literal["any", "with", "without"] = "any"
+    missing_provider_ids: list[Literal["imdb", "tmdb", "tvdb"]] = Field(default_factory=list)
+
+
 class CatalogQueryV2(V2Model):
     scope: CatalogScopeV2 = Field(default_factory=CatalogScopeV2)
     page: CatalogPageV2 = Field(default_factory=CatalogPageV2)
     sort: CatalogSortV2 = Field(default_factory=CatalogSortV2)
+    filters: CatalogFiltersV2 = Field(default_factory=CatalogFiltersV2)
     search_term: str | None = Field(default=None, max_length=200)
+    anchor_prefix: str | None = Field(default=None, min_length=1, max_length=8)
 
 
 class MediaServerInfoV2(V2Model):
@@ -215,6 +247,7 @@ __all__ = [
     "ActionResultV2",
     "AudioStreamV2",
     "AuthStatusV2",
+    "CatalogFiltersV2",
     "CatalogQueryV2",
     "FavoriteMutationV2",
     "FavoriteResultV2",

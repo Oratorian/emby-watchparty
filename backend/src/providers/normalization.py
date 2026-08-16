@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import fields
+from dataclasses import asdict, fields
 
 from backend.src.providers.models import (
     AudioStream,
@@ -216,35 +216,7 @@ def emby_family_query(query: CatalogQuery) -> dict:
             "field": sort_fields[query.sort.field],
             "direction": query.sort.direction.title(),
         },
-        "filters": {
-            "playstate": "any",
-            "favorite": None,
-            "duplicates": None,
-            "genres": [],
-            "official_ratings": [],
-            "studios": [],
-            "tags": [],
-            "person_ids": [],
-            "years": [],
-            "containers": [],
-            "video_codecs": [],
-            "video_types": [],
-            "resolutions": [],
-            "is_3d": None,
-            "audio_codecs": [],
-            "audio_layouts": [],
-            "audio_languages": [],
-            "subtitles": "any",
-            "subtitle_codecs": [],
-            "subtitle_languages": [],
-            "trailers": "any",
-            "extras": "any",
-            "theme_songs": "any",
-            "theme_videos": "any",
-            "locked": "any",
-            "overview": "any",
-            "missing_provider_ids": [],
-        },
+        "filters": asdict(query.filters),
         "search_term": query.search_term,
-        "anchor_prefix": None,
+        "anchor_prefix": query.anchor_prefix,
     }

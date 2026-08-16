@@ -24,6 +24,7 @@ from backend.src.dependencies import (
 )
 from backend.src.providers.models import (
     AssetRequest,
+    CatalogFilters,
     CatalogPage,
     CatalogQuery,
     CatalogScope,
@@ -147,7 +148,9 @@ async def query_items(
         ),
         page=CatalogPage(start=body.page.start, limit=body.page.limit),
         sort=CatalogSort(field=body.sort.field, direction=body.sort.direction),
+        filters=CatalogFilters(**body.filters.model_dump(mode="python")),
         search_term=body.search_term,
+        anchor_prefix=body.anchor_prefix,
     )
     page = await provider.query_catalog(query, credentials)
     return MediaPageV2.model_validate(asdict(page))

@@ -194,6 +194,7 @@ def test_jellyfin_v2_item_query_is_normalized_and_user_scoped(tmp_path) -> None:
                     },
                     "page": {"start": 20, "limit": 25},
                     "sort": {"field": "name", "direction": "ascending"},
+                    "filters": {"favorite": True},
                 },
             )
 
@@ -248,6 +249,7 @@ def test_jellyfin_v2_item_query_is_normalized_and_user_scoped(tmp_path) -> None:
             "Limit": "25",
             "ParentId": "jellyfin-library-1",
             "IncludeItemTypes": "Movie",
+            "IsFavorite": "true",
         },
     }
 
