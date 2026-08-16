@@ -460,8 +460,11 @@ export const api = {
   ),
   itemSection: (id: string, section: ItemSection, signal?: AbortSignal) =>
     apiFetch<ItemSectionResponse>(`/api/item/${id}/sections/${section}`, { signal }),
-  seriesSeasons: (id: string, signal?: AbortSignal) =>
-    apiFetch<ItemChildrenResponse>(`/api/item/${id}/seasons`, { signal }),
+  seriesSeasons: async (id: string, signal?: AbortSignal): Promise<ItemChildrenResponse> => ({
+    items: projectMediaPage(
+      await apiFetch<MediaPageV2>(`/api/v2/items/${id}/seasons`, { signal }),
+    ).Items,
+  }),
   seriesEpisodes: (id: string, seasonId?: string, signal?: AbortSignal) => {
     const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
     return apiFetch<ItemChildrenResponse>(`/api/item/${id}/episodes${query}`, { signal })
