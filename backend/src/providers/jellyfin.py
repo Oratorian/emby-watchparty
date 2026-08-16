@@ -182,7 +182,11 @@ class JellyfinProvider:
             response.raise_for_status()
             return response.json()
 
-        genres, studios = await asyncio.gather(catalog("/Genres"), catalog("/Studios"))
+        catalogs = await asyncio.gather(
+            catalog("/Genres"),
+            catalog("/Studios"),
+            return_exceptions=True,
+        )
         controls: list[dict] = [
             {
                 "id": "playstate",
@@ -197,10 +201,11 @@ class JellyfinProvider:
             },
             {"id": "favorite", "label": "Favorite", "kind": "toggle", "values": []},
         ]
-        for control_id, label, payload in (
-            ("genre", "Genre", genres),
-            ("studio", "Studio", studios),
+        for (control_id, label), payload in zip(
+            (("genre", "Genre"), ("studio", "Studio")), catalogs, strict=True
         ):
+            if not isinstance(payload, dict):
+                continue
             values = [
                 {"value": str(item["Name"]), "label": str(item["Name"])}
                 for item in payload.get("Items", [])

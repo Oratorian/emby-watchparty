@@ -11,6 +11,7 @@ from tests.support.credentials import TEST_JELLYFIN_ACCESS_TOKEN
 @dataclass
 class FakeJellyfinState:
     version: str = "10.11.11"
+    failing_catalogs: set[str] = field(default_factory=set)
     requests: list[dict] = field(default_factory=list)
     request_hosts: list[str] = field(default_factory=list)
     playback_requests: list[dict] = field(default_factory=list)
@@ -96,6 +97,11 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
     @app.get("/Genres")
     async def genres(request: Request):
         state.record(request)
+        if "genres" in state.failing_catalogs:
+            return Response(
+                "secret-token at http://jellyfin.internal/Genres",
+                status_code=500,
+            )
         return {
             "Items": [
                 {"Id": "genre-drama", "Name": "Drama", "Type": "Genre"},
@@ -108,6 +114,11 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
     @app.get("/Studios")
     async def studios(request: Request):
         state.record(request)
+        if "studios" in state.failing_catalogs:
+            return Response(
+                "secret-token at http://jellyfin.internal/Studios",
+                status_code=500,
+            )
         return {
             "Items": [{"Id": "studio-paramount", "Name": "Paramount", "Type": "Studio"}],
             "TotalRecordCount": 1,

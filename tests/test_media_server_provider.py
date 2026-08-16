@@ -811,6 +811,50 @@ def test_jellyfin_v2_filter_options_use_scoped_catalogs_without_item_scan(tmp_pa
     asyncio.run(exercise())
 
 
+def test_jellyfin_v2_filter_options_omit_only_failed_dynamic_catalog(tmp_path) -> None:
+    fake_state = FakeJellyfinState(failing_catalogs={"genres"})
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            party_id = (
+                await client.post(
+                    "/api/party/create",
+                    json={"client_id": "client-1", "display_name": "Alice"},
+                )
+            ).json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            response = await client.get(
+                "/api/v2/items/filter-options",
+                params={"parent_id": "jellyfin-library-1"},
+            )
+
+            assert response.status_code == 200
+            controls = response.json()["controls"]
+            assert [control["id"] for control in controls] == [
+                "playstate",
+                "favorite",
+                "studio",
+            ]
+            serialized = response.text
+            assert "secret-token" not in serialized
+            assert "jellyfin.internal" not in serialized
+
+    asyncio.run(exercise())
+
+
 def test_jellyfin_v2_grouped_search_groups_normalized_items(tmp_path) -> None:
     fake_state = FakeJellyfinState()
     app = create_app(
