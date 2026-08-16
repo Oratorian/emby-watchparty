@@ -1,5 +1,7 @@
 from urllib.parse import urljoin
 
+import pytest
+
 from backend.src.hls_registry import HLSResourceRegistry
 from backend.src.providers.models import (
     HLSResource,
@@ -58,3 +60,51 @@ def test_playlist_scanner_preserves_format_and_uses_only_opaque_resource_ids() -
     resource_ids = list(plan.resources)
     assert len(resource_ids) == 5
     assert registry.resolve("stream-1", resource_ids[0]) in plan.resources.values()
+
+
+def test_plan_accepts_only_ten_thousand_unique_resources_but_reuses_duplicates() -> None:
+    registry = HLSResourceRegistry()
+    plan = PlaybackPlan(
+        stream_id="stream-1",
+        item_id="movie-1",
+        media_source_id="source-1",
+        play_session_id="session-1",
+        method=PlaybackMethod.HLS_TRANSCODE,
+        master=HLSResource("https://media.test/master.m3u8"),
+        credentials=ProviderCredentials(
+            access_token=TEST_JELLYFIN_ACCESS_TOKEN, user_id="user-1"
+        ),
+    )
+    registry.install(plan)
+
+    def resolve(_parent: HLSResource, child: str) -> HLSResource:
+        return HLSResource(f"https://media.test/{child}")
+
+    registry.rewrite_playlist(
+        plan,
+        plan.master,
+        "".join(f"segment-{index}.ts\n" for index in range(10_000)),
+        resolve=resolve,
+        app_prefix="",
+        token=TEST_HLS_BROWSER_TOKEN,
+    )
+    registry.rewrite_playlist(
+        plan,
+        plan.master,
+        "segment-0.ts\n",
+        resolve=resolve,
+        app_prefix="",
+        token=TEST_HLS_BROWSER_TOKEN,
+    )
+
+    assert len(plan.resources) == 10_000
+    with pytest.raises(ValueError, match="resource limit"):
+        registry.rewrite_playlist(
+            plan,
+            plan.master,
+            "segment-10000.ts\n",
+            resolve=resolve,
+            app_prefix="",
+            token=TEST_HLS_BROWSER_TOKEN,
+        )
+    assert len(plan.resources) == 10_000
