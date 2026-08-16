@@ -226,6 +226,18 @@ describe('apiFetch', () => {
     )
   })
 
+  it('loads normalized intro segments from v2', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      has_intro: true, start_seconds: 10, end_seconds: 80, duration_seconds: 70,
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.intro('movie-1')).resolves.toEqual({
+      hasIntro: true, start: 10, end: 80, duration: 70,
+    })
+    expect(fetchMock).toHaveBeenCalledWith('/api/v2/items/movie-1/intro', expect.any(Object))
+  })
+
   it('posts typed library filters without encoding them into a URL', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ Items: [], TotalRecordCount: 0 }),

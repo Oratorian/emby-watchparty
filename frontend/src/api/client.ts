@@ -10,6 +10,7 @@
  */
 import { withPrefix } from '@/utils/appPrefix'
 import type {
+  IntroSegmentV2,
   MediaItemDetailsV2,
   MediaItemV2,
   MediaPageV2,
@@ -537,7 +538,15 @@ export const api = {
   },
 
   // Media
-  intro: (id: string, signal?: AbortSignal) => apiFetch<IntroResponse>(`/api/intro/${id}`, { signal }),
+  intro: async (id: string, signal?: AbortSignal): Promise<IntroResponse> => {
+    const intro = await apiFetch<IntroSegmentV2>(`/api/v2/items/${id}/intro`, { signal })
+    return {
+      hasIntro: intro.has_intro,
+      start: intro.start_seconds ?? undefined,
+      end: intro.end_seconds ?? undefined,
+      duration: intro.duration_seconds ?? undefined,
+    }
+  },
   imageUrl: (
     id: string,
     type = 'Primary',
