@@ -115,6 +115,23 @@ class LoginResponseV2(V2Model):
     media_server_type: Literal["emby", "jellyfin"]
 
 
+class LogoutResponseV2(V2Model):
+    success: bool
+    message: str
+
+
+class AuthStatusV2(V2Model):
+    authenticated: bool
+    username: str | None = None
+    is_admin: bool = False
+    require_login: bool = False
+    is_host: bool = False
+    party_id: str | None = None
+    host_username: str | None = None
+    party_unlocked: bool = False
+    media_server_type: Literal["emby", "jellyfin"]
+
+
 class FavoriteMutationV2(V2Model):
     favorite: bool
 
@@ -152,11 +169,13 @@ class ActionResultV2(V2Model):
 
 __all__ = [
     "ActionResultV2",
+    "AuthStatusV2",
     "CatalogQueryV2",
     "FavoriteMutationV2",
     "FavoriteResultV2",
     "LoginRequest",
     "LoginResponseV2",
+    "LogoutResponseV2",
     "MediaItemDetailsV2",
     "MediaItemV2",
     "MediaPageV2",

@@ -865,3 +865,49 @@ def test_jellyfin_provider_streams_approved_hls_resource_and_closes_upstream() -
     assert requests[0].method == "GET"
     assert requests[0].headers["range"] == "bytes=2-14"
     assert requests[0].headers["x-emby-token"] == TEST_JELLYFIN_ACCESS_TOKEN
+
+
+def test_jellyfin_v2_auth_status_and_logout_are_provider_aware(tmp_path) -> None:
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app()),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            status = await client.get("/api/v2/auth/status")
+            logout = await client.post("/api/v2/auth/logout")
+            logged_out = await client.get("/api/v2/auth/status")
+
+            assert status.status_code == 200
+            assert status.json() == {
+                "authenticated": True,
+                "username": "Alice",
+                "is_admin": True,
+                "require_login": False,
+                "is_host": True,
+                "party_id": party_id,
+                "host_username": "Alice",
+                "party_unlocked": True,
+                "media_server_type": "jellyfin",
+            }
+            assert logout.status_code == 200
+            assert logout.json() == {"success": True, "message": "Logged out"}
+            assert logged_out.json()["authenticated"] is False
+            assert logged_out.json()["media_server_type"] == "jellyfin"
+
+    asyncio.run(exercise())

@@ -25,14 +25,16 @@ from backend.src.providers.models import (
     CatalogSort,
     ProviderCredentials,
 )
-from backend.src.routers.auth import api_login
+from backend.src.routers.auth import api_auth_status, api_login, api_logout
 from backend.src.v2_schemas import (
     ActionResultV2,
+    AuthStatusV2,
     CatalogQueryV2,
     FavoriteMutationV2,
     FavoriteResultV2,
     LoginRequest,
     LoginResponseV2,
+    LogoutResponseV2,
     MediaItemDetailsV2,
     MediaPageV2,
     MediaServerInfoV2,
@@ -66,6 +68,31 @@ async def login(
 ):
     result = await api_login(body, request, config, provider, party_manager, sio, logger)
     return LoginResponseV2(
+        **result.model_dump(),
+        media_server_type=provider.identity.type,
+    )
+
+
+@router.post("/auth/logout", response_model=LogoutResponseV2)
+async def logout(
+    request: Request,
+    party_manager=Depends(get_party_manager),
+    sio=Depends(get_sio),
+    logger=Depends(get_logger),
+):
+    result = await api_logout(request, party_manager, sio, logger)
+    return LogoutResponseV2(success=result.success, message=result.message)
+
+
+@router.get("/auth/status", response_model=AuthStatusV2)
+def auth_status(
+    request: Request,
+    config=Depends(get_config),
+    provider=Depends(get_media_server),
+    party_manager=Depends(get_party_manager),
+):
+    result = api_auth_status(request, config, party_manager)
+    return AuthStatusV2(
         **result.model_dump(),
         media_server_type=provider.identity.type,
     )
