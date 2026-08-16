@@ -1601,7 +1601,8 @@ async function submitBecomeHost(payload: { username: string; password: string })
   <EmbyLoginModal
     v-if="showBecomeHostModal"
     title="Login to Become Host"
-    description="Any party member can log in with valid Emby credentials. The host's library becomes browsable for everyone in the room."
+    :description="`Any party member can log in with valid ${auth.mediaServerName} credentials. The host's library becomes browsable for everyone in the room.`"
+    :provider-name="auth.mediaServerName"
     submit-label="Become Host"
     :busy="becomeHostBusy"
     :error-message="becomeHostError"

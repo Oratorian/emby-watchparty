@@ -32,4 +32,14 @@ describe('EmbyLoginModal accessibility', () => {
     wrapper.unmount()
     expect(document.activeElement).toBe(trigger)
   })
+
+  it('uses the selected media server name in default login copy', () => {
+    const wrapper = mount(EmbyLoginModal, { props: { providerName: 'Jellyfin' } })
+
+    expect(wrapper.get('h2').text()).toBe('Jellyfin Login')
+    expect(wrapper.get('input[type="text"]').attributes('placeholder')).toBe('Jellyfin username')
+    expect(wrapper.get('input[type="password"]').attributes('placeholder')).toBe(
+      'Jellyfin password',
+    )
+  })
 })

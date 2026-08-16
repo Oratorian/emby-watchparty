@@ -65,6 +65,7 @@ const createBusy = ref(false)
 const createError = ref<string | null>(null)
 
 onMounted(async () => {
+  await auth.refresh().catch(() => { /* public index remains usable */ })
   try {
     const res = await fetch(withPrefix('/api/party/static-session'))
     const data = await res.json()
@@ -208,7 +209,8 @@ function joinParty() {
     <EmbyLoginModal
       v-if="showCreateModal"
       title="Login to Create a Party"
-      description="Emby login is required to start a new watch party. Spectators will only need the party code."
+      :description="`${auth.mediaServerName} login is required to start a new watch party. Spectators will only need the party code.`"
+      :provider-name="auth.mediaServerName"
       submit-label="Create Party"
       :busy="createBusy"
       :error-message="createError"
