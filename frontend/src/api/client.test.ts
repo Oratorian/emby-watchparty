@@ -157,6 +157,18 @@ describe('apiFetch', () => {
     }))
   })
 
+  it('updates played state through v2', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ success: true, played: true }), { status: 200 },
+    ))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.setPlayed('movie-1', true)
+    expect(fetchMock).toHaveBeenCalledWith('/api/v2/items/movie-1/played', expect.objectContaining({
+      method: 'PUT', body: JSON.stringify({ played: true }),
+    }))
+  })
+
   it('posts typed library filters without encoding them into a URL', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ Items: [], TotalRecordCount: 0 }),

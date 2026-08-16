@@ -477,7 +477,7 @@ export const api = {
       method: 'PUT', body: JSON.stringify({ favorite }), signal,
     }),
   setPlayed: (id: string, played: boolean, signal?: AbortSignal) =>
-    apiFetch<{ success: boolean; played: boolean }>(`/api/item/${id}/played`, {
+    apiFetch<{ success: boolean; played: boolean }>(`/api/v2/items/${id}/played`, {
       method: 'PUT', body: JSON.stringify({ played }), signal,
     }),
   playlists: (signal?: AbortSignal) => apiFetch<PlaylistListResponse>('/api/playlists', { signal }),
