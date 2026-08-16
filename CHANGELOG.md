@@ -24,6 +24,7 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ### Fixed
 
+- Saving from the admin panel now works when `config.json` is bind-mounted as a single file, the layout the README and `docker-compose.yml.example` both recommend. Every save was rejected with "Device or resource busy", the setting reverted, and a stray temp file was left behind on each attempt. Reported by **[xux1217](https://github.com/xux1217)** in [#66](https://github.com/Oratorian/emby-watchparty/issues/66), who diagnosed it in full: the failing call, the errno, and the exact lines. Shipped on the stable line as 2.1.3 and carried here so upgrading to 3.0 does not undo it.
 - Generated REST client types can no longer silently drift away from the backend response contract.
 - Windows contributors can run changed-line coverage against UTF-8 source diffs without locale decoder crashes.
 
