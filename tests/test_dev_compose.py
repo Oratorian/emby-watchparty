@@ -74,6 +74,23 @@ def test_the_dev_compose_does_not_occupy_the_operators_filename() -> None:
     assert (ROOT / "docker-compose.yml.example").exists()
 
 
+def test_operator_compose_files_with_private_values_are_ignored() -> None:
+    patterns = {
+        line.strip()
+        for line in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+    assert {
+        "/docker-compose.yml",
+        "/docker-compose.yaml",
+        "/dockercompose.yml",
+        "/dockercompose.yaml",
+        "/compose.yml",
+        "/compose.yaml",
+    } <= patterns
+
+
 @pytest.mark.parametrize("key", ["SESSION_COOKIE_SECURE", "BEHIND_PROXY", "APP_ENV"])
 def test_the_values_that_previously_broke_the_boot_are_still_defaulted(key: str) -> None:
     assert not re.fullmatch(r"\$\{[A-Z_]+\}", str(_environment()[key]))
