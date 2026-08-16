@@ -28,7 +28,7 @@ from backend.src.observability import RequestLogMiddleware
 from backend.src.party_manager import PartyManager
 from backend.src.providers import create_provider
 from backend.src.rate_limit import RateLimitMiddleware, SlidingWindowRateLimiter
-from backend.src.routers import admin, auth, avatar, health, hls, library, media, party, quality, v2
+from backend.src.routers import API_ROUTERS
 from backend.src.socket_handlers import register_all as register_socket_handlers
 from backend.src.stream_builder import StreamBuilder
 from backend.src.update_checker import check_for_updates
@@ -314,18 +314,7 @@ async def _upstream_unavailable(_request, exc: httpx.HTTPError) -> JSONResponse:
 
 def _install_api_and_socket_routes(application: FastAPI, prefix: str) -> None:
     application.add_exception_handler(httpx.HTTPError, _upstream_unavailable)  # type: ignore[arg-type]
-    for api_router in (
-        v2.router,
-        auth.router,
-        library.router,
-        media.router,
-        hls.router,
-        party.router,
-        admin.router,
-        avatar.router,
-        health.router,
-        quality.router,
-    ):
+    for api_router in API_ROUTERS:
         application.include_router(api_router, prefix=prefix)
 
     socket_path = f"{prefix}/socket.io"
