@@ -18,6 +18,7 @@ import type {
   MediaItemV2,
   MediaPageV2,
   MediaSectionV2,
+  MediaServerInfoV2,
   PrefixesV2,
   StreamCatalogV2,
 } from '@/types/api.generated'
@@ -463,6 +464,9 @@ export const api = {
     '/api/v2/auth/logout', { method: 'POST', signal },
   ),
   authStatus: (signal?: AbortSignal) => apiFetch<AuthResponse>('/api/v2/auth/status', { signal }),
+  mediaServerInfo: (signal?: AbortSignal) => apiFetch<MediaServerInfoV2>(
+    '/api/v2/media-server', { signal },
+  ),
   version: (signal?: AbortSignal) => apiFetch<VersionResponse>('/api/version', { signal }),
 
   // Library

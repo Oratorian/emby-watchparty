@@ -77,6 +77,22 @@ describe('apiFetch', () => {
     ])
   })
 
+  it('loads selected-provider capabilities from v2', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      media_server_type: 'jellyfin',
+      display_name: 'Jellyfin',
+      capabilities: { filter_controls: false },
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.mediaServerInfo()).resolves.toEqual({
+      media_server_type: 'jellyfin',
+      display_name: 'Jellyfin',
+      capabilities: { filter_controls: false },
+    })
+    expect(fetchMock).toHaveBeenCalledWith('/api/v2/media-server', expect.any(Object))
+  })
+
   it('passes an AbortSignal through typed search requests', async () => {
     const controller = new AbortController()
     const fetchMock = vi.fn().mockResolvedValue(new Response(
