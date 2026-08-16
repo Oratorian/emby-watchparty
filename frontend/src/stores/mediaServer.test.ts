@@ -24,4 +24,26 @@ describe('media server capabilities', () => {
     expect(request).toHaveBeenCalledTimes(1)
     expect(store.filterControlsSupported).toBe(false)
   })
+
+  it('defaults to supported and retries failed or incomplete responses', async () => {
+    const request = vi.spyOn(api, 'mediaServerInfo')
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({
+        media_server_type: 'jellyfin',
+        display_name: 'Jellyfin',
+      } as never)
+      .mockResolvedValueOnce({
+        media_server_type: 'jellyfin',
+        display_name: 'Jellyfin',
+        capabilities: { filter_controls: false },
+      })
+    const store = useMediaServerStore()
+
+    await expect(store.load()).resolves.toBe(true)
+    await expect(store.load()).resolves.toBe(true)
+    await expect(store.load()).resolves.toBe(false)
+
+    expect(request).toHaveBeenCalledTimes(3)
+    expect(store.filterControlsSupported).toBe(false)
+  })
 })
