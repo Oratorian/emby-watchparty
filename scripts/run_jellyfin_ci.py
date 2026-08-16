@@ -165,6 +165,8 @@ def start(args: argparse.Namespace) -> None:
 <movie>
   <title>Synthetic HLS</title>
   <year>2020</year>
+  <rating>8.2</rating>
+  <criticrating>90</criticrating>
   <mpaa>PG-13</mpaa>
   <genre>Journey Genre</genre>
   <studio>Journey Studio</studio>
@@ -177,6 +179,8 @@ def start(args: argparse.Namespace) -> None:
 <movie>
   <title>Other Movie</title>
   <year>2021</year>
+  <rating>6.4</rating>
+  <criticrating>60</criticrating>
   <mpaa>R</mpaa>
   <genre>Other Genre</genre>
   <studio>Other Studio</studio>
@@ -249,6 +253,8 @@ def start(args: argparse.Namespace) -> None:
                     and "Journey Genre" in details.get("Genres", [])
                     and details.get("ProductionYear") == 2020
                     and details.get("OfficialRating") == "PG-13"
+                    and details.get("CommunityRating") == 8.2
+                    and details.get("CriticRating") == 90
                     and any(
                         studio.get("Name") == "Journey Studio"
                         for studio in details.get("Studios", [])
