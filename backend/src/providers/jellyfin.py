@@ -12,6 +12,7 @@ from backend.src.emby_client import EmbyClient
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers.models import (
     AssetRequest,
+    AuthenticatedUser,
     CatalogQuery,
     HLSResource,
     IntroSegment,
@@ -64,6 +65,19 @@ class JellyfinProvider:
             reachable=public.status_code == 200,
             credentials_valid=authenticated.status_code == 200,
         )
+
+    async def authenticate_user(self, username: str, password: str) -> AuthenticatedUser | None:
+        auth = await self._client.authenticate(username, password)
+        if not auth:
+            return None
+        return AuthenticatedUser(
+            credentials=ProviderCredentials(auth["access_token"], auth["user_id"]),
+            username=auth["username"],
+            is_admin=auth["is_admin"],
+        )
+
+    async def verify_user(self, credentials: ProviderCredentials) -> bool:
+        return await self._client.verify_access_token(credentials.access_token, credentials.user_id)
 
     async def get_libraries(self, access_token=None, user_id=None):
         response = await self._client.gateway.get(

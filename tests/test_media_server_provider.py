@@ -10,6 +10,7 @@ from backend.src.domain import Participant, SelectedMedia
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers import EmbyProvider, JellyfinProvider, create_provider
 from backend.src.providers.models import (
+    AuthenticatedUser,
     HLSResource,
     PlaybackEvent,
     PlaybackEventType,
@@ -69,6 +70,32 @@ def test_factory_selects_jellyfin_adapter() -> None:
     assert isinstance(provider, JellyfinProvider)
     assert provider.identity.type == "jellyfin"
     assert provider.server_url == "http://jellyfin.test"
+
+
+def test_jellyfin_provider_authenticates_and_verifies_normalized_users() -> None:
+    fake_state = FakeJellyfinState()
+
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state))
+        ) as client:
+            gateway = MediaServerGateway(client, "http://jellyfin.test", logging.getLogger("test"))
+            provider = create_provider(_config("jellyfin"), logging.getLogger("test"), gateway)
+
+            user = await provider.authenticate_user("Alice", "secret")
+
+            assert user == AuthenticatedUser(
+                credentials=ProviderCredentials(
+                    access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+                    user_id="jellyfin-user-1",
+                ),
+                username="Alice",
+                is_admin=True,
+            )
+            assert user is not None
+            assert await provider.verify_user(user.credentials) is True
+
+    asyncio.run(exercise())
 
 
 def test_app_lifespan_installs_selected_provider(tmp_path) -> None:
@@ -844,8 +871,6 @@ def test_socket_rejoin_revokes_the_replaced_jellyfin_plan(tmp_path) -> None:
             assert app.state.hls_registry.get_plan(old_stream.stream_id) is None
 
     asyncio.run(exercise())
-
-
 
 
 def test_jellyfin_v2_search_is_normalized_and_bounded(tmp_path) -> None:
