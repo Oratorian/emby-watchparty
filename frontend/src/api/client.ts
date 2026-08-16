@@ -480,7 +480,9 @@ export const api = {
     apiFetch<{ success: boolean; played: boolean }>(`/api/v2/items/${id}/played`, {
       method: 'PUT', body: JSON.stringify({ played }), signal,
     }),
-  playlists: (signal?: AbortSignal) => apiFetch<PlaylistListResponse>('/api/playlists', { signal }),
+  playlists: async (signal?: AbortSignal): Promise<PlaylistListResponse> => ({
+    items: projectMediaPage(await apiFetch<MediaPageV2>('/api/v2/playlists', { signal })).Items,
+  }),
   createPlaylist: (name: string, signal?: AbortSignal) =>
     apiFetch<{ id: string; name: string }>('/api/playlists', {
       method: 'POST', body: JSON.stringify({ name }), signal,
