@@ -49,6 +49,8 @@ describe('LibraryBrowser search routing', () => {
       global: { plugins: [createPinia()] },
     })
     await flushPromises()
+    expect(wrapper.text()).toContain('Browse your Jellyfin media')
+    expect(wrapper.text()).not.toContain('Browse your Emby media')
     await wrapper.get('[aria-label="Open Movies"]').trigger('click')
     await flushPromises()
 

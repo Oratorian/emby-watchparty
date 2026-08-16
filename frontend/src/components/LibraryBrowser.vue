@@ -14,7 +14,7 @@
       <div class="panel-header">
         <div v-if="!currentParentId" class="library-home-heading">
           <h2>Choose a library</h2>
-          <p>Browse your Emby media and pick what the party watches next.</p>
+          <p>Browse your {{ mediaServerName }} media and pick what the party watches next.</p>
         </div>
         <div v-else class="breadcrumbs">
           <span class="crumb" @click="goToRoot">Libraries</span>
@@ -183,6 +183,9 @@ import TitleDetails from './TitleDetails.vue'
 const party = usePartyStore()
 const auth = useAuthStore()
 const mediaServer = useMediaServerStore()
+const mediaServerName = computed(
+  () => mediaServer.info?.display_name ?? auth.mediaServerName,
+)
 // Drives the LIVE badge + EQ animation overlay on the currently-playing
 // card. Falls back to null when nothing is selected so the overlay never
 // renders accidentally on a stale match.
@@ -1046,6 +1049,7 @@ defineExpose({ goToRoot })
 
 onMounted(() => {
   setupObserver()
+  void mediaServer.load()
   restoreOrFetchRoot()
 })
 
