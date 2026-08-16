@@ -9,6 +9,7 @@
  * works" because withPrefix() is a no-op.
  */
 import { withPrefix } from '@/utils/appPrefix'
+import type { MediaItemV2, MediaPageV2 } from '@/types/api.generated'
 
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]
@@ -144,6 +145,57 @@ export interface LibraryResponse {
   Items: LibraryItem[]
   TotalRecordCount?: number
   StartIndex?: number
+}
+
+const legacyItemKinds: Record<string, string> = {
+  collection_folder: 'CollectionFolder',
+  episode: 'Episode',
+  folder: 'Folder',
+  movie: 'Movie',
+  music_video: 'MusicVideo',
+  person: 'Person',
+  playlist: 'Playlist',
+  season: 'Season',
+  series: 'Series',
+  trailer: 'Trailer',
+}
+
+function projectMediaItem(item: MediaItemV2): LibraryItem {
+  return {
+    Id: item.id,
+    Name: item.name,
+    Type: legacyItemKinds[item.kind] ?? 'Other',
+    CollectionType: item.collection_kind ?? undefined,
+    Overview: item.overview,
+    RunTimeTicks: item.runtime_seconds === null ? undefined : item.runtime_seconds * 10_000_000,
+    ProductionYear: item.production_year ?? undefined,
+    ParentId: item.parent_id ?? undefined,
+    SeriesId: item.series_id ?? undefined,
+    SeriesName: item.series_name ?? undefined,
+    SeasonId: item.season_id ?? undefined,
+    SeasonName: item.season_name ?? undefined,
+    IndexNumber: item.index_number ?? undefined,
+    ParentIndexNumber: item.parent_index_number ?? undefined,
+    IsFolder: item.is_folder,
+    ImageTags: item.has_primary_image ? { Primary: 'available' } : {},
+    BackdropImageTags: Array.from({ length: item.backdrop_count }, (_, index) => String(index)),
+    PrimaryImageAspectRatio: item.primary_image_aspect_ratio ?? undefined,
+    UserData: {
+      PlaybackPositionTicks: item.user_state.playback_position_seconds * 10_000_000,
+      PlayedPercentage: item.user_state.played_percentage ?? undefined,
+      Played: item.user_state.played,
+      IsFavorite: item.user_state.favorite,
+    },
+    MediaSourceCount: item.media_source_count,
+  }
+}
+
+function projectMediaPage(page: MediaPageV2): LibraryResponse {
+  return {
+    Items: page.items.map(projectMediaItem),
+    TotalRecordCount: page.total ?? undefined,
+    StartIndex: page.start,
+  }
 }
 export interface LibraryPrefixesResponse {
   Prefixes: string[]
@@ -352,7 +404,9 @@ export const api = {
   version: (signal?: AbortSignal) => apiFetch<VersionResponse>('/api/version', { signal }),
 
   // Library
-  libraries: (signal?: AbortSignal) => apiFetch<LibraryResponse>('/api/libraries', { signal }),
+  libraries: async (signal?: AbortSignal) => projectMediaPage(
+    await apiFetch<MediaPageV2>('/api/v2/libraries', { signal }),
+  ),
   items: (params: Record<string, string | number | boolean>, signal?: AbortSignal) => {
     const qs = new URLSearchParams(
       Object.entries(params).map(([key, value]) => [key, String(value)]),

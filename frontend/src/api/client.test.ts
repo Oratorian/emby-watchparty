@@ -7,6 +7,58 @@ afterEach(() => {
 })
 
 describe('apiFetch', () => {
+  it('loads normalized v2 libraries and projects them for the existing UI', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      items: [{
+        id: 'library-1',
+        name: 'Movies',
+        kind: 'collection_folder',
+        collection_kind: 'movies',
+        overview: '',
+        runtime_seconds: null,
+        production_year: null,
+        parent_id: null,
+        series_id: null,
+        series_name: null,
+        season_id: null,
+        season_name: null,
+        index_number: null,
+        parent_index_number: null,
+        is_folder: true,
+        is_playable: false,
+        is_browsable: true,
+        has_primary_image: true,
+        backdrop_count: 0,
+        primary_image_aspect_ratio: 1.5,
+        user_state: {
+          playback_position_seconds: 0,
+          played_percentage: null,
+          played: false,
+          favorite: true,
+        },
+        media_source_count: 0,
+      }],
+      total: 1,
+      start: 0,
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.libraries()).resolves.toMatchObject({
+      Items: [{
+        Id: 'library-1',
+        Name: 'Movies',
+        Type: 'CollectionFolder',
+        CollectionType: 'movies',
+        IsFolder: true,
+        ImageTags: { Primary: 'available' },
+        UserData: { IsFavorite: true },
+      }],
+      TotalRecordCount: 1,
+      StartIndex: 0,
+    })
+    expect(fetchMock).toHaveBeenCalledWith('/api/v2/libraries', expect.any(Object))
+  })
+
   it('uses provider-neutral v2 auth routes', async () => {
     const fetchMock = vi.fn().mockImplementation(async () => new Response(
       JSON.stringify({ success: true, message: 'ok', media_server_type: 'jellyfin' }),
