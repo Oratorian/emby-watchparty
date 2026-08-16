@@ -111,7 +111,10 @@ describe('LibraryBrowser search routing', () => {
     await wrapper.get('button[aria-label="Open Studio filter"]').trigger('click')
     await wrapper.get('input[value="Paramount"]').setValue(true)
     await wrapper.get('button[aria-label="Open Year filter"]').trigger('click')
-    await wrapper.get('input[value="2020"]').setValue(true)
+    await wrapper.get('button[aria-label="Year range mode"]').trigger('click')
+    await wrapper.get('input[aria-label="Start year"]').setValue('2014')
+    await wrapper.get('input[aria-label="End year"]').setValue('2021')
+    await wrapper.get('button[aria-label="Apply year filter"]').trigger('click')
     await wrapper.get('button[aria-label="Open Parental rating filter"]').trigger('click')
     await wrapper.get('input[value="PG-13"]').setValue(true)
     await flushPromises()
@@ -122,7 +125,7 @@ describe('LibraryBrowser search routing', () => {
         favorite: true,
         genres: ['Drama'],
         studios: ['Paramount'],
-        years: [2020],
+        years: [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021],
         official_ratings: ['PG-13'],
       },
     }), expect.any(AbortSignal))

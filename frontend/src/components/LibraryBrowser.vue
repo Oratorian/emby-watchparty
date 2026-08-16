@@ -477,6 +477,29 @@ function applySort() {
   void fetchItems(currentParentId.value)
 }
 
+function selectedYears(value: string | string[]): number[] {
+  if (Array.isArray(value)) {
+    return value.map(Number).filter(Number.isInteger)
+  }
+  const [mode, firstRaw, secondRaw] = value.split(':')
+  const first = Number(firstRaw)
+  const second = Number(secondRaw)
+  const currentYear = new Date().getFullYear()
+  const valid = (year: number) => Number.isInteger(year) && year >= 1888 && year <= currentYear
+  if (mode === 'exact' && valid(first)) return [first]
+  if (mode === 'range' && valid(first) && valid(second) && first <= second) {
+    return Array.from({ length: second - first + 1 }, (_, index) => first + index)
+  }
+  if (mode === 'decade' && valid(first) && first % 10 === 0) {
+    return Array.from(
+      { length: Math.min(first + 9, currentYear) - Math.max(first, 1888) + 1 },
+      (_, index) => Math.max(first, 1888) + index,
+    )
+  }
+  const legacyYear = Number(value)
+  return valid(legacyYear) ? [legacyYear] : []
+}
+
 function queryFilters(): LibraryQueryRequest['filters'] {
   const result: LibraryQueryRequest['filters'] = {}
   if (filtersEnabled.value) {
@@ -487,7 +510,8 @@ function queryFilters(): LibraryQueryRequest['filters'] {
       if (id === 'favorite' || id === 'duplicates' || id === 'is_3d') {
         result[target] = value === 'true'
       } else if (id === 'year') {
-        result[target] = (Array.isArray(value) ? value : [value]).map(Number)
+        const years = selectedYears(value)
+        if (years.length) result[target] = years
       } else if (id === 'resolution') {
         result[target] = Array.isArray(value) ? value : [value]
       } else {
