@@ -19,15 +19,15 @@ from backend.src.dependencies import (
     admin_display_name,
     get_admin_session_store,
     get_config,
-    get_emby_client,
     get_logger,
+    get_media_server,
     get_party_manager,
     get_sio,
     is_admin_authenticated,
     scrub_legacy_admin_session,
 )
-from backend.src.emby_client import EmbyUnavailableError
 from backend.src.log_levels import apply_log_levels
+from backend.src.providers.models import MediaServerUnavailableError
 from backend.src.rate_limit import parse_rate, rate_limit_response
 from backend.src.schemas import (
     AdminLoginRequest,
@@ -51,7 +51,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 async def admin_login(
     body: AdminLoginRequest,
     request: Request,
-    emby_client=Depends(get_emby_client),
+    provider=Depends(get_media_server),
     admin_session_store=Depends(get_admin_session_store),
     logger=Depends(get_logger),
 ):
@@ -80,30 +80,33 @@ async def admin_login(
             )
             return rate_limit_response("login attempts", decision.retry_after)
     try:
-        auth = await emby_client.authenticate(body.username, body.password)
-    except EmbyUnavailableError:
+        auth = await provider.authenticate_user(body.username, body.password)
+    except MediaServerUnavailableError:
         return {
             "success": False,
-            "message": "Emby server unavailable; verify EMBY_SERVER_URL",
+            "message": (
+                f"{provider.identity.display_name} server unavailable; "
+                f"verify {request.app.state.config.MEDIA_SERVER_URL_VARIABLE}"
+            ),
         }
     if not auth:
         return {"success": False, "message": "Invalid credentials"}
     try:
-        if not auth["is_admin"]:
+        if not auth.is_admin:
             logger.warning(f"Admin login denied for '{body.username}' -- not administrator")
             return {
                 "success": False,
                 "message": "This account does not have administrator privileges",
             }
 
-        username = auth["username"]
+        username = auth.username
         old_handle = request.session.pop("admin_session_id", None)
         admin_session_store.revoke(old_handle)
         scrub_legacy_admin_session(request.session)
         request.session["admin_session_id"] = admin_session_store.create(
             username=username,
-            access_token=auth["access_token"],
-            user_id=auth["user_id"],
+            access_token=auth.credentials.access_token,
+            user_id=auth.credentials.user_id,
             is_admin=True,
         )
         logger.info(f"Admin login: '{username}'")

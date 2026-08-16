@@ -183,6 +183,46 @@ def test_login_required_party_creation_uses_provider_authentication(tmp_path) ->
     asyncio.run(exercise())
 
 
+def test_standalone_admin_login_uses_provider_authentication(tmp_path) -> None:
+    authenticate_user = AsyncMock(
+        return_value=AuthenticatedUser(
+            credentials=ProviderCredentials(
+                access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+                user_id="jellyfin-user-1",
+            ),
+            username="Alice",
+            is_admin=True,
+        )
+    )
+
+    class ProviderDouble:
+        identity = ProviderIdentity(type="jellyfin", display_name="Jellyfin")
+
+        async def authenticate_user(self, username: str, password: str):
+            return await authenticate_user(username, password)
+
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app()),
+    )
+    app.dependency_overrides[get_media_server] = ProviderDouble
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            response = await client.post(
+                "/api/admin/login",
+                json={"username": "Alice", "password": "secret"},
+            )
+
+            assert response.status_code == 200
+            assert response.json()["success"] is True
+            authenticate_user.assert_awaited_once_with("Alice", "secret")
+
+    asyncio.run(exercise())
+
+
 def test_app_lifespan_installs_selected_provider(tmp_path) -> None:
     app = create_app(
         config=_config("jellyfin"),
