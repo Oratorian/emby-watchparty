@@ -240,7 +240,7 @@ describe('apiFetch', () => {
 
   it('posts typed library filters without encoding them into a URL', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(
-      JSON.stringify({ Items: [], TotalRecordCount: 0 }),
+      JSON.stringify({ items: [], total: 0, start: 0 }),
       { status: 200 },
     ))
     vi.stubGlobal('fetch', fetchMock)
@@ -252,12 +252,12 @@ describe('apiFetch', () => {
       filters: { playstate: 'unplayed', genres: ['Drama'] },
     })
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/items/query', expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith('/api/v2/items/query', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({
-        scope: { parent_id: 'library-1', include_item_types: [], media_types: [], recursive: false },
-        page: { start_index: 0, limit: 50 },
-        sort: { field: 'SortName', direction: 'Ascending' },
+        scope: { parent_id: 'library-1', include_kinds: [], media_kinds: [], recursive: false },
+        page: { start: 0, limit: 50 },
+        sort: { field: 'name', direction: 'ascending' },
         filters: { playstate: 'unplayed', genres: ['Drama'] },
       }),
     }))

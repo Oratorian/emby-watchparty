@@ -10,6 +10,8 @@
  */
 import { withPrefix } from '@/utils/appPrefix'
 import type {
+  CatalogFiltersV2,
+  CatalogQueryV2,
   IntroSegmentV2,
   MediaItemDetailsV2,
   MediaItemV2,
@@ -245,9 +247,43 @@ export interface LibraryQueryRequest {
       | 'CommunityRating' | 'CriticRating' | 'Runtime' | 'Random'
     direction: 'Ascending' | 'Descending'
   }
-  filters: Record<string, string | string[] | number[] | boolean | null>
+  filters: CatalogFiltersV2 & Record<
+    string, string | string[] | number[] | boolean | null | undefined
+  >
   search_term?: string | null
   anchor_prefix?: string | null
+}
+
+const v2SortFields: Record<LibraryQueryRequest['sort']['field'], NonNullable<CatalogQueryV2['sort']>['field']> = {
+  SortName: 'name',
+  DateCreated: 'date_created',
+  PremiereDate: 'premiere_date',
+  ProductionYear: 'year',
+  CommunityRating: 'community_rating',
+  CriticRating: 'critic_rating',
+  Runtime: 'runtime',
+  Random: 'random',
+}
+
+function toCatalogQueryV2(query: LibraryQueryRequest): CatalogQueryV2 {
+  return {
+    scope: {
+      parent_id: query.scope.parent_id,
+      include_kinds: query.scope.include_item_types.map(kind => kind.replace(
+        /([a-z0-9])([A-Z])/g, '$1_$2',
+      ).toLowerCase()),
+      media_kinds: query.scope.media_types.map(kind => kind.toLowerCase()),
+      recursive: query.scope.recursive,
+    },
+    page: { start: query.page.start_index, limit: query.page.limit },
+    sort: {
+      field: v2SortFields[query.sort.field],
+      direction: query.sort.direction.toLowerCase() === 'descending' ? 'descending' : 'ascending',
+    },
+    filters: query.filters,
+    search_term: query.search_term,
+    anchor_prefix: query.anchor_prefix,
+  }
 }
 export interface SearchGroup {
   id: 'movies' | 'series' | 'episodes' | 'people' | 'collections' | 'other'
@@ -447,9 +483,10 @@ export const api = {
     `/api/items/filter-options?${new URLSearchParams(params).toString()}`,
     { signal },
   ),
-  queryItems: (query: LibraryQueryRequest, signal?: AbortSignal) => apiFetch<LibraryResponse>(
-    '/api/items/query',
-    { method: 'POST', body: JSON.stringify(query), signal },
+  queryItems: async (query: LibraryQueryRequest, signal?: AbortSignal) => projectMediaPage(
+    await apiFetch<MediaPageV2>('/api/v2/items/query', {
+      method: 'POST', body: JSON.stringify(toCatalogQueryV2(query)), signal,
+    }),
   ),
   queryPrefixes: (query: LibraryQueryRequest, signal?: AbortSignal) =>
     apiFetch<LibraryPrefixesResponse>('/api/items/prefixes/query', {
