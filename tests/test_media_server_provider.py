@@ -324,6 +324,30 @@ def test_dev_auto_host_join_uses_provider_authentication(tmp_path) -> None:
     asyncio.run(exercise())
 
 
+@pytest.mark.parametrize(
+    ("provider_type", "filter_controls"),
+    [("emby", True), ("jellyfin", False)],
+)
+def test_media_server_info_declares_filter_capability(
+    tmp_path, provider_type: str, filter_controls: bool
+) -> None:
+    app = create_app(
+        config=_config(provider_type),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.MockTransport(lambda _request: httpx.Response(200)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            response = await client.get("/api/v2/media-server")
+
+            assert response.status_code == 200
+            assert response.json()["capabilities"] == {"filter_controls": filter_controls}
+
+    asyncio.run(exercise())
+
+
 def test_app_lifespan_installs_selected_provider(tmp_path) -> None:
     app = create_app(
         config=_config("jellyfin"),

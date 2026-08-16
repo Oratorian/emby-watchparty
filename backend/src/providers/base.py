@@ -16,6 +16,7 @@ if TYPE_CHECKING:
         PlaybackEvent,
         PlaybackPlan,
         PlaybackRequest,
+        ProviderCapabilities,
         ProviderCredentials,
         ProviderIdentity,
         ProviderReadiness,
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 
 class MediaServerProvider(Protocol):
     identity: ProviderIdentity
+    capabilities: ProviderCapabilities
     server_url: str
     api_key: str
     device_id: str

@@ -47,6 +47,7 @@ from backend.src.v2_schemas import (
     MediaItemDetailsV2,
     MediaPageV2,
     MediaSectionV2,
+    MediaServerCapabilitiesV2,
     MediaServerInfoV2,
     PlayedMutationV2,
     PlayedResultV2,
@@ -82,6 +83,7 @@ def media_server_info(provider=Depends(get_media_server)):
     return MediaServerInfoV2(
         media_server_type=provider.identity.type,
         display_name=provider.identity.display_name,
+        capabilities=MediaServerCapabilitiesV2.model_validate(asdict(provider.capabilities)),
     )
 
 

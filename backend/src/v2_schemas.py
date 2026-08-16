@@ -152,9 +152,14 @@ class CatalogQueryV2(V2Model):
     anchor_prefix: str | None = Field(default=None, min_length=1, max_length=8)
 
 
+class MediaServerCapabilitiesV2(V2Model):
+    filter_controls: bool
+
+
 class MediaServerInfoV2(V2Model):
     media_server_type: Literal["emby", "jellyfin"]
     display_name: str
+    capabilities: MediaServerCapabilitiesV2
 
 
 class LoginResponseV2(V2Model):

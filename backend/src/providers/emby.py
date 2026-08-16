@@ -22,6 +22,7 @@ from backend.src.providers.models import (
     PlaybackPlan,
     PlaybackPlanError,
     PlaybackRequest,
+    ProviderCapabilities,
     ProviderCredentials,
     ProviderIdentity,
     ProviderReadiness,
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
 
 class EmbyProvider:
     identity = ProviderIdentity(type="emby", display_name="Emby")
+    capabilities = ProviderCapabilities(filter_controls=True)
 
     def __init__(self, client: EmbyClient, config: Config):
         self._client = client

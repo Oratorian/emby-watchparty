@@ -29,6 +29,11 @@ class ProviderIdentity:
     display_name: str
 
 
+@dataclass(frozen=True)
+class ProviderCapabilities:
+    filter_controls: bool
+
+
 @dataclass(frozen=True, repr=False)
 class ProviderCredentials:
     access_token: str

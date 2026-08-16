@@ -23,6 +23,7 @@ from backend.src.providers.models import (
     PlaybackPlan,
     PlaybackPlanError,
     PlaybackRequest,
+    ProviderCapabilities,
     ProviderCredentials,
     ProviderIdentity,
     ProviderReadiness,
@@ -38,6 +39,7 @@ from backend.src.providers.normalization import (
 
 class JellyfinProvider:
     identity = ProviderIdentity(type="jellyfin", display_name="Jellyfin")
+    capabilities = ProviderCapabilities(filter_controls=False)
 
     def __init__(self, client: EmbyClient):
         self._client = EmbyClient(
