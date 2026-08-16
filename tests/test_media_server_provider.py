@@ -564,6 +564,7 @@ def test_jellyfin_v2_supported_filters_use_root_items_and_server_side_scope(
                         "years": [2020, 2024],
                         "official_ratings": ["PG", "PG-13"],
                         "community_rating_min": 7.5,
+                        "critic_rating_min": 80,
                         "tags": ["must-not-reach-jellyfin"],
                     },
                 },
@@ -629,11 +630,12 @@ def test_jellyfin_v2_supported_filters_use_root_items_and_server_side_scope(
             "Years": "2020,2024",
             "OfficialRatings": "PG|PG-13",
             "MinCommunityRating": "7.5",
+            "MinCriticRating": "80.0",
         },
     }
 
 
-def test_emby_v2_community_rating_filter_uses_server_side_minimum(tmp_path) -> None:
+def test_emby_v2_rating_filters_use_separate_server_side_minimums(tmp_path) -> None:
     fake_state = FakeEmbyState()
     app = create_app(
         config=_config("emby"),
@@ -663,7 +665,7 @@ def test_emby_v2_community_rating_filter_uses_server_side_minimum(tmp_path) -> N
                 "/api/v2/items/query",
                 json={
                     "scope": {"include_kinds": ["movie"], "recursive": True},
-                    "filters": {"community_rating_min": 7.5},
+                    "filters": {"community_rating_min": 7.5, "critic_rating_min": 80},
                 },
             )
 
@@ -674,6 +676,12 @@ def test_emby_v2_community_rating_filter_uses_server_side_minimum(tmp_path) -> N
                 if control["id"] == "community_rating"
             )
             assert community["label"] == "Community rating"
+            critic = next(
+                control
+                for control in options.json()["controls"]
+                if control["id"] == "critic_rating"
+            )
+            assert critic["label"] == "Critic rating"
             assert response.status_code == 200
 
     asyncio.run(exercise())
@@ -681,6 +689,7 @@ def test_emby_v2_community_rating_filter_uses_server_side_minimum(tmp_path) -> N
         row for row in reversed(fake_state.requests) if row["path"] == "/emby/Users/user-1/Items"
     )
     assert dict(item_request["query"])["MinCommunityRating"] == "7.5"
+    assert dict(item_request["query"])["MinCriticRating"] == "80.0"
 
 
 def test_jellyfin_v2_prefixes_probe_supported_item_queries(tmp_path) -> None:
@@ -819,6 +828,7 @@ def test_jellyfin_v2_filter_options_use_scoped_catalogs_without_item_scan(tmp_pa
                 "year",
                 "official_rating",
                 "community_rating",
+                "critic_rating",
                 "genre",
                 "studio",
             ]
@@ -854,6 +864,18 @@ def test_jellyfin_v2_filter_options_use_scoped_catalogs_without_item_scan(tmp_pa
                     {"value": "7", "label": "7+"},
                     {"value": "8", "label": "8+"},
                     {"value": "9", "label": "9+"},
+                ],
+            }
+            assert by_id["critic_rating"] == {
+                "id": "critic_rating",
+                "label": "Critic rating",
+                "kind": "select",
+                "values": [
+                    {"value": "50", "label": "50%+"},
+                    {"value": "60", "label": "60%+"},
+                    {"value": "70", "label": "70%+"},
+                    {"value": "80", "label": "80%+"},
+                    {"value": "90", "label": "90%+"},
                 ],
             }
             assert [value["value"] for value in by_id["genre"]["values"]] == [
@@ -927,6 +949,7 @@ def test_jellyfin_v2_filter_options_omit_only_failed_dynamic_catalog(tmp_path) -
                 "year",
                 "official_rating",
                 "community_rating",
+                "critic_rating",
                 "studio",
             ]
             serialized = response.text

@@ -198,7 +198,8 @@ const decades = Array.from(
   (_, index) => Math.floor(MAX_YEAR / 10) * 10 - (index * 10),
 )
 const QUICK_FILTER_IDS = new Set([
-  'playstate', 'favorite', 'genre', 'year', 'official_rating', 'resolution',
+  'playstate', 'favorite', 'genre', 'year', 'official_rating', 'community_rating',
+  'critic_rating', 'resolution',
 ])
 
 const quickControls = computed(() => props.controls.filter((control) => QUICK_FILTER_IDS.has(control.id)))

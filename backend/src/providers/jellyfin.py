@@ -118,6 +118,7 @@ class JellyfinProvider:
                 years=filters.years,
                 official_ratings=filters.official_ratings,
                 community_rating_min=filters.community_rating_min,
+                critic_rating_min=filters.critic_rating_min,
             ),
         )
         payload = await self._client.query_items(
@@ -243,6 +244,14 @@ class JellyfinProvider:
                 "kind": "select",
                 "values": [
                     {"value": str(rating), "label": f"{rating}+"} for rating in range(5, 10)
+                ],
+            },
+            {
+                "id": "critic_rating",
+                "label": "Critic rating",
+                "kind": "select",
+                "values": [
+                    {"value": str(rating), "label": f"{rating}%+"} for rating in range(50, 100, 10)
                 ],
             },
         ]

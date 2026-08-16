@@ -182,6 +182,7 @@ class CatalogFilters:
     person_ids: tuple[str, ...] = ()
     years: tuple[int, ...] = ()
     community_rating_min: float | None = None
+    critic_rating_min: float | None = None
     containers: tuple[str, ...] = ()
     video_codecs: tuple[str, ...] = ()
     video_types: tuple[str, ...] = ()

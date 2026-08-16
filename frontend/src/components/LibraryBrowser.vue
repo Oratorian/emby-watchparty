@@ -394,6 +394,7 @@ const FILTER_FIELDS: Record<string, string> = {
   tag: 'tags',
   year: 'years',
   community_rating: 'community_rating_min',
+  critic_rating: 'critic_rating_min',
   container: 'containers',
   video_codec: 'video_codecs',
   video_type: 'video_types',
@@ -510,7 +511,7 @@ function queryFilters(): LibraryQueryRequest['filters'] {
       const target = FILTER_FIELDS[id] || id
       if (id === 'favorite' || id === 'duplicates' || id === 'is_3d') {
         result[target] = value === 'true'
-      } else if (id === 'community_rating') {
+      } else if (id === 'community_rating' || id === 'critic_rating') {
         result[target] = Number(value)
       } else if (id === 'year') {
         const years = selectedYears(value)

@@ -125,6 +125,7 @@ class CatalogFiltersV2(V2Model):
     person_ids: list[str] = Field(default_factory=list)
     years: list[int] = Field(default_factory=list)
     community_rating_min: float | None = Field(default=None, ge=0, le=10)
+    critic_rating_min: float | None = Field(default=None, ge=0, le=100)
     containers: list[str] = Field(default_factory=list)
     video_codecs: list[str] = Field(default_factory=list)
     video_types: list[str] = Field(default_factory=list)

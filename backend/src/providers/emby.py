@@ -146,6 +146,14 @@ class EmbyProvider:
                     {"value": str(rating), "label": f"{rating}+"} for rating in range(5, 10)
                 ],
             },
+            {
+                "id": "critic_rating",
+                "label": "Critic rating",
+                "kind": "select",
+                "values": [
+                    {"value": str(rating), "label": f"{rating}%+"} for rating in range(50, 100, 10)
+                ],
+            },
         ]
         labels = {
             "genre": "Genre",
