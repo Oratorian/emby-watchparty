@@ -7,6 +7,24 @@ afterEach(() => {
 })
 
 describe('apiFetch', () => {
+  it('uses provider-neutral v2 auth routes', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(
+      JSON.stringify({ success: true, message: 'ok', media_server_type: 'jellyfin' }),
+      { status: 200 },
+    ))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.login('alice', 'secret')
+    await api.authStatus()
+    await api.logout()
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/v2/auth/login',
+      '/api/v2/auth/status',
+      '/api/v2/auth/logout',
+    ])
+  })
+
   it('passes an AbortSignal through typed search requests', async () => {
     const controller = new AbortController()
     const fetchMock = vi.fn().mockResolvedValue(new Response(

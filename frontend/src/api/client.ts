@@ -77,6 +77,7 @@ export interface AuthResponse extends SuccessResponse {
   party_id?: string
   host_username?: string | null
   party_unlocked?: boolean
+  media_server_type?: 'emby' | 'jellyfin'
 }
 export interface VersionResponse {
   version?: string
@@ -341,13 +342,13 @@ export async function apiFetch<T = JsonValue>(path: string, options: RequestInit
 export const api = {
   // Auth (become host of current party)
   login: (username: string, password: string, signal?: AbortSignal) =>
-    apiFetch<AuthResponse>('/api/auth/login', {
+    apiFetch<AuthResponse>('/api/v2/auth/login', {
       method: 'POST', body: JSON.stringify({ username, password }), signal,
     }),
   logout: (signal?: AbortSignal) => apiFetch<SuccessResponse>(
-    '/api/auth/logout', { method: 'POST', signal },
+    '/api/v2/auth/logout', { method: 'POST', signal },
   ),
-  authStatus: (signal?: AbortSignal) => apiFetch<AuthResponse>('/api/auth/status', { signal }),
+  authStatus: (signal?: AbortSignal) => apiFetch<AuthResponse>('/api/v2/auth/status', { signal }),
   version: (signal?: AbortSignal) => apiFetch<VersionResponse>('/api/version', { signal }),
 
   // Library
