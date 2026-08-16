@@ -552,12 +552,12 @@ export const api = {
     type = 'Primary',
     opts?: { index?: number; maxWidth?: number; maxHeight?: number; quality?: number },
   ) => {
-    const params = new URLSearchParams({ type })
+    const params = new URLSearchParams()
     if (opts?.index !== undefined) params.set('index', String(opts.index))
-    if (opts?.maxWidth) params.set('maxWidth', String(opts.maxWidth))
-    if (opts?.maxHeight) params.set('maxHeight', String(opts.maxHeight))
+    if (opts?.maxWidth) params.set('max_width', String(opts.maxWidth))
+    if (opts?.maxHeight) params.set('max_height', String(opts.maxHeight))
     if (opts?.quality) params.set('quality', String(opts.quality))
-    return withPrefix(`/api/image/${id}?${params.toString()}`)
+    return withPrefix(`/api/v2/items/${id}/images/${type.toLowerCase()}?${params.toString()}`)
   },
 
   // Quality

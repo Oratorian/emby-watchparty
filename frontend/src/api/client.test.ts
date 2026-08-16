@@ -354,6 +354,6 @@ describe('apiFetch', () => {
   it('builds bounded indexed artwork proxy URLs', () => {
     expect(api.imageUrl('movie-1', 'Backdrop', {
       index: 2, maxWidth: 1600, maxHeight: 900, quality: 85,
-    })).toBe('/api/image/movie-1?type=Backdrop&index=2&maxWidth=1600&maxHeight=900&quality=85')
+    })).toBe('/api/v2/items/movie-1/images/backdrop?index=2&max_width=1600&max_height=900&quality=85')
   })
 })
