@@ -42,6 +42,7 @@
 
       <div v-if="currentParentId" class="library-tools">
         <LibraryFilters
+          v-if="filtersEnabled"
           :controls="filterControls"
           :model-value="filterState"
           @update:model-value="applyFilters"
@@ -174,12 +175,14 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { api, type FilterControl, type GroupedSearchResponse, type LibraryFilterState, type LibraryItem, type LibraryQueryRequest, type PlaybackSelection } from '@/api/client'
 import { usePartyStore } from '@/stores/party'
 import { useAuthStore } from '@/stores/auth'
+import { useMediaServerStore } from '@/stores/mediaServer'
 import LibraryFilters from './LibraryFilters.vue'
 import GlobalLibrarySearch from './GlobalLibrarySearch.vue'
 import TitleDetails from './TitleDetails.vue'
 
 const party = usePartyStore()
 const auth = useAuthStore()
+const mediaServer = useMediaServerStore()
 // Drives the LIVE badge + EQ animation overlay on the currently-playing
 // card. Falls back to null when nothing is selected so the overlay never
 // renders accidentally on a stale match.
@@ -376,6 +379,7 @@ async function browseDetail(item: LibraryItem) {
 }
 const filterControls = ref<FilterControl[]>([])
 const filterState = ref<LibraryFilterState>({})
+const filtersEnabled = computed(() => mediaServer.filterControlsSupported)
 const sortField = ref<LibraryQueryRequest['sort']['field']>('SortName')
 const sortDirection = ref<LibraryQueryRequest['sort']['direction']>('Ascending')
 let configuredParentId: string | null = null
@@ -401,17 +405,25 @@ function filterStorageKey(parentId: string): string {
   return `emby-watchparty-library-filters:${parentId}`
 }
 
-function configureFilters(parentId: string) {
-  if (configuredParentId === parentId) return
-  configuredParentId = parentId
-  try {
-    const saved = JSON.parse(localStorage.getItem(filterStorageKey(parentId)) || '{}')
-    filterState.value = saved.filters && typeof saved.filters === 'object' ? saved.filters : {}
-    sortField.value = saved.sortField || 'SortName'
-    sortDirection.value = saved.sortDirection || 'Ascending'
-  } catch {
-    filterState.value = {}
+async function configureFilters(parentId: string) {
+  const changedParent = configuredParentId !== parentId
+  if (changedParent) {
+    configuredParentId = parentId
+    try {
+      const saved = JSON.parse(localStorage.getItem(filterStorageKey(parentId)) || '{}')
+      filterState.value = saved.filters && typeof saved.filters === 'object' ? saved.filters : {}
+      sortField.value = saved.sortField || 'SortName'
+      sortDirection.value = saved.sortDirection || 'Ascending'
+    } catch {
+      filterState.value = {}
+    }
   }
+  const supported = await mediaServer.load()
+  if (!supported) {
+    filterControls.value = []
+    return
+  }
+  if (!changedParent) return
   // /api/items/filter-options fans out to ten Emby catalogue endpoints, so it
   // is the slowest request on the page and the most likely to be in flight
   // when navigation aborts the shared controller. An abort is not a failure:
@@ -464,16 +476,18 @@ function applySort() {
 
 function queryFilters(): LibraryQueryRequest['filters'] {
   const result: LibraryQueryRequest['filters'] = {}
-  for (const [id, value] of Object.entries(filterState.value)) {
-    const target = FILTER_FIELDS[id] || id
-    if (id === 'favorite' || id === 'duplicates' || id === 'is_3d') {
-      result[target] = value === 'true'
-    } else if (id === 'year') {
-      result[target] = (Array.isArray(value) ? value : [value]).map(Number)
-    } else if (id === 'resolution') {
-      result[target] = Array.isArray(value) ? value : [value]
-    } else {
-      result[target] = value
+  if (filtersEnabled.value) {
+    for (const [id, value] of Object.entries(filterState.value)) {
+      const target = FILTER_FIELDS[id] || id
+      if (id === 'favorite' || id === 'duplicates' || id === 'is_3d') {
+        result[target] = value === 'true'
+      } else if (id === 'year') {
+        result[target] = (Array.isArray(value) ? value : [value]).map(Number)
+      } else if (id === 'resolution') {
+        result[target] = Array.isArray(value) ? value : [value]
+      } else {
+        result[target] = value
+      }
     }
   }
   if (selectedPerson.value) result.person_ids = [selectedPerson.value.Id]
@@ -718,7 +732,8 @@ async function fetchPrefixes(parentId: string) {
     return
   }
   try {
-    const data = Object.keys(filterState.value).length || selectedPerson.value
+    const data = (filtersEnabled.value && Object.keys(filterState.value).length)
+      || selectedPerson.value
       ? await api.queryPrefixes({
           scope: { parent_id: parentId, include_item_types: [], media_types: [], recursive: false },
           page: { start_index: 0, limit: PAGE_SIZE },
@@ -753,7 +768,7 @@ async function fetchItems(
     items.value = []
     itemsError.value = ''
     currentParentId.value = parentId
-    configureFilters(parentId)
+    await configureFilters(parentId)
     hasPrevious.value = false
     hasMore.value = false
   }
@@ -779,7 +794,7 @@ async function fetchItems(
       sortMode: alphabeticalMode.value ? 'alphabetical' : 'default',
     }
     if (anchorPrefix) params.anchorPrefix = anchorPrefix
-    const useQuery = Object.keys(filterState.value).length > 0
+    const useQuery = (filtersEnabled.value && Object.keys(filterState.value).length > 0)
       || selectedPerson.value !== null
       || sortField.value !== 'SortName'
       || sortDirection.value !== 'Ascending'

@@ -12,6 +12,64 @@ afterEach(() => {
 })
 
 describe('LibraryBrowser search routing', () => {
+  it('keeps saved filters dormant when the selected provider does not support them', async () => {
+    vi.stubGlobal('IntersectionObserver', class {
+      observe() {}
+      disconnect() {}
+    })
+    localStorage.setItem('emby-watchparty-library-filters:library-1', JSON.stringify({
+      filters: { genre: ['Drama'] },
+      sortField: 'SortName',
+      sortDirection: 'Ascending',
+    }))
+    vi.spyOn(api, 'mediaServerInfo').mockResolvedValue({
+      media_server_type: 'jellyfin',
+      display_name: 'Jellyfin',
+      capabilities: { filter_controls: false },
+    })
+    vi.spyOn(api, 'libraries').mockResolvedValue({
+      Items: [{
+        Id: 'library-1', Name: 'Movies', Type: 'CollectionFolder', CollectionType: 'movies',
+      }],
+      TotalRecordCount: 1,
+    })
+    const items = vi.spyOn(api, 'items').mockResolvedValue({
+      Items: [{ Id: 'movie-1', Name: 'Arrival', Type: 'Movie' }],
+      TotalRecordCount: 1,
+    })
+    const queryItems = vi.spyOn(api, 'queryItems').mockResolvedValue({
+      Items: [{ Id: 'movie-1', Name: 'Arrival', Type: 'Movie' }],
+      TotalRecordCount: 1,
+    })
+    const filterOptions = vi.spyOn(api, 'filterOptions').mockResolvedValue({ controls: [] })
+    vi.spyOn(api, 'itemPrefixes').mockResolvedValue({ Prefixes: [] })
+    vi.spyOn(api, 'queryPrefixes').mockResolvedValue({ Prefixes: [] })
+
+    const wrapper = mount(LibraryBrowser, {
+      global: { plugins: [createPinia()] },
+    })
+    await flushPromises()
+    await wrapper.get('[aria-label="Open Movies"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.library-filters').exists()).toBe(false)
+    expect(wrapper.find('select[aria-label="Sort titles"]').exists()).toBe(true)
+    expect(filterOptions).not.toHaveBeenCalled()
+    expect(items).toHaveBeenCalled()
+    expect(queryItems).not.toHaveBeenCalled()
+
+    await wrapper.get('select[aria-label="Sort titles"]').setValue('ProductionYear')
+    await flushPromises()
+
+    expect(queryItems).toHaveBeenLastCalledWith(expect.objectContaining({
+      filters: {},
+      sort: expect.objectContaining({ field: 'ProductionYear' }),
+    }), expect.any(AbortSignal))
+    expect(JSON.parse(localStorage.getItem(
+      'emby-watchparty-library-filters:library-1',
+    ) || '{}').filters).toEqual({ genre: ['Drama'] })
+  })
+
   it('opens movie details from a grouped global-search result', async () => {
     vi.stubGlobal('IntersectionObserver', class {
       observe() {}
