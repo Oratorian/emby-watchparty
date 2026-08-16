@@ -48,6 +48,23 @@ def test_real_jellyfin_wait_tolerates_transient_non_json_http_errors(monkeypatch
     assert run_jellyfin_ci._request(error.url) == (503, "server starting")
 
 
+def test_real_jellyfin_wait_requires_api_json_not_startup_html(monkeypatch) -> None:
+    responses = iter(((200, "<html>still starting</html>"), (200, {"Version": "10.11.11"})))
+    calls = 0
+
+    def request(_url):
+        nonlocal calls
+        calls += 1
+        return next(responses)
+
+    monkeypatch.setattr(run_jellyfin_ci, "_request", request)
+    monkeypatch.setattr(run_jellyfin_ci.time, "sleep", lambda _seconds: None)
+
+    run_jellyfin_ci._wait("http://127.0.0.1:8097/System/Info/Public")
+
+    assert calls == 2
+
+
 def test_real_jellyfin_setup_initializes_first_user_before_updating_it(monkeypatch) -> None:
     calls: list[tuple[str, str]] = []
 

@@ -66,8 +66,8 @@ def _wait(url: str, timeout: float = 120) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            status, _ = _request(url)
-            if status < 500:
+            status, payload = _request(url)
+            if status < 500 and isinstance(payload, dict):
                 return
         except OSError:
             pass
