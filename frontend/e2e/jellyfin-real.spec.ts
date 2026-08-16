@@ -48,6 +48,7 @@ test('@jellyfin-real login browse play seek reconnect stop', async ({ page }) =>
   await page.getByRole('button', { name: 'Open Studio filter', exact: true }).click()
   await page.getByLabel('Journey Studio', { exact: true }).check()
   await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Close Studio filter', exact: true }).click()
   await page.getByRole('button', { name: 'Reset All', exact: true }).click()
   await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
 
