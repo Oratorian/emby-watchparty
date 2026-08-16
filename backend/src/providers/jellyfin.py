@@ -8,7 +8,7 @@ from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
 
-from backend.src.emby_client import EmbyClient
+from backend.src.emby_client import EmbyClient, EmbyUnavailableError
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers.models import (
     AssetRequest,
@@ -16,6 +16,7 @@ from backend.src.providers.models import (
     CatalogQuery,
     HLSResource,
     IntroSegment,
+    MediaServerUnavailableError,
     PlaybackEvent,
     PlaybackEventType,
     PlaybackMethod,
@@ -67,7 +68,10 @@ class JellyfinProvider:
         )
 
     async def authenticate_user(self, username: str, password: str) -> AuthenticatedUser | None:
-        auth = await self._client.authenticate(username, password)
+        try:
+            auth = await self._client.authenticate(username, password)
+        except EmbyUnavailableError as exc:
+            raise MediaServerUnavailableError from exc
         if not auth:
             return None
         return AuthenticatedUser(

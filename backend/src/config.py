@@ -641,6 +641,10 @@ class Config:
             )
         if name == "MEDIA_SERVER_API_KEY":
             return env.JELLYFIN_API_KEY if env.MEDIA_SERVER_TYPE == "jellyfin" else env.EMBY_API_KEY
+        if name == "MEDIA_SERVER_URL_VARIABLE":
+            return (
+                "JELLYFIN_SERVER_URL" if env.MEDIA_SERVER_TYPE == "jellyfin" else "EMBY_SERVER_URL"
+            )
         if name == "ENABLE_HLS_TOKEN_VALIDATION":
             return env.ENABLE_HLS_TOKEN_VALIDATION
         # Check runtime first (mutable settings), then env (frozen)

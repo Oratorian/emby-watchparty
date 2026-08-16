@@ -12,14 +12,14 @@ from fastapi import APIRouter, Depends, Request
 from backend.src import __codename__, __version__
 from backend.src.dependencies import (
     get_config,
-    get_emby_client,
     get_http_client,
     get_logger,
+    get_media_server,
     get_party_manager,
     get_sio,
     party_host_session_matches,
 )
-from backend.src.emby_client import EmbyUnavailableError
+from backend.src.providers.models import MediaServerUnavailableError
 from backend.src.schemas import (
     AuthStatusResponse,
     LoginRequest,
@@ -85,7 +85,7 @@ async def api_login(
     body: LoginRequest,
     request: Request,
     config=Depends(get_config),
-    emby_client=Depends(get_emby_client),
+    provider=Depends(get_media_server),
     party_manager=Depends(get_party_manager),
     sio=Depends(get_sio),
     logger=Depends(get_logger),
@@ -130,32 +130,38 @@ async def api_login(
                 f"Party {party_id}: host login auto-promoted via dev gate "
                 f"(EMBY_WATCHPARTY_X_DEV_HOST set, body credentials ignored)"
             )
-            auth = await emby_client.authenticate(dev_user, dev_pw)
+            auth = await provider.authenticate_user(dev_user, dev_pw)
         else:
-            auth = await emby_client.authenticate(body.username, body.password)
-    except EmbyUnavailableError:
+            auth = await provider.authenticate_user(body.username, body.password)
+    except MediaServerUnavailableError:
         return LoginResponse(
             success=False,
-            message="Emby server unavailable; ask the operator to verify EMBY_SERVER_URL",
+            message=(
+                f"{provider.identity.display_name} server unavailable; "
+                f"ask the operator to verify {config.MEDIA_SERVER_URL_VARIABLE}"
+            ),
         )
     if not auth:
-        return LoginResponse(success=False, message="Invalid Emby credentials")
+        return LoginResponse(
+            success=False,
+            message=f"Invalid {provider.identity.display_name} credentials",
+        )
 
     host_session_grant = secrets.token_urlsafe(32)
     party_manager.set_host(
         party_id,
         client_id=client_id,
         session_grant=host_session_grant,
-        user_id=auth["user_id"],
-        access_token=auth["access_token"],
-        username=auth["username"],
-        is_admin=auth["is_admin"],
+        user_id=auth.credentials.user_id,
+        access_token=auth.credentials.access_token,
+        username=auth.username,
+        is_admin=auth.is_admin,
     )
     session["host_session_grant"] = host_session_grant
 
     logger.info(
-        f"Party {party_id} host changed to '{auth['username']}' "
-        f"(client_id={client_id[:8]}..., admin={auth['is_admin']})"
+        f"Party {party_id} host changed to '{auth.username}' "
+        f"(client_id={client_id[:8]}..., admin={auth.is_admin})"
     )
 
     # Tell every other member in the room that the party is now unlocked.
@@ -163,9 +169,9 @@ async def api_login(
     await sio.emit(
         "host_changed",
         {
-            "host_username": auth["username"],
+            "host_username": auth.username,
             "host_client_id": client_id,
-            "is_admin": auth["is_admin"],
+            "is_admin": auth.is_admin,
             "unlocked": True,
         },
         room=party_id,
@@ -174,10 +180,10 @@ async def api_login(
     return LoginResponse(
         success=True,
         message="Login successful",
-        username=auth["username"],
-        host_username=auth["username"],
+        username=auth.username,
+        host_username=auth.username,
         is_host=True,
-        is_admin=auth["is_admin"],
+        is_admin=auth.is_admin,
     )
 
 

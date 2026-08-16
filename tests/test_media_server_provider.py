@@ -98,6 +98,43 @@ def test_jellyfin_provider_authenticates_and_verifies_normalized_users() -> None
     asyncio.run(exercise())
 
 
+def test_jellyfin_v2_login_names_selected_provider_when_unavailable(tmp_path) -> None:
+    def unavailable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline", request=request)
+
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.MockTransport(unavailable),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            party_id = (
+                await client.post(
+                    "/api/party/create",
+                    json={"client_id": "client-1", "display_name": "Alice"},
+                )
+            ).json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+
+            response = await client.post(
+                "/api/v2/auth/login",
+                json={"username": "Alice", "password": "secret"},
+            )
+
+            assert response.status_code == 200
+            assert response.json()["message"] == (
+                "Jellyfin server unavailable; ask the operator to verify JELLYFIN_SERVER_URL"
+            )
+
+    asyncio.run(exercise())
+
+
 def test_app_lifespan_installs_selected_provider(tmp_path) -> None:
     app = create_app(
         config=_config("jellyfin"),
