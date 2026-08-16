@@ -192,7 +192,7 @@ def start(args: argparse.Namespace) -> None:
         "--network-alias",
         "jellyfin",
         "--publish",
-        "8097:8096",
+        f"{args.jellyfin_port}:8096",
         "--volume",
         f"{config.resolve()}:/config",
         "--volume",
@@ -201,7 +201,7 @@ def start(args: argparse.Namespace) -> None:
         f"{media.resolve()}:/media:ro",
         args.jellyfin_image,
     )
-    base = "http://127.0.0.1:8097"
+    base = f"http://127.0.0.1:{args.jellyfin_port}"
     _wait(f"{base}/System/Info/Public")
     _configure_startup(base)
     status, auth = _request(
@@ -284,12 +284,12 @@ def start(args: argparse.Namespace) -> None:
         "--network",
         args.network,
         "--publish",
-        "5013:5000",
+        f"{args.app_port}:5000",
         "--env-file",
         str(env_file.resolve()),
         args.app_image,
     )
-    _wait("http://127.0.0.1:5013/api/ready")
+    _wait(f"http://127.0.0.1:{args.app_port}/api/ready")
     args.state.write_text(
         json.dumps(
             {
@@ -342,6 +342,8 @@ def main() -> None:
     parser.add_argument("--network", default="watchparty-jellyfin-ci")
     parser.add_argument("--jellyfin-name", default="jellyfin-ci")
     parser.add_argument("--app-name", default="watchparty-jellyfin-ci")
+    parser.add_argument("--jellyfin-port", type=int, default=8097)
+    parser.add_argument("--app-port", type=int, default=5013)
     args = parser.parse_args()
     {"start": start, "verify": verify, "cleanup": cleanup}[args.command](args)
 
