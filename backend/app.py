@@ -297,8 +297,8 @@ async def lifespan(application: FastAPI):
         yield
 
 
-async def _upstream_unavailable(_request, exc: httpx.HTTPError) -> JSONResponse:
-    """Any Emby transport failure that reaches here is a bad gateway, not a bug.
+async def _upstream_unavailable(request, exc: httpx.HTTPError) -> JSONResponse:
+    """Any media-server transport failure that reaches here is a bad gateway, not a bug.
 
     Registered once rather than per route. Thirteen of the eighteen library
     routes had no such mapping, so a timeout or refused connection surfaced as
@@ -306,10 +306,15 @@ async def _upstream_unavailable(_request, exc: httpx.HTTPError) -> JSONResponse:
     operator to look in the wrong place. Routes that map it themselves are
     unaffected, since their own handler runs first.
     """
+    media_server = getattr(request.app.state, "media_server", None)
+    display_name = getattr(getattr(media_server, "identity", None), "display_name", "Media server")
     logging.getLogger("watchparty.upstream").warning(
-        "Emby upstream unavailable: %s", type(exc).__name__
+        "%s upstream unavailable: %s", display_name, type(exc).__name__
     )
-    return JSONResponse(status_code=502, content={"detail": "Emby upstream unavailable"})
+    return JSONResponse(
+        status_code=502,
+        content={"detail": f"{display_name} upstream unavailable"},
+    )
 
 
 def _install_api_and_socket_routes(application: FastAPI, prefix: str) -> None:
