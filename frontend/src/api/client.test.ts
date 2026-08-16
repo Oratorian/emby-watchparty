@@ -179,6 +179,18 @@ describe('apiFetch', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v2/playlists', expect.any(Object))
   })
 
+  it('creates playlists through v2', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ id: 'playlist-1', name: 'Friday' }), { status: 201 },
+    ))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.createPlaylist('Friday')
+    expect(fetchMock).toHaveBeenCalledWith('/api/v2/playlists', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ name: 'Friday' }),
+    }))
+  })
+
   it('posts typed library filters without encoding them into a URL', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ Items: [], TotalRecordCount: 0 }),

@@ -484,7 +484,7 @@ export const api = {
     items: projectMediaPage(await apiFetch<MediaPageV2>('/api/v2/playlists', { signal })).Items,
   }),
   createPlaylist: (name: string, signal?: AbortSignal) =>
-    apiFetch<{ id: string; name: string }>('/api/playlists', {
+    apiFetch<{ id: string; name: string }>('/api/v2/playlists', {
       method: 'POST', body: JSON.stringify({ name }), signal,
     }),
   addPlaylistItem: (playlistId: string, itemId: string, signal?: AbortSignal) =>
