@@ -14,7 +14,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from backend.src.dependencies import (
     get_admin_session_store,
     get_config,
-    get_emby_client,
     get_logger,
     get_media_server,
     get_party_manager,
@@ -22,7 +21,6 @@ from backend.src.dependencies import (
     party_host_session_matches,
     scrub_legacy_admin_session,
 )
-from backend.src.emby_client import EmbyUnavailableError
 from backend.src.providers.models import MediaServerUnavailableError, ProviderCredentials
 
 # Shared dev-host gate -- single source of truth lives in auth.py so the
@@ -271,7 +269,7 @@ async def join_party(
     request: Request,
     config=Depends(get_config),
     party_manager=Depends(get_party_manager),
-    emby_client=Depends(get_emby_client),
+    provider=Depends(get_media_server),
     sio=Depends(get_sio),
     logger=Depends(get_logger),
 ):
@@ -343,8 +341,8 @@ async def join_party(
     is_host = party.host_client_id == body.client_id
     if dev_user and dev_pw and not party_manager.is_unlocked(party_id):
         try:
-            auth = await emby_client.authenticate(dev_user, dev_pw)
-        except EmbyUnavailableError:
+            auth = await provider.authenticate_user(dev_user, dev_pw)
+        except MediaServerUnavailableError:
             auth = None
         if auth:
             host_session_grant = secrets.token_urlsafe(32)
@@ -352,10 +350,10 @@ async def join_party(
                 party_id,
                 client_id=body.client_id,
                 session_grant=host_session_grant,
-                user_id=auth["user_id"],
-                access_token=auth["access_token"],
-                username=auth["username"],
-                is_admin=auth["is_admin"],
+                user_id=auth.credentials.user_id,
+                access_token=auth.credentials.access_token,
+                username=auth.username,
+                is_admin=auth.is_admin,
             )
             session["host_session_grant"] = host_session_grant
             is_host = True
@@ -366,16 +364,17 @@ async def join_party(
             await sio.emit(
                 "host_changed",
                 {
-                    "host_username": auth["username"],
+                    "host_username": auth.username,
                     "host_client_id": body.client_id,
-                    "is_admin": auth["is_admin"],
+                    "is_admin": auth.is_admin,
                     "unlocked": True,
                 },
                 room=party_id,
             )
         else:
             logger.error(
-                f"Party {party_id}: dev gate is set but Emby auth FAILED for "
+                f"Party {party_id}: dev gate is set but {provider.identity.display_name} "
+                f"auth FAILED for "
                 f"'{dev_user}' -- check EMBY_WATCHPARTY_X_DEV_HOST value"
             )
 

@@ -28,7 +28,7 @@ from tests.support.credentials import TEST_JELLYFIN_ACCESS_TOKEN
 from tests.support.fake_jellyfin import FakeJellyfinState, create_fake_jellyfin_app
 
 
-def _config(provider: str, *, require_login: bool = False) -> Config:
+def _config(provider: str, *, require_login: bool = False, dev_host: bool = False) -> Config:
     return Config(
         EnvConfig(
             WATCH_PARTY_BIND="127.0.0.1",
@@ -47,6 +47,14 @@ def _config(provider: str, *, require_login: bool = False) -> Config:
             JELLYFIN_API_KEY="jellyfin-key",
         ),
         RuntimeConfig(LOG_TO_FILE=False, REQUIRE_LOGIN=require_login),
+        private_env=(
+            {
+                "EMBY_WATCHPARTY_X_DEV_HOST": "Alice:secret",
+                "EMBY_WATCHPARTY_X_DEV_HOST_ACCEPT_RISK": "true",
+            }
+            if dev_host
+            else None
+        ),
     )
 
 
@@ -266,6 +274,52 @@ def test_stashed_admin_token_is_revalidated_through_provider(tmp_path) -> None:
 
             assert created.json()["is_host"] is True
             verify_user.assert_awaited_once_with(authenticated.credentials)
+
+    asyncio.run(exercise())
+
+
+def test_dev_auto_host_join_uses_provider_authentication(tmp_path) -> None:
+    authenticate_user = AsyncMock(
+        return_value=AuthenticatedUser(
+            credentials=ProviderCredentials(
+                access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+                user_id="jellyfin-user-1",
+            ),
+            username="Alice",
+            is_admin=True,
+        )
+    )
+
+    class ProviderDouble:
+        identity = ProviderIdentity(type="jellyfin", display_name="Jellyfin")
+
+        async def authenticate_user(self, username: str, password: str):
+            return await authenticate_user(username, password)
+
+    app = create_app(
+        config=_config("jellyfin", dev_host=True),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app()),
+    )
+    app.dependency_overrides[get_media_server] = ProviderDouble
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            party_id = (
+                await client.post(
+                    "/api/party/create",
+                    json={"client_id": "client-1", "display_name": "Alice"},
+                )
+            ).json()["party_id"]
+
+            joined = await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+
+            assert joined.json()["is_host"] is True
+            authenticate_user.assert_awaited_once_with("Alice", "secret")
 
     asyncio.run(exercise())
 
