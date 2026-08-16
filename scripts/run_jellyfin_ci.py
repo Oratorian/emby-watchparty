@@ -82,6 +82,7 @@ def _post_ok(url: str, body: dict) -> None:
 
 
 def _configure_startup(base: str) -> None:
+    _wait(f"{base}/Startup/Configuration")
     _post_ok(
         f"{base}/Startup/Configuration",
         {"UICulture": "en-US", "MetadataCountryCode": "US", "PreferredMetadataLanguage": "en"},

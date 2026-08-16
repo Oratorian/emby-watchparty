@@ -84,6 +84,25 @@ def test_real_jellyfin_setup_initializes_first_user_before_updating_it(monkeypat
     ]
 
 
+def test_real_jellyfin_setup_waits_for_configuration_controller(monkeypatch) -> None:
+    calls: list[tuple[str, str]] = []
+
+    def request(url, *, method="GET", body=None, token=None):
+        del body, token
+        calls.append((method, url))
+        return 200, {"UICulture": "en-US"}
+
+    monkeypatch.setattr(run_jellyfin_ci, "_request", request)
+
+    run_jellyfin_ci._configure_startup("http://127.0.0.1:8097")
+
+    configuration_calls = [call for call in calls if call[1].endswith("/Startup/Configuration")]
+    assert configuration_calls[:2] == [
+        ("GET", "http://127.0.0.1:8097/Startup/Configuration"),
+        ("POST", "http://127.0.0.1:8097/Startup/Configuration"),
+    ]
+
+
 def test_real_jellyfin_requests_identify_the_ci_client(monkeypatch) -> None:
     captured = {}
 
