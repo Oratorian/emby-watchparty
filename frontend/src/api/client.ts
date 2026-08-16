@@ -16,6 +16,7 @@ import type {
   MediaItemDetailsV2,
   MediaItemV2,
   MediaPageV2,
+  PrefixesV2,
   StreamCatalogV2,
 } from '@/types/api.generated'
 
@@ -491,10 +492,14 @@ export const api = {
     } satisfies CatalogQueryV2),
     signal,
   })),
-  itemPrefixes: (parentId: string, signal?: AbortSignal) => apiFetch<LibraryPrefixesResponse>(
-    `/api/items/prefixes?${new URLSearchParams({ parentId }).toString()}`,
-    { signal },
-  ),
+  itemPrefixes: async (parentId: string, signal?: AbortSignal) => {
+    const response = await apiFetch<PrefixesV2>('/api/v2/items/prefixes', {
+      method: 'POST',
+      body: JSON.stringify({ scope: { parent_id: parentId } } satisfies CatalogQueryV2),
+      signal,
+    })
+    return { Prefixes: response.prefixes }
+  },
   filterOptions: (
     params: { parentId?: string; includeItemTypes?: string; mediaTypes?: string },
     signal?: AbortSignal,
@@ -507,10 +512,12 @@ export const api = {
       method: 'POST', body: JSON.stringify(toCatalogQueryV2(query)), signal,
     }),
   ),
-  queryPrefixes: (query: LibraryQueryRequest, signal?: AbortSignal) =>
-    apiFetch<LibraryPrefixesResponse>('/api/items/prefixes/query', {
-      method: 'POST', body: JSON.stringify(query), signal,
-    }),
+  queryPrefixes: async (query: LibraryQueryRequest, signal?: AbortSignal) => {
+    const response = await apiFetch<PrefixesV2>('/api/v2/items/prefixes', {
+      method: 'POST', body: JSON.stringify(toCatalogQueryV2(query)), signal,
+    })
+    return { Prefixes: response.prefixes }
+  },
   search: async (q: string, signal?: AbortSignal) => projectMediaPage(
     await apiFetch<MediaPageV2>(`/api/v2/items/search?q=${encodeURIComponent(q)}`, { signal }),
   ),

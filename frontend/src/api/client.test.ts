@@ -276,6 +276,24 @@ describe('apiFetch', () => {
     }))
   })
 
+  it('loads unfiltered and filtered prefixes through v2', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(
+      JSON.stringify({ prefixes: ['A', '#'] }), { status: 200 },
+    ))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.itemPrefixes('library-1')).resolves.toEqual({ Prefixes: ['A', '#'] })
+    await expect(api.queryPrefixes({
+      scope: { parent_id: 'library-1', include_item_types: [], media_types: [], recursive: false },
+      page: { start_index: 0, limit: 50 },
+      sort: { field: 'SortName', direction: 'Ascending' },
+      filters: { favorite: true },
+    })).resolves.toEqual({ Prefixes: ['A', '#'] })
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/v2/items/prefixes', '/api/v2/items/prefixes',
+    ])
+  })
+
   it('rejects non-success JSON responses with a typed error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ detail: 'Party has no host' }),
