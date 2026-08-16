@@ -78,6 +78,11 @@ class GroupedSearchV2(V2Model):
     groups: list[SearchGroupV2]
 
 
+class MediaSectionV2(V2Model):
+    section: Literal["related", "trailers", "extras"]
+    items: list[MediaItemV2]
+
+
 class PrefixesV2(V2Model):
     prefixes: list[str]
 
@@ -274,6 +279,7 @@ __all__ = [
     "MediaItemDetailsV2",
     "MediaItemV2",
     "MediaPageV2",
+    "MediaSectionV2",
     "MediaServerInfoV2",
     "MediaVersionV2",
     "PlayedMutationV2",

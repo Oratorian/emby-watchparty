@@ -147,6 +147,15 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             "MediaSourceCount": 1,
         }
 
+    @app.get("/Items/{item_id}/Similar")
+    async def similar_items(item_id: str, request: Request):
+        assert item_id
+        state.record(request)
+        return {
+            "Items": [{"Id": "movie-related", "Name": "Contact", "Type": "Movie"}],
+            "TotalRecordCount": 1,
+        }
+
     @app.get("/Items/{item_id}/Images/{image_type}")
     @app.get("/Items/{item_id}/Images/{image_type}/{image_index}")
     async def item_image(

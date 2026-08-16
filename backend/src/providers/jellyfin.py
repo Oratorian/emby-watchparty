@@ -131,6 +131,15 @@ class JellyfinProvider:
         )
         return normalize_details(payload) if payload else None
 
+    async def get_section(self, item_id: str, section: str, credentials: ProviderCredentials):
+        items = await self._client.get_item_section(
+            item_id,
+            section,
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+        )
+        return normalize_page({"Items": items, "TotalRecordCount": len(items)})
+
     async def get_seasons(self, series_id: str, credentials: ProviderCredentials):
         items = await self._client.get_series_seasons(
             series_id,

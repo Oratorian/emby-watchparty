@@ -46,6 +46,7 @@ from backend.src.v2_schemas import (
     LogoutResponseV2,
     MediaItemDetailsV2,
     MediaPageV2,
+    MediaSectionV2,
     MediaServerInfoV2,
     PlayedMutationV2,
     PlayedResultV2,
@@ -258,6 +259,29 @@ async def grouped_search(
         if items:
             groups.append(SearchGroupV2(id=group_id, label=label, items=items))
     return GroupedSearchV2(query=q.strip(), groups=groups)
+
+
+@router.get(
+    "/items/{item_id}/sections/{section}",
+    response_model=MediaSectionV2,
+    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Section unavailable"}},
+)
+async def item_section(
+    item_id: str,
+    section: Literal["related", "trailers", "extras"],
+    party_session: PartySession = Depends(require_party_unlocked),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    page = await provider.get_section(item_id, section, credentials)
+    return MediaSectionV2(
+        section=section,
+        items=MediaPageV2.model_validate(asdict(page)).items,
+    )
 
 
 @router.get(

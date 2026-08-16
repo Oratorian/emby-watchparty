@@ -62,6 +62,10 @@ class MediaServerProvider(Protocol):
         self, item_id: str, credentials: ProviderCredentials
     ) -> MediaItemDetails | None: ...
 
+    async def get_section(
+        self, item_id: str, section: str, credentials: ProviderCredentials
+    ) -> MediaPage: ...
+
     async def get_seasons(self, series_id: str, credentials: ProviderCredentials) -> MediaPage: ...
 
     async def get_episodes(
