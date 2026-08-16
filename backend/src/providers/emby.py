@@ -159,6 +159,13 @@ class EmbyProvider:
         )
         return normalize_page({"Items": items, "TotalRecordCount": len(items)})
 
+    async def create_playlist(self, name: str, credentials: ProviderCredentials) -> str:
+        return await self._client.create_playlist(
+            name,
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+        )
+
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan:
         from backend.src.quality import resolve_quality
         from backend.src.stream_builder import StreamBuilder

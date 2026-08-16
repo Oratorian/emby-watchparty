@@ -133,6 +133,15 @@ class PlayedResultV2(V2Model):
     played: bool
 
 
+class PlaylistCreateV2(V2Model):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class PlaylistCreatedV2(V2Model):
+    id: str
+    name: str
+
+
 __all__ = [
     "CatalogQueryV2",
     "FavoriteMutationV2",
@@ -145,4 +154,6 @@ __all__ = [
     "MediaServerInfoV2",
     "PlayedMutationV2",
     "PlayedResultV2",
+    "PlaylistCreateV2",
+    "PlaylistCreatedV2",
 ]

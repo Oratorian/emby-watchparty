@@ -37,6 +37,8 @@ from backend.src.v2_schemas import (
     MediaServerInfoV2,
     PlayedMutationV2,
     PlayedResultV2,
+    PlaylistCreatedV2,
+    PlaylistCreateV2,
 )
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
@@ -255,3 +257,23 @@ async def playlists(
     )
     page = await provider.list_playlists(credentials)
     return MediaPageV2.model_validate(asdict(page))
+
+
+@router.post(
+    "/playlists",
+    response_model=PlaylistCreatedV2,
+    responses=PARTY_HOST_RESPONSES,
+    status_code=201,
+)
+async def create_playlist(
+    body: PlaylistCreateV2,
+    party_session: PartySession = Depends(require_party_host),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    playlist_id = await provider.create_playlist(body.name, credentials)
+    return PlaylistCreatedV2(id=playlist_id, name=body.name)

@@ -158,6 +158,13 @@ class JellyfinProvider:
         )
         return normalize_page({"Items": items, "TotalRecordCount": len(items)})
 
+    async def create_playlist(self, name: str, credentials: ProviderCredentials) -> str:
+        return await self._client.create_playlist(
+            name,
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+        )
+
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan:
         bitrate_match = re.search(r"-(\d+)$", request.quality)
         max_bitrate = int(bitrate_match.group(1)) * 1000 if bitrate_match else 10_000_000

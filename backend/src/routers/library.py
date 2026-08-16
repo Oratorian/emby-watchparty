@@ -580,7 +580,8 @@ async def api_create_playlist(
 ):
     access_token, user_id = _host_creds(party_session)
     playlist_id = await emby_client.create_playlist(
-        body.name, access_token=access_token, user_id=user_id
+        body.name,
+        ProviderCredentials(access_token=access_token, user_id=user_id),
     )
     return {"id": playlist_id, "name": body.name}
 
