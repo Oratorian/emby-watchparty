@@ -93,6 +93,66 @@ def test_jellyfin_master_playlist_uses_bound_opaque_resources(tmp_path) -> None:
     assert not any(TEST_JELLYFIN_ACCESS_TOKEN in str(row) for row in fake_state.requests)
 
 
+def test_jellyfin_legacy_hls_fallback_uses_selected_provider_url(tmp_path) -> None:
+    fake_state = FakeJellyfinState()
+    config = Config(
+        EnvConfig(
+            WATCH_PARTY_BIND="127.0.0.1",
+            WATCH_PARTY_PORT=5000,
+            APP_PREFIX="",
+            SESSION_EXPIRY=3600,
+            EMBY_SERVER_URL="http://wrong-emby.test",
+            EMBY_API_KEY="wrong-emby-key",
+            MEDIA_SERVER_TYPE="jellyfin",
+            JELLYFIN_SERVER_URL="http://jellyfin.test",
+            JELLYFIN_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
+            APP_ENV="development",
+            SESSION_SECRET=TEST_SESSION_SECRET,
+            SESSION_COOKIE_SECURE=False,
+            CORS_ALLOWED_ORIGINS=("*",),
+            TRUSTED_PROXY_CIDRS=(),
+            ENABLE_HLS_TOKEN_VALIDATION=True,
+        ),
+        RuntimeConfig(LOG_TO_FILE=False),
+    )
+    app = create_app(
+        config=config,
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+            party = app.state.party_manager.get(party_id)
+            assert party is not None
+            sid = "socket-1"
+            party.sid_client_ids[sid] = "client-1"
+            token = app.state.token_manager.generate(party_id, sid)
+            assert token is not None
+
+            response = await client.get(f"/hls/movie-1/master.m3u8?token={token}")
+
+            assert response.status_code == 200
+            master_request = next(
+                row for row in fake_state.requests if row["path"].endswith("/master.m3u8")
+            )
+            assert master_request["host"] == "jellyfin.test"
+
+    asyncio.run(exercise())
+
+
 def test_jellyfin_nested_playlist_is_fetched_by_registered_resource_id(tmp_path) -> None:
     fake_state = FakeJellyfinState()
     config = Config(

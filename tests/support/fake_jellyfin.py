@@ -23,6 +23,7 @@ class FakeJellyfinState:
         self.requests.append(
             {
                 "method": request.method,
+                "host": request.url.netloc,
                 "path": request.url.path,
                 "query": query,
             }
@@ -332,6 +333,7 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             "MediaSources": sources,
         }
 
+    @app.api_route("/emby/Videos/{item_id}/master.m3u8", methods=["GET", "HEAD"])
     @app.api_route("/Videos/{item_id}/master.m3u8", methods=["GET", "HEAD"])
     async def master_playlist(item_id: str, request: Request):
         assert item_id

@@ -374,7 +374,8 @@ async def proxy_hls_master(
             )
 
         query_params = _sanitize_query(request.query_params.multi_items(), strict=True)
-        emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/master.m3u8"
+        media_server_url = config.MEDIA_SERVER_URL
+        emby_url = f"{media_server_url}/emby/Videos/{item_id}/master.m3u8"
 
         logger.debug(f"Proxying HLS master: {emby_url}")
         emby_resp = await emby_gateway.get(
@@ -387,7 +388,7 @@ async def proxy_hls_master(
 
         token = request.query_params.get("token") if config.ENABLE_HLS_TOKEN_VALIDATION else None
         playlist = _rewrite_playlist(
-            emby_resp.text, item_id, config.APP_PREFIX, config.EMBY_SERVER_URL, token
+            emby_resp.text, item_id, config.APP_PREFIX, media_server_url, token
         )
 
         return Response(
@@ -619,7 +620,8 @@ async def proxy_hls_segment(
         query_params = _sanitize_query(
             request.query_params.multi_items(), strict=False, logger=logger
         )
-        emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/{subpath}"
+        media_server_url = config.MEDIA_SERVER_URL
+        emby_url = f"{media_server_url}/emby/Videos/{item_id}/{subpath}"
 
         logger.debug(f"Proxying HLS segment: {subpath} -> {emby_url}")
 
@@ -635,7 +637,7 @@ async def proxy_hls_segment(
                 request.query_params.get("token") if config.ENABLE_HLS_TOKEN_VALIDATION else None
             )
             playlist = _rewrite_playlist(
-                emby_resp.text, item_id, config.APP_PREFIX, config.EMBY_SERVER_URL, token
+                emby_resp.text, item_id, config.APP_PREFIX, media_server_url, token
             )
             return Response(
                 content=playlist,
