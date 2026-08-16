@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 from urllib.parse import quote
 
 import httpx
@@ -288,6 +288,26 @@ class EmbyClient:
         )
         response.raise_for_status()
         return response.json()
+
+    @overload
+    async def query_items(
+        self,
+        query: dict[str, Any],
+        access_token: str | None = None,
+        user_id: str | None = None,
+        *,
+        prefixes: Literal[False] = False,
+    ) -> dict[str, Any]: ...
+
+    @overload
+    async def query_items(
+        self,
+        query: dict[str, Any],
+        access_token: str | None = None,
+        user_id: str | None = None,
+        *,
+        prefixes: Literal[True],
+    ) -> list[dict[str, Any]]: ...
 
     async def query_items(
         self,
