@@ -3,7 +3,6 @@ import { api } from '@/api/client'
 import type { LibraryItem, PlaybackSelection, StreamsResponse } from '@/api/client'
 import type { usePartyStore } from '@/stores/party'
 import type { useSocketStore } from '@/stores/socket'
-import { withPrefix } from '@/utils/appPrefix'
 
 type SocketStore = ReturnType<typeof useSocketStore>
 type PartyStore = ReturnType<typeof usePartyStore>
@@ -199,9 +198,7 @@ export function usePartyStream(
           if (subtitle.isExternal) label += ' [External]'
           track.label = label
           track.srclang = subtitle.language || 'und'
-          track.src = withPrefix(
-            `/api/subtitles/${itemId}/${mediaSourceId}/${subtitle.index}`,
-          )
+          track.src = api.subtitleUrl(itemId, mediaSourceId, subtitle.index)
           video.appendChild(track)
           if (track.track) {
             track.track.mode = subtitle.index === targetIndex ? 'showing' : 'hidden'
@@ -210,7 +207,7 @@ export function usePartyStream(
         if (targetIndex !== null) {
           video.addEventListener('loadeddata', () => {
             for (const track of Array.from(video.querySelectorAll('track'))) {
-              const match = track.src.match(/\/api\/subtitles\/[^/]+\/[^/]+\/(\d+)/)
+              const match = track.src.match(/\/subtitles\/[^/]+\/(\d+)/)
               const index = match?.[1] ? parseInt(match[1], 10) : null
               track.track.mode = index === targetIndex ? 'showing' : 'hidden'
             }

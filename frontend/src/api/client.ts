@@ -559,6 +559,9 @@ export const api = {
     if (opts?.quality) params.set('quality', String(opts.quality))
     return withPrefix(`/api/v2/items/${id}/images/${type.toLowerCase()}?${params.toString()}`)
   },
+  subtitleUrl: (id: string, mediaSourceId: string, subtitleIndex: number) => withPrefix(
+    `/api/v2/items/${id}/subtitles/${mediaSourceId}/${subtitleIndex}`,
+  ),
 
   // Quality
   qualityOptions: (signal?: AbortSignal) => apiFetch<QualityOptionsResponse>(

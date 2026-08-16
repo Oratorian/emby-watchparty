@@ -356,4 +356,10 @@ describe('apiFetch', () => {
       index: 2, maxWidth: 1600, maxHeight: 900, quality: 85,
     })).toBe('/api/v2/items/movie-1/images/backdrop?index=2&max_width=1600&max_height=900&quality=85')
   })
+
+  it('builds provider-neutral v2 subtitle URLs', () => {
+    expect(api.subtitleUrl('movie-1', 'source-1', 3)).toBe(
+      '/api/v2/items/movie-1/subtitles/source-1/3',
+    )
+  })
 })

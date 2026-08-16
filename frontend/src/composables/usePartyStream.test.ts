@@ -123,7 +123,7 @@ describe('usePartyStream', () => {
     // user picked, not the preload's own copy of the same subtitle.
     const sources = wrapper.findAll('track')
       .map((track) => (track.element as HTMLTrackElement).getAttribute('src'))
-    expect(sources).toEqual(['/api/subtitles/item-1/source-b/3'])
+    expect(sources).toEqual(['/api/v2/items/item-1/subtitles/source-b/3'])
     wrapper.unmount()
   })
 })
