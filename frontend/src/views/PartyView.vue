@@ -1368,7 +1368,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
           </template>
           <template v-else>
             <h2>Party is locked</h2>
-            <p>An Emby login is needed before anyone can browse the library. Any party member can do it.</p>
+            <p>{{ auth.mediaServerName === 'Emby' ? 'An' : 'A' }} {{ auth.mediaServerName }} login is needed before anyone can browse the library. Any party member can do it.</p>
             <button @click="libraryButtonAction" class="btn btn-primary">Login to Become Host</button>
           </template>
         </div>
