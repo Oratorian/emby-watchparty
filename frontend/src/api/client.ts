@@ -17,6 +17,7 @@ import type {
   MediaItemDetailsV2,
   MediaItemV2,
   MediaPageV2,
+  MediaSectionV2,
   PrefixesV2,
   StreamCatalogV2,
 } from '@/types/api.generated'
@@ -550,8 +551,14 @@ export const api = {
   itemDetails: async (id: string, signal?: AbortSignal) => projectMediaDetails(
     await apiFetch<MediaItemDetailsV2>(`/api/v2/items/${id}`, { signal }),
   ),
-  itemSection: (id: string, section: ItemSection, signal?: AbortSignal) =>
-    apiFetch<ItemSectionResponse>(`/api/item/${id}/sections/${section}`, { signal }),
+  itemSection: async (
+    id: string, section: ItemSection, signal?: AbortSignal,
+  ): Promise<ItemSectionResponse> => {
+    const response = await apiFetch<MediaSectionV2>(
+      `/api/v2/items/${id}/sections/${section}`, { signal },
+    )
+    return { section: response.section, items: response.items.map(projectMediaItem) }
+  },
   seriesSeasons: async (id: string, signal?: AbortSignal): Promise<ItemChildrenResponse> => ({
     items: projectMediaPage(
       await apiFetch<MediaPageV2>(`/api/v2/items/${id}/seasons`, { signal }),

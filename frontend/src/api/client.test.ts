@@ -323,6 +323,20 @@ describe('apiFetch', () => {
     )
   })
 
+  it('loads normalized item sections through v2', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      section: 'related', items: [],
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.itemSection('movie-1', 'related')).resolves.toEqual({
+      section: 'related', items: [],
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v2/items/movie-1/sections/related', expect.any(Object),
+    )
+  })
+
   it('rejects non-success JSON responses with a typed error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ detail: 'Party has no host' }),
