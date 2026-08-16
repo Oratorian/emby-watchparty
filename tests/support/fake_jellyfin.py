@@ -252,13 +252,51 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
         body = await request.json()
         state.record(request)
         state.playback_requests.append(body)
-        return {
-            "PlaySessionId": "jellyfin-play-session-1",
-            "MediaSources": [
+        streams = [
+            {
+                "Type": "Audio",
+                "Index": 1,
+                "Language": "eng",
+                "DisplayTitle": "English Stereo",
+                "Codec": "aac",
+                "Channels": 2,
+                "IsDefault": True,
+                "Title": "Main",
+            },
+            {
+                "Type": "Subtitle",
+                "Index": 4,
+                "Language": "spa",
+                "DisplayTitle": "Spanish",
+                "Codec": "srt",
+                "IsExternal": True,
+                "IsTextSubtitleStream": True,
+            },
+        ]
+        sources = [
+            {
+                "Id": "source-1",
+                "Name": "1080p",
+                "Container": "mkv",
+                "RunTimeTicks": 6_960_000_000,
+                "MediaStreams": streams,
+            },
+            {
+                "Id": "source-2",
+                "Name": "4K",
+                "Container": "mkv",
+                "RunTimeTicks": 6_960_000_000,
+                "MediaStreams": streams,
+            },
+        ]
+        selected_id = body.get("MediaSourceId")
+        if selected_id:
+            sources = [source for source in sources if source["Id"] == selected_id]
+        for source in sources:
+            source.update(
                 {
-                    "Id": body.get("MediaSourceId") or "source-1",
                     "TranscodingUrl": (
-                        f"/Videos/{item_id}/master.m3u8?MediaSourceId=source-1&"
+                        f"/Videos/{item_id}/master.m3u8?MediaSourceId={source['Id']}&"
                         "PlaySessionId=jellyfin-play-session-1&"
                         f"api_key={TEST_JELLYFIN_ACCESS_TOKEN}"
                     ),
@@ -266,7 +304,10 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
                     "TranscodingContainer": "ts",
                     "TranscodingReasons": ["VideoCodecNotSupported"],
                 }
-            ],
+            )
+        return {
+            "PlaySessionId": "jellyfin-play-session-1",
+            "MediaSources": sources,
         }
 
     @app.api_route("/Videos/{item_id}/master.m3u8", methods=["GET", "HEAD"])

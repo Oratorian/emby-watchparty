@@ -1051,3 +1051,77 @@ def test_jellyfin_intro_segment_is_available_through_v1_and_v2(tmp_path) -> None
     segments = [row for row in fake_state.requests if row["path"] == "/MediaSegments/movie-1"]
     assert len(segments) == 2
     assert all(row["query"] == {} for row in segments)
+
+
+def test_jellyfin_v2_streams_and_versions_are_normalized(tmp_path) -> None:
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app()),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            response = await client.get(
+                "/api/v2/items/movie-1/streams",
+                params={"media_source_id": "source-2"},
+            )
+
+            assert response.status_code == 200
+            assert response.json() == {
+                "audio": [
+                    {
+                        "index": 1,
+                        "language": "eng",
+                        "display_language": "English Stereo",
+                        "codec": "aac",
+                        "channels": 2,
+                        "is_default": True,
+                        "title": "Main",
+                    }
+                ],
+                "subtitles": [
+                    {
+                        "index": 4,
+                        "language": "spa",
+                        "display_language": "Spanish",
+                        "codec": "srt",
+                        "is_default": False,
+                        "is_forced": False,
+                        "is_external": True,
+                        "is_text": True,
+                        "is_image": False,
+                        "title": "",
+                    }
+                ],
+                "media_source_id": "source-2",
+                "versions": [
+                    {
+                        "id": "source-1",
+                        "name": "1080p",
+                        "container": "mkv",
+                        "runtime_seconds": 696.0,
+                    },
+                    {
+                        "id": "source-2",
+                        "name": "4K",
+                        "container": "mkv",
+                        "runtime_seconds": 696.0,
+                    },
+                ],
+            }
+
+    asyncio.run(exercise())

@@ -6,10 +6,14 @@ import re
 from dataclasses import fields
 
 from backend.src.providers.models import (
+    AudioStream,
     CatalogQuery,
     MediaItem,
     MediaItemDetails,
     MediaPage,
+    MediaVersion,
+    StreamCatalog,
+    SubtitleStream,
     UserMediaState,
 )
 
@@ -112,6 +116,67 @@ def normalize_details(raw: dict) -> MediaItemDetails:
         official_rating=raw.get("OfficialRating"),
         community_rating=raw.get("CommunityRating"),
         critic_rating=raw.get("CriticRating"),
+    )
+
+
+def normalize_stream_catalog(scoped: dict, full: dict) -> StreamCatalog:
+    versions = tuple(
+        MediaVersion(
+            id=str(source["Id"]),
+            name=str(source.get("Name") or source.get("Container") or source["Id"]),
+            container=source.get("Container"),
+            runtime_seconds=(
+                float(source["RunTimeTicks"]) / 10_000_000
+                if source.get("RunTimeTicks") is not None
+                else None
+            ),
+        )
+        for source in full.get("MediaSources", []) or []
+        if source.get("Id")
+    )
+    source = next(iter(scoped.get("MediaSources", []) or []), None)
+    streams = source.get("MediaStreams", []) if source else scoped.get("MediaStreams", [])
+    audio: list[AudioStream] = []
+    subtitles: list[SubtitleStream] = []
+    image_codecs = {"pgssub", "pgs", "dvd_subtitle", "dvdsub", "vobsub"}
+    for stream in streams or []:
+        language = str(stream.get("Language") or "und")
+        display = str(stream.get("DisplayLanguage") or stream.get("DisplayTitle") or language)
+        if language == "und":
+            display = "Unknown"
+        if stream.get("Type") == "Audio":
+            audio.append(
+                AudioStream(
+                    index=int(stream.get("Index") or 0),
+                    language=language,
+                    display_language=display,
+                    codec=str(stream.get("Codec") or ""),
+                    channels=int(stream.get("Channels") or 0),
+                    is_default=bool(stream.get("IsDefault")),
+                    title=str(stream.get("Title") or ""),
+                )
+            )
+        elif stream.get("Type") == "Subtitle":
+            codec = str(stream.get("Codec") or "")
+            subtitles.append(
+                SubtitleStream(
+                    index=int(stream.get("Index") or 0),
+                    language=language,
+                    display_language=display,
+                    codec=codec,
+                    is_default=bool(stream.get("IsDefault")),
+                    is_forced=bool(stream.get("IsForced")),
+                    is_external=bool(stream.get("IsExternal")),
+                    is_text=bool(stream.get("IsTextSubtitleStream")),
+                    is_image=codec.lower() in image_codecs,
+                    title=str(stream.get("Title") or ""),
+                )
+            )
+    return StreamCatalog(
+        audio=tuple(audio),
+        subtitles=tuple(subtitles),
+        media_source_id=str(source.get("Id")) if source and source.get("Id") else None,
+        versions=versions,
     )
 
 

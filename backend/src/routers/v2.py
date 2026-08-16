@@ -49,6 +49,7 @@ from backend.src.v2_schemas import (
     PlaylistCreatedV2,
     PlaylistCreateV2,
     PlaylistItemAddV2,
+    StreamCatalogV2,
 )
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
@@ -305,6 +306,29 @@ async def item_intro(
         end_seconds=segment.end_seconds,
         duration_seconds=segment.end_seconds - segment.start_seconds,
     )
+
+
+@router.get(
+    "/items/{item_id}/streams",
+    response_model=StreamCatalogV2,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
+async def item_streams(
+    item_id: str,
+    media_source_id: str | None = None,
+    party_session: PartySession = Depends(require_party_unlocked),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    streams = await provider.get_streams(
+        item_id,
+        media_source_id,
+        ProviderCredentials(
+            access_token=party.host_access_token or "",
+            user_id=party.host_user_id or "",
+        ),
+    )
+    return StreamCatalogV2.model_validate(asdict(streams))
 
 
 @router.get(

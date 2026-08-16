@@ -28,6 +28,7 @@ from backend.src.providers.normalization import (
     emby_family_query,
     normalize_details,
     normalize_page,
+    normalize_stream_catalog,
 )
 
 if TYPE_CHECKING:
@@ -237,6 +238,38 @@ class EmbyProvider:
             start_seconds=float(row.get("Start") or 0) / 10_000_000,
             end_seconds=float(row.get("End") or 0) / 10_000_000,
         )
+
+    async def get_streams(
+        self,
+        item_id: str,
+        media_source_id: str | None,
+        credentials: ProviderCredentials,
+    ):
+        scoped = await self._client.get_playback_info(
+            item_id,
+            media_source_id=media_source_id,
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+        )
+        if not scoped:
+            scoped = await self._client.get_item_details(
+                item_id,
+                access_token=credentials.access_token,
+                user_id=credentials.user_id,
+            )
+        if not scoped:
+            raise PlaybackPlanError("Emby returned no stream information")
+        full = scoped
+        if media_source_id:
+            full = (
+                await self._client.get_playback_info(
+                    item_id,
+                    access_token=credentials.access_token,
+                    user_id=credentials.user_id,
+                )
+                or scoped
+            )
+        return normalize_stream_catalog(scoped, full)
 
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan:
         from backend.src.quality import resolve_quality

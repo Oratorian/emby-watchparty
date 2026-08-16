@@ -30,6 +30,7 @@ from backend.src.providers.normalization import (
     emby_family_query,
     normalize_details,
     normalize_page,
+    normalize_stream_catalog,
 )
 
 
@@ -236,6 +237,28 @@ class JellyfinProvider:
             start_seconds=float(row.get("StartTicks") or 0) / 10_000_000,
             end_seconds=float(row.get("EndTicks") or 0) / 10_000_000,
         )
+
+    async def get_streams(
+        self,
+        item_id: str,
+        media_source_id: str | None,
+        credentials: ProviderCredentials,
+    ):
+        async def posted(source_id: str | None):
+            body = {"UserId": credentials.user_id}
+            if source_id:
+                body["MediaSourceId"] = source_id
+            response = await self._client.gateway.post(
+                f"/Items/{quote(item_id, safe='')}/PlaybackInfo",
+                headers=self._client._headers(credentials.access_token, credentials.user_id),
+                json=body,
+            )
+            response.raise_for_status()
+            return response.json()
+
+        scoped = await posted(media_source_id)
+        full = await posted(None) if media_source_id else scoped
+        return normalize_stream_catalog(scoped, full)
 
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan:
         bitrate_match = re.search(r"-(\d+)$", request.quality)

@@ -20,6 +20,7 @@ if TYPE_CHECKING:
         ProviderIdentity,
         ProviderReadiness,
         ProviderResponse,
+        StreamCatalog,
     )
 
 
@@ -79,6 +80,13 @@ class MediaServerProvider(Protocol):
     async def get_intro(
         self, item_id: str, credentials: ProviderCredentials
     ) -> IntroSegment | None: ...
+
+    async def get_streams(
+        self,
+        item_id: str,
+        media_source_id: str | None,
+        credentials: ProviderCredentials,
+    ) -> StreamCatalog: ...
 
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan: ...
 

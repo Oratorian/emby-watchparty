@@ -174,8 +174,46 @@ class IntroSegmentV2(V2Model):
     duration_seconds: float | None = None
 
 
+class AudioStreamV2(V2Model):
+    index: int
+    language: str
+    display_language: str
+    codec: str
+    channels: int = 0
+    is_default: bool = False
+    title: str = ""
+
+
+class SubtitleStreamV2(V2Model):
+    index: int
+    language: str
+    display_language: str
+    codec: str
+    is_default: bool = False
+    is_forced: bool = False
+    is_external: bool = False
+    is_text: bool = False
+    is_image: bool = False
+    title: str = ""
+
+
+class MediaVersionV2(V2Model):
+    id: str
+    name: str
+    container: str | None = None
+    runtime_seconds: float | None = None
+
+
+class StreamCatalogV2(V2Model):
+    audio: list[AudioStreamV2]
+    subtitles: list[SubtitleStreamV2]
+    media_source_id: str | None = None
+    versions: list[MediaVersionV2]
+
+
 __all__ = [
     "ActionResultV2",
+    "AudioStreamV2",
     "AuthStatusV2",
     "CatalogQueryV2",
     "FavoriteMutationV2",
@@ -188,9 +226,12 @@ __all__ = [
     "MediaItemV2",
     "MediaPageV2",
     "MediaServerInfoV2",
+    "MediaVersionV2",
     "PlayedMutationV2",
     "PlayedResultV2",
     "PlaylistCreateV2",
     "PlaylistCreatedV2",
     "PlaylistItemAddV2",
+    "StreamCatalogV2",
+    "SubtitleStreamV2",
 ]

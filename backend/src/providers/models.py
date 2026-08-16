@@ -104,6 +104,47 @@ class IntroSegment:
 
 
 @dataclass(frozen=True)
+class AudioStream:
+    index: int
+    language: str
+    display_language: str
+    codec: str
+    channels: int = 0
+    is_default: bool = False
+    title: str = ""
+
+
+@dataclass(frozen=True)
+class SubtitleStream:
+    index: int
+    language: str
+    display_language: str
+    codec: str
+    is_default: bool = False
+    is_forced: bool = False
+    is_external: bool = False
+    is_text: bool = False
+    is_image: bool = False
+    title: str = ""
+
+
+@dataclass(frozen=True)
+class MediaVersion:
+    id: str
+    name: str
+    container: str | None = None
+    runtime_seconds: float | None = None
+
+
+@dataclass(frozen=True)
+class StreamCatalog:
+    audio: tuple[AudioStream, ...]
+    subtitles: tuple[SubtitleStream, ...]
+    media_source_id: str | None
+    versions: tuple[MediaVersion, ...]
+
+
+@dataclass(frozen=True)
 class CatalogScope:
     parent_id: str | None = None
     include_kinds: tuple[str, ...] = ()
