@@ -498,6 +498,11 @@ def test_socket_creates_registered_per_viewer_jellyfin_plan(tmp_path) -> None:
             assert plan.media_source_id == stream.media_source_id
             assert party.user_streams[sid] is stream
 
+            await app.state.socket_context["stop_user_stream"](party, sid, 14.0)
+
+            assert sid not in party.user_streams
+            assert app.state.hls_registry.get_plan(stream.stream_id) is None
+
     asyncio.run(exercise())
     assert [report["path"] for report in fake_state.playback_reports] == [
         "/Sessions/Playing",

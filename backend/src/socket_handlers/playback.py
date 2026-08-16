@@ -25,6 +25,8 @@ from backend.src.domain import (
     UserStream,
 )
 from backend.src.providers.models import (
+    PlaybackEvent,
+    PlaybackEventType,
     PlaybackPlanError,
     PlaybackRequest,
     ProviderCredentials,
@@ -341,7 +343,7 @@ def register(ctx):
         return stream_info
 
     async def _stop_user_stream(party, sid, position_seconds=0):
-        """Stop a single user's Emby transcode and clean up."""
+        """Stop one provider playback session and revoke its HLS plan."""
         user_streams = party.user_streams
         stream = user_streams.pop(sid, None)
         if not stream or not stream.play_session_id:
@@ -350,19 +352,22 @@ def register(ctx):
         access_token, user_id = _host_creds(party)
         current_video = party.current_video
         if current_video:
-            await emby_client.report_playback_stopped(
-                item_id=current_video.item_id,
-                media_source_id=stream.media_source_id,
-                play_session_id=stream.play_session_id,
-                position_seconds=position_seconds,
-                run_time_seconds=current_video.run_time_seconds,
-                access_token=access_token,
-                user_id=user_id,
+            await media_server.stop_playback(
+                PlaybackEvent(
+                    type=PlaybackEventType.STOP,
+                    credentials=ProviderCredentials(access_token or "", user_id or ""),
+                    audio_index=stream.audio_index,
+                    subtitle_index=stream.subtitle_index,
+                    run_time_seconds=current_video.run_time_seconds,
+                    is_paused=False,
+                    item_id=current_video.item_id,
+                    media_source_id=stream.media_source_id,
+                    play_session_id=stream.play_session_id,
+                    position_seconds=position_seconds,
+                )
             )
-        await emby_client.stop_active_encodings(
-            play_session_id=stream.play_session_id,
-            access_token=access_token,
-        )
+        if hls_registry is not None and stream.stream_id:
+            hls_registry.revoke(stream.stream_id)
 
     async def _stop_all_user_streams(party, position_seconds=0):
         """Stop all per-user transcodes."""
@@ -670,6 +675,7 @@ def register(ctx):
     # Expose the restart helper so party.py can reuse it for vote-pass restarts
     ctx["restart_video_from_beginning"] = _restart_video_from_beginning
     ctx["create_user_stream"] = _create_user_stream
+    ctx["stop_user_stream"] = _stop_user_stream
 
     @sio.on("select_video")
     async def handle_select_video(sid, data):
