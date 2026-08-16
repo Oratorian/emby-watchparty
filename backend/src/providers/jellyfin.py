@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import secrets
 from urllib.parse import quote, unquote, urljoin, urlparse
@@ -110,13 +111,28 @@ class JellyfinProvider:
         return normalize_page(payload)
 
     async def query_prefixes(self, query: CatalogQuery, credentials: ProviderCredentials):
-        rows = await self._client.query_items(
-            emby_family_query(query),
-            access_token=credentials.access_token,
-            user_id=credentials.user_id,
-            prefixes=True,
+        provider_query = emby_family_query(query)
+        probes = await asyncio.gather(
+            *(
+                self._client.query_items(
+                    provider_query,
+                    access_token=credentials.access_token,
+                    user_id=credentials.user_id,
+                    name_starts_with=prefix,
+                )
+                for prefix in ("", *"ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+            )
         )
-        return tuple(str(row["Name"]) for row in rows if isinstance(row, dict) and row.get("Name"))
+        total = int(probes[0].get("TotalRecordCount") or 0)
+        available = [
+            prefix
+            for prefix, result in zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ", probes[1:], strict=True)
+            if int(result.get("TotalRecordCount") or 0) > 0
+        ]
+        letter_total = sum(int(result.get("TotalRecordCount") or 0) for result in probes[1:])
+        if total > letter_total:
+            available.append("#")
+        return tuple(available)
 
     async def get_filter_controls(
         self,

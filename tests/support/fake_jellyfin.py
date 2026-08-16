@@ -96,6 +96,16 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
     async def user_items(user_id: str, request: Request):
         assert user_id
         state.record(request)
+        if request.query_params.get("EnableTotalRecordCount") == "true":
+            prefix = request.query_params.get("NameStartsWith")
+            if prefix == "A":
+                return {"Items": [{"Id": "movie-1", "Name": "Arrival"}], "TotalRecordCount": 1}
+            if prefix:
+                return {"Items": [], "TotalRecordCount": 0}
+            return {
+                "Items": [{"Id": "symbol-movie", "Name": "'71"}],
+                "TotalRecordCount": 2,
+            }
         if request.query_params.get("IncludeItemTypes") == "Playlist":
             return {
                 "Items": [

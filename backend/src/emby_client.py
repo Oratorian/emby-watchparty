@@ -297,6 +297,7 @@ class EmbyClient:
         user_id: str | None = None,
         *,
         prefixes: Literal[False] = False,
+        name_starts_with: str | None = None,
     ) -> dict[str, Any]: ...
 
     @overload
@@ -307,6 +308,7 @@ class EmbyClient:
         user_id: str | None = None,
         *,
         prefixes: Literal[True],
+        name_starts_with: str | None = None,
     ) -> list[dict[str, Any]]: ...
 
     async def query_items(
@@ -316,6 +318,7 @@ class EmbyClient:
         user_id: str | None = None,
         *,
         prefixes: bool = False,
+        name_starts_with: str | None = None,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Run a strict watchparty library query through Emby's allowlisted API."""
         if not user_id:
@@ -357,6 +360,13 @@ class EmbyClient:
             "SearchTerm": query.get("search_term"),
         }
         params.update({key: value for key, value in scalar_values.items() if value})
+
+        if name_starts_with is not None:
+            params["StartIndex"] = 0
+            params["Limit"] = 1
+            params["EnableTotalRecordCount"] = "true"
+            if name_starts_with:
+                params["NameStartsWith"] = name_starts_with
 
         playstate = {
             "played": "IsPlayed",

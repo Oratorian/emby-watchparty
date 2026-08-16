@@ -610,7 +610,7 @@ def test_jellyfin_v2_item_query_is_normalized_and_user_scoped(tmp_path) -> None:
     }
 
 
-def test_jellyfin_v2_prefixes_use_provider_prefix_endpoint(tmp_path) -> None:
+def test_jellyfin_v2_prefixes_probe_supported_item_queries(tmp_path) -> None:
     fake_state = FakeJellyfinState()
     app = create_app(
         config=_config("jellyfin"),
@@ -641,7 +641,18 @@ def test_jellyfin_v2_prefixes_use_provider_prefix_endpoint(tmp_path) -> None:
             assert response.json() == {"prefixes": ["A", "#"]}
 
     asyncio.run(exercise())
-    assert any(request["path"] == "/Items/Prefixes" for request in fake_state.requests)
+    assert not any(request["path"] == "/Items/Prefixes" for request in fake_state.requests)
+    prefix_requests = [
+        request
+        for request in fake_state.requests
+        if request["path"] == "/Users/jellyfin-user-1/Items"
+        and request["query"].get("EnableTotalRecordCount") == "true"
+    ]
+    assert len(prefix_requests) == 27
+    assert {request["query"].get("NameStartsWith") for request in prefix_requests} == {
+        None,
+        *"ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    }
 
 
 def test_jellyfin_v2_filter_options_hide_unsupported_catalogs_without_scanning(tmp_path) -> None:
