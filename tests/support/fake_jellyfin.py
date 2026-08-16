@@ -13,6 +13,7 @@ class FakeJellyfinState:
     requests: list[dict] = field(default_factory=list)
     playback_requests: list[dict] = field(default_factory=list)
     playback_reports: list[dict] = field(default_factory=list)
+    playback_path_item_id: str | None = None
 
     def record(self, request: Request) -> None:
         query = {
@@ -313,10 +314,11 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
         if selected_id:
             sources = [source for source in sources if source["Id"] == selected_id]
         for source in sources:
+            path_item_id = state.playback_path_item_id or item_id
             source.update(
                 {
                     "TranscodingUrl": (
-                        f"/Videos/{item_id}/master.m3u8?MediaSourceId={source['Id']}&"
+                        f"/Videos/{path_item_id}/master.m3u8?MediaSourceId={source['Id']}&"
                         "PlaySessionId=jellyfin-play-session-1&"
                         f"api_key={TEST_JELLYFIN_ACCESS_TOKEN}"
                     ),

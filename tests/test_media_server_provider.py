@@ -559,6 +559,37 @@ def test_jellyfin_posted_playback_info_becomes_hls_plan(tmp_path) -> None:
     assert profile["TranscodingProfiles"][0]["Container"] == "ts"
 
 
+def test_jellyfin_accepts_hyphenated_guid_in_server_hls_path(tmp_path) -> None:
+    compact_id = "cc196d0f967bf87cd071dd7092c4134a"
+    hyphenated_id = "cc196d0f-967b-f87c-d071-dd7092c4134a"
+    fake_state = FakeJellyfinState(playback_path_item_id=hyphenated_id)
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app):
+            plan = await app.state.media_server.prepare_playback(
+                PlaybackRequest(
+                    item_id=compact_id,
+                    credentials=ProviderCredentials(
+                        access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+                        user_id="jellyfin-user-1",
+                    ),
+                    media_source_id="source-1",
+                )
+            )
+
+            assert plan.master.url.startswith(
+                f"http://jellyfin.test/Videos/{hyphenated_id}/master.m3u8?"
+            )
+
+    asyncio.run(exercise())
+
+
 def test_jellyfin_hls_children_are_same_origin_and_item_scoped(tmp_path) -> None:
     app = create_app(
         config=_config("jellyfin"),

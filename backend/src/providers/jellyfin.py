@@ -369,11 +369,20 @@ class JellyfinProvider:
         master_url = urljoin(f"{self._client.server_url}/", transcoding_url)
         configured = urlparse(self._client.server_url)
         resolved = urlparse(master_url)
+        path_parts = resolved.path.strip("/").split("/")
+        path_item_id = (
+            path_parts[1] if len(path_parts) >= 3 and path_parts[0].lower() == "videos" else ""
+        )
+
+        def canonical_item_id(value: str) -> str:
+            compact = value.replace("-", "").lower()
+            return compact if re.fullmatch(r"[0-9a-f]{32}", compact) else value.lower()
+
         if (
             resolved.scheme not in {"http", "https"}
             or (resolved.scheme, resolved.netloc) != (configured.scheme, configured.netloc)
             or not resolved.path.lower().endswith(".m3u8")
-            or f"/videos/{request.item_id.lower()}/" not in resolved.path.lower()
+            or canonical_item_id(path_item_id) != canonical_item_id(request.item_id)
         ):
             raise PlaybackPlanError("Jellyfin returned an unsafe HLS playback plan")
         reasons = source.get("TranscodingReasons") or []
