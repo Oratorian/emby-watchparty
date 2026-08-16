@@ -37,15 +37,23 @@ def _request(
         url, data=data, headers=headers, method=method
     )
 
+    def decode(payload: bytes) -> object | None:
+        if not payload:
+            return None
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError:
+            return payload.decode("utf-8", errors="replace")
+
     try:
         with urllib.request.urlopen(  # noqa: S310 - request URL validated above
             request, timeout=10
         ) as response:
             payload = response.read()
-            return response.status, json.loads(payload) if payload else None
+            return response.status, decode(payload)
     except urllib.error.HTTPError as exc:
         payload = exc.read()
-        return exc.code, json.loads(payload) if payload else None
+        return exc.code, decode(payload)
 
 
 def _wait(url: str, timeout: float = 120) -> None:
