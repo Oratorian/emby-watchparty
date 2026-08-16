@@ -170,7 +170,7 @@ class RuntimeConfig:
         return instance
 
     def save(self, path: Path = CONFIG_JSON_PATH):
-        """Persist current runtime settings atomically.
+        """Persist current runtime settings, atomically where the layout allows.
 
         Write to a sibling temp file and os.replace() onto the target.
         Prevents the crash-mid-write case where truncating config.json
@@ -178,7 +178,18 @@ class RuntimeConfig:
         during json.dump) leaves a partial or empty file, which
         from_file() then silently swallowed as "use defaults", erasing
         every admin-tuned setting.
+
+        When config.json is bind-mounted as a single file, the layout both
+        the README and docker-compose.yml.example recommend, the target is
+        a mount point and rename(2) onto it fails with EBUSY. No atomic
+        path exists there: the point of that mount is that the host's inode
+        must survive, so replacing it is exactly what must not happen.
+        Fall back to writing through the existing inode, in one write()
+        followed by truncate() so a concurrent reader sees old or new
+        rather than a half-empty file, and keep the temp file until that
+        write succeeds so a failure cannot leave the target truncated.
         """
+        import errno
         import os
         import tempfile
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -196,7 +207,36 @@ class RuntimeConfig:
             except OSError:
                 pass
             tmp_name = tmp.name
-        os.replace(tmp_name, path)
+        try:
+            os.replace(tmp_name, path)
+        except OSError as e:
+            # EBUSY is the bind-mounted single file. EXDEV should not reach
+            # here because the temp file is a sibling, but a target that is
+            # itself a mount of another filesystem reports it, and the same
+            # write-through recovery is correct for both.
+            if e.errno not in (errno.EBUSY, errno.EXDEV):
+                raise
+            with open(tmp_name, 'rb') as src:
+                payload = src.read()
+            # 'r+b' rather than 'wb': opening for write truncates first and
+            # reopens the same inode, which would hand a reader an empty
+            # file for the length of the write.
+            with open(path, 'r+b') as dst:
+                dst.write(payload)
+                dst.truncate()
+                dst.flush()
+                try:
+                    os.fsync(dst.fileno())
+                except OSError:
+                    pass
+        finally:
+            # After a successful replace the temp file is already gone, so
+            # this is a no-op. It matters on every other path: without it a
+            # failed save leaves a config.json.*.tmp behind on each attempt.
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
 
     def to_dict(self) -> dict:
         return {f.name: getattr(self, f.name) for f in fields(self)}
