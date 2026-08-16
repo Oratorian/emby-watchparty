@@ -16,6 +16,31 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [2.1.3] - 2026-08-16 - Midnight Premiere
+
+**Saving settings in `/admin` works when `config.json` is bind-mounted as a single file.**
+
+That is the layout both the README and `docker-compose.yml.example` recommend, so this hit the documented setup rather than an unusual one. Every save was rejected with "Device or resource busy", the setting snapped back to its previous value, and a stray `config.json.<random>.tmp` was left behind on each attempt. `save()` has been byte-identical since 2.0.0, so this is as old as the 2.x line.
+
+Nothing to reconfigure and no migration. Pull the new image, restart, and the mount you already have starts working. If you worked around it by mounting the parent directory instead of the file, that keeps working too, and you can move back to the single-file mount whenever you like.
+
+### Fixed
+
+- **Runtime settings save onto a bind-mounted `config.json`.** Settings were written to a sibling temp file and renamed onto the target, which is the right way to avoid ever leaving a half-written config, but `rename(2)` onto a mount point fails with `EBUSY`, and a single-file bind mount *is* a mount point. An ordinary file still gets the atomic rename; a mount point is now written through instead. Reported by **[xux1217](https://github.com/xux1217)** in [#66](https://github.com/Oratorian/emby-watchparty/issues/66), diagnosed down to the failing call, the errno and the exact lines.
+- **A failed save no longer litters the container with temp files.** Cleanup only ran on the success path, so every rejected save left one more `config.json.*.tmp` in `/app`. It now runs whether the save succeeds or fails.
+
+### Technical details
+
+Preserving the inode is the requirement here, not a workaround. The host and the container reach the same file only for as long as that inode survives, so replacing it is precisely what must not happen. A save that swapped it would look like it succeeded while writing into a file the host can no longer see, and the setting would disappear the next time the container was recreated.
+
+The recovery is deliberately narrow. `os.replace()` is still attempted first, so an ordinary file keeps the atomic rename and the crash-safety that came with it. Only `EBUSY` and `EXDEV` fall through to the write-through path. Anything else, a read-only mount or a permissions problem, still raises, because swallowing those would report every save as successful while nothing reached the disk.
+
+The write-through is one `write()` followed by `truncate()` rather than reopening the file for writing. Opening for write truncates first, which would hand a concurrent reader an empty file for the length of the write; writing over the old contents and then trimming to length keeps the window to old-or-new. The temp file is kept until that write succeeds, so a failure part-way through cannot leave the target truncated.
+
+Nine tests cover it: the settings actually landing, the inode surviving, a longer previous config not leaving a tail behind, the ordinary-file path still taking the atomic rename, an unrelated errno still raising, and no temp file surviving either outcome. Verified by reverting the fix, where six of the nine fail against the old code, including the orphaned temp file the report describes.
+
+---
+
 ## [2.1.2] - 2026-08-10 - Midnight Premiere
 
 **HEVC sources stop being transcoded for viewers who can already play them.**
@@ -212,6 +237,7 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
+- **v2.1.3**  (2026-08-16): Settings saved from `/admin` now persist when `config.json` is bind-mounted as a single file, the layout the README recommends.
 - **v2.1.2**  (2026-08-10): HEVC sources are no longer transcoded for viewers whose browser can decode them; the codec is negotiated per viewer, so a mixed party works.
 - **v2.1.1**  (2026-08-05): Security -- upstream advisories in `socket.io-parser` (high, browser-side) and `postcss` (medium, build-time).
 - **v2.1.0**  (2026-08-03): Security -- `/hls` now session-gated with a cookie/token party match, and the Emby admin token moved out of the session cookie.
