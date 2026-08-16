@@ -39,6 +39,7 @@ from backend.src.v2_schemas import (
     CatalogQueryV2,
     FavoriteMutationV2,
     FavoriteResultV2,
+    GroupedSearchV2,
     IntroSegmentV2,
     LoginRequest,
     LoginResponseV2,
@@ -52,6 +53,7 @@ from backend.src.v2_schemas import (
     PlaylistCreateV2,
     PlaylistItemAddV2,
     PrefixesV2,
+    SearchGroupV2,
     StreamCatalogV2,
 )
 
@@ -224,6 +226,38 @@ async def search_items(
     )
     page = await provider.search_catalog(q.strip(), limit, credentials)
     return MediaPageV2.model_validate(asdict(page))
+
+
+@router.get(
+    "/items/search/groups",
+    response_model=GroupedSearchV2,
+    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+)
+async def grouped_search(
+    q: str = Query(min_length=2, max_length=200),
+    party_session: PartySession = Depends(require_party_unlocked),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    page = await provider.search_catalog(q.strip(), 50, credentials)
+    definitions = (
+        ("movies", "Movies", {"movie"}),
+        ("series", "Series", {"series"}),
+        ("episodes", "Episodes", {"episode"}),
+        ("people", "People", {"person"}),
+        ("collections", "Collections", {"box_set"}),
+    )
+    normalized = MediaPageV2.model_validate(asdict(page))
+    groups = []
+    for group_id, label, kinds in definitions:
+        items = [item for item in normalized.items if item.kind in kinds]
+        if items:
+            groups.append(SearchGroupV2(id=group_id, label=label, items=items))
+    return GroupedSearchV2(query=q.strip(), groups=groups)
 
 
 @router.get(

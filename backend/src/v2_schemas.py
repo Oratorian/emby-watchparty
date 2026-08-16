@@ -67,6 +67,17 @@ class MediaPageV2(V2Model):
     start: int = 0
 
 
+class SearchGroupV2(V2Model):
+    id: str
+    label: str
+    items: list[MediaItemV2]
+
+
+class GroupedSearchV2(V2Model):
+    query: str
+    groups: list[SearchGroupV2]
+
+
 class PrefixesV2(V2Model):
     prefixes: list[str]
 
@@ -255,6 +266,7 @@ __all__ = [
     "CatalogQueryV2",
     "FavoriteMutationV2",
     "FavoriteResultV2",
+    "GroupedSearchV2",
     "IntroSegmentV2",
     "LoginRequest",
     "LoginResponseV2",
@@ -270,6 +282,7 @@ __all__ = [
     "PlaylistCreatedV2",
     "PlaylistItemAddV2",
     "PrefixesV2",
+    "SearchGroupV2",
     "StreamCatalogV2",
     "SubtitleStreamV2",
 ]
