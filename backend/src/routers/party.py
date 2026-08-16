@@ -23,7 +23,7 @@ from backend.src.dependencies import (
     scrub_legacy_admin_session,
 )
 from backend.src.emby_client import EmbyUnavailableError
-from backend.src.providers.models import MediaServerUnavailableError
+from backend.src.providers.models import MediaServerUnavailableError, ProviderCredentials
 
 # Shared dev-host gate -- single source of truth lives in auth.py so the
 # env var name and value-parsing rules can never drift between modules.
@@ -114,7 +114,6 @@ async def create_party(
     body: CreatePartyRequest | None = None,
     config=Depends(get_config),
     party_manager=Depends(get_party_manager),
-    emby_client=Depends(get_emby_client),
     provider=Depends(get_media_server),
     admin_session_store=Depends(get_admin_session_store),
     logger=Depends(get_logger),
@@ -159,7 +158,9 @@ async def create_party(
     stashed_is_admin = admin_session.is_admin if admin_session else False
 
     if stashed_token and stashed_user_id and body.client_id:
-        if not await emby_client.verify_access_token(stashed_token, stashed_user_id):
+        if not await provider.verify_user(
+            ProviderCredentials(access_token=stashed_token, user_id=stashed_user_id)
+        ):
             logger.warning(
                 f"Stashed admin token failed revalidation for user "
                 f"{stashed_user_id}; clearing session and falling back to "
