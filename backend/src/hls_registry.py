@@ -70,30 +70,42 @@ class HLSResourceRegistry:
         if self._plans.get(plan.stream_id) is not plan:
             raise KeyError("playback plan is not active")
 
+        created_resource_ids: list[str] = []
+
         def opaque_url(uri: str) -> str:
             resource = resolve(parent, uri)
+            already_registered = resource in self._resource_ids[plan.stream_id]
             resource_id = self._register(plan, resource)
+            if not already_registered:
+                created_resource_ids.append(resource_id)
             return (
                 f"{app_prefix}/hls/{quote(plan.stream_id, safe='')}/resources/"
                 f"{quote(resource_id, safe='')}?token={quote(token, safe='')}"
             )
 
-        rewritten: list[str] = []
-        for line in content.splitlines(keepends=True):
-            body = line.rstrip("\r\n")
-            terminator = line[len(body) :]
-            stripped = body.strip()
-            if not stripped:
-                rewritten.append(line)
-                continue
-            if stripped.startswith("#"):
-                body = _URI_ATTRIBUTE.sub(
-                    lambda match: f'{match.group("prefix")}"{opaque_url(match.group("uri"))}"',
-                    body,
-                )
-            else:
-                start = len(body) - len(body.lstrip())
-                end = len(body.rstrip())
-                body = f"{body[:start]}{opaque_url(body[start:end])}{body[end:]}"
-            rewritten.append(body + terminator)
-        return "".join(rewritten)
+        try:
+            rewritten: list[str] = []
+            for line in content.splitlines(keepends=True):
+                body = line.rstrip("\r\n")
+                terminator = line[len(body) :]
+                stripped = body.strip()
+                if not stripped:
+                    rewritten.append(line)
+                    continue
+                if stripped.startswith("#"):
+                    body = _URI_ATTRIBUTE.sub(
+                        lambda match: f'{match.group("prefix")}"{opaque_url(match.group("uri"))}"',
+                        body,
+                    )
+                else:
+                    start = len(body) - len(body.lstrip())
+                    end = len(body.rstrip())
+                    body = f"{body[:start]}{opaque_url(body[start:end])}{body[end:]}"
+                rewritten.append(body + terminator)
+            return "".join(rewritten)
+        except Exception:
+            resource_ids = self._resource_ids[plan.stream_id]
+            for resource_id in created_resource_ids:
+                resource = plan.resources.pop(resource_id)
+                resource_ids.pop(resource, None)
+            raise

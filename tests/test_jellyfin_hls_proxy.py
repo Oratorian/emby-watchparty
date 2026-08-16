@@ -6,7 +6,7 @@ import httpx
 from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
 from backend.src.domain import UserStream
-from backend.src.providers.models import PlaybackRequest, ProviderCredentials
+from backend.src.providers.models import HLSResource, PlaybackRequest, ProviderCredentials
 from tests.support.asgi import asgi_client
 from tests.support.credentials import TEST_JELLYFIN_ACCESS_TOKEN, TEST_SESSION_SECRET
 from tests.support.fake_jellyfin import FakeJellyfinState, create_fake_jellyfin_app
@@ -149,6 +149,90 @@ def test_jellyfin_legacy_hls_fallback_uses_selected_provider_url(tmp_path) -> No
                 row for row in fake_state.requests if row["path"].endswith("/master.m3u8")
             )
             assert master_request["host"] == "jellyfin.test"
+
+    asyncio.run(exercise())
+
+
+def test_jellyfin_playlist_resource_overflow_fails_closed_without_partial_registration(
+    tmp_path,
+) -> None:
+    fake_state = FakeJellyfinState()
+    config = Config(
+        EnvConfig(
+            WATCH_PARTY_BIND="127.0.0.1",
+            WATCH_PARTY_PORT=5000,
+            APP_PREFIX="",
+            SESSION_EXPIRY=3600,
+            EMBY_SERVER_URL="http://wrong-emby.test",
+            EMBY_API_KEY="wrong-emby-key",
+            MEDIA_SERVER_TYPE="jellyfin",
+            JELLYFIN_SERVER_URL="http://jellyfin.test",
+            JELLYFIN_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
+            APP_ENV="development",
+            SESSION_SECRET=TEST_SESSION_SECRET,
+            SESSION_COOKIE_SECURE=False,
+            CORS_ALLOWED_ORIGINS=("*",),
+            TRUSTED_PROXY_CIDRS=(),
+            ENABLE_HLS_TOKEN_VALIDATION=True,
+        ),
+        RuntimeConfig(LOG_TO_FILE=False),
+    )
+    app = create_app(
+        config=config,
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+            plan = await app.state.media_server.prepare_playback(
+                PlaybackRequest(
+                    item_id="movie-1",
+                    credentials=ProviderCredentials(
+                        access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+                        user_id="jellyfin-user-1",
+                    ),
+                )
+            )
+            plan.resources.update(
+                {
+                    f"resource-{index}": HLSResource(f"https://jellyfin.test/used-{index}.ts")
+                    for index in range(9_999)
+                }
+            )
+            app.state.hls_registry.install(plan)
+            party = app.state.party_manager.get(party_id)
+            assert party is not None
+            sid = "socket-1"
+            party.sid_client_ids[sid] = "client-1"
+            party.user_streams[sid] = UserStream(
+                media_source_id=plan.media_source_id,
+                play_session_id=plan.play_session_id,
+                stream_url_base=f"/hls/{plan.stream_id}/master.m3u8",
+                stream_id=plan.stream_id,
+            )
+            token = app.state.token_manager.generate(party_id, sid)
+            assert token is not None
+
+            response = await client.get(f"/hls/{plan.stream_id}/master.m3u8?token={token}")
+
+            assert response.status_code == 502
+            assert response.json() == {"error": "Unsafe upstream playlist"}
+            assert len(plan.resources) == 9_999
+            assert "jellyfin.test" not in response.text
+            assert TEST_JELLYFIN_ACCESS_TOKEN not in response.text
 
     asyncio.run(exercise())
 
