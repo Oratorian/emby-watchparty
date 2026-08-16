@@ -45,7 +45,7 @@ test('@jellyfin-real login browse play seek reconnect stop', async ({ page }) =>
   await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Open Year filter', exact: true }).click()
-  await page.getByLabel('Exact year').fill('2020')
+  await page.getByRole('spinbutton', { name: 'Exact year', exact: true }).fill('2020')
   await page.getByRole('button', { name: 'Apply year filter', exact: true }).click()
   await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Close Year filter', exact: true }).click()
