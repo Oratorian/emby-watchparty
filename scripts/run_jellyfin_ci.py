@@ -1,0 +1,261 @@
+"""Start, verify, and clean an isolated real-Jellyfin CI environment."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import subprocess
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+
+def _run(*args: str) -> str:
+    return subprocess.run(  # noqa: S603 - fixed CI commands, never shell-expanded
+        args, check=True, text=True, capture_output=True
+    ).stdout.strip()
+
+
+def _request(
+    url: str,
+    *,
+    method: str = "GET",
+    body: dict | None = None,
+    token: str | None = None,
+) -> tuple[int, object | None]:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Only HTTP(S) Jellyfin URLs are allowed")
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["X-Emby-Token"] = token
+    request = urllib.request.Request(  # noqa: S310 - scheme and host validated above
+        url, data=data, headers=headers, method=method
+    )
+
+    try:
+        with urllib.request.urlopen(  # noqa: S310 - request URL validated above
+            request, timeout=10
+        ) as response:
+            payload = response.read()
+            return response.status, json.loads(payload) if payload else None
+    except urllib.error.HTTPError as exc:
+        payload = exc.read()
+        return exc.code, json.loads(payload) if payload else None
+
+
+def _wait(url: str, timeout: float = 120) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            status, _ = _request(url)
+            if status < 500:
+                return
+        except OSError:
+            pass
+        time.sleep(2)
+    raise RuntimeError(f"Timed out waiting for {url}")
+
+
+def _post_ok(url: str, body: dict) -> None:
+    status, payload = _request(url, method="POST", body=body)
+    if status not in {200, 204}:
+        raise RuntimeError(f"Jellyfin setup endpoint failed ({status}): {payload!r}")
+
+
+def _configure_startup(base: str) -> None:
+    _post_ok(
+        f"{base}/Startup/Configuration",
+        {"UICulture": "en-US", "MetadataCountryCode": "US", "PreferredMetadataLanguage": "en"},
+    )
+    _post_ok(f"{base}/Startup/User", {"Name": "Alice", "Password": "password"})
+    _post_ok(
+        f"{base}/Startup/RemoteAccess",
+        {"EnableRemoteAccess": True, "EnableAutomaticPortMapping": False},
+    )
+    _post_ok(f"{base}/Startup/Complete", {})
+
+
+def start(args: argparse.Namespace) -> None:
+    work = args.state.parent
+    media = work / "media"
+    config = work / "config"
+    cache = work / "cache"
+    for path in (media, config, cache):
+        path.mkdir(parents=True, exist_ok=True)
+    args.state.write_text(
+        json.dumps(
+            {
+                "work": str(work),
+                "network": args.network,
+                "containers": [args.app_name, args.jellyfin_name],
+            }
+        ),
+        encoding="utf-8",
+    )
+    video = media / "Synthetic HLS.mp4"
+    _run(
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=size=640x360:rate=24",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:sample_rate=48000",
+        "-t",
+        "30",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-metadata",
+        "title=Synthetic HLS",
+        "-y",
+        str(video),
+    )
+    _run("docker", "network", "create", args.network)
+    _run(
+        "docker",
+        "run",
+        "--detach",
+        "--name",
+        args.jellyfin_name,
+        "--network",
+        args.network,
+        "--network-alias",
+        "jellyfin",
+        "--publish",
+        "8097:8096",
+        "--volume",
+        f"{config.resolve()}:/config",
+        "--volume",
+        f"{cache.resolve()}:/cache",
+        "--volume",
+        f"{media.resolve()}:/media:ro",
+        args.jellyfin_image,
+    )
+    base = "http://127.0.0.1:8097"
+    _wait(f"{base}/System/Info/Public")
+    _configure_startup(base)
+    status, auth = _request(
+        f"{base}/Users/AuthenticateByName",
+        method="POST",
+        body={"Username": "Alice", "Pw": "password"},
+    )
+    if status != 200 or not isinstance(auth, dict):
+        raise RuntimeError(f"Jellyfin authentication failed ({status})")
+    token = str(auth["AccessToken"])
+    user_id = str(auth["User"]["Id"])
+    query = urllib.parse.urlencode(
+        {"name": "Movies", "collectionType": "movies", "paths": "/media", "refreshLibrary": "true"}
+    )
+    status, _ = _request(f"{base}/Library/VirtualFolders?{query}", method="POST", token=token)
+    if status not in {200, 204}:
+        raise RuntimeError(f"Jellyfin library creation failed ({status})")
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
+        item_query = urllib.parse.urlencode({"Recursive": "true", "IncludeItemTypes": "Movie"})
+        status, payload = _request(f"{base}/Users/{user_id}/Items?{item_query}", token=token)
+        if status == 200 and isinstance(payload, dict) and payload.get("Items"):
+            break
+        time.sleep(3)
+    else:
+        raise RuntimeError("Jellyfin library scan did not discover synthetic media")
+    env_file = work / "app.env"
+    env_file.write_text(
+        "\n".join(
+            (
+                "APP_ENV=development",
+                "MEDIA_SERVER_TYPE=jellyfin",
+                "JELLYFIN_SERVER_URL=http://jellyfin:8096",
+                f"JELLYFIN_API_KEY={token}",
+                "SESSION_SECRET=jellyfin-ci-session-secret-at-least-32-characters",
+                "SESSION_COOKIE_SECURE=false",
+            )
+        ),
+        encoding="utf-8",
+    )
+    _run(
+        "docker",
+        "run",
+        "--detach",
+        "--name",
+        args.app_name,
+        "--network",
+        args.network,
+        "--publish",
+        "5013:5000",
+        "--env-file",
+        str(env_file.resolve()),
+        args.app_image,
+    )
+    _wait("http://127.0.0.1:5013/api/ready")
+    args.state.write_text(
+        json.dumps(
+            {
+                "work": str(work),
+                "network": args.network,
+                "containers": [args.app_name, args.jellyfin_name],
+                "base": base,
+                "token": token,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def verify(args: argparse.Namespace) -> None:
+    state = json.loads(args.state.read_text(encoding="utf-8"))
+    status, sessions = _request(f"{state['base']}/Sessions", token=state["token"])
+    if status != 200 or not isinstance(sessions, list):
+        raise RuntimeError(f"Could not inspect Jellyfin sessions ({status})")
+    if any(session.get("NowPlayingItem") for session in sessions if isinstance(session, dict)):
+        raise RuntimeError("Jellyfin still reports active playback after Stop Video")
+
+
+def cleanup(args: argparse.Namespace) -> None:
+    if not args.state.exists():
+        return
+    state = json.loads(args.state.read_text(encoding="utf-8"))
+    for container in state.get("containers", []):
+        subprocess.run(  # noqa: S603 - isolated CI state, no shell
+            ["docker", "rm", "--force", container],  # noqa: S607
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    subprocess.run(  # noqa: S603 - isolated CI state, no shell
+        ["docker", "network", "rm", state["network"]],  # noqa: S607
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    shutil.rmtree(state["work"], ignore_errors=True)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command", choices=("start", "verify", "cleanup"))
+    parser.add_argument("--state", type=Path, required=True)
+    parser.add_argument("--jellyfin-image", default="jellyfin/jellyfin:10.11.11")
+    parser.add_argument("--app-image", default="emby-watchparty:jellyfin-ci")
+    parser.add_argument("--network", default="watchparty-jellyfin-ci")
+    parser.add_argument("--jellyfin-name", default="jellyfin-ci")
+    parser.add_argument("--app-name", default="watchparty-jellyfin-ci")
+    args = parser.parse_args()
+    {"start": start, "verify": verify, "cleanup": cleanup}[args.command](args)
+
+
+if __name__ == "__main__":
+    main()
