@@ -11,6 +11,7 @@ from tests.support.credentials import TEST_JELLYFIN_ACCESS_TOKEN
 @dataclass
 class FakeJellyfinState:
     requests: list[dict] = field(default_factory=list)
+    request_hosts: list[str] = field(default_factory=list)
     playback_requests: list[dict] = field(default_factory=list)
     playback_reports: list[dict] = field(default_factory=list)
     playback_path_item_id: str | None = None
@@ -23,11 +24,11 @@ class FakeJellyfinState:
         self.requests.append(
             {
                 "method": request.method,
-                "host": request.url.netloc,
                 "path": request.url.path,
                 "query": query,
             }
         )
+        self.request_hosts.append(request.url.netloc)
 
 
 def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:

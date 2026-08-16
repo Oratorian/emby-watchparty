@@ -145,10 +145,12 @@ def test_jellyfin_legacy_hls_fallback_uses_selected_provider_url(tmp_path) -> No
             response = await client.get(f"/hls/movie-1/master.m3u8?token={token}")
 
             assert response.status_code == 200
-            master_request = next(
-                row for row in fake_state.requests if row["path"].endswith("/master.m3u8")
+            master_request_index = next(
+                index
+                for index, row in enumerate(fake_state.requests)
+                if row["path"].endswith("/master.m3u8")
             )
-            assert master_request["host"] == "jellyfin.test"
+            assert fake_state.request_hosts[master_request_index] == "jellyfin.test"
 
     asyncio.run(exercise())
 
