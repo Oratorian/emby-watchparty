@@ -65,3 +65,30 @@ def test_real_jellyfin_setup_initializes_first_user_before_updating_it(monkeypat
         ("GET", "http://127.0.0.1:8097/Startup/User"),
         ("POST", "http://127.0.0.1:8097/Startup/User"),
     ]
+
+
+def test_real_jellyfin_requests_identify_the_ci_client(monkeypatch) -> None:
+    captured = {}
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return b"{}"
+
+    def open_request(request, timeout):
+        del timeout
+        captured["authorization"] = request.get_header("X-emby-authorization")
+        return Response()
+
+    monkeypatch.setattr(run_jellyfin_ci.urllib.request, "urlopen", open_request)
+
+    run_jellyfin_ci._request("http://127.0.0.1:8097/System/Info/Public")
+
+    assert captured["authorization"].startswith('MediaBrowser Client="emby-watchparty-ci"')

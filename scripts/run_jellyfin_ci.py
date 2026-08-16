@@ -30,7 +30,13 @@ def _request(
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("Only HTTP(S) Jellyfin URLs are allowed")
     data = json.dumps(body).encode() if body is not None else None
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        "X-Emby-Authorization": (
+            'MediaBrowser Client="emby-watchparty-ci", Device="CI", '
+            'DeviceId="emby-watchparty-jellyfin-ci", Version="1"'
+        ),
+    }
     if token:
         headers["X-Emby-Token"] = token
     request = urllib.request.Request(  # noqa: S310 - scheme and host validated above
