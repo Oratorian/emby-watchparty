@@ -54,6 +54,7 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       env: {
         APP_ENV: 'development',
+        MEDIA_SERVER_TYPE: 'emby',
         EMBY_SERVER_URL: 'http://127.0.0.1:5012',
         EMBY_API_KEY: 'e2e-key',
         SESSION_SECRET: 'playwright-session-secret-at-least-32-characters',
