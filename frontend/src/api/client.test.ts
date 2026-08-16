@@ -96,6 +96,31 @@ describe('apiFetch', () => {
     })
   })
 
+  it('projects normalized v2 item details for existing components', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: 'movie-1', name: 'Arrival', kind: 'movie', collection_kind: null,
+      overview: 'First contact', runtime_seconds: 120, production_year: 2016,
+      parent_id: null, series_id: null, series_name: null, season_id: null,
+      season_name: null, index_number: null, parent_index_number: null,
+      is_folder: false, is_playable: true, is_browsable: false,
+      has_primary_image: false, backdrop_count: 0, primary_image_aspect_ratio: null,
+      user_state: { playback_position_seconds: 4, played_percentage: 5, played: false, favorite: false },
+      media_source_count: 1, genres: ['Drama'], tags: ['Aliens'],
+      people: [{ id: 'person-1', name: 'Amy Adams', kind: 'actor' }],
+      studios: ['Paramount'], official_rating: 'PG-13', community_rating: 8.1,
+      critic_rating: 94,
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.itemDetails('movie-1')).resolves.toMatchObject({
+      Id: 'movie-1', Type: 'Movie', Genres: ['Drama'],
+      TagItems: [{ Name: 'Aliens' }],
+      People: [{ Id: 'person-1', Name: 'Amy Adams', Type: 'actor' }],
+      Studios: [{ Name: 'Paramount' }], OfficialRating: 'PG-13',
+    })
+    expect(fetchMock).toHaveBeenCalledWith('/api/v2/items/movie-1', expect.any(Object))
+  })
+
   it('posts typed library filters without encoding them into a URL', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ Items: [], TotalRecordCount: 0 }),

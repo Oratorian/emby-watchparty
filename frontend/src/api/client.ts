@@ -9,7 +9,7 @@
  * works" because withPrefix() is a no-op.
  */
 import { withPrefix } from '@/utils/appPrefix'
-import type { MediaItemV2, MediaPageV2 } from '@/types/api.generated'
+import type { MediaItemDetailsV2, MediaItemV2, MediaPageV2 } from '@/types/api.generated'
 
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]
@@ -195,6 +195,23 @@ function projectMediaPage(page: MediaPageV2): LibraryResponse {
     Items: page.items.map(projectMediaItem),
     TotalRecordCount: page.total ?? undefined,
     StartIndex: page.start,
+  }
+}
+
+function projectMediaDetails(item: MediaItemDetailsV2): LibraryItem {
+  return {
+    ...projectMediaItem(item),
+    Genres: item.genres,
+    TagItems: item.tags.map(name => ({ Name: name })),
+    People: item.people.map(person => ({
+      Id: person.id,
+      Name: person.name,
+      Type: person.kind,
+    })),
+    Studios: item.studios.map(Name => ({ Name })),
+    OfficialRating: item.official_rating ?? undefined,
+    CommunityRating: item.community_rating ?? undefined,
+    CriticRating: item.critic_rating ?? undefined,
   }
 }
 export interface LibraryPrefixesResponse {
@@ -438,8 +455,8 @@ export const api = {
   groupedSearch: (q: string, signal?: AbortSignal) => apiFetch<GroupedSearchResponse>(
     `/api/search/grouped?q=${encodeURIComponent(q)}`, { signal },
   ),
-  itemDetails: (id: string, signal?: AbortSignal) => apiFetch<LibraryItem>(
-    `/api/item/${id}`, { signal },
+  itemDetails: async (id: string, signal?: AbortSignal) => projectMediaDetails(
+    await apiFetch<MediaItemDetailsV2>(`/api/v2/items/${id}`, { signal }),
   ),
   itemSection: (id: string, section: ItemSection, signal?: AbortSignal) =>
     apiFetch<ItemSectionResponse>(`/api/item/${id}/sections/${section}`, { signal }),
