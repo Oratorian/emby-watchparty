@@ -142,6 +142,47 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             "MediaSourceCount": 1,
         }
 
+    @app.get("/Items/{item_id}/Images/{image_type}")
+    @app.get("/Items/{item_id}/Images/{image_type}/{image_index}")
+    async def item_image(
+        item_id: str,
+        image_type: str,
+        request: Request,
+        image_index: int | None = None,
+    ):
+        del image_index
+        assert item_id
+        assert image_type
+        state.record(request)
+        return Response(b"jellyfin-image", media_type="image/png")
+
+    @app.get("/Videos/{item_id}/{media_source_id}/Subtitles/{subtitle_index}/Stream.vtt")
+    async def subtitle(
+        item_id: str,
+        media_source_id: str,
+        subtitle_index: int,
+        request: Request,
+    ):
+        assert item_id
+        assert media_source_id
+        assert subtitle_index >= 0
+        state.record(request)
+        return Response("WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n", media_type="text/vtt")
+
+    @app.get("/MediaSegments/{item_id}")
+    async def media_segments(item_id: str, request: Request):
+        assert item_id
+        state.record(request)
+        return {
+            "Items": [
+                {
+                    "Type": "Intro",
+                    "StartTicks": 25_000_000,
+                    "EndTicks": 925_000_000,
+                }
+            ]
+        }
+
     @app.get("/Shows/{series_id}/Seasons")
     async def seasons(series_id: str, request: Request):
         state.record(request)

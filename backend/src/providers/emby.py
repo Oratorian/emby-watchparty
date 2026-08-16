@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import secrets
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 import httpx
 
 from backend.src.providers.models import (
+    AssetRequest,
     AuthenticatedUser,
     CatalogQuery,
     HLSResource,
+    IntroSegment,
     PlaybackEvent,
     PlaybackEventType,
     PlaybackMethod,
@@ -174,6 +177,65 @@ class EmbyProvider:
             item_id,
             access_token=credentials.access_token,
             user_id=credentials.user_id,
+        )
+
+    async def fetch_asset(self, request: AssetRequest) -> httpx.Response:
+        if request.kind == "subtitle":
+            if request.media_source_id is None or request.index is None:
+                raise ValueError("subtitle asset requires source and index")
+            path = (
+                f"/emby/Videos/{quote(request.item_id, safe='')}/"
+                f"{quote(request.media_source_id, safe='')}/Subtitles/{request.index}/Stream.vtt"
+            )
+            return await self._client.gateway.get(
+                path,
+                headers=self._client._headers(
+                    request.credentials.access_token,
+                    request.credentials.user_id,
+                ),
+            )
+        image_type = "".join(part.title() for part in request.kind.split("_"))
+        path = f"/emby/Items/{quote(request.item_id, safe='')}/Images/{image_type}"
+        if request.index is not None:
+            path += f"/{request.index}"
+        params = {
+            key: value
+            for key, value in {
+                "maxWidth": request.max_width,
+                "maxHeight": request.max_height,
+                "quality": request.quality,
+            }.items()
+            if value is not None
+        }
+        return await self._client.gateway.get(
+            path,
+            headers=self._client._headers(
+                request.credentials.access_token,
+                request.credentials.user_id,
+            ),
+            params=params,
+        )
+
+    async def get_intro(
+        self, item_id: str, credentials: ProviderCredentials
+    ) -> IntroSegment | None:
+        del credentials
+        response = await self._client.gateway.get(
+            "/emby/Items/Intros",
+            headers=self._client._headers(),
+            params={"api_key": self._client.api_key},
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        row = next(
+            (item for item in response.json() if str(item.get("Id")) == str(item_id)),
+            None,
+        )
+        if row is None:
+            return None
+        return IntroSegment(
+            start_seconds=float(row.get("Start") or 0) / 10_000_000,
+            end_seconds=float(row.get("End") or 0) / 10_000_000,
         )
 
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan:

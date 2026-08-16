@@ -916,3 +916,138 @@ def test_jellyfin_v2_auth_status_and_logout_are_provider_aware(tmp_path) -> None
             assert logged_out.json()["media_server_type"] == "jellyfin"
 
     asyncio.run(exercise())
+
+
+def test_jellyfin_item_artwork_is_available_through_v1_and_v2(tmp_path) -> None:
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            legacy = await client.get(
+                "/api/image/movie-1",
+                params={"type": "Backdrop", "index": 1, "maxWidth": 640},
+            )
+            neutral = await client.get(
+                "/api/v2/items/movie-1/images/backdrop",
+                params={"index": 1, "max_width": 640},
+            )
+
+            for response in (legacy, neutral):
+                assert response.status_code == 200
+                assert response.content == b"jellyfin-image"
+                assert response.headers["content-type"].startswith("image/png")
+                assert response.headers["x-content-type-options"] == "nosniff"
+
+    asyncio.run(exercise())
+    images = [row for row in fake_state.requests if "/Images/" in row["path"]]
+    assert [row["path"] for row in images] == [
+        "/Items/movie-1/Images/Backdrop/1",
+        "/Items/movie-1/Images/Backdrop/1",
+    ]
+    assert all(row["query"] == {"maxWidth": "640"} for row in images)
+
+
+def test_jellyfin_subtitles_are_available_through_v1_and_v2(tmp_path) -> None:
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            legacy = await client.get("/api/subtitles/movie-1/source-1/4")
+            neutral = await client.get(
+                "/api/v2/items/movie-1/subtitles/source-1/4",
+            )
+
+            for response in (legacy, neutral):
+                assert response.status_code == 200
+                assert response.text.startswith("WEBVTT")
+                assert response.headers["content-type"].startswith("text/vtt")
+                assert response.headers["x-content-type-options"] == "nosniff"
+
+    asyncio.run(exercise())
+    subtitles = [row for row in fake_state.requests if "/Subtitles/" in row["path"]]
+    assert [row["path"] for row in subtitles] == [
+        "/Videos/movie-1/source-1/Subtitles/4/Stream.vtt",
+        "/Videos/movie-1/source-1/Subtitles/4/Stream.vtt",
+    ]
+    assert all(row["query"] == {} for row in subtitles)
+
+
+def test_jellyfin_intro_segment_is_available_through_v1_and_v2(tmp_path) -> None:
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            legacy = await client.get("/api/intro/movie-1")
+            neutral = await client.get("/api/v2/items/movie-1/intro")
+
+            assert legacy.json() == {
+                "hasIntro": True,
+                "start": 2.5,
+                "end": 92.5,
+                "duration": 90.0,
+            }
+            assert neutral.json() == {
+                "has_intro": True,
+                "start_seconds": 2.5,
+                "end_seconds": 92.5,
+                "duration_seconds": 90.0,
+            }
+
+    asyncio.run(exercise())
+    segments = [row for row in fake_state.requests if row["path"] == "/MediaSegments/movie-1"]
+    assert len(segments) == 2
+    assert all(row["query"] == {} for row in segments)

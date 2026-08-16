@@ -167,12 +167,20 @@ class ActionResultV2(V2Model):
     success: bool
 
 
+class IntroSegmentV2(V2Model):
+    has_intro: bool
+    start_seconds: float | None = None
+    end_seconds: float | None = None
+    duration_seconds: float | None = None
+
+
 __all__ = [
     "ActionResultV2",
     "AuthStatusV2",
     "CatalogQueryV2",
     "FavoriteMutationV2",
     "FavoriteResultV2",
+    "IntroSegmentV2",
     "LoginRequest",
     "LoginResponseV2",
     "LogoutResponseV2",

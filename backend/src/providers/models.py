@@ -98,6 +98,12 @@ class MediaPage:
 
 
 @dataclass(frozen=True)
+class IntroSegment:
+    start_seconds: float
+    end_seconds: float
+
+
+@dataclass(frozen=True)
 class CatalogScope:
     parent_id: str | None = None
     include_kinds: tuple[str, ...] = ()
@@ -181,6 +187,9 @@ class AssetRequest:
     credentials: ProviderCredentials
     index: int | None = None
     media_source_id: str | None = None
+    max_width: int | None = None
+    max_height: int | None = None
+    quality: int | None = None
 
 
 @dataclass(frozen=True)

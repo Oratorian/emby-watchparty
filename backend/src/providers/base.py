@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from backend.src.providers.models import (
+        AssetRequest,
         AuthenticatedUser,
         CatalogQuery,
         HLSResource,
+        IntroSegment,
         MediaItemDetails,
         MediaPage,
         PlaybackEvent,
@@ -71,6 +73,12 @@ class MediaServerProvider(Protocol):
     async def add_playlist_item(
         self, playlist_id: str, item_id: str, credentials: ProviderCredentials
     ) -> None: ...
+
+    async def fetch_asset(self, request: AssetRequest) -> ProviderResponse: ...
+
+    async def get_intro(
+        self, item_id: str, credentials: ProviderCredentials
+    ) -> IntroSegment | None: ...
 
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan: ...
 

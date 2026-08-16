@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
 
 from backend.src.dependencies import (
     PARTY_HOST_RESPONSES,
+    PARTY_HOST_TOKEN_RESPONSES,
     PARTY_UNLOCKED_RESPONSES,
     PartySession,
     get_config,
@@ -15,10 +18,12 @@ from backend.src.dependencies import (
     get_media_server,
     get_party_manager,
     get_sio,
+    require_host_token,
     require_party_host,
     require_party_unlocked,
 )
 from backend.src.providers.models import (
+    AssetRequest,
     CatalogPage,
     CatalogQuery,
     CatalogScope,
@@ -32,6 +37,7 @@ from backend.src.v2_schemas import (
     CatalogQueryV2,
     FavoriteMutationV2,
     FavoriteResultV2,
+    IntroSegmentV2,
     LoginRequest,
     LoginResponseV2,
     LogoutResponseV2,
@@ -189,6 +195,116 @@ async def item_details(
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
     return MediaItemDetailsV2.model_validate(asdict(item))
+
+
+@router.get(
+    "/items/{item_id}/images/{image_type}",
+    responses={
+        200: {"content": {"image/jpeg": {}, "image/png": {}, "image/webp": {}}},
+        404: {"description": "Image unavailable"},
+        **PARTY_HOST_TOKEN_RESPONSES,
+    },
+)
+async def item_image(
+    item_id: str,
+    image_type: Literal["primary", "backdrop", "logo", "thumb", "art", "banner"],
+    index: int | None = Query(None, ge=0, le=99),
+    max_width: int | None = Query(None, ge=1, le=4000),
+    max_height: int | None = Query(None, ge=1, le=4000),
+    quality: int | None = Query(None, ge=1, le=100),
+    party_session: PartySession = Depends(require_host_token),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    upstream = await provider.fetch_asset(
+        AssetRequest(
+            item_id=item_id,
+            kind=image_type,
+            credentials=ProviderCredentials(
+                access_token=party.host_access_token or "",
+                user_id=party.host_user_id or "",
+            ),
+            index=index,
+            max_width=max_width,
+            max_height=max_height,
+            quality=quality,
+        )
+    )
+    if upstream.status_code != 200:
+        return Response(status_code=404)
+    content_type = upstream.headers.get("Content-Type", "image/jpeg")
+    if not content_type.startswith("image/"):
+        content_type = "image/jpeg"
+    return Response(
+        content=upstream.content,
+        media_type=content_type,
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.get(
+    "/items/{item_id}/subtitles/{media_source_id}/{subtitle_index}",
+    responses={
+        200: {"content": {"text/vtt": {}}},
+        404: {"description": "Subtitle unavailable"},
+        **PARTY_HOST_TOKEN_RESPONSES,
+    },
+)
+async def item_subtitle(
+    item_id: str,
+    media_source_id: str,
+    subtitle_index: int,
+    party_session: PartySession = Depends(require_host_token),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    upstream = await provider.fetch_asset(
+        AssetRequest(
+            item_id=item_id,
+            kind="subtitle",
+            credentials=ProviderCredentials(
+                access_token=party.host_access_token or "",
+                user_id=party.host_user_id or "",
+            ),
+            index=subtitle_index,
+            media_source_id=media_source_id,
+        )
+    )
+    if upstream.status_code != 200:
+        return Response(status_code=404)
+    return Response(
+        content=upstream.content,
+        media_type="text/vtt",
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.get(
+    "/items/{item_id}/intro",
+    response_model=IntroSegmentV2,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
+async def item_intro(
+    item_id: str,
+    party_session: PartySession = Depends(require_party_unlocked),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    segment = await provider.get_intro(
+        item_id,
+        ProviderCredentials(
+            access_token=party.host_access_token or "",
+            user_id=party.host_user_id or "",
+        ),
+    )
+    if segment is None:
+        return IntroSegmentV2(has_intro=False)
+    return IntroSegmentV2(
+        has_intro=True,
+        start_seconds=segment.start_seconds,
+        end_seconds=segment.end_seconds,
+        duration_seconds=segment.end_seconds - segment.start_seconds,
+    )
 
 
 @router.get(

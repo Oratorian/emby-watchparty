@@ -15,22 +15,17 @@ from backend.src.dependencies import (
     PARTY_HOST_TOKEN_RESPONSES,
     PARTY_UNLOCKED_RESPONSES,
     PartySession,
-    get_config,
-    get_emby_client,
-    get_emby_gateway,
     get_logger,
+    get_media_server,
     require_host_token,
     require_party_unlocked,
 )
+from backend.src.providers.models import AssetRequest, ProviderCredentials
 from backend.src.schemas import IntroResponse
 
-# Every route here reaches Emby, so 502 is declared once on the router rather
-# than repeated per route. See the same note in routers/library.py.
-router = APIRouter(
-    prefix="/api",
-    tags=["media"],
-    responses={502: {"description": "Emby upstream unavailable"}},
-)
+# These compatibility routes intentionally collapse provider failures into
+# their historical no-intro / 404 responses.
+router = APIRouter(prefix="/api", tags=["media"])
 
 
 @router.get(
@@ -40,31 +35,33 @@ router = APIRouter(
 )
 async def get_intro_info(
     item_id: str,
-    config=Depends(get_config),
-    _emby_client=Depends(get_emby_client),
-    emby_gateway=Depends(get_emby_gateway),
+    media_server=Depends(get_media_server),
     logger=Depends(get_logger),
-    _party_session: PartySession = Depends(require_party_unlocked),
+    party_session: PartySession = Depends(require_party_unlocked),
 ):
     logger.debug(f"Fetching intro info for item ID: {item_id}")
-    # /emby/Items/Intros is an admin-only endpoint and requires the
-    # server API key from .env, NOT the host's user access_token. A
-    # user-scoped token (even from an Emby admin) gets a 403 here.
-    # Carried over from the 1.x fix for issue #29.
     try:
-        resp = await emby_gateway.get(
-            "/emby/Items/Intros",
-            params={"api_key": config.EMBY_API_KEY},
-            headers={"Content-Type": "application/json"},
-            timeout=5,
+        party = party_session.party
+        intro = await media_server.get_intro(
+            item_id,
+            ProviderCredentials(
+                party.host_access_token or "",
+                party.host_user_id or "",
+            ),
         )
-        if resp.status_code == 200:
-            for intro in resp.json():
-                if str(intro.get("Id")) == str(item_id):
-                    start = intro.get("Start", 0) / 10_000_000
-                    end = intro.get("End", 0) / 10_000_000
-                    logger.info(f"Found intro for {item_id}: {start:.2f}s - {end:.2f}s")
-                    return IntroResponse(hasIntro=True, start=start, end=end, duration=end - start)
+        if intro is not None:
+            logger.info(
+                "Found intro for %s: %.2fs - %.2fs",
+                item_id,
+                intro.start_seconds,
+                intro.end_seconds,
+            )
+            return IntroResponse(
+                hasIntro=True,
+                start=intro.start_seconds,
+                end=intro.end_seconds,
+                duration=intro.end_seconds - intro.start_seconds,
+            )
         return IntroResponse(hasIntro=False)
     except Exception as e:
         logger.warning("Intro fetch failed item=%s error=%s", item_id, type(e).__name__)
@@ -76,7 +73,7 @@ async def get_intro_info(
     responses={
         200: {
             "content": {"image/jpeg": {}, "image/png": {}, "image/webp": {}},
-            "description": "Item poster / image bytes proxied from Emby",
+            "description": "Item poster / image bytes proxied from media server",
         },
         404: {"description": "No such image"},
         **PARTY_HOST_TOKEN_RESPONSES,
@@ -86,35 +83,33 @@ async def api_image(
     item_id: str,
     type: Literal["Primary", "Backdrop", "Logo", "Thumb", "Art", "Banner"] = Query("Primary"),
     index: int | None = Query(None, ge=0, le=99),
-    # Optional sizing forwarded to Emby. Library card thumbnails only
+    # Optional sizing forwarded to media server. Library card thumbnails only
     # need ~240x360, but the original 2.0 endpoint proxied the full
     # poster bytes (often ~1000px wide / hundreds of KB) which made
     # the library card grid feel sluggish on throttled connections
-    # (reported in beta12 by xyxxyxxy). With these params Emby
+    # (reported in beta12 by xyxxyxxy). With these params media server
     # downscales + re-encodes server-side before sending, so each
     # card is 20-40 KB instead of hundreds.
     max_width: int | None = Query(None, alias="maxWidth", ge=1, le=4000),
     max_height: int | None = Query(None, alias="maxHeight", ge=1, le=4000),
     quality: int | None = Query(None, ge=1, le=100),
-    emby_client=Depends(get_emby_client),
-    emby_gateway=Depends(get_emby_gateway),
+    media_server=Depends(get_media_server),
     logger=Depends(get_logger),
     party_session: PartySession = Depends(require_host_token),
 ):
     access_token = party_session.party.host_access_token
     user_id = party_session.party.host_user_id
-    image_url = emby_client.get_image_url(
-        item_id,
-        type,
-        access_token=access_token,
-        max_width=max_width,
-        max_height=max_height,
-        quality=quality,
-        image_index=index,
-    )
     try:
-        emby_resp = await emby_gateway.get(
-            image_url, headers=emby_client._headers(access_token, user_id)
+        emby_resp = await media_server.fetch_asset(
+            AssetRequest(
+                item_id=item_id,
+                kind=type.lower(),
+                credentials=ProviderCredentials(access_token or "", user_id or ""),
+                index=index,
+                max_width=max_width,
+                max_height=max_height,
+                quality=quality,
+            )
         )
         if emby_resp.status_code == 200:
             ct = emby_resp.headers.get("Content-Type", "image/jpeg")
@@ -146,21 +141,21 @@ async def api_subtitles(
     item_id: str,
     media_source_id: str,
     subtitle_index: int,
-    config=Depends(get_config),
-    emby_client=Depends(get_emby_client),
-    emby_gateway=Depends(get_emby_gateway),
+    media_server=Depends(get_media_server),
     logger=Depends(get_logger),
     party_session: PartySession = Depends(require_host_token),
 ):
     access_token = party_session.party.host_access_token
     user_id = party_session.party.host_user_id
     try:
-        subtitle_url = (
-            f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/{media_source_id}"
-            f"/Subtitles/{subtitle_index}/Stream.vtt?api_key={access_token}"
-        )
-        emby_resp = await emby_gateway.get(
-            subtitle_url, headers=emby_client._headers(access_token, user_id)
+        emby_resp = await media_server.fetch_asset(
+            AssetRequest(
+                item_id=item_id,
+                kind="subtitle",
+                credentials=ProviderCredentials(access_token or "", user_id or ""),
+                index=subtitle_index,
+                media_source_id=media_source_id,
+            )
         )
         if emby_resp.status_code == 200:
             return Response(

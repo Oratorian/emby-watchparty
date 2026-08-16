@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import re
 import secrets
-from urllib.parse import unquote, urljoin, urlparse
+from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
 
 from backend.src.emby_client import EmbyClient
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers.models import (
+    AssetRequest,
     CatalogQuery,
     HLSResource,
+    IntroSegment,
     PlaybackEvent,
     PlaybackEventType,
     PlaybackMethod,
@@ -173,6 +175,66 @@ class JellyfinProvider:
             item_id,
             access_token=credentials.access_token,
             user_id=credentials.user_id,
+        )
+
+    async def fetch_asset(self, request: AssetRequest) -> httpx.Response:
+        if request.kind == "subtitle":
+            if request.media_source_id is None or request.index is None:
+                raise ValueError("subtitle asset requires source and index")
+            path = (
+                f"/Videos/{quote(request.item_id, safe='')}/"
+                f"{quote(request.media_source_id, safe='')}/Subtitles/{request.index}/Stream.vtt"
+            )
+            return await self._client.gateway.get(
+                path,
+                headers=self._client._headers(
+                    request.credentials.access_token,
+                    request.credentials.user_id,
+                ),
+            )
+        image_type = "".join(part.title() for part in request.kind.split("_"))
+        path = f"/Items/{quote(request.item_id, safe='')}/Images/{image_type}"
+        if request.index is not None:
+            path += f"/{request.index}"
+        params = {
+            key: value
+            for key, value in {
+                "maxWidth": request.max_width,
+                "maxHeight": request.max_height,
+                "quality": request.quality,
+            }.items()
+            if value is not None
+        }
+        return await self._client.gateway.get(
+            path,
+            headers=self._client._headers(
+                request.credentials.access_token,
+                request.credentials.user_id,
+            ),
+            params=params,
+        )
+
+    async def get_intro(
+        self, item_id: str, credentials: ProviderCredentials
+    ) -> IntroSegment | None:
+        response = await self._client.gateway.get(
+            f"/MediaSegments/{quote(item_id, safe='')}",
+            headers=self._client._headers(credentials.access_token, credentials.user_id),
+        )
+        response.raise_for_status()
+        row = next(
+            (
+                item
+                for item in response.json().get("Items", [])
+                if str(item.get("Type", "")).lower() == "intro"
+            ),
+            None,
+        )
+        if row is None:
+            return None
+        return IntroSegment(
+            start_seconds=float(row.get("StartTicks") or 0) / 10_000_000,
+            end_seconds=float(row.get("EndTicks") or 0) / 10_000_000,
         )
 
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan:
