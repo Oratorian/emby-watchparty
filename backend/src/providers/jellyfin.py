@@ -40,7 +40,7 @@ from backend.src.providers.normalization import (
 
 class JellyfinProvider:
     identity = ProviderIdentity(type="jellyfin", display_name="Jellyfin")
-    capabilities = ProviderCapabilities(filter_controls=False)
+    capabilities = ProviderCapabilities(filter_controls=True)
 
     def __init__(self, client: EmbyClient):
         self._client = EmbyClient(
@@ -141,8 +141,63 @@ class JellyfinProvider:
         media_kinds: tuple[str, ...],
         credentials: ProviderCredentials,
     ) -> tuple[dict, ...]:
-        del parent_id, include_kinds, media_kinds, credentials
-        return ()
+        # Jellyfin's dedicated genre/studio controllers support user, parent,
+        # and item-type scoping. They do not accept media type or recursion.
+        del media_kinds
+        params = {
+            key: value
+            for key, value in {
+                "userId": credentials.user_id,
+                "parentId": parent_id,
+                "includeItemTypes": ",".join(
+                    "".join(part.title() for part in kind.split("_")) for kind in include_kinds
+                ),
+                "enableImages": "false",
+            }.items()
+            if value
+        }
+
+        async def catalog(path: str) -> dict:
+            response = await self._client.gateway.get(
+                path,
+                headers=self._client._headers(
+                    credentials.access_token,
+                    credentials.user_id,
+                ),
+                params=params,
+            )
+            response.raise_for_status()
+            return response.json()
+
+        genres, studios = await asyncio.gather(catalog("/Genres"), catalog("/Studios"))
+        controls: list[dict] = [
+            {
+                "id": "playstate",
+                "label": "Playstate",
+                "kind": "select",
+                "values": [
+                    {"value": "any", "label": "Any"},
+                    {"value": "unplayed", "label": "Unplayed"},
+                    {"value": "played", "label": "Played"},
+                    {"value": "resumable", "label": "In progress"},
+                ],
+            },
+            {"id": "favorite", "label": "Favorite", "kind": "toggle", "values": []},
+        ]
+        for control_id, label, payload in (
+            ("genre", "Genre", genres),
+            ("studio", "Studio", studios),
+        ):
+            values = [
+                {"value": str(item["Name"]), "label": str(item["Name"])}
+                for item in payload.get("Items", [])
+                if isinstance(item, dict) and item.get("Name")
+            ]
+            if values:
+                controls.append(
+                    {"id": control_id, "label": label, "kind": "multi", "values": values}
+                )
+        return tuple(controls)
 
     async def search_catalog(self, term: str, limit: int, credentials: ProviderCredentials):
         from backend.src.providers.models import CatalogPage, CatalogScope

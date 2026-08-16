@@ -92,6 +92,27 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             "StartIndex": 0,
         }
 
+    @app.get("/Genres")
+    async def genres(request: Request):
+        state.record(request)
+        return {
+            "Items": [
+                {"Id": "genre-drama", "Name": "Drama", "Type": "Genre"},
+                {"Id": "genre-scifi", "Name": "Science Fiction", "Type": "Genre"},
+            ],
+            "TotalRecordCount": 2,
+            "StartIndex": 0,
+        }
+
+    @app.get("/Studios")
+    async def studios(request: Request):
+        state.record(request)
+        return {
+            "Items": [{"Id": "studio-paramount", "Name": "Paramount", "Type": "Studio"}],
+            "TotalRecordCount": 1,
+            "StartIndex": 0,
+        }
+
     @app.get("/Users/{user_id}/Items")
     async def user_items(user_id: str, request: Request):
         assert user_id

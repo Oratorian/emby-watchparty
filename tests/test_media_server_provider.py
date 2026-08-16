@@ -405,7 +405,7 @@ def test_dev_auto_host_join_uses_provider_authentication(tmp_path) -> None:
 
 @pytest.mark.parametrize(
     ("provider_type", "filter_controls"),
-    [("emby", True), ("jellyfin", False)],
+    [("emby", True), ("jellyfin", True)],
 )
 def test_media_server_info_declares_filter_capability(
     tmp_path, provider_type: str, filter_controls: bool
@@ -706,7 +706,7 @@ def test_jellyfin_v2_upstream_error_names_selected_provider(tmp_path) -> None:
     asyncio.run(exercise())
 
 
-def test_jellyfin_v2_filter_options_hide_unsupported_catalogs_without_scanning(tmp_path) -> None:
+def test_jellyfin_v2_filter_options_use_scoped_catalogs_without_item_scan(tmp_path) -> None:
     fake_state = FakeJellyfinState()
     app = create_app(
         config=_config("jellyfin"),
@@ -730,12 +730,70 @@ def test_jellyfin_v2_filter_options_hide_unsupported_catalogs_without_scanning(t
             )
             before = len(fake_state.requests)
             response = await client.get(
-                "/api/v2/items/filter-options", params={"parent_id": "jellyfin-library-1"}
+                "/api/v2/items/filter-options",
+                params={
+                    "parent_id": "jellyfin-library-1",
+                    "include_kinds": "movie,series",
+                    "media_kinds": "video",
+                },
             )
 
             assert response.status_code == 200
-            assert response.json() == {"controls": []}
-            assert len(fake_state.requests) == before
+            assert response.json() == {
+                "controls": [
+                    {
+                        "id": "playstate",
+                        "label": "Playstate",
+                        "kind": "select",
+                        "values": [
+                            {"value": "any", "label": "Any"},
+                            {"value": "unplayed", "label": "Unplayed"},
+                            {"value": "played", "label": "Played"},
+                            {"value": "resumable", "label": "In progress"},
+                        ],
+                    },
+                    {"id": "favorite", "label": "Favorite", "kind": "toggle", "values": []},
+                    {
+                        "id": "genre",
+                        "label": "Genre",
+                        "kind": "multi",
+                        "values": [
+                            {"value": "Drama", "label": "Drama"},
+                            {"value": "Science Fiction", "label": "Science Fiction"},
+                        ],
+                    },
+                    {
+                        "id": "studio",
+                        "label": "Studio",
+                        "kind": "multi",
+                        "values": [{"value": "Paramount", "label": "Paramount"}],
+                    },
+                ]
+            }
+            catalog_requests = fake_state.requests[before:]
+            assert catalog_requests == [
+                {
+                    "method": "GET",
+                    "path": "/Genres",
+                    "query": {
+                        "userId": "jellyfin-user-1",
+                        "parentId": "jellyfin-library-1",
+                        "includeItemTypes": "Movie,Series",
+                        "enableImages": "false",
+                    },
+                },
+                {
+                    "method": "GET",
+                    "path": "/Studios",
+                    "query": {
+                        "userId": "jellyfin-user-1",
+                        "parentId": "jellyfin-library-1",
+                        "includeItemTypes": "Movie,Series",
+                        "enableImages": "false",
+                    },
+                },
+            ]
+            assert all(request["path"] != "/Items" for request in catalog_requests)
 
     asyncio.run(exercise())
 
