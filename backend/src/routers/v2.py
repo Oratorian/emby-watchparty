@@ -32,6 +32,7 @@ from backend.src.providers.models import (
     ProviderCredentials,
 )
 from backend.src.routers.auth import api_auth_status, api_login, api_logout
+from backend.src.schemas import FilterOptionsResponse
 from backend.src.v2_schemas import (
     ActionResultV2,
     AuthStatusV2,
@@ -177,6 +178,32 @@ async def item_prefixes(
     )
     prefixes = await provider.query_prefixes(_catalog_query(body), credentials)
     return PrefixesV2(prefixes=list(prefixes))
+
+
+@router.get(
+    "/items/filter-options",
+    response_model=FilterOptionsResponse,
+    responses=PARTY_UNLOCKED_RESPONSES,
+)
+async def filter_options(
+    parent_id: str | None = None,
+    include_kinds: str | None = None,
+    media_kinds: str | None = None,
+    party_session: PartySession = Depends(require_party_unlocked),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    controls = await provider.get_filter_controls(
+        parent_id,
+        tuple(filter(None, (include_kinds or "").split(","))),
+        tuple(filter(None, (media_kinds or "").split(","))),
+        credentials,
+    )
+    return FilterOptionsResponse(controls=list(controls))
 
 
 @router.get(

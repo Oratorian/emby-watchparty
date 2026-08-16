@@ -288,6 +288,40 @@ def test_jellyfin_v2_prefixes_use_provider_prefix_endpoint(tmp_path) -> None:
     assert any(request["path"] == "/Items/Prefixes" for request in fake_state.requests)
 
 
+def test_jellyfin_v2_filter_options_hide_unsupported_catalogs_without_scanning(tmp_path) -> None:
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+            before = len(fake_state.requests)
+            response = await client.get(
+                "/api/v2/items/filter-options", params={"parent_id": "jellyfin-library-1"}
+            )
+
+            assert response.status_code == 200
+            assert response.json() == {"controls": []}
+            assert len(fake_state.requests) == before
+
+    asyncio.run(exercise())
+
+
 def test_jellyfin_v2_item_details_do_not_leak_provider_json(tmp_path) -> None:
     fake_state = FakeJellyfinState()
     app = create_app(

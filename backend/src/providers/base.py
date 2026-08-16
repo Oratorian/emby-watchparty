@@ -46,6 +46,14 @@ class MediaServerProvider(Protocol):
         self, query: CatalogQuery, credentials: ProviderCredentials
     ) -> tuple[str, ...]: ...
 
+    async def get_filter_controls(
+        self,
+        parent_id: str | None,
+        include_kinds: tuple[str, ...],
+        media_kinds: tuple[str, ...],
+        credentials: ProviderCredentials,
+    ) -> tuple[dict, ...]: ...
+
     async def search_catalog(
         self, term: str, limit: int, credentials: ProviderCredentials
     ) -> MediaPage: ...

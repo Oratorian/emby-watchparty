@@ -98,6 +98,16 @@ class JellyfinProvider:
         )
         return tuple(str(row["Name"]) for row in rows if isinstance(row, dict) and row.get("Name"))
 
+    async def get_filter_controls(
+        self,
+        parent_id: str | None,
+        include_kinds: tuple[str, ...],
+        media_kinds: tuple[str, ...],
+        credentials: ProviderCredentials,
+    ) -> tuple[dict, ...]:
+        del parent_id, include_kinds, media_kinds, credentials
+        return ()
+
     async def search_catalog(self, term: str, limit: int, credentials: ProviderCredentials):
         from backend.src.providers.models import CatalogPage, CatalogScope
 

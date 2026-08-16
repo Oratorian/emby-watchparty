@@ -100,6 +100,68 @@ class EmbyProvider:
         )
         return tuple(str(row["Name"]) for row in rows if isinstance(row, dict) and row.get("Name"))
 
+    async def get_filter_controls(
+        self,
+        parent_id: str | None,
+        include_kinds: tuple[str, ...],
+        media_kinds: tuple[str, ...],
+        credentials: ProviderCredentials,
+    ) -> tuple[dict, ...]:
+        catalogs = await self._client.get_filter_options(
+            parent_id=parent_id,
+            include_item_types=",".join(
+                "".join(part.title() for part in kind.split("_")) for kind in include_kinds
+            )
+            or None,
+            media_types=",".join(kind.title() for kind in media_kinds) or None,
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+        )
+        controls: list[dict] = [
+            {
+                "id": "playstate",
+                "label": "Playstate",
+                "kind": "select",
+                "values": [
+                    {"value": "any", "label": "Any"},
+                    {"value": "unplayed", "label": "Unplayed"},
+                    {"value": "played", "label": "Played"},
+                    {"value": "resumable", "label": "In progress"},
+                ],
+            },
+            {"id": "favorite", "label": "Favorite", "kind": "toggle", "values": []},
+            {"id": "duplicates", "label": "Duplicates", "kind": "toggle", "values": []},
+        ]
+        labels = {
+            "genre": "Genre",
+            "studio": "Studio",
+            "tag": "Tag",
+            "year": "Year",
+            "official_rating": "Parental rating",
+            "container": "Container",
+            "video_codec": "Video codec",
+            "audio_codec": "Audio codec",
+            "audio_layout": "Audio layout",
+            "subtitle_codec": "Subtitle codec",
+        }
+        uppercase = {"container", "video_codec", "audio_codec", "audio_layout", "subtitle_codec"}
+        for control_id, label in labels.items():
+            values = [
+                {
+                    "value": str(item["Name"]),
+                    "label": str(item["Name"]).upper()
+                    if control_id in uppercase
+                    else str(item["Name"]),
+                }
+                for item in (catalogs.get(control_id) or {}).get("Items", [])
+                if item.get("Name")
+            ]
+            if values:
+                controls.append(
+                    {"id": control_id, "label": label, "kind": "multi", "values": values}
+                )
+        return tuple(controls)
+
     async def search_catalog(self, term: str, limit: int, credentials: ProviderCredentials):
         from backend.src.providers.models import CatalogPage, CatalogScope
 
