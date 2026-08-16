@@ -240,6 +240,7 @@ def test_jellyfin_opaque_segment_forwards_byte_range(tmp_path) -> None:
             )
             token = app.state.token_manager.generate(party_id, sid)
             assert token is not None
+
             master = await client.get(f"/hls/{plan.stream_id}/master.m3u8?token={token}")
             nested_url = next(
                 line for line in master.text.splitlines() if line and not line.startswith("#")
@@ -329,6 +330,12 @@ def test_jellyfin_opaque_segment_supports_head_without_body(tmp_path) -> None:
             )
             token = app.state.token_manager.generate(party_id, sid)
             assert token is not None
+
+            master_head = await client.head(f"/hls/{plan.stream_id}/master.m3u8?token={token}")
+            assert master_head.status_code == 200
+            assert master_head.content == b""
+            assert master_head.headers["x-content-type-options"] == "nosniff"
+
             master = await client.get(f"/hls/{plan.stream_id}/master.m3u8?token={token}")
             nested_url = next(
                 line for line in master.text.splitlines() if line and not line.startswith("#")
@@ -347,6 +354,12 @@ def test_jellyfin_opaque_segment_supports_head_without_body(tmp_path) -> None:
             assert response.headers["x-content-type-options"] == "nosniff"
 
     asyncio.run(exercise())
+    master_request = next(
+        row
+        for row in fake_state.requests
+        if row["path"].endswith("/master.m3u8") and row["method"] == "HEAD"
+    )
+    assert master_request["query"]["PlaySessionId"] == "jellyfin-play-session-1"
     request = next(
         row
         for row in fake_state.requests

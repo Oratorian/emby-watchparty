@@ -228,7 +228,7 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             ],
         }
 
-    @app.get("/Videos/{item_id}/master.m3u8")
+    @app.api_route("/Videos/{item_id}/master.m3u8", methods=["GET", "HEAD"])
     async def master_playlist(item_id: str, request: Request):
         assert item_id
         state.record(request)

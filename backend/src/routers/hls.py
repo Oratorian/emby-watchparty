@@ -277,8 +277,9 @@ def _rewrite_playlist(
     return content
 
 
-@router.get(
+@router.api_route(
     "/{item_id}/master.m3u8",
+    methods=["GET", "HEAD"],
     responses={
         200: {
             "content": {"application/vnd.apple.mpegurl": {}},
@@ -340,7 +341,11 @@ async def proxy_hls_master(
                     status_code=401,
                     media_type="application/json",
                 )
-            upstream = await media_server.fetch_hls_resource(plan, plan.master)
+            upstream = await media_server.fetch_hls_resource(
+                plan,
+                plan.master,
+                head=request.method == "HEAD",
+            )
             if upstream.is_redirect:
                 logger.warning("Media server redirected an HLS master request; not followed")
                 return Response(
@@ -349,6 +354,11 @@ async def proxy_hls_master(
                     media_type="application/json",
                 )
             upstream.raise_for_status()
+            if request.method == "HEAD":
+                headers = {"X-Content-Type-Options": "nosniff"}
+                if content_length := upstream.headers.get("Content-Length"):
+                    headers["Content-Length"] = content_length
+                return Response(status_code=upstream.status_code, headers=headers)
             playlist = hls_registry.rewrite_playlist(
                 plan,
                 plan.master,
