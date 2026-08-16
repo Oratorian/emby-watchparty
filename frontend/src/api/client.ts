@@ -83,11 +83,11 @@ function responseError(resp: Response, body: JsonValue | undefined): ApiError {
 export interface SuccessResponse { success?: boolean; message?: string }
 export interface AuthResponse extends SuccessResponse {
   authenticated?: boolean
-  username?: string
+  username?: string | null
   is_admin?: boolean
   is_host?: boolean
   require_login?: boolean
-  party_id?: string
+  party_id?: string | null
   host_username?: string | null
   party_unlocked?: boolean
   media_server_type?: 'emby' | 'jellyfin'
