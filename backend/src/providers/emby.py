@@ -138,6 +138,14 @@ class EmbyProvider:
             },
             {"id": "favorite", "label": "Favorite", "kind": "toggle", "values": []},
             {"id": "duplicates", "label": "Duplicates", "kind": "toggle", "values": []},
+            {
+                "id": "community_rating",
+                "label": "Community rating",
+                "kind": "select",
+                "values": [
+                    {"value": str(rating), "label": f"{rating}+"} for rating in range(5, 10)
+                ],
+            },
         ]
         labels = {
             "genre": "Genre",

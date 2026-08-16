@@ -253,7 +253,7 @@ export interface LibraryQueryRequest {
     direction: 'Ascending' | 'Descending'
   }
   filters: CatalogFiltersV2 & Record<
-    string, string | string[] | number[] | boolean | null | undefined
+    string, string | number | string[] | number[] | boolean | null | undefined
   >
   search_term?: string | null
   anchor_prefix?: string | null

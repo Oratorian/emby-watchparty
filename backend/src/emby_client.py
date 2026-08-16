@@ -361,6 +361,7 @@ class EmbyClient:
             "IncludeItemTypes": include_item_types,
             "MediaTypes": ",".join(scope["media_types"]),
             "SearchTerm": query.get("search_term"),
+            "MinCommunityRating": filters.get("community_rating_min"),
         }
         params.update({key: value for key, value in scalar_values.items() if value})
         items_path = "/emby/Items" if root_items else f"/emby/Users/{user_id}/Items"

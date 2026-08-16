@@ -69,6 +69,10 @@ describe('LibraryBrowser search routing', () => {
           id: 'official_rating', label: 'Parental rating', kind: 'multi',
           values: [{ value: 'PG-13', label: 'PG-13' }],
         },
+        {
+          id: 'community_rating', label: 'Community rating', kind: 'select',
+          values: [{ value: '7', label: '7+' }],
+        },
       ],
     })
     vi.spyOn(api, 'itemPrefixes').mockResolvedValue({ Prefixes: [] })
@@ -92,6 +96,7 @@ describe('LibraryBrowser search routing', () => {
     expect(filterPanel).toContain('Studio')
     expect(filterPanel).toContain('Year')
     expect(filterPanel).toContain('Parental rating')
+    expect(filterPanel).toContain('Community rating')
     expect(filterPanel).not.toContain('Tags')
     expect(filterPanel).not.toContain('Codec')
     expect(wrapper.get('button.filter-toggle').text()).not.toContain('active')
@@ -117,6 +122,7 @@ describe('LibraryBrowser search routing', () => {
     await wrapper.get('button[aria-label="Apply year filter"]').trigger('click')
     await wrapper.get('button[aria-label="Open Parental rating filter"]').trigger('click')
     await wrapper.get('input[value="PG-13"]').setValue(true)
+    await wrapper.get('select[aria-label="Community rating"]').setValue('7')
     await flushPromises()
 
     expect(queryItems).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -127,6 +133,7 @@ describe('LibraryBrowser search routing', () => {
         studios: ['Paramount'],
         years: [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021],
         official_ratings: ['PG-13'],
+        community_rating_min: 7,
       },
     }), expect.any(AbortSignal))
     expect(JSON.parse(localStorage.getItem(

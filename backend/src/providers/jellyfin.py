@@ -117,6 +117,7 @@ class JellyfinProvider:
                 person_ids=filters.person_ids,
                 years=filters.years,
                 official_ratings=filters.official_ratings,
+                community_rating_min=filters.community_rating_min,
             ),
         )
         payload = await self._client.query_items(
@@ -234,6 +235,14 @@ class JellyfinProvider:
                         "NR",
                         "Unrated",
                     )
+                ],
+            },
+            {
+                "id": "community_rating",
+                "label": "Community rating",
+                "kind": "select",
+                "values": [
+                    {"value": str(rating), "label": f"{rating}+"} for rating in range(5, 10)
                 ],
             },
         ]

@@ -26,6 +26,7 @@ from backend.src.providers.models import (
 )
 from tests.support.asgi import asgi_client
 from tests.support.credentials import REVOKED_ACCESS_TOKEN, TEST_JELLYFIN_ACCESS_TOKEN
+from tests.support.fake_emby import FakeEmbyState, create_fake_emby_app
 from tests.support.fake_jellyfin import FakeJellyfinState, create_fake_jellyfin_app
 
 
@@ -562,6 +563,7 @@ def test_jellyfin_v2_supported_filters_use_root_items_and_server_side_scope(
                         "person_ids": ["person-1", "person-2"],
                         "years": [2020, 2024],
                         "official_ratings": ["PG", "PG-13"],
+                        "community_rating_min": 7.5,
                         "tags": ["must-not-reach-jellyfin"],
                     },
                 },
@@ -626,8 +628,59 @@ def test_jellyfin_v2_supported_filters_use_root_items_and_server_side_scope(
             "PersonIds": "person-1,person-2",
             "Years": "2020,2024",
             "OfficialRatings": "PG|PG-13",
+            "MinCommunityRating": "7.5",
         },
     }
+
+
+def test_emby_v2_community_rating_filter_uses_server_side_minimum(tmp_path) -> None:
+    fake_state = FakeEmbyState()
+    app = create_app(
+        config=_config("emby"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_emby_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            party_id = (
+                await client.post(
+                    "/api/party/create",
+                    json={"client_id": "client-1", "display_name": "Alice"},
+                )
+            ).json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            options = await client.get("/api/v2/items/filter-options")
+            response = await client.post(
+                "/api/v2/items/query",
+                json={
+                    "scope": {"include_kinds": ["movie"], "recursive": True},
+                    "filters": {"community_rating_min": 7.5},
+                },
+            )
+
+            assert options.status_code == 200
+            community = next(
+                control
+                for control in options.json()["controls"]
+                if control["id"] == "community_rating"
+            )
+            assert community["label"] == "Community rating"
+            assert response.status_code == 200
+
+    asyncio.run(exercise())
+    item_request = next(
+        row for row in reversed(fake_state.requests) if row["path"] == "/emby/Users/user-1/Items"
+    )
+    assert dict(item_request["query"])["MinCommunityRating"] == "7.5"
 
 
 def test_jellyfin_v2_prefixes_probe_supported_item_queries(tmp_path) -> None:
@@ -765,6 +818,7 @@ def test_jellyfin_v2_filter_options_use_scoped_catalogs_without_item_scan(tmp_pa
                 "favorite",
                 "year",
                 "official_rating",
+                "community_rating",
                 "genre",
                 "studio",
             ]
@@ -790,6 +844,18 @@ def test_jellyfin_v2_filter_options_use_scoped_catalogs_without_item_scan(tmp_pa
                 "NR",
                 "Unrated",
             ]
+            assert by_id["community_rating"] == {
+                "id": "community_rating",
+                "label": "Community rating",
+                "kind": "select",
+                "values": [
+                    {"value": "5", "label": "5+"},
+                    {"value": "6", "label": "6+"},
+                    {"value": "7", "label": "7+"},
+                    {"value": "8", "label": "8+"},
+                    {"value": "9", "label": "9+"},
+                ],
+            }
             assert [value["value"] for value in by_id["genre"]["values"]] == [
                 "Drama",
                 "Science Fiction",
@@ -860,6 +926,7 @@ def test_jellyfin_v2_filter_options_omit_only_failed_dynamic_catalog(tmp_path) -
                 "favorite",
                 "year",
                 "official_rating",
+                "community_rating",
                 "studio",
             ]
             serialized = response.text
