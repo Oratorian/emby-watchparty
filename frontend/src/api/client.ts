@@ -12,6 +12,7 @@ import { withPrefix } from '@/utils/appPrefix'
 import type {
   CatalogFiltersV2,
   CatalogQueryV2,
+  GroupedSearchV2,
   IntroSegmentV2,
   MediaItemDetailsV2,
   MediaItemV2,
@@ -528,9 +529,24 @@ export const api = {
   search: async (q: string, signal?: AbortSignal) => projectMediaPage(
     await apiFetch<MediaPageV2>(`/api/v2/items/search?q=${encodeURIComponent(q)}`, { signal }),
   ),
-  groupedSearch: (q: string, signal?: AbortSignal) => apiFetch<GroupedSearchResponse>(
-    `/api/search/grouped?q=${encodeURIComponent(q)}`, { signal },
-  ),
+  groupedSearch: async (q: string, signal?: AbortSignal): Promise<GroupedSearchResponse> => {
+    const response = await apiFetch<GroupedSearchV2>(
+      `/api/v2/items/search/groups?q=${encodeURIComponent(q)}`, { signal },
+    )
+    const groupIds = new Set<SearchGroup['id']>([
+      'movies', 'series', 'episodes', 'people', 'collections', 'other',
+    ])
+    return {
+      query: response.query,
+      groups: response.groups.map(group => ({
+        id: groupIds.has(group.id as SearchGroup['id'])
+          ? group.id as SearchGroup['id']
+          : 'other',
+        label: group.label,
+        items: group.items.map(projectMediaItem),
+      })),
+    }
+  },
   itemDetails: async (id: string, signal?: AbortSignal) => projectMediaDetails(
     await apiFetch<MediaItemDetailsV2>(`/api/v2/items/${id}`, { signal }),
   ),

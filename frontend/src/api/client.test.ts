@@ -309,6 +309,20 @@ describe('apiFetch', () => {
     )
   })
 
+  it('loads grouped normalized search through v2', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      query: 'Arrival', groups: [{ id: 'movies', label: 'Movies', items: [] }],
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.groupedSearch('Arrival')).resolves.toEqual({
+      query: 'Arrival', groups: [{ id: 'movies', label: 'Movies', items: [] }],
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v2/items/search/groups?q=Arrival', expect.any(Object),
+    )
+  })
+
   it('rejects non-success JSON responses with a typed error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ detail: 'Party has no host' }),
