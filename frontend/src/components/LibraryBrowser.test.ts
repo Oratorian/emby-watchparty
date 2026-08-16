@@ -12,6 +12,112 @@ afterEach(() => {
 })
 
 describe('LibraryBrowser search routing', () => {
+  it('shows and applies only Jellyfin-supported filter controls', async () => {
+    vi.stubGlobal('IntersectionObserver', class {
+      observe() {}
+      disconnect() {}
+    })
+    localStorage.setItem('emby-watchparty-library-filters:library-1', JSON.stringify({
+      filters: { tag: ['Hidden'], year: ['2024'] },
+      sortField: 'SortName',
+      sortDirection: 'Ascending',
+    }))
+    vi.spyOn(api, 'mediaServerInfo').mockResolvedValue({
+      media_server_type: 'jellyfin',
+      display_name: 'Jellyfin',
+      capabilities: { filter_controls: true },
+    })
+    vi.spyOn(api, 'libraries').mockResolvedValue({
+      Items: [{
+        Id: 'library-1', Name: 'Movies', Type: 'CollectionFolder', CollectionType: 'movies',
+      }],
+      TotalRecordCount: 1,
+    })
+    const items = vi.spyOn(api, 'items').mockResolvedValue({
+      Items: [{ Id: 'movie-1', Name: 'Arrival', Type: 'Movie' }],
+      TotalRecordCount: 1,
+    })
+    const queryItems = vi.spyOn(api, 'queryItems').mockResolvedValue({
+      Items: [{ Id: 'movie-1', Name: 'Arrival', Type: 'Movie' }],
+      TotalRecordCount: 1,
+    })
+    vi.spyOn(api, 'filterOptions').mockResolvedValue({
+      controls: [
+        {
+          id: 'playstate', label: 'Playstate', kind: 'select',
+          values: [
+            { value: 'any', label: 'Any' },
+            { value: 'unplayed', label: 'Unplayed' },
+            { value: 'played', label: 'Played' },
+            { value: 'resumable', label: 'In progress' },
+          ],
+        },
+        { id: 'favorite', label: 'Favorite', kind: 'toggle', values: [] },
+        {
+          id: 'genre', label: 'Genre', kind: 'multi',
+          values: [{ value: 'Drama', label: 'Drama' }],
+        },
+        {
+          id: 'studio', label: 'Studio', kind: 'multi',
+          values: [{ value: 'Paramount', label: 'Paramount' }],
+        },
+      ],
+    })
+    vi.spyOn(api, 'itemPrefixes').mockResolvedValue({ Prefixes: [] })
+    vi.spyOn(api, 'queryPrefixes').mockResolvedValue({ Prefixes: [] })
+
+    const wrapper = mount(LibraryBrowser, {
+      global: { plugins: [createPinia()] },
+    })
+    await flushPromises()
+    await wrapper.get('[aria-label="Open Movies"]').trigger('click')
+    await flushPromises()
+
+    expect(items).toHaveBeenCalled()
+    expect(queryItems).not.toHaveBeenCalled()
+    await wrapper.get('button.filter-toggle').trigger('click')
+    await wrapper.get('button.advanced-toggle').trigger('click')
+    const filterPanel = wrapper.get('.filter-panel').text()
+    expect(filterPanel).toContain('Playstate')
+    expect(filterPanel).toContain('Favorite')
+    expect(filterPanel).toContain('Genre')
+    expect(filterPanel).toContain('Studio')
+    expect(filterPanel).not.toContain('Tags')
+    expect(filterPanel).not.toContain('Year')
+    expect(filterPanel).not.toContain('Codec')
+    expect(wrapper.get('button.filter-toggle').text()).not.toContain('active')
+
+    await wrapper.get('select[aria-label="Playstate"]').setValue('unplayed')
+    await flushPromises()
+    expect(queryItems).toHaveBeenLastCalledWith(expect.objectContaining({
+      filters: { playstate: 'unplayed' },
+    }), expect.any(AbortSignal))
+
+    const favorite = wrapper.findAll('button.filter-choice')
+      .find(button => button.text().includes('Favorite'))
+    expect(favorite).toBeDefined()
+    await favorite!.trigger('click')
+    await wrapper.get('button[aria-label="Open Genre filter"]').trigger('click')
+    await wrapper.get('input[value="Drama"]').setValue(true)
+    await wrapper.get('button[aria-label="Open Studio filter"]').trigger('click')
+    await wrapper.get('input[value="Paramount"]').setValue(true)
+    await flushPromises()
+
+    expect(queryItems).toHaveBeenLastCalledWith(expect.objectContaining({
+      filters: {
+        playstate: 'unplayed',
+        favorite: true,
+        genres: ['Drama'],
+        studios: ['Paramount'],
+      },
+    }), expect.any(AbortSignal))
+    expect(JSON.parse(localStorage.getItem(
+      'emby-watchparty-library-filters:library-1',
+    ) || '{}').filters).toEqual(expect.objectContaining({
+      tag: ['Hidden'], year: ['2024'],
+    }))
+  })
+
   it('keeps saved filters dormant when the selected provider does not support them', async () => {
     vi.stubGlobal('IntersectionObserver', class {
       observe() {}

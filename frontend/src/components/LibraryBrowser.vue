@@ -412,6 +412,7 @@ async function configureFilters(parentId: string) {
   const changedParent = configuredParentId !== parentId
   if (changedParent) {
     configuredParentId = parentId
+    filterControls.value = []
     try {
       const saved = JSON.parse(localStorage.getItem(filterStorageKey(parentId)) || '{}')
       filterState.value = saved.filters && typeof saved.filters === 'object' ? saved.filters : {}
@@ -437,18 +438,17 @@ async function configureFilters(parentId: string) {
   // saved filter kept filtering the grid with no chips, no active count and no
   // "Reset All" to clear it.
   const myToken = navToken
-  api.filterOptions({ parentId }, navigationSignal())
-    .then((response) => {
-      if (configuredParentId === parentId) filterControls.value = response.controls
-    })
-    .catch((error) => {
-      if (myToken !== navToken || error?.name === 'AbortError') {
-        // Superseded, not broken. Clear the memo so the next visit refetches.
-        if (configuredParentId === parentId) configuredParentId = null
-        return
-      }
-      if (configuredParentId === parentId) filterControls.value = []
-    })
+  try {
+    const response = await api.filterOptions({ parentId }, navigationSignal())
+    if (configuredParentId === parentId) filterControls.value = response.controls
+  } catch (error: unknown) {
+    if (myToken !== navToken || (error instanceof Error && error.name === 'AbortError')) {
+      // Superseded, not broken. Clear the memo so the next visit refetches.
+      if (configuredParentId === parentId) configuredParentId = null
+      return
+    }
+    if (configuredParentId === parentId) filterControls.value = []
+  }
 }
 
 function persistFilters() {
@@ -480,7 +480,9 @@ function applySort() {
 function queryFilters(): LibraryQueryRequest['filters'] {
   const result: LibraryQueryRequest['filters'] = {}
   if (filtersEnabled.value) {
+    const supportedIds = new Set(filterControls.value.map(control => control.id))
     for (const [id, value] of Object.entries(filterState.value)) {
+      if (!supportedIds.has(id)) continue
       const target = FILTER_FIELDS[id] || id
       if (id === 'favorite' || id === 'duplicates' || id === 'is_3d') {
         result[target] = value === 'true'
@@ -735,7 +737,7 @@ async function fetchPrefixes(parentId: string) {
     return
   }
   try {
-    const data = (filtersEnabled.value && Object.keys(filterState.value).length)
+    const data = Object.keys(queryFilters()).length
       || selectedPerson.value
       ? await api.queryPrefixes({
           scope: { parent_id: parentId, include_item_types: [], media_types: [], recursive: false },
@@ -797,7 +799,7 @@ async function fetchItems(
       sortMode: alphabeticalMode.value ? 'alphabetical' : 'default',
     }
     if (anchorPrefix) params.anchorPrefix = anchorPrefix
-    const useQuery = (filtersEnabled.value && Object.keys(filterState.value).length > 0)
+    const useQuery = Object.keys(queryFilters()).length > 0
       || selectedPerson.value !== null
       || sortField.value !== 'SortName'
       || sortDirection.value !== 'Ascending'
