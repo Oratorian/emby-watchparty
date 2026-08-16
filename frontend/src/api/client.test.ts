@@ -133,6 +133,18 @@ describe('apiFetch', () => {
     )
   })
 
+  it('loads season-scoped normalized episodes from v2', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ items: [], total: 0, start: 0 }), { status: 200 },
+    ))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.seriesEpisodes('series-1', 'season-2')).resolves.toEqual({ items: [] })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v2/items/series-1/episodes?season_id=season-2', expect.any(Object),
+    )
+  })
+
   it('posts typed library filters without encoding them into a URL', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ Items: [], TotalRecordCount: 0 }),

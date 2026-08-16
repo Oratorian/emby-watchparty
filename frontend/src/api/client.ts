@@ -465,9 +465,12 @@ export const api = {
       await apiFetch<MediaPageV2>(`/api/v2/items/${id}/seasons`, { signal }),
     ).Items,
   }),
-  seriesEpisodes: (id: string, seasonId?: string, signal?: AbortSignal) => {
-    const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
-    return apiFetch<ItemChildrenResponse>(`/api/item/${id}/episodes${query}`, { signal })
+  seriesEpisodes: async (
+    id: string, seasonId?: string, signal?: AbortSignal,
+  ): Promise<ItemChildrenResponse> => {
+    const query = seasonId ? `?season_id=${encodeURIComponent(seasonId)}` : ''
+    const page = await apiFetch<MediaPageV2>(`/api/v2/items/${id}/episodes${query}`, { signal })
+    return { items: projectMediaPage(page).Items }
   },
   setFavorite: (id: string, favorite: boolean, signal?: AbortSignal) =>
     apiFetch<{ success: boolean; favorite: boolean }>(`/api/item/${id}/favorite`, {
