@@ -24,7 +24,7 @@ from backend.src.providers.models import (
     UnsafeProviderResourceError,
 )
 from tests.support.asgi import asgi_client
-from tests.support.credentials import TEST_JELLYFIN_ACCESS_TOKEN
+from tests.support.credentials import REVOKED_ACCESS_TOKEN, TEST_JELLYFIN_ACCESS_TOKEN
 from tests.support.fake_jellyfin import FakeJellyfinState, create_fake_jellyfin_app
 
 
@@ -105,6 +105,25 @@ def test_jellyfin_provider_authenticates_and_verifies_normalized_users() -> None
             )
             assert user is not None
             assert await provider.verify_user(user.credentials) is True
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("provider_type", ["emby", "jellyfin"])
+def test_provider_rejects_revoked_user_token(provider_type: str) -> None:
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda _request: httpx.Response(401))
+        ) as client:
+            config = _config(provider_type)
+            gateway = MediaServerGateway(client, config.MEDIA_SERVER_URL, logging.getLogger("test"))
+            provider = create_provider(config, logging.getLogger("test"), gateway)
+
+            verified = await provider.verify_user(
+                ProviderCredentials(access_token=REVOKED_ACCESS_TOKEN, user_id="user-1")
+            )
+
+            assert verified is False
 
     asyncio.run(exercise())
 
