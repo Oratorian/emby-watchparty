@@ -24,6 +24,33 @@ test('@jellyfin-real login browse play seek reconnect stop', async ({ page }) =>
   await page.getByPlaceholder('Jellyfin password').fill('password')
   await page.getByRole('button', { name: 'Become Host', exact: true }).click()
   await page.getByText('Movies', { exact: true }).click()
+  await expect(page.getByText('Synthetic HLS', { exact: true })).toBeVisible()
+  await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: /^Filters/ }).click()
+  await page.getByLabel('Playstate').selectOption('played')
+  await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Reset All', exact: true }).click()
+  await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: /Favorite/ }).click()
+  await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Reset All', exact: true }).click()
+  await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Open Genre filter', exact: true }).click()
+  await page.getByLabel('Journey Genre', { exact: true }).check()
+  await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Reset All', exact: true }).click()
+  await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'More filters', exact: false }).click()
+  await page.getByRole('button', { name: 'Open Studio filter', exact: true }).click()
+  await page.getByLabel('Journey Studio', { exact: true }).check()
+  await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Reset All', exact: true }).click()
+  await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
+
   await page.getByText('Synthetic HLS', { exact: true }).click()
   await page.getByRole('button', { name: 'Play', exact: true }).click()
   await page.getByRole('button', { name: 'Start watch party', exact: true }).click()

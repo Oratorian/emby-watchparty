@@ -158,6 +158,28 @@ def start(args: argparse.Namespace) -> None:
         "-y",
         str(video),
     )
+    other_video = media / "Other Movie.mp4"
+    shutil.copyfile(video, other_video)
+    (media / "Synthetic HLS.nfo").write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<movie>
+  <title>Synthetic HLS</title>
+  <genre>Journey Genre</genre>
+  <studio>Journey Studio</studio>
+</movie>
+""",
+        encoding="utf-8",
+    )
+    (media / "Other Movie.nfo").write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<movie>
+  <title>Other Movie</title>
+  <genre>Other Genre</genre>
+  <studio>Other Studio</studio>
+</movie>
+""",
+        encoding="utf-8",
+    )
     _run("docker", "network", "create", args.network)
     _run(
         "docker",
@@ -199,14 +221,46 @@ def start(args: argparse.Namespace) -> None:
     if status not in {200, 204}:
         raise RuntimeError(f"Jellyfin library creation failed ({status})")
     deadline = time.monotonic() + 180
+    synthetic_item: dict | None = None
     while time.monotonic() < deadline:
         item_query = urllib.parse.urlencode({"Recursive": "true", "IncludeItemTypes": "Movie"})
         status, payload = _request(f"{base}/Users/{user_id}/Items?{item_query}", token=token)
-        if status == 200 and isinstance(payload, dict) and payload.get("Items"):
-            break
+        items = payload.get("Items") if isinstance(payload, dict) else None
+        if status == 200 and isinstance(items, list) and len(items) >= 2:
+            synthetic_item = next(
+                (
+                    item
+                    for item in items
+                    if isinstance(item, dict) and item.get("Name") == "Synthetic HLS"
+                ),
+                None,
+            )
+            if synthetic_item:
+                detail_status, details = _request(
+                    f"{base}/Users/{user_id}/Items/{synthetic_item['Id']}", token=token
+                )
+                if (
+                    detail_status == 200
+                    and isinstance(details, dict)
+                    and "Journey Genre" in details.get("Genres", [])
+                    and any(
+                        studio.get("Name") == "Journey Studio"
+                        for studio in details.get("Studios", [])
+                        if isinstance(studio, dict)
+                    )
+                ):
+                    break
         time.sleep(3)
     else:
-        raise RuntimeError("Jellyfin library scan did not discover synthetic media")
+        raise RuntimeError("Jellyfin library scan did not discover scoped-filter fixtures")
+    item_id = str(synthetic_item["Id"])
+    for path in (
+        f"/Users/{user_id}/FavoriteItems/{item_id}",
+        f"/Users/{user_id}/PlayedItems/{item_id}",
+    ):
+        status, _ = _request(f"{base}{path}", method="POST", token=token)
+        if status not in {200, 204}:
+            raise RuntimeError(f"Jellyfin user-state fixture failed ({status})")
     env_file = work / "app.env"
     env_file.write_text(
         "\n".join(
