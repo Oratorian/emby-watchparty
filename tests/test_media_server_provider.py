@@ -386,6 +386,40 @@ def test_jellyfin_v2_item_sections_are_normalized(tmp_path) -> None:
     asyncio.run(exercise())
 
 
+def test_jellyfin_catalog_projects_through_legacy_v1_contracts(tmp_path) -> None:
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app()),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            libraries = await client.get("/api/libraries")
+            items = await client.get("/api/items", params={"parentId": "jellyfin-library-1"})
+            details = await client.get("/api/item/movie-1")
+
+            assert libraries.json()["Items"][0]["Id"] == "jellyfin-library-1"
+            assert items.json()["Items"][0]["Id"] == "movie-1"
+            assert details.json()["Id"] == "movie-1"
+            assert details.json()["Genres"] == ["Drama", "Science Fiction"]
+
+    asyncio.run(exercise())
+
+
 def test_jellyfin_v2_item_details_do_not_leak_provider_json(tmp_path) -> None:
     fake_state = FakeJellyfinState()
     app = create_app(
