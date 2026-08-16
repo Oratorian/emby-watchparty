@@ -166,6 +166,16 @@ class EmbyProvider:
             user_id=credentials.user_id,
         )
 
+    async def add_playlist_item(
+        self, playlist_id: str, item_id: str, credentials: ProviderCredentials
+    ) -> None:
+        await self._client.add_to_playlist(
+            playlist_id,
+            item_id,
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+        )
+
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan:
         from backend.src.quality import resolve_quality
         from backend.src.stream_builder import StreamBuilder

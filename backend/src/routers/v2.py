@@ -27,6 +27,7 @@ from backend.src.providers.models import (
 )
 from backend.src.routers.auth import api_login
 from backend.src.v2_schemas import (
+    ActionResultV2,
     CatalogQueryV2,
     FavoriteMutationV2,
     FavoriteResultV2,
@@ -39,6 +40,7 @@ from backend.src.v2_schemas import (
     PlayedResultV2,
     PlaylistCreatedV2,
     PlaylistCreateV2,
+    PlaylistItemAddV2,
 )
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
@@ -277,3 +279,23 @@ async def create_playlist(
     )
     playlist_id = await provider.create_playlist(body.name, credentials)
     return PlaylistCreatedV2(id=playlist_id, name=body.name)
+
+
+@router.post(
+    "/playlists/{playlist_id}/items",
+    response_model=ActionResultV2,
+    responses=PARTY_HOST_RESPONSES,
+)
+async def add_playlist_item(
+    playlist_id: str,
+    body: PlaylistItemAddV2,
+    party_session: PartySession = Depends(require_party_host),
+    provider=Depends(get_media_server),
+):
+    party = party_session.party
+    credentials = ProviderCredentials(
+        access_token=party.host_access_token or "",
+        user_id=party.host_user_id or "",
+    )
+    await provider.add_playlist_item(playlist_id, body.item_id, credentials)
+    return ActionResultV2(success=True)

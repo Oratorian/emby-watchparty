@@ -200,6 +200,12 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
         state.record(request)
         return {"Id": "playlist-created"}
 
+    @app.post("/Playlists/{playlist_id}/Items")
+    async def add_playlist_item(playlist_id: str, request: Request):
+        assert playlist_id
+        state.record(request)
+        return {}
+
     @app.post("/Items/{item_id}/PlaybackInfo")
     async def playback_info(item_id: str, request: Request):
         body = await request.json()

@@ -142,7 +142,16 @@ class PlaylistCreatedV2(V2Model):
     name: str
 
 
+class PlaylistItemAddV2(V2Model):
+    item_id: str = Field(min_length=1, max_length=200)
+
+
+class ActionResultV2(V2Model):
+    success: bool
+
+
 __all__ = [
+    "ActionResultV2",
     "CatalogQueryV2",
     "FavoriteMutationV2",
     "FavoriteResultV2",
@@ -156,4 +165,5 @@ __all__ = [
     "PlayedResultV2",
     "PlaylistCreateV2",
     "PlaylistCreatedV2",
+    "PlaylistItemAddV2",
 ]

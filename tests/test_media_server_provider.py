@@ -769,3 +769,41 @@ def test_jellyfin_v2_host_creates_playlist(tmp_path) -> None:
     request = next(row for row in fake_state.requests if row["path"] == "/Playlists")
     assert request["method"] == "POST"
     assert request["query"] == {"Name": "Friday Night", "UserId": "jellyfin-user-1"}
+
+
+def test_jellyfin_v2_host_adds_item_to_playlist(tmp_path) -> None:
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            response = await client.post(
+                "/api/v2/playlists/playlist-1/items", json={"item_id": "movie-1"}
+            )
+
+            assert response.status_code == 200
+            assert response.json() == {"success": True}
+
+    asyncio.run(exercise())
+    request = next(
+        row for row in fake_state.requests if row["path"] == "/Playlists/playlist-1/Items"
+    )
+    assert request["method"] == "POST"
+    assert request["query"] == {"Ids": "movie-1", "UserId": "jellyfin-user-1"}

@@ -165,6 +165,16 @@ class JellyfinProvider:
             user_id=credentials.user_id,
         )
 
+    async def add_playlist_item(
+        self, playlist_id: str, item_id: str, credentials: ProviderCredentials
+    ) -> None:
+        await self._client.add_to_playlist(
+            playlist_id,
+            item_id,
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+        )
+
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan:
         bitrate_match = re.search(r"-(\d+)$", request.quality)
         max_bitrate = int(bitrate_match.group(1)) * 1000 if bitrate_match else 10_000_000
