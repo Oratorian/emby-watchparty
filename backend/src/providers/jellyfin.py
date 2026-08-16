@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 import secrets
+from dataclasses import replace
 from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
@@ -14,6 +15,7 @@ from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers.models import (
     AssetRequest,
     AuthenticatedUser,
+    CatalogFilters,
     CatalogQuery,
     HLSResource,
     IntroSegment,
@@ -103,10 +105,21 @@ class JellyfinProvider:
         return normalize_page(payload)
 
     async def query_catalog(self, query: CatalogQuery, credentials: ProviderCredentials):
+        filters = query.filters
+        supported_query = replace(
+            query,
+            filters=CatalogFilters(
+                playstate=filters.playstate,
+                favorite=filters.favorite,
+                genres=filters.genres,
+                studios=filters.studios,
+            ),
+        )
         payload = await self._client.query_items(
-            emby_family_query(query),
+            emby_family_query(supported_query),
             access_token=credentials.access_token,
             user_id=credentials.user_id,
+            root_items=True,
         )
         return normalize_page(payload)
 

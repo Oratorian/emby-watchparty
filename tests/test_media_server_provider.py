@@ -517,8 +517,11 @@ def test_jellyfin_user_can_authenticate_and_browse_v2_library(tmp_path) -> None:
     assert all(not request["path"].startswith("/emby/") for request in fake_state.requests)
 
 
-def test_jellyfin_v2_item_query_is_normalized_and_user_scoped(tmp_path) -> None:
-    fake_state = FakeJellyfinState()
+@pytest.mark.parametrize("version", ["10.10.7", "10.11.11"])
+def test_jellyfin_v2_supported_filters_use_root_items_and_server_side_scope(
+    tmp_path, version: str
+) -> None:
+    fake_state = FakeJellyfinState(version=version)
     app = create_app(
         config=_config("jellyfin"),
         project_root=tmp_path,
@@ -550,7 +553,13 @@ def test_jellyfin_v2_item_query_is_normalized_and_user_scoped(tmp_path) -> None:
                     },
                     "page": {"start": 20, "limit": 25},
                     "sort": {"field": "name", "direction": "ascending"},
-                    "filters": {"favorite": True},
+                    "filters": {
+                        "playstate": "resumable",
+                        "favorite": True,
+                        "genres": ["Drama", "Science Fiction"],
+                        "studios": ["Paramount", "Warner Bros."],
+                        "tags": ["must-not-reach-jellyfin"],
+                    },
                 },
             )
 
@@ -589,11 +598,12 @@ def test_jellyfin_v2_item_query_is_normalized_and_user_scoped(tmp_path) -> None:
             assert response.json()["start"] == 20
 
     asyncio.run(exercise())
-    item_request = next(row for row in fake_state.requests if row["path"].endswith("/Items"))
+    item_request = next(row for row in fake_state.requests if row["path"] == "/Items")
     assert item_request == {
         "method": "GET",
-        "path": "/Users/jellyfin-user-1/Items",
+        "path": "/Items",
         "query": {
+            "UserId": "jellyfin-user-1",
             "Recursive": "true",
             "Fields": (
                 "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,"
@@ -605,7 +615,10 @@ def test_jellyfin_v2_item_query_is_normalized_and_user_scoped(tmp_path) -> None:
             "Limit": "25",
             "ParentId": "jellyfin-library-1",
             "IncludeItemTypes": "Movie",
+            "Filters": "IsResumable",
             "IsFavorite": "true",
+            "Genres": "Drama|Science Fiction",
+            "Studios": "Paramount|Warner Bros.",
         },
     }
 
@@ -1357,9 +1370,9 @@ def test_jellyfin_v2_search_is_normalized_and_bounded(tmp_path) -> None:
     request = next(
         row
         for row in fake_state.requests
-        if row["path"] == "/Users/jellyfin-user-1/Items"
-        and row["query"].get("SearchTerm") == "Arrival"
+        if row["path"] == "/Items" and row["query"].get("SearchTerm") == "Arrival"
     )
+    assert request["query"]["UserId"] == "jellyfin-user-1"
     assert request["query"]["Recursive"] == "true"
     assert request["query"]["Limit"] == "7"
     assert request["query"]["IncludeItemTypes"] == "Movie,Series,Episode,Person,BoxSet"

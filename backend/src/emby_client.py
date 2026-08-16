@@ -298,6 +298,7 @@ class EmbyClient:
         *,
         prefixes: Literal[False] = False,
         name_starts_with: str | None = None,
+        root_items: bool = False,
     ) -> dict[str, Any]: ...
 
     @overload
@@ -309,6 +310,7 @@ class EmbyClient:
         *,
         prefixes: Literal[True],
         name_starts_with: str | None = None,
+        root_items: bool = False,
     ) -> list[dict[str, Any]]: ...
 
     async def query_items(
@@ -319,6 +321,7 @@ class EmbyClient:
         *,
         prefixes: bool = False,
         name_starts_with: str | None = None,
+        root_items: bool = False,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Run a strict watchparty library query through Emby's allowlisted API."""
         if not user_id:
@@ -360,6 +363,9 @@ class EmbyClient:
             "SearchTerm": query.get("search_term"),
         }
         params.update({key: value for key, value in scalar_values.items() if value})
+        items_path = "/emby/Items" if root_items else f"/emby/Users/{user_id}/Items"
+        if root_items:
+            params["UserId"] = user_id
 
         if name_starts_with is not None:
             params["StartIndex"] = 0
@@ -459,7 +465,7 @@ class EmbyClient:
                 "Limit": 1,
             }
             count_response = await self.gateway.get(
-                f"/emby/Users/{user_id}/Items",
+                items_path,
                 headers=self._headers(access_token, user_id),
                 params=count_params,
             )
@@ -467,7 +473,7 @@ class EmbyClient:
             params["StartIndex"] = int(count_response.json().get("TotalRecordCount") or 0)
 
         response = await self.gateway.get(
-            f"/emby/Users/{user_id}/Items",
+            items_path,
             headers=self._headers(access_token, user_id),
             params=params,
         )

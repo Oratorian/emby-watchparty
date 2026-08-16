@@ -10,6 +10,7 @@ from tests.support.credentials import TEST_JELLYFIN_ACCESS_TOKEN
 
 @dataclass
 class FakeJellyfinState:
+    version: str = "10.11.11"
     requests: list[dict] = field(default_factory=list)
     request_hosts: list[str] = field(default_factory=list)
     playback_requests: list[dict] = field(default_factory=list)
@@ -38,12 +39,12 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
     @app.get("/System/Info/Public")
     async def public_info(request: Request):
         state.record(request)
-        return {"ServerName": "Fake Jellyfin", "Version": "10.11.11"}
+        return {"ServerName": "Fake Jellyfin", "Version": state.version}
 
     @app.get("/System/Info")
     async def system_info(request: Request):
         state.record(request)
-        return {"ServerName": "Fake Jellyfin", "Version": "10.11.11"}
+        return {"ServerName": "Fake Jellyfin", "Version": state.version}
 
     @app.post("/Users/AuthenticateByName")
     async def authenticate(request: Request):
@@ -113,9 +114,10 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
             "StartIndex": 0,
         }
 
+    @app.get("/Items")
     @app.get("/Users/{user_id}/Items")
-    async def user_items(user_id: str, request: Request):
-        assert user_id
+    async def user_items(request: Request, user_id: str | None = None):
+        del user_id
         state.record(request)
         if request.query_params.get("EnableTotalRecordCount") == "true":
             prefix = request.query_params.get("NameStartsWith")
