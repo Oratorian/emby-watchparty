@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import httpx
@@ -559,6 +560,8 @@ def test_jellyfin_v2_supported_filters_use_root_items_and_server_side_scope(
                         "genres": ["Drama", "Science Fiction"],
                         "studios": ["Paramount", "Warner Bros."],
                         "person_ids": ["person-1", "person-2"],
+                        "years": [2020, 2024],
+                        "official_ratings": ["PG", "PG-13"],
                         "tags": ["must-not-reach-jellyfin"],
                     },
                 },
@@ -621,6 +624,8 @@ def test_jellyfin_v2_supported_filters_use_root_items_and_server_side_scope(
             "Genres": "Drama|Science Fiction",
             "Studios": "Paramount|Warner Bros.",
             "PersonIds": "person-1,person-2",
+            "Years": "2020,2024",
+            "OfficialRatings": "PG|PG-13",
         },
     }
 
@@ -754,37 +759,42 @@ def test_jellyfin_v2_filter_options_use_scoped_catalogs_without_item_scan(tmp_pa
             )
 
             assert response.status_code == 200
-            assert response.json() == {
-                "controls": [
-                    {
-                        "id": "playstate",
-                        "label": "Playstate",
-                        "kind": "select",
-                        "values": [
-                            {"value": "any", "label": "Any"},
-                            {"value": "unplayed", "label": "Unplayed"},
-                            {"value": "played", "label": "Played"},
-                            {"value": "resumable", "label": "In progress"},
-                        ],
-                    },
-                    {"id": "favorite", "label": "Favorite", "kind": "toggle", "values": []},
-                    {
-                        "id": "genre",
-                        "label": "Genre",
-                        "kind": "multi",
-                        "values": [
-                            {"value": "Drama", "label": "Drama"},
-                            {"value": "Science Fiction", "label": "Science Fiction"},
-                        ],
-                    },
-                    {
-                        "id": "studio",
-                        "label": "Studio",
-                        "kind": "multi",
-                        "values": [{"value": "Paramount", "label": "Paramount"}],
-                    },
-                ]
+            controls = response.json()["controls"]
+            assert [control["id"] for control in controls] == [
+                "playstate",
+                "favorite",
+                "year",
+                "official_rating",
+                "genre",
+                "studio",
+            ]
+            by_id = {control["id"]: control for control in controls}
+            current_year = str(datetime.now(UTC).year)
+            assert by_id["year"]["values"][0] == {
+                "value": current_year,
+                "label": current_year,
             }
+            assert by_id["year"]["values"][-1] == {"value": "1888", "label": "1888"}
+            assert [value["value"] for value in by_id["official_rating"]["values"]] == [
+                "G",
+                "PG",
+                "PG-13",
+                "R",
+                "NC-17",
+                "TV-Y",
+                "TV-Y7",
+                "TV-G",
+                "TV-PG",
+                "TV-14",
+                "TV-MA",
+                "NR",
+                "Unrated",
+            ]
+            assert [value["value"] for value in by_id["genre"]["values"]] == [
+                "Drama",
+                "Science Fiction",
+            ]
+            assert [value["value"] for value in by_id["studio"]["values"]] == ["Paramount"]
             catalog_requests = fake_state.requests[before:]
             assert catalog_requests == [
                 {
@@ -848,6 +858,8 @@ def test_jellyfin_v2_filter_options_omit_only_failed_dynamic_catalog(tmp_path) -
             assert [control["id"] for control in controls] == [
                 "playstate",
                 "favorite",
+                "year",
+                "official_rating",
                 "studio",
             ]
             serialized = response.text

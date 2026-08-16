@@ -44,6 +44,20 @@ test('@jellyfin-real login browse play seek reconnect stop', async ({ page }) =>
   await page.getByRole('button', { name: 'Reset All', exact: true }).click()
   await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
 
+  await page.getByRole('button', { name: 'Open Year filter', exact: true }).click()
+  await page.getByLabel('2020', { exact: true }).check()
+  await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Close Year filter', exact: true }).click()
+  await page.getByRole('button', { name: 'Reset All', exact: true }).click()
+  await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Open Parental rating filter', exact: true }).click()
+  await page.getByLabel('PG-13', { exact: true }).check()
+  await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Close Parental rating filter', exact: true }).click()
+  await page.getByRole('button', { name: 'Reset All', exact: true }).click()
+  await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
+
   await page.getByRole('button', { name: 'More filters', exact: false }).click()
   await page.getByRole('button', { name: 'Open Studio filter', exact: true }).click()
   await page.getByLabel('Journey Studio', { exact: true }).check()

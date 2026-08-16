@@ -6,6 +6,7 @@ import asyncio
 import re
 import secrets
 from dataclasses import replace
+from datetime import UTC, datetime
 from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
@@ -114,6 +115,8 @@ class JellyfinProvider:
                 genres=filters.genres,
                 studios=filters.studios,
                 person_ids=filters.person_ids,
+                years=filters.years,
+                official_ratings=filters.official_ratings,
             ),
         )
         payload = await self._client.query_items(
@@ -201,6 +204,38 @@ class JellyfinProvider:
                 ],
             },
             {"id": "favorite", "label": "Favorite", "kind": "toggle", "values": []},
+            {
+                "id": "year",
+                "label": "Year",
+                "kind": "multi",
+                "values": [
+                    {"value": str(year), "label": str(year)}
+                    for year in range(datetime.now(UTC).year, 1887, -1)
+                ],
+            },
+            {
+                "id": "official_rating",
+                "label": "Parental rating",
+                "kind": "multi",
+                "values": [
+                    {"value": rating, "label": rating}
+                    for rating in (
+                        "G",
+                        "PG",
+                        "PG-13",
+                        "R",
+                        "NC-17",
+                        "TV-Y",
+                        "TV-Y7",
+                        "TV-G",
+                        "TV-PG",
+                        "TV-14",
+                        "TV-MA",
+                        "NR",
+                        "Unrated",
+                    )
+                ],
+            },
         ]
         for (control_id, label), payload in zip(
             (("genre", "Genre"), ("studio", "Studio")), catalogs, strict=True

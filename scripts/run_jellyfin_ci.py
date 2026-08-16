@@ -164,6 +164,8 @@ def start(args: argparse.Namespace) -> None:
         """<?xml version="1.0" encoding="utf-8"?>
 <movie>
   <title>Synthetic HLS</title>
+  <year>2020</year>
+  <mpaa>PG-13</mpaa>
   <genre>Journey Genre</genre>
   <studio>Journey Studio</studio>
 </movie>
@@ -174,6 +176,8 @@ def start(args: argparse.Namespace) -> None:
         """<?xml version="1.0" encoding="utf-8"?>
 <movie>
   <title>Other Movie</title>
+  <year>2021</year>
+  <mpaa>R</mpaa>
   <genre>Other Genre</genre>
   <studio>Other Studio</studio>
 </movie>
@@ -243,6 +247,8 @@ def start(args: argparse.Namespace) -> None:
                     detail_status == 200
                     and isinstance(details, dict)
                     and "Journey Genre" in details.get("Genres", [])
+                    and details.get("ProductionYear") == 2020
+                    and details.get("OfficialRating") == "PG-13"
                     and any(
                         studio.get("Name") == "Journey Studio"
                         for studio in details.get("Studios", [])

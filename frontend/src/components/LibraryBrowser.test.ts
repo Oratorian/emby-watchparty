@@ -18,7 +18,7 @@ describe('LibraryBrowser search routing', () => {
       disconnect() {}
     })
     localStorage.setItem('emby-watchparty-library-filters:library-1', JSON.stringify({
-      filters: { tag: ['Hidden'], year: ['2024'] },
+      filters: { tag: ['Hidden'], audio_codec: ['aac'] },
       sortField: 'SortName',
       sortDirection: 'Ascending',
     }))
@@ -61,6 +61,14 @@ describe('LibraryBrowser search routing', () => {
           id: 'studio', label: 'Studio', kind: 'multi',
           values: [{ value: 'Paramount', label: 'Paramount' }],
         },
+        {
+          id: 'year', label: 'Year', kind: 'multi',
+          values: [{ value: '2020', label: '2020' }],
+        },
+        {
+          id: 'official_rating', label: 'Parental rating', kind: 'multi',
+          values: [{ value: 'PG-13', label: 'PG-13' }],
+        },
       ],
     })
     vi.spyOn(api, 'itemPrefixes').mockResolvedValue({ Prefixes: [] })
@@ -82,8 +90,9 @@ describe('LibraryBrowser search routing', () => {
     expect(filterPanel).toContain('Favorite')
     expect(filterPanel).toContain('Genre')
     expect(filterPanel).toContain('Studio')
+    expect(filterPanel).toContain('Year')
+    expect(filterPanel).toContain('Parental rating')
     expect(filterPanel).not.toContain('Tags')
-    expect(filterPanel).not.toContain('Year')
     expect(filterPanel).not.toContain('Codec')
     expect(wrapper.get('button.filter-toggle').text()).not.toContain('active')
 
@@ -101,6 +110,10 @@ describe('LibraryBrowser search routing', () => {
     await wrapper.get('input[value="Drama"]').setValue(true)
     await wrapper.get('button[aria-label="Open Studio filter"]').trigger('click')
     await wrapper.get('input[value="Paramount"]').setValue(true)
+    await wrapper.get('button[aria-label="Open Year filter"]').trigger('click')
+    await wrapper.get('input[value="2020"]').setValue(true)
+    await wrapper.get('button[aria-label="Open Parental rating filter"]').trigger('click')
+    await wrapper.get('input[value="PG-13"]').setValue(true)
     await flushPromises()
 
     expect(queryItems).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -109,12 +122,14 @@ describe('LibraryBrowser search routing', () => {
         favorite: true,
         genres: ['Drama'],
         studios: ['Paramount'],
+        years: [2020],
+        official_ratings: ['PG-13'],
       },
     }), expect.any(AbortSignal))
     expect(JSON.parse(localStorage.getItem(
       'emby-watchparty-library-filters:library-1',
     ) || '{}').filters).toEqual(expect.objectContaining({
-      tag: ['Hidden'], year: ['2024'],
+      tag: ['Hidden'], audio_codec: ['aac'],
     }))
   })
 
