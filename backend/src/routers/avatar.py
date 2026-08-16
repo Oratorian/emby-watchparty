@@ -23,13 +23,12 @@ from pydantic import BaseModel
 from backend.src.client_ip import request_client_ip
 from backend.src.dependencies import (
     get_avatar_store,
-    get_config,
-    get_emby_client,
-    get_emby_gateway,
     get_http_client,
     get_logger,
+    get_media_server,
     get_party_manager,
 )
+from backend.src.providers.models import AssetRequest, ProviderCredentials
 from backend.src.rate_limit import parse_rate, rate_limit_response
 
 router = APIRouter(prefix="/api/avatar", tags=["avatar"])
@@ -191,9 +190,7 @@ def recover(
 async def host_avatar(
     party_id: str,
     _request: Request,
-    config=Depends(get_config),
-    emby_client=Depends(get_emby_client),
-    emby_gateway=Depends(get_emby_gateway),
+    provider=Depends(get_media_server),
     party_manager=Depends(get_party_manager),
     logger=Depends(get_logger),
 ):
@@ -211,10 +208,14 @@ async def host_avatar(
     host_token = party.host_access_token
     if not host_user_id or not host_token:
         return Response(status_code=404)
-    url = f"{config.EMBY_SERVER_URL}/emby/Users/{host_user_id}/Images/Primary"
-    headers = emby_client._headers(host_token, host_user_id)
     try:
-        resp = await emby_gateway.get(url, headers=headers, timeout=10)
+        resp = await provider.fetch_asset(
+            AssetRequest(
+                item_id=host_user_id,
+                kind="avatar",
+                credentials=ProviderCredentials(access_token=host_token, user_id=host_user_id),
+            )
+        )
         if resp.status_code != 200:
             return Response(status_code=404)
         ct = resp.headers.get("Content-Type", "image/jpeg")

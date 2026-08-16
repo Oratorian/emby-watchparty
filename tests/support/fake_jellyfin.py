@@ -65,6 +65,12 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
         state.record(request)
         return {"Id": user_id, "Name": "Alice"}
 
+    @app.get("/Users/{user_id}/Images/Primary")
+    async def user_avatar(user_id: str, request: Request):
+        assert user_id
+        state.record(request)
+        return Response(b"jellyfin-avatar", media_type="image/png")
+
     @app.get("/UserViews")
     async def user_views(request: Request):
         state.record(request)

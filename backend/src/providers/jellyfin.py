@@ -207,6 +207,15 @@ class JellyfinProvider:
         )
 
     async def fetch_asset(self, request: AssetRequest) -> httpx.Response:
+        if request.kind == "avatar":
+            return await self._client.gateway.get(
+                f"/Users/{quote(request.item_id, safe='')}/Images/Primary",
+                headers=self._client._headers(
+                    request.credentials.access_token,
+                    request.credentials.user_id,
+                ),
+                timeout=10,
+            )
         if request.kind == "subtitle":
             if request.media_source_id is None or request.index is None:
                 raise ValueError("subtitle asset requires source and index")
