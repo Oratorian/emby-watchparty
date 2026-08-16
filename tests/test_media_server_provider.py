@@ -558,6 +558,7 @@ def test_jellyfin_v2_supported_filters_use_root_items_and_server_side_scope(
                         "favorite": True,
                         "genres": ["Drama", "Science Fiction"],
                         "studios": ["Paramount", "Warner Bros."],
+                        "person_ids": ["person-1", "person-2"],
                         "tags": ["must-not-reach-jellyfin"],
                     },
                 },
@@ -619,6 +620,7 @@ def test_jellyfin_v2_supported_filters_use_root_items_and_server_side_scope(
             "IsFavorite": "true",
             "Genres": "Drama|Science Fiction",
             "Studios": "Paramount|Warner Bros.",
+            "PersonIds": "person-1,person-2",
         },
     }
 

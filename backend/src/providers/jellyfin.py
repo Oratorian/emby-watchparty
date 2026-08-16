@@ -113,6 +113,7 @@ class JellyfinProvider:
                 favorite=filters.favorite,
                 genres=filters.genres,
                 studios=filters.studios,
+                person_ids=filters.person_ids,
             ),
         )
         payload = await self._client.query_items(
