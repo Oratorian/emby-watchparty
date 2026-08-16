@@ -503,10 +503,17 @@ export const api = {
   filterOptions: (
     params: { parentId?: string; includeItemTypes?: string; mediaTypes?: string },
     signal?: AbortSignal,
-  ) => apiFetch<FilterOptionsResponse>(
-    `/api/items/filter-options?${new URLSearchParams(params).toString()}`,
-    { signal },
-  ),
+  ) => {
+    const query = new URLSearchParams()
+    if (params.parentId) query.set('parent_id', params.parentId)
+    if (params.includeItemTypes) {
+      query.set('include_kinds', params.includeItemTypes.split(',').map(kind => kind.replace(
+        /([a-z0-9])([A-Z])/g, '$1_$2',
+      ).toLowerCase()).join(','))
+    }
+    if (params.mediaTypes) query.set('media_kinds', params.mediaTypes.toLowerCase())
+    return apiFetch<FilterOptionsResponse>(`/api/v2/items/filter-options?${query}`, { signal })
+  },
   queryItems: async (query: LibraryQueryRequest, signal?: AbortSignal) => projectMediaPage(
     await apiFetch<MediaPageV2>('/api/v2/items/query', {
       method: 'POST', body: JSON.stringify(toCatalogQueryV2(query)), signal,

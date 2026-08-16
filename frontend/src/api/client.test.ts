@@ -294,6 +294,21 @@ describe('apiFetch', () => {
     ])
   })
 
+  it('loads provider-supported filter controls through v2', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ controls: [] }), { status: 200 },
+    ))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.filterOptions({
+      parentId: 'library-1', includeItemTypes: 'Movie', mediaTypes: 'Video',
+    })).resolves.toEqual({ controls: [] })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v2/items/filter-options?parent_id=library-1&include_kinds=movie&media_kinds=video',
+      expect.any(Object),
+    )
+  })
+
   it('rejects non-success JSON responses with a typed error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ detail: 'Party has no host' }),
