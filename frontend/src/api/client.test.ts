@@ -191,6 +191,19 @@ describe('apiFetch', () => {
     }))
   })
 
+  it('adds playlist items through v2', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ success: true }), { status: 200 },
+    ))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.addPlaylistItem('playlist-1', 'movie-1')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v2/playlists/playlist-1/items',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ item_id: 'movie-1' }) }),
+    )
+  })
+
   it('posts typed library filters without encoding them into a URL', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ Items: [], TotalRecordCount: 0 }),

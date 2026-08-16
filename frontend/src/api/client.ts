@@ -488,7 +488,7 @@ export const api = {
       method: 'POST', body: JSON.stringify({ name }), signal,
     }),
   addPlaylistItem: (playlistId: string, itemId: string, signal?: AbortSignal) =>
-    apiFetch<{ success: boolean }>(`/api/playlists/${playlistId}/items`, {
+    apiFetch<{ success: boolean }>(`/api/v2/playlists/${playlistId}/items`, {
       method: 'POST', body: JSON.stringify({ item_id: itemId }), signal,
     }),
   // mediaSourceId optionally scopes the response to one alternate
