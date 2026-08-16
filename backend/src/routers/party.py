@@ -16,12 +16,14 @@ from backend.src.dependencies import (
     get_config,
     get_emby_client,
     get_logger,
+    get_media_server,
     get_party_manager,
     get_sio,
     party_host_session_matches,
     scrub_legacy_admin_session,
 )
 from backend.src.emby_client import EmbyUnavailableError
+from backend.src.providers.models import MediaServerUnavailableError
 
 # Shared dev-host gate -- single source of truth lives in auth.py so the
 # env var name and value-parsing rules can never drift between modules.
@@ -113,6 +115,7 @@ async def create_party(
     config=Depends(get_config),
     party_manager=Depends(get_party_manager),
     emby_client=Depends(get_emby_client),
+    provider=Depends(get_media_server),
     admin_session_store=Depends(get_admin_session_store),
     logger=Depends(get_logger),
 ):
@@ -208,46 +211,47 @@ async def create_party(
             )
 
         try:
-            auth = await emby_client.authenticate(body.username, body.password)
-        except EmbyUnavailableError:
+            auth = await provider.authenticate_user(body.username, body.password)
+        except MediaServerUnavailableError:
             return CreatePartyResponse(
                 party_id="",
                 url="",
-                message="Emby server unavailable; ask the operator to verify EMBY_SERVER_URL",
+                message=(
+                    f"{provider.identity.display_name} server unavailable; "
+                    f"ask the operator to verify {config.MEDIA_SERVER_URL_VARIABLE}"
+                ),
             )
         if not auth:
             return CreatePartyResponse(
                 party_id="",
                 url="",
-                message="Invalid Emby credentials",
+                message=f"Invalid {provider.identity.display_name} credentials",
             )
 
         party_id = party_manager.create_party()
-        display_name = body.display_name or auth["username"]
+        display_name = body.display_name or auth.username
         host_session_grant = secrets.token_urlsafe(32)
         party_manager.set_host(
             party_id,
             client_id=body.client_id,
             session_grant=host_session_grant,
-            user_id=auth["user_id"],
-            access_token=auth["access_token"],
-            username=auth["username"],
-            is_admin=auth["is_admin"],
+            user_id=auth.credentials.user_id,
+            access_token=auth.credentials.access_token,
+            username=auth.username,
+            is_admin=auth.is_admin,
         )
         # Bind the creator's session to the new party in a single step.
         request.session["party_id"] = party_id
         request.session["client_id"] = body.client_id
         request.session["display_name"] = display_name
         request.session["host_session_grant"] = host_session_grant
-        logger.info(
-            f"Created party {party_id} with host '{auth['username']}' (admin={auth['is_admin']})"
-        )
+        logger.info(f"Created party {party_id} with host '{auth.username}' (admin={auth.is_admin})")
         return CreatePartyResponse(
             party_id=party_id,
             url=f"{prefix}/party/{party_id}",
             is_host=True,
-            host_username=auth["username"],
-            is_admin=auth["is_admin"],
+            host_username=auth.username,
+            is_admin=auth.is_admin,
         )
 
     # REQUIRE_LOGIN=false -- anonymous create.

@@ -1,11 +1,13 @@
 import asyncio
 import logging
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 
 from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
+from backend.src.dependencies import get_media_server
 from backend.src.domain import Participant, SelectedMedia
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers import EmbyProvider, JellyfinProvider, create_provider
@@ -18,6 +20,7 @@ from backend.src.providers.models import (
     PlaybackPlan,
     PlaybackRequest,
     ProviderCredentials,
+    ProviderIdentity,
     UnsafeProviderResourceError,
 )
 from tests.support.asgi import asgi_client
@@ -25,7 +28,7 @@ from tests.support.credentials import TEST_JELLYFIN_ACCESS_TOKEN
 from tests.support.fake_jellyfin import FakeJellyfinState, create_fake_jellyfin_app
 
 
-def _config(provider: str) -> Config:
+def _config(provider: str, *, require_login: bool = False) -> Config:
     return Config(
         EnvConfig(
             WATCH_PARTY_BIND="127.0.0.1",
@@ -43,7 +46,7 @@ def _config(provider: str) -> Config:
             JELLYFIN_SERVER_URL="http://jellyfin.test",
             JELLYFIN_API_KEY="jellyfin-key",
         ),
-        RuntimeConfig(LOG_TO_FILE=False),
+        RuntimeConfig(LOG_TO_FILE=False, REQUIRE_LOGIN=require_login),
     )
 
 
@@ -131,6 +134,51 @@ def test_jellyfin_v2_login_names_selected_provider_when_unavailable(tmp_path) ->
             assert response.json()["message"] == (
                 "Jellyfin server unavailable; ask the operator to verify JELLYFIN_SERVER_URL"
             )
+
+    asyncio.run(exercise())
+
+
+def test_login_required_party_creation_uses_provider_authentication(tmp_path) -> None:
+    authenticate_user = AsyncMock(
+        return_value=AuthenticatedUser(
+            credentials=ProviderCredentials(
+                access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+                user_id="jellyfin-user-1",
+            ),
+            username="Alice",
+            is_admin=True,
+        )
+    )
+
+    class ProviderDouble:
+        identity = ProviderIdentity(type="jellyfin", display_name="Jellyfin")
+
+        async def authenticate_user(self, username: str, password: str):
+            return await authenticate_user(username, password)
+
+    app = create_app(
+        config=_config("jellyfin", require_login=True),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app()),
+    )
+    app.dependency_overrides[get_media_server] = ProviderDouble
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            response = await client.post(
+                "/api/party/create",
+                json={
+                    "client_id": "client-1",
+                    "display_name": "Alice",
+                    "username": "Alice",
+                    "password": "secret",
+                },
+            )
+
+            assert response.status_code == 200
+            assert response.json()["is_host"] is True
+            authenticate_user.assert_awaited_once_with("Alice", "secret")
 
     asyncio.run(exercise())
 
