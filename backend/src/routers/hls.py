@@ -488,13 +488,23 @@ async def proxy_hls_resource(
             media_type="application/json",
         )
     try:
-        upstream = await media_server.fetch_hls_resource(
-            plan,
-            resource,
-            range_header=request.headers.get("range"),
-            head=request.method == "HEAD",
-        )
+        is_playlist = _is_playlist(urlsplit(resource.url).path)
+        is_streaming = request.method == "GET" and not is_playlist
+        if is_streaming:
+            upstream = await media_server.open_hls_resource(
+                plan,
+                resource,
+                range_header=request.headers.get("range"),
+            )
+        else:
+            upstream = await media_server.fetch_hls_resource(
+                plan,
+                resource,
+                range_header=request.headers.get("range"),
+                head=request.method == "HEAD",
+            )
         if upstream.is_redirect:
+            await upstream.aclose()
             logger.warning("Media server redirected an HLS resource request; not followed")
             return Response(
                 content='{"error": "Upstream redirect not followed"}',
@@ -506,13 +516,26 @@ async def proxy_hls_resource(
             if value := upstream.headers.get(header):
                 response_headers[header] = value
         if upstream.status_code == 416:
+            await upstream.aclose()
             return Response(status_code=416, headers=response_headers)
-        upstream.raise_for_status()
+        try:
+            upstream.raise_for_status()
+        except httpx.HTTPError:
+            await upstream.aclose()
+            raise
         if request.method == "HEAD":
             return Response(status_code=upstream.status_code, headers=response_headers)
-        if not _is_playlist(urlsplit(resource.url).path):
-            return Response(
-                content=upstream.content,
+        if is_streaming:
+
+            async def stream_body():
+                try:
+                    async for chunk in upstream.aiter_bytes():
+                        yield chunk
+                finally:
+                    await upstream.aclose()
+
+            return StreamingResponse(
+                stream_body(),
                 status_code=upstream.status_code,
                 media_type=(
                     "video/MP2T"

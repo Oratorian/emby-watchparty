@@ -358,6 +358,24 @@ class JellyfinProvider:
             timeout=30.0,
         )
 
+    async def open_hls_resource(
+        self,
+        plan: PlaybackPlan,
+        resource: HLSResource,
+        *,
+        range_header: str | None = None,
+    ) -> httpx.Response:
+        if resource != plan.master and resource not in plan.resources.values():
+            raise UnsafeProviderResourceError("HLS resource is not registered")
+        headers = self._client._headers(
+            plan.credentials.access_token,
+            plan.credentials.user_id,
+        )
+        headers.update(plan.upstream_headers)
+        if range_header:
+            headers["Range"] = range_header
+        return await self._client.gateway.open_stream(resource.url, headers=headers)
+
 
 class _JellyfinGateway(MediaServerGateway):
     """Translate inherited Emby-family paths to Jellyfin root paths."""

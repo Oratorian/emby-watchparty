@@ -10,9 +10,11 @@ from backend.src.domain import SelectedMedia
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers import EmbyProvider, JellyfinProvider, create_provider
 from backend.src.providers.models import (
+    HLSResource,
     PlaybackEvent,
     PlaybackEventType,
     PlaybackMethod,
+    PlaybackPlan,
     PlaybackRequest,
     ProviderCredentials,
     UnsafeProviderResourceError,
@@ -807,3 +809,59 @@ def test_jellyfin_v2_host_adds_item_to_playlist(tmp_path) -> None:
     )
     assert request["method"] == "POST"
     assert request["query"] == {"Ids": "movie-1", "UserId": "jellyfin-user-1"}
+
+
+def test_jellyfin_provider_streams_approved_hls_resource_and_closes_upstream() -> None:
+    class TrackingStream(httpx.AsyncByteStream):
+        def __init__(self) -> None:
+            self.closed = False
+
+        async def __aiter__(self):
+            yield b"segment-"
+            yield b"bytes"
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    tracking_stream = TrackingStream()
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            206,
+            headers={"Content-Range": "bytes 2-14/15"},
+            stream=tracking_stream,
+        )
+
+    async def exercise() -> None:
+        config = _config("jellyfin")
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        gateway = MediaServerGateway(client, config.MEDIA_SERVER_URL, logging.getLogger("test"))
+        provider = create_provider(config, logging.getLogger("test"), gateway)
+        resource = HLSResource("http://jellyfin.test/Videos/movie-1/segment0001.ts")
+        plan = PlaybackPlan(
+            stream_id="stream-1",
+            item_id="movie-1",
+            media_source_id="source-1",
+            play_session_id="play-session-1",
+            method=PlaybackMethod.HLS_TRANSCODE,
+            master=HLSResource("http://jellyfin.test/Videos/movie-1/master.m3u8"),
+            credentials=ProviderCredentials(TEST_JELLYFIN_ACCESS_TOKEN, "jellyfin-user-1"),
+            resources={"resource-1": resource},
+        )
+
+        response = await provider.open_hls_resource(plan, resource, range_header="bytes=2-14")
+
+        assert response.is_stream_consumed is False
+        assert tracking_stream.closed is False
+        assert b"".join([chunk async for chunk in response.aiter_bytes()]) == b"segment-bytes"
+        await response.aclose()
+        await client.aclose()
+
+    asyncio.run(exercise())
+    assert tracking_stream.closed is True
+    assert len(requests) == 1
+    assert requests[0].method == "GET"
+    assert requests[0].headers["range"] == "bytes=2-14"
+    assert requests[0].headers["x-emby-token"] == TEST_JELLYFIN_ACCESS_TOKEN

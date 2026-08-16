@@ -90,3 +90,11 @@ class MediaServerProvider(Protocol):
         range_header: str | None = None,
         head: bool = False,
     ) -> ProviderResponse: ...
+
+    async def open_hls_resource(
+        self,
+        plan: PlaybackPlan,
+        resource: HLSResource,
+        *,
+        range_header: str | None = None,
+    ) -> ProviderResponse: ...
