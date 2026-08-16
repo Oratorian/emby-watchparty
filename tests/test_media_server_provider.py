@@ -146,6 +146,44 @@ def test_jellyfin_v2_login_names_selected_provider_when_unavailable(tmp_path) ->
     asyncio.run(exercise())
 
 
+@pytest.mark.parametrize(
+    ("provider_type", "display_name"),
+    [("emby", "Emby"), ("jellyfin", "Jellyfin")],
+)
+def test_v2_login_names_selected_provider_for_invalid_credentials(
+    tmp_path, provider_type: str, display_name: str
+) -> None:
+    app = create_app(
+        config=_config(provider_type),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.MockTransport(lambda _request: httpx.Response(401)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            party_id = (
+                await client.post(
+                    "/api/party/create",
+                    json={"client_id": "client-1", "display_name": "Alice"},
+                )
+            ).json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+
+            response = await client.post(
+                "/api/v2/auth/login",
+                json={"username": "Alice", "password": "wrong"},
+            )
+
+            assert response.status_code == 200
+            assert response.json()["message"] == f"Invalid {display_name} credentials"
+
+    asyncio.run(exercise())
+
+
 def test_login_required_party_creation_uses_provider_authentication(tmp_path) -> None:
     authenticate_user = AsyncMock(
         return_value=AuthenticatedUser(
