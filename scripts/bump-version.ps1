@@ -215,18 +215,46 @@ Write-Host "All declarations now read $Version ($changed file(s) written)." -For
 # A stray copy elsewhere in the tree is worth knowing about even though this
 # script will not touch it. Prose in the changelog and the development log is
 # expected to name old versions and is excluded.
+#
+# The two frontend JSON files are read structurally rather than by substring.
+# package-lock.json names third-party versions constantly, and Select-String
+# -SimpleMatch is a substring test, so scanning it plainly reports unrelated
+# packages that happen to sit at this project's version. Only the fields
+# anchored to `"name": "frontend"` belong to this project, so keying on that
+# anchor keeps both files in the scan while dropping the noise, instead of
+# excluding the lockfile and going blind to a genuine second declaration in it.
+$FrontendAnchor = '"name"\s*:\s*"frontend"\s*,\s*[\r\n]+\s*"version"\s*:\s*"([^"]*)"'
+$StructuralFiles = @('frontend/package.json', 'frontend/package-lock.json')
+
 $previous = @($distinct | Where-Object { $_ -ne $Version })
 if ($previous.Count -gt 0) {
     $tracked = & git -C $RepoRoot ls-files 2>$null
     if ($LASTEXITCODE -eq 0) {
-        $excluded = @('CHANGELOG.md', 'SUMMARY-OF-CHANGES.md')
+        # This script names versions in its own examples and its invalid-version
+        # message, which is prose exactly like the changelog. Excluded by
+        # computed path so renaming the file cannot quietly reintroduce it.
+        $self = [System.IO.Path]::GetRelativePath($RepoRoot, $PSCommandPath).Replace('\', '/')
+        $excluded = @('CHANGELOG.md', 'SUMMARY-OF-CHANGES.md', $self)
         $stray = foreach ($file in $tracked) {
             if ($excluded -contains $file) { continue }
             if ($file -like 'tests/artifacts/*') { continue }
             $full = Join-Path $RepoRoot $file
             if (-not (Test-Path $full -PathType Leaf)) { continue }
+
+            $declared = if ($StructuralFiles -contains $file) {
+                @([regex]::Matches((Read-Text $full), $FrontendAnchor) |
+                    ForEach-Object { $_.Groups[1].Value })
+            }
+            else { $null }
+
             foreach ($old in $previous) {
-                if (Select-String -Path $full -SimpleMatch $old -Quiet -ErrorAction SilentlyContinue) {
+                $hit = if ($null -ne $declared) {
+                    $declared -contains $old
+                }
+                else {
+                    Select-String -Path $full -SimpleMatch $old -Quiet -ErrorAction SilentlyContinue
+                }
+                if ($hit) {
                     "$file (still names $old)"
                     break
                 }
