@@ -44,9 +44,20 @@ def test_the_migration_doc_maps_every_retired_name_to_its_replacement() -> None:
     operator who reads logs. The one who reads the release notes first needs
     the same mapping written down, and there is nothing in the running system
     left to infer it from.
+
+    Presence of both names is not enough. Every one of the six appears in
+    this document outside the mapping, in the sample boot error and in the
+    surrounding prose, so two independent membership checks pass with the
+    table deleted or its cells swapped. The pairing is the whole content of
+    the mapping, so the pairing is what is asserted: some single line has
+    to carry a retired name and its own replacement together. A markdown
+    table row cannot wrap, so that holds through a reflow, which is the
+    property `_prose` exists to protect elsewhere.
     """
-    migration = _prose("docs/Migration-HowTo.md")
+    lines = (ROOT / "docs/Migration-HowTo.md").read_text(encoding="utf-8").splitlines()
 
     for retired, replacement in _RETIRED_PROVIDER_FIELDS.items():
-        assert retired in migration, f"{retired} was retired without an upgrade note"
-        assert replacement in migration
+        assert any(retired in line and replacement in line for line in lines), (
+            f"{retired} is not mapped to {replacement} on any single line; "
+            f"an operator following this document cannot tell which name replaces it"
+        )
