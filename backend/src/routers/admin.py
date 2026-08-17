@@ -2,14 +2,14 @@
 Admin Router - Settings management.
 
 Two paths in:
-1. **Party-host as admin.** A host whose Emby account has
-   `IsAdministrator=true` is automatically admin of the application.
-   No separate /admin login is needed; the same party-bound session
-   cookie used everywhere else also unlocks /admin.
+1. **Party-host as admin.** A host whose media-server account is an
+   administrator is automatically admin of the application. No separate
+   /admin login is needed; the same party-bound session cookie used
+   everywhere else also unlocks /admin.
 2. **Standalone login.** Kept so an admin can edit config without
-   joining a party. Posts Emby admin credentials to
+   joining a party. Posts media-server admin credentials to
    `POST /api/admin/login`; the cookie receives an opaque handle while
-   the Emby token remains in the bounded server-side session store.
+   the upstream token remains in the bounded server-side session store.
 """
 
 from fastapi import APIRouter, Depends, Request
@@ -63,8 +63,8 @@ async def admin_login(
 
     Rate limited per IP. Prevents this
     endpoint from being used as a credential-stuffing oracle against
-    every Emby admin account -- previously there was no throttle at
-    all and the endpoint returned a clean success/failure signal.
+    every media-server admin account -- previously there was no throttle
+    at all and the endpoint returned a clean success/failure signal.
     """
     if request.app.state.config.ENABLE_RATE_LIMITING:
         ip = _client_ip(request)
@@ -123,8 +123,8 @@ def admin_logout(
 ):
     """Clear the standalone admin session.
 
-    Does NOT touch host status -- a host who is also admin via Emby
-    policy stays admin as long as they remain host.
+    Does NOT touch host status -- a host who is also admin via
+    media-server policy stays admin as long as they remain host.
     """
     admin_session_store.revoke(request.session.pop("admin_session_id", None))
     scrub_legacy_admin_session(request.session)

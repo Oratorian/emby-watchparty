@@ -1,9 +1,9 @@
 """
-HLS Router - Proxy HLS playlists and segments from Emby.
+HLS Router - Proxy HLS playlists and segments from the media server.
 
 Auth model: the signed cookie resolves the caller's active party. With
 validation enabled, the URL token must be valid for that same party.
-The party's host_access_token signs every upstream Emby request. When the host fully leaves
+The party's host_access_token signs every upstream request. When the host fully leaves
 (token cleared) the route returns 423 -- but during PLAYING-ONLY the
 stored token keeps the current video alive until it ends naturally.
 """
@@ -287,7 +287,7 @@ def _rewrite_playlist(
         },
         **PARTY_HOST_TOKEN_RESPONSES,
         500: {"description": "Internal proxy error"},
-        502: {"description": "Upstream Emby request failed"},
+        502: {"description": "Upstream media-server request failed"},
     },
 )
 async def proxy_hls_master(
@@ -580,7 +580,7 @@ async def proxy_hls_resource(
         },
         **PARTY_HOST_TOKEN_RESPONSES,
         500: {"description": "Internal proxy error"},
-        502: {"description": "Upstream Emby request failed"},
+        502: {"description": "Upstream media-server request failed"},
     },
 )
 async def proxy_hls_segment(

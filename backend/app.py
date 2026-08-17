@@ -36,6 +36,85 @@ from backend.src.update_checker import check_for_updates
 PROJECT_ROOT = Path(__file__).parent.parent
 STATIC_ROOT = Path(__file__).parent / "static"
 
+API_TITLE = "Emby Watch Party"
+
+# Names both servers rather than one. The product name is historical and
+# stays, but the description is what an operator reads at /docs, and on a
+# Jellyfin deployment an Emby-only sentence describes a server they are
+# not running.
+API_DESCRIPTION = (
+    "Synchronized video watching for Emby and Jellyfin media servers.\n\n"
+    "`/api/v2` is the canonical media surface and the one the bundled web client "
+    "speaks. The remaining `/api` routes are party, admin, avatar, quality and "
+    "probe endpoints that have no v2 equivalent."
+)
+
+# Swagger groups by tag whether or not we describe them, so without this
+# the reader gets eight bare words and has to open operations to find out
+# which surface is current. Every tag a router declares appears here.
+API_TAGS = [
+    {
+        "name": "v2",
+        "description": (
+            "The canonical media surface: libraries, item queries, streams, subtitles, "
+            "playlists, images, and host authentication. Prefer these routes; the v1 "
+            "equivalents they replaced have been removed."
+        ),
+    },
+    {
+        "name": "party",
+        "description": (
+            "Create, join, probe and leave a watch party. Joining issues the party-bound "
+            "session cookie that every protected route and the Socket.IO channel read."
+        ),
+    },
+    {
+        "name": "hls",
+        "description": (
+            "Authenticated proxy for the media server's HLS playlists and segments. Not "
+            "called directly: the playback flow hands out these URLs already carrying a "
+            "short-lived per-viewer token."
+        ),
+    },
+    {
+        "name": "avatar",
+        "description": (
+            "Passwordless chat avatars, by upload, Gravatar association or recovery code, "
+            "plus a proxy for the current host's media-server profile image."
+        ),
+    },
+    {
+        "name": "admin",
+        "description": (
+            "Runtime configuration, and the standalone admin session for editing it "
+            "without joining a party. A host whose media-server account is an "
+            "administrator is already an admin here and needs no separate login."
+        ),
+    },
+    {
+        "name": "health",
+        "description": (
+            "Container probes. `/api/health` is liveness and deliberately contacts "
+            "nothing, so an upstream outage cannot cause a restart loop; `/api/ready` "
+            "is readiness and does check the media server."
+        ),
+    },
+    {
+        "name": "quality",
+        "description": (
+            "The resolution and bitrate presets the per-user quality dropdown offers, "
+            "and which of them is the safe default for the current admin config."
+        ),
+    },
+    {
+        "name": "auth",
+        "description": (
+            "Version and build identity. The login, logout and status routes that once "
+            "shared this tag now live under `v2`."
+        ),
+    },
+]
+
 
 def _json_for_html_script(value: str) -> str:
     return json.dumps(value).replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
@@ -323,10 +402,35 @@ async def _upstream_unavailable(request, exc: httpx.HTTPError) -> JSONResponse:
     )
 
 
-def _install_api_and_socket_routes(application: FastAPI, prefix: str) -> None:
-    application.add_exception_handler(httpx.HTTPError, _upstream_unavailable)  # type: ignore[arg-type]
+def build_api_app(*, prefix: str = "", **fastapi_kwargs) -> FastAPI:
+    """The single definition of the documented API surface.
+
+    Both the served app and scripts/generate_openapi_types.py go through
+    here, so the contract the generated TypeScript is derived from is the
+    same document /docs renders. The generator used to construct a bare
+    `FastAPI()` and inherit the placeholder `FastAPI 0.1.0` info block,
+    which made the two documents differ in the one field that identifies
+    which build a contract belongs to.
+
+    Deliberately takes no Config. The generator has to be importable and
+    runnable in CI, where no media server is configured and
+    `Config.from_env` would not validate; anything requiring config
+    belongs in `create_app` instead.
+    """
+    application = FastAPI(
+        title=API_TITLE,
+        version=__version__,
+        description=API_DESCRIPTION,
+        openapi_tags=API_TAGS,
+        **fastapi_kwargs,
+    )
     for api_router in API_ROUTERS:
         application.include_router(api_router, prefix=prefix)
+    return application
+
+
+def _install_runtime_routes(application: FastAPI, prefix: str) -> None:
+    application.add_exception_handler(httpx.HTTPError, _upstream_unavailable)  # type: ignore[arg-type]
 
     socket_path = f"{prefix}/socket.io"
     application.mount(
@@ -402,12 +506,7 @@ def create_app(
         ping_timeout=30,
         ping_interval=12,
     )
-    application = FastAPI(
-        title="Emby Watch Party",
-        version=__version__,
-        description="Synchronized video watching for Emby media servers",
-        lifespan=lifespan,
-    )
+    application = build_api_app(prefix=prefix, lifespan=lifespan)
     application.state.bootstrap_config = resolved_config
     application.state.project_root = resolved_root
     application.state.http_transport = http_transport
@@ -431,7 +530,7 @@ def create_app(
         same_site="lax",
         https_only=resolved_config.SESSION_COOKIE_SECURE,
     )
-    _install_api_and_socket_routes(application, prefix)
+    _install_runtime_routes(application, prefix)
     _install_static_routes(application, prefix, Path(static_root or STATIC_ROOT))
     return application
 

@@ -9,7 +9,7 @@ Three creation flows:
 Serving:
   GET  /api/avatar/{uuid}              -- the user's avatar
   GET  /api/avatar/host/{party_id}     -- proxies the current host's
-                                          Emby Primary image
+                                          media-server Primary image
 """
 
 import asyncio
@@ -182,9 +182,9 @@ def recover(
     responses={
         200: {
             "content": {"image/jpeg": {}, "image/png": {}, "image/webp": {}},
-            "description": "The current host's Emby Primary image",
+            "description": "The current host's media-server Primary image",
         },
-        404: {"description": "Party has no host, host has no Emby Primary, or party is unknown"},
+        404: {"description": "Party has no host, host has no Primary image, or party is unknown"},
     },
 )
 async def host_avatar(
@@ -194,11 +194,11 @@ async def host_avatar(
     party_manager=Depends(get_party_manager),
     logger=Depends(get_logger),
 ):
-    """Proxy the current host's Emby Primary image for `party_id`.
+    """Proxy the current host's media-server Primary image for `party_id`.
 
-    Returns 404 when the party has no host or the host has no Emby
-    Primary image set. Uses the stored host access_token so the call
-    inherits the host's ACL.
+    Returns 404 when the party has no host or the host has no Primary
+    image set. Uses the stored host access_token so the call inherits
+    the host's ACL.
     """
     party_id = party_id.upper()
     party = party_manager.get(party_id)

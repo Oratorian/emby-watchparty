@@ -2,7 +2,7 @@
 Party Router -- create / join / probe.
 
 `POST /api/party/create` branches on the runtime REQUIRE_LOGIN toggle:
-anonymous create when off, Emby-authenticated create-as-host when on.
+anonymous create when off, media-server-authenticated create-as-host when on.
 `POST /api/party/<id>/join` is always anonymous and issues the
 party-bound session cookie used by every protected route.
 """
@@ -122,7 +122,7 @@ async def create_party(
     has no host -- the library stays locked until someone clicks
     "Login to Become Host" inside the party.
 
-    When REQUIRE_LOGIN is on, the request must supply valid Emby
+    When REQUIRE_LOGIN is on, the request must supply valid media-server
     credentials. The caller is authenticated, made host of the new
     party, and issued a party-bound session cookie atomically.
     """
@@ -275,7 +275,7 @@ async def join_party(
 ):
     """Issue the party-bound session cookie used by every protected route.
 
-    Anonymous: no Emby credentials. The cookie carries `party_id`,
+    Anonymous: no media-server credentials. The cookie carries `party_id`,
     `client_id`, and `display_name` so the Socket.IO connect handler
     and HTTP gates can attribute requests to this caller.
     """
@@ -307,7 +307,7 @@ async def join_party(
     # `/api/party/leave` unbinds party_id and client_id, so a host who
     # left and came back has no session identity to own, only the grant.
     # Requiring both locked the genuine host out of their own party with
-    # no way back: /api/auth/login needs a bound party, which only a
+    # no way back: /api/v2/auth/login needs a bound party, which only a
     # successful join provides, and video_ended / stop_video are gated to
     # the selector, who is the locked-out host, so nobody left in the
     # party could end the video either.

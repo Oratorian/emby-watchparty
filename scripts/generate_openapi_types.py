@@ -8,12 +8,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from backend.src.routers import API_ROUTERS  # noqa: E402
+from backend.app import build_api_app  # noqa: E402
 
 
 def _refs(node: Any) -> set[str]:
@@ -97,10 +95,13 @@ def _type(schema: dict[str, Any], *, all_present: bool = False) -> str:
 
 
 def openapi_document() -> dict[str, Any]:
-    application = FastAPI()
-    for router in API_ROUTERS:
-        application.include_router(router)
-    return application.openapi()
+    """The served document, built the way the server builds it.
+
+    No APP_PREFIX is applied: the prefix is a per-deployment mount point,
+    and baking one operator's choice into a committed contract would make
+    the generated types wrong for everyone else.
+    """
+    return build_api_app().openapi()
 
 
 def render() -> str:

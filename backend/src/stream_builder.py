@@ -206,7 +206,7 @@ class StreamBuilder:
         # cannot render bitmap subtitle formats. Text subtitles are NOT
         # delivered via the HLS manifest -- the frontend preloads them
         # as side-channel <track> elements via
-        # /api/subtitles/<item>/<msid>/<idx>. Two parallel subtitle
+        # /api/v2/items/<item>/subtitles/<msid>/<idx>. Two parallel subtitle
         # delivery systems (manifest + side-channel) fight over
         # textTrack.mode state, so the manifest path is intentionally off.
         if subtitle_index is not None and subtitle_index != -1:
