@@ -1297,7 +1297,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
           ref="adminTriggerBtn"
           type="button"
           class="ico-btn"
-          title="Open the admin panel (Emby admin policy required)"
+          :title="`Open the admin panel (${auth.mediaServerName} admin policy required)`"
           aria-label="Admin"
           @click="showAdminModal = true"
         >

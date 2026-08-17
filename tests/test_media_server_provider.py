@@ -728,12 +728,17 @@ def test_jellyfin_v2_prefixes_probe_supported_item_queries(tmp_path) -> None:
 
     asyncio.run(exercise())
     assert not any(request["path"] == "/Items/Prefixes" for request in fake_state.requests)
+    # /Items, the same route the grid uses, not /Users/{userId}/Items. The rail
+    # used to fall through to the latter, deprecated in Jellyfin 10.9 and slated
+    # for removal, so one screen queried two different endpoints.
     prefix_requests = [
         request
         for request in fake_state.requests
-        if request["path"] == "/Users/jellyfin-user-1/Items"
-        and request["query"].get("EnableTotalRecordCount") == "true"
+        if request["path"] == "/Items" and request["query"].get("EnableTotalRecordCount") == "true"
     ]
+    assert not any(
+        request["path"] == f"/Users/{'jellyfin-user-1'}/Items" for request in fake_state.requests
+    ), "the A-Z rail is back on the deprecated per-user route"
     assert len(prefix_requests) == 27
     assert {request["query"].get("NameStartsWith") for request in prefix_requests} == {
         None,
@@ -2648,3 +2653,74 @@ def test_a_plan_escaping_the_base_path_is_rejected() -> None:
         _plan_for_server(
             "http://jf.test:8096/jellyfin", "http://jf.test:8096/other-app/master.m3u8"
         )
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # Jellyfin: plain strings under "Tags".
+        ({"Tags": ["First contact", "Space opera"]}, ("First contact", "Space opera")),
+        # Emby: objects under "TagItems", and no "Tags" key at all. Reading only
+        # "Tags" left the section permanently empty on every Emby deployment.
+        (
+            {"TagItems": [{"Name": "Featured", "Id": 7}, {"Name": "Classic", "Id": 8}]},
+            ("Featured", "Classic"),
+        ),
+        # Both present: prefer the flat list, since a provider sending strings
+        # means them.
+        ({"Tags": ["flat"], "TagItems": [{"Name": "nested"}]}, ("flat",)),
+        # Shapes that must not raise.
+        ({}, ()),
+        ({"Tags": []}, ()),
+        ({"TagItems": []}, ()),
+        ({"Tags": None, "TagItems": None}, ()),
+        ({"TagItems": [{"Id": 1}]}, ()),
+        ({"Tags": ["", None, "kept"]}, ("kept",)),
+    ],
+)
+def test_tag_names_read_whichever_field_the_provider_populates(raw, expected) -> None:
+    from backend.src.providers.normalization import _tag_names
+
+    assert _tag_names(raw) == expected
+
+
+def test_emby_details_expose_tags_from_tag_items() -> None:
+    """End to end through normalize_details, not just the helper."""
+    from backend.src.providers.normalization import normalize_details
+
+    details = normalize_details(
+        {
+            "Id": "movie-1",
+            "Name": "A Movie",
+            "Type": "Movie",
+            "TagItems": [{"Name": "Featured", "Id": 7}],
+        }
+    )
+
+    assert details.tags == ("Featured",)
+
+
+def test_the_prefix_rail_strips_the_same_filters_as_the_grid() -> None:
+    """Both halves of one screen must ask the same question.
+
+    query_catalog rebuilds CatalogFilters with only the nine filters Jellyfin
+    honours. query_prefixes ran emby_family_query on the raw query, so a filter
+    dropped for the grid still constrained the rail: letters appeared enabled or
+    greyed out on criteria the listing behind them ignored.
+    """
+    from backend.src.providers.models import CatalogFilters, CatalogQuery, CatalogScope
+
+    query = CatalogQuery(
+        scope=CatalogScope(parent_id="library-1"),
+        filters=CatalogFilters(
+            genres=("Drama",),
+            tags=("must-not-reach-jellyfin",),
+        ),
+    )
+
+    supported = JellyfinProvider._supported(query)
+
+    assert supported.filters.genres == ("Drama",)
+    assert supported.filters.tags == ()
+    # Untouched elsewhere: stripping is for the request, not the caller's query.
+    assert query.filters.tags == ("must-not-reach-jellyfin",)

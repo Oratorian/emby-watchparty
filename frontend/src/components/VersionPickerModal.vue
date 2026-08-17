@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
+import { useAuthStore } from '@/stores/auth'
+
 interface MediaVersion {
   id: string
   name: string
@@ -12,6 +14,10 @@ defineProps<{
   itemName: string
   versions: MediaVersion[]
 }>()
+
+// The provider name is browser-visible copy here, so it follows the
+// configured server rather than hardcoding Emby.
+const auth = useAuthStore()
 
 const emit = defineEmits<{
   select: [mediaSourceId: string]
@@ -54,7 +60,7 @@ function confirm() {
     <div class="version-modal">
       <h2>Pick a version</h2>
       <p class="subtitle">
-        <strong>{{ itemName }}</strong> has multiple versions on your Emby
+        <strong>{{ itemName }}</strong> has multiple versions on your {{ auth.mediaServerName }}
         server. Whatever you pick is what everyone in the party will watch.
       </p>
 

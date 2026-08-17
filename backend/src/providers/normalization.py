@@ -36,6 +36,26 @@ _BROWSABLE = frozenset(
 )
 
 
+def _tag_names(raw: dict) -> tuple[str, ...]:
+    """Tag names, from whichever field this provider populates.
+
+    The two disagree on both the field and the shape. Jellyfin sends `Tags` as
+    a list of strings and has no `TagItems` at all. Emby sends `TagItems` as a
+    list of `{"Name": ...}` objects and no `Tags`, so reading only `Tags` left
+    the section permanently empty on every Emby deployment.
+
+    Nothing caught it because no captured artifact carries a tagged item: every
+    TagItems in tests/artifacts is `[]`, so the empty result looked right.
+    """
+    values = raw.get("Tags") or raw.get("TagItems") or []
+    names = []
+    for value in values:
+        name = value.get("Name") if isinstance(value, dict) else value
+        if name:
+            names.append(str(name))
+    return tuple(names)
+
+
 def _snake(value: object | None, fallback: str = "other") -> str:
     if not value:
         return fallback
@@ -122,7 +142,7 @@ def normalize_details(raw: dict) -> MediaItemDetails:
         **item_values,
         tagline=tagline or None,
         genres=tuple(str(value) for value in raw.get("Genres", []) if value),
-        tags=tuple(str(value) for value in raw.get("Tags", []) if value),
+        tags=_tag_names(raw),
         people=people,
         studios=studios,
         official_rating=raw.get("OfficialRating"),

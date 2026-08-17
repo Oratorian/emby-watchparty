@@ -157,9 +157,17 @@ class JellyfinProvider:
         )
         return normalize_page(payload)
 
-    async def query_catalog(self, query: CatalogQuery, credentials: ProviderCredentials):
+    @staticmethod
+    def _supported(query: CatalogQuery) -> CatalogQuery:
+        """Drop the filters Jellyfin does not honour.
+
+        Shared with query_prefixes on purpose. Both endpoints receive the same
+        CatalogQueryV2 body from the same client, so a filter stripped here and
+        forwarded there constrained the A-Z rail while leaving the grid
+        unfiltered, and the two disagreed about which letters had content.
+        """
         filters = query.filters
-        supported_query = replace(
+        return replace(
             query,
             filters=CatalogFilters(
                 playstate=filters.playstate,
@@ -173,8 +181,10 @@ class JellyfinProvider:
                 critic_rating_min=filters.critic_rating_min,
             ),
         )
+
+    async def query_catalog(self, query: CatalogQuery, credentials: ProviderCredentials):
         payload = await self._client.query_items(
-            emby_family_query(supported_query),
+            emby_family_query(self._supported(query)),
             access_token=credentials.access_token,
             user_id=credentials.user_id,
             root_items=True,
@@ -182,7 +192,7 @@ class JellyfinProvider:
         return normalize_page(payload)
 
     async def query_prefixes(self, query: CatalogQuery, credentials: ProviderCredentials):
-        provider_query = emby_family_query(query)
+        provider_query = emby_family_query(self._supported(query))
         probes = await asyncio.gather(
             *(
                 self._client.query_items(
@@ -190,6 +200,11 @@ class JellyfinProvider:
                     access_token=credentials.access_token,
                     user_id=credentials.user_id,
                     name_starts_with=prefix,
+                    # Same route the grid uses. Without it the rail fell through
+                    # to /Users/{userId}/Items, deprecated in Jellyfin 10.9 and
+                    # slated for removal, so the two halves of one screen were
+                    # querying different endpoints.
+                    root_items=True,
                 )
                 for prefix in ("", *"ABCDEFGHIJKLMNOPQRSTUVWXYZ")
             )
