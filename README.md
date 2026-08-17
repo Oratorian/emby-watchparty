@@ -491,7 +491,7 @@ Each viewer gets their own `PlaySessionId` and a fresh Emby transcode session bu
 
 ### Host-provider authentication
 
-There is no application user database. Any party member can promote themselves to **host** by authenticating with Emby credentials from inside the party (`POST /api/auth/login`). The resulting `AccessToken` lives **in RAM only** on the `PartyManager` party record and is never persisted or sent to clients. When the host disconnects, a **5-second grace timer** starts; a refresh/reconnect during that window silently reclaims host. If the timer expires, the party transitions through a three-state lock:
+There is no application user database. Any party member can promote themselves to **host** by authenticating with media-server credentials from inside the party (`POST /api/v2/auth/login`). The resulting `AccessToken` lives **in RAM only** on the `PartyManager` party record and is never persisted or sent to clients. When the host disconnects, a **5-second grace timer** starts; a refresh/reconnect during that window silently reclaims host. If the timer expires, the party transitions through a three-state lock:
 
 - **UNLOCKED** - host present, all playback and library browsing allowed.
 - **PLAYING-ONLY** - host gone mid-playback; the in-flight token is retained so viewers can finish the current video, but no new playback or seeks may start.
@@ -520,16 +520,14 @@ Emby Watch Party 2.0 ships a FastAPI backend (REST + OpenAPI) and a Socket.IO re
 
 ### REST API (representative endpoints)
 
-The FastAPI app is composed of nine routers under `backend/src/routers/`. A small sample:
+Everything that touches the media server lives under **`/api/v2`**, which is the canonical surface and the one the bundled web client speaks. The v1 library, media and auth routes it replaced were removed in 3.0; see the changelog for the mapping. A small sample of what is there now:
 
-- **`auth`** - `POST /api/auth/login` (Emby login, host-claim), `POST /api/auth/logout`
+- **`v2`** - `POST /api/v2/auth/login` (media-server login, host-claim), `GET /api/v2/libraries`, `POST /api/v2/items/query`, `GET /api/v2/items/{item_id}/streams`
 - **`party`** - `POST /api/party/create`, `POST /api/party/{id}/join`, `GET /api/party/{id}/info`
-- **`library`** - `GET /api/libraries`, `GET /api/items?parentId=...`, `GET /api/item/{item_id}`
-- **`media`** - `GET /api/media/{item_id}/streams`, `GET /api/media/{item_id}/versions`
-- **`hls`** - `GET /api/hls/{session}/master.m3u8`, segment + subtitle proxy passthrough
-- **`quality`** - `GET /api/quality/profiles`, `GET /api/quality/default`
+- **`hls`** - `GET /hls/{item_id}/master.m3u8`, segment and nested-playlist proxy passthrough
+- **`quality`** - `GET /api/quality-options`
 - **`avatar`** - `POST /api/avatar/upload`, `GET /api/avatar/{uuid}`
-- **`admin`** - `GET/PUT /api/admin/config`, `POST /api/admin/party/{id}/dissolve`
+- **`admin`** - `GET/PUT /api/admin/config`, `POST /api/admin/login`
 - **`health`** - `GET /api/health` (liveness), `GET /api/ready` (media server reachable and credentials accepted), `GET /api/version`
 
 See `/docs` for the full parameter, response, and auth-scope details.

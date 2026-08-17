@@ -43,8 +43,8 @@ There is no global "logged in user." The auth surface is per-party:
   gate host-reclaim proof; the actual party binding happens when
   the client emits `join_party`.
 - **Host status** -- a member becomes host of their party by
-  posting Emby credentials to `POST /api/auth/login`. The host's
-  Emby `access_token` signs every backend->Emby call for the
+  posting media-server credentials to `POST /api/v2/auth/login`. The
+  host's `access_token` signs every backend->media-server call for the
   party until they log out, disconnect (and the grace window
   expires), or the party is stopped.
 - **Three-state lock**:
@@ -494,7 +494,7 @@ no-op.
 
 | Event | Scope | When | Payload |
 |---|---|---|---|
-| `host_changed` | `room` | A member promoted to host via `/api/auth/login` | `{ host_username, host_client_id, is_admin, unlocked: true }` |
+| `host_changed` | `room` | A member promoted to host via `/api/v2/auth/login` | `{ host_username, host_client_id, is_admin, unlocked: true }` |
 | `host_left` | `room` | Host disconnect grace expired OR explicit logout | `{ previous_host, reason, playing_only?: true }` |
 | `host_reclaimed` | `room` | Host's `client_id` rejoined within the grace window | `{ host_username }` |
 

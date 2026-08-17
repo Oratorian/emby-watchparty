@@ -26,6 +26,31 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
   `python -m backend.migration_preflight` reports the rename as a REQUIRED ACTION before you upgrade, and [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) carries the full mapping. Failing loudly is deliberate: reading the old value as a fallback would have let a half-renamed deployment boot against the default `http://localhost:8096` and show an empty library with nothing to explain it.
 
+- **The v1 library, media and auth REST routes are gone.** Twenty-four endpoints that `/api/v2` had already replaced were removed; the web client migrated to v2 before this release and calls none of them. Each has a direct successor:
+
+  | Removed | Replacement |
+  | --- | --- |
+  | `GET /api/libraries` | `GET /api/v2/libraries` |
+  | `GET /api/items`, `POST /api/items/query` | `POST /api/v2/items/query` |
+  | `GET /api/items/prefixes`, `POST /api/items/prefixes/query` | `POST /api/v2/items/prefixes` |
+  | `GET /api/items/filter-options` | `GET /api/v2/items/filter-options` |
+  | `GET /api/search` | `GET /api/v2/items/search` |
+  | `GET /api/search/grouped` | `GET /api/v2/items/search/groups` |
+  | `GET /api/item/{id}` | `GET /api/v2/items/{id}` |
+  | `GET /api/item/{id}/sections/{section}` | `GET /api/v2/items/{id}/sections/{section}` |
+  | `GET /api/item/{id}/seasons`, `GET /api/item/{id}/episodes` | `GET /api/v2/items/{id}/seasons`, `GET /api/v2/items/{id}/episodes` |
+  | `PUT /api/item/{id}/favorite`, `PUT /api/item/{id}/played` | `PUT /api/v2/items/{id}/favorite`, `PUT /api/v2/items/{id}/played` |
+  | `GET /api/item/{id}/streams` | `GET /api/v2/items/{id}/streams` |
+  | `GET /api/image/{id}` | `GET /api/v2/items/{id}/images/{image_type}` |
+  | `GET /api/intro/{id}` | `GET /api/v2/items/{id}/intro` |
+  | `GET /api/subtitles/{id}/{media_source_id}/{index}` | `GET /api/v2/items/{id}/subtitles/{media_source_id}/{index}` |
+  | `GET`/`POST /api/playlists`, `POST /api/playlists/{id}/items` | the same paths under `/api/v2` |
+  | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/status` | the same paths under `/api/v2` |
+
+  **Anything calling these directly must move to the v2 path before upgrading**, whether that is a script, a bookmark or a third-party client. There is no redirect and no compatibility shim: a removed route now answers 404. The v2 response shapes are not identical to their v1 predecessors, so the committed contract in `frontend/src/types/api.generated.ts` and the interactive docs at `/docs` are the reference for the new field names.
+
+  `GET /api/version` and `GET /api/quality-options` are unaffected and stay where they are, as does everything under `/api/party`, `/api/admin`, `/api/avatar`, `/api/health`, `/api/ready` and `/hls`.
+
 ### Changed
 
 - `/api/ready` now also requires the media server to accept the configured API key, not just to answer. A deployment with a reachable server and a stale or non-admin key reported ready before and reports 503 now, so a monitor that was green can go red on upgrade without the server having changed. The `checks.emby` key is retained for existing consumers and now mirrors the overall status rather than reachability alone, which previously let it report `true` inside a `not_ready` body.
