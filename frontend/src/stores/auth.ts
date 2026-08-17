@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { api } from '@/api/client'
 import { useSocketStore } from './socket'
 import type { ServerToClientPayloads } from '@/types/socket.generated'
@@ -28,6 +28,8 @@ export const useAuthStore = defineStore('auth', () => {
   const hostUsername = ref<string | null>(null)
   const partyUnlocked = ref(false)
   const partyId = ref<string | null>(null)
+  const mediaServerType = ref<'emby' | 'jellyfin'>('emby')
+  const mediaServerName = computed(() => mediaServerType.value === 'jellyfin' ? 'Jellyfin' : 'Emby')
 
   // Display username (the host's Emby account name when we're host;
   // otherwise the spectator's display name from the join modal).
@@ -47,12 +49,14 @@ export const useAuthStore = defineStore('auth', () => {
     partyId.value = data.party_id || null
     username.value = data.username || null
     authenticated.value = isHost.value
+    mediaServerType.value = data.media_server_type || 'emby'
   }
 
   /** Promote this party-bound caller to host of their current party. */
   async function becomeHost(emby_username: string, password: string) {
     const data = await api.login(emby_username, password)
     if (data.success) {
+      mediaServerType.value = data.media_server_type || mediaServerType.value
       isHost.value = true
       isAdmin.value = !!data.is_admin
       hostUsername.value = data.host_username ?? null
@@ -114,6 +118,8 @@ export const useAuthStore = defineStore('auth', () => {
     partyId,
     username,
     authenticated,
+    mediaServerType,
+    mediaServerName,
     refresh,
     becomeHost,
     dropHost,

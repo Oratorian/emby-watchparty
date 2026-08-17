@@ -261,7 +261,7 @@ loadConfig()
           <div class="setting-label">
             <span>Require Login to Create Party</span>
             <span class="setting-hint">
-              When on, creating a party requires Emby credentials and the creator
+              When on, creating a party requires {{ auth.mediaServerName }} credentials and the creator
               becomes host. When off, anyone can create; any member can later log
               in to host. Browsing always needs a host with a valid session.
             </span>
@@ -277,18 +277,18 @@ loadConfig()
           <div class="setting-label">
             <span>Force Transcode</span>
             <span class="setting-hint">
-              Off (default): Emby decides per-source. h264 sources within the
+              Off (default): {{ auth.mediaServerName }} decides per-source. h264 sources within the
               quality bitrate cap get stream-copied (no re-encode, low CPU/GPU
-              on the Emby host).
+              on the {{ auth.mediaServerName }} host).
               <br /><br />
               On: every HLS request carries <code>EnableAutoStreamCopy=false</code>,
-              so Emby always re-encodes. This produces uniform 6-second segments
+              so {{ auth.mediaServerName }} always re-encodes. This produces uniform 6-second segments
               that HLS.js can seek into cleanly at any position.
               <br /><br />
               Turn this on if you see large seeks (Skip Intro, dragging the
               progress bar a long distance) restart the video from the beginning,
               or if stream-copied content stalls during seeking. Cost: extra
-              CPU/GPU load on the Emby server.
+              CPU/GPU load on the {{ auth.mediaServerName }} server.
             </span>
           </div>
           <ToggleSwitch v-model="config.FORCE_TRANSCODE" label="Force Transcode" />
@@ -344,7 +344,7 @@ loadConfig()
               <strong>Force Transcode</strong> is on; in that mode it
               would conflict with always-transcode and is replaced by
               the 1080p / 10 Mbps preset as the safe default. Bitrate
-              buckets mirror Emby's own table (tuned for software-encode
+              buckets mirror {{ auth.mediaServerName }}'s own table (tuned for software-encode
               safety on the low end).
             </span>
           </div>

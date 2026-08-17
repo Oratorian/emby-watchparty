@@ -58,7 +58,7 @@ onMounted(async () => {
   <div v-if="!authenticated" class="login-page">
     <div class="login-card glass">
       <h1>Admin Panel</h1>
-      <p class="login-subtitle">Sign in with an Emby administrator account</p>
+      <p class="login-subtitle">Sign in with your {{ auth.mediaServerName }} administrator account</p>
       <div v-if="loginError" class="error-msg">{{ loginError }}</div>
       <form @submit.prevent="adminLogin">
         <div class="form-group">

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { api } from '@/api/client'
-import { withPrefix } from '@/utils/appPrefix'
 
 interface AudioStream {
   index: number
@@ -293,7 +292,7 @@ function onSubtitleChange() {
     // Text-based sub -- load locally per user. Only rebuild the
     // stream if leaving a burned sub (to remove the burn).
     if (!selectedVersion.value) return
-    const url = withPrefix(`/api/subtitles/${props.itemId}/${selectedVersion.value}/${idx}`)
+    const url = api.subtitleUrl(props.itemId, selectedVersion.value, idx)
     emit('change-text-subtitle', { index: idx, url })
     if (wasBurnedSub) {
       emit('change-streams', {

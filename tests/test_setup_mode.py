@@ -18,15 +18,18 @@ from tests.support.asgi import asgi_client
 from tests.support.credentials import REJECTED_SESSION_SECRET
 
 
-def _invalid_production_config(*, prefix: str = "") -> Config:
+def _invalid_production_config(
+    *, prefix: str = "", retired_fields: set[str] | None = None
+) -> Config:
     return Config(
         EnvConfig(
             WATCH_PARTY_BIND="127.0.0.1",
             WATCH_PARTY_PORT=5000,
             APP_PREFIX=prefix,
             SESSION_EXPIRY=3600,
-            EMBY_SERVER_URL="http://emby.test",
-            EMBY_API_KEY="test-key",
+            MEDIA_SERVER_TYPE="emby",
+            MEDIA_SERVER_URL="http://emby.test",
+            MEDIA_SERVER_API_KEY="test-key",
             APP_ENV="production",
             SESSION_SECRET=REJECTED_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
@@ -34,6 +37,7 @@ def _invalid_production_config(*, prefix: str = "") -> Config:
             TRUSTED_PROXY_CIDRS=(),
         ),
         RuntimeConfig(LOG_TO_FILE=False),
+        retired_fields=retired_fields,
     )
 
 
@@ -122,6 +126,32 @@ def test_the_failing_fields_are_named_on_stderr(tmp_path: Path, capsys) -> None:
     assert "environment" in printed, "operator is not told where to fix it"
 
 
+def test_one_banner_line_per_failing_field_even_when_a_message_punctuates(
+    tmp_path: Path, capsys
+) -> None:
+    """A message carrying a semicolon must not split into two banner lines.
+
+    The banner used to be built by re-splitting the joined error string on
+    "; ", which made that separator structural. The retired-name
+    instruction is the first message to contain one, so it broke in half
+    and left "rename it and remove the old name" on a line of its own,
+    naming no field, interleaved alphabetically with unrelated errors. That
+    is the one message written for the 3.0 upgrade, on the only diagnosis
+    an appliance operator gets.
+    """
+    create_app(
+        config=_invalid_production_config(retired_fields={"EMBY_SERVER_URL"}),
+        project_root=tmp_path,
+        enable_update_check=False,
+    )
+
+    lines = [line.strip() for line in capsys.readouterr().err.splitlines()]
+    assert (
+        "EMBY_SERVER_URL: was replaced by MEDIA_SERVER_URL in 3.0; "
+        "rename it and remove the old name"
+    ) in lines
+
+
 def test_malformed_boot_value_enters_unconfigured_mode(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("WATCH_PARTY_PORT", "not-a-port")
 
@@ -180,13 +210,13 @@ def test_stale_bootstrap_artefacts_are_ignored_and_removed(tmp_path: Path, monke
     data = tmp_path / "data"
     data.mkdir()
     (data / "bootstrap.json").write_text(
-        '{"CONFIGURED": true, "APP_ENV": "production", "EMBY_API_KEY": "from-stale-file"}',
+        '{"CONFIGURED": true, "APP_ENV": "production", "MEDIA_SERVER_API_KEY": "from-stale-file"}',
         encoding="utf-8",
     )
     (data / "setup-token").write_text("stale-token\n", encoding="utf-8")
 
     config = Config.from_env(project_root=tmp_path)
-    assert config.EMBY_API_KEY != "from-stale-file", "persisted file was still being read"
+    assert config.MEDIA_SERVER_API_KEY != "from-stale-file", "persisted file was still being read"
 
     app = create_app(project_root=tmp_path, enable_update_check=False)
     assert (data / "setup-token").exists(), "setup token removed before startup succeeded"

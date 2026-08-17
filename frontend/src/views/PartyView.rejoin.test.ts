@@ -35,6 +35,12 @@ vi.mock('@/stores/socket', () => ({
   }),
 }))
 
+// PartyView renders this async component on every mount. Mock its module, not
+// only its rendered tag, so no CSS import can outlive a fast test teardown.
+vi.mock('@/components/JoinWaitingRoom.vue', () => ({
+  default: { template: '<div />' },
+}))
+
 let pinia: ReturnType<typeof createPinia>
 
 function mountParty() {

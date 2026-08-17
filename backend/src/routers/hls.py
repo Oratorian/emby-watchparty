@@ -1,9 +1,9 @@
 """
-HLS Router - Proxy HLS playlists and segments from Emby.
+HLS Router - Proxy HLS playlists and segments from the media server.
 
 Auth model: the signed cookie resolves the caller's active party. With
 validation enabled, the URL token must be valid for that same party.
-The party's host_access_token signs every upstream Emby request. When the host fully leaves
+The party's host_access_token signs every upstream request. When the host fully leaves
 (token cleared) the route returns 423 -- but during PLAYING-ONLY the
 stored token keeps the current video alive until it ends naturally.
 """
@@ -21,7 +21,9 @@ from backend.src.dependencies import (
     get_config,
     get_emby_client,
     get_emby_gateway,
+    get_hls_registry,
     get_logger,
+    get_media_server,
     get_party_manager,
     get_token_manager,
     require_host_token,
@@ -275,8 +277,9 @@ def _rewrite_playlist(
     return content
 
 
-@router.get(
+@router.api_route(
     "/{item_id}/master.m3u8",
+    methods=["GET", "HEAD"],
     responses={
         200: {
             "content": {"application/vnd.apple.mpegurl": {}},
@@ -284,7 +287,7 @@ def _rewrite_playlist(
         },
         **PARTY_HOST_TOKEN_RESPONSES,
         500: {"description": "Internal proxy error"},
-        502: {"description": "Upstream Emby request failed"},
+        502: {"description": "Upstream media-server request failed"},
     },
 )
 async def proxy_hls_master(
@@ -297,6 +300,8 @@ async def proxy_hls_master(
     token_manager=Depends(get_token_manager),
     party_manager=Depends(get_party_manager),
     logger=Depends(get_logger),
+    media_server=Depends(get_media_server),
+    hls_registry=Depends(get_hls_registry),
 ):
     try:
         access_token, user_id, _ = _resolve_host_creds(
@@ -314,8 +319,63 @@ async def proxy_hls_master(
                 media_type="application/json",
             )
 
+        plan = hls_registry.get_plan(item_id)
+        if plan is not None:
+            token = request.query_params.get("token")
+            if config.ENABLE_HLS_TOKEN_VALIDATION:
+                claims = token_manager.get_claims(token or "")
+                sid = claims[1] if claims else None
+            else:
+                sid = next(
+                    (
+                        candidate_sid
+                        for candidate_sid, client_id in party_session.party.sid_client_ids.items()
+                        if client_id == party_session.client_id
+                    ),
+                    None,
+                )
+            stream = party_session.party.user_streams.get(sid) if sid else None
+            if stream is None or stream.stream_id != plan.stream_id:
+                return Response(
+                    content='{"error": "Unauthorized"}',
+                    status_code=401,
+                    media_type="application/json",
+                )
+            upstream = await media_server.fetch_hls_resource(
+                plan,
+                plan.master,
+                head=request.method == "HEAD",
+            )
+            if upstream.is_redirect:
+                logger.warning("Media server redirected an HLS master request; not followed")
+                return Response(
+                    content='{"error": "Upstream redirect not followed"}',
+                    status_code=502,
+                    media_type="application/json",
+                )
+            upstream.raise_for_status()
+            if request.method == "HEAD":
+                headers = {"X-Content-Type-Options": "nosniff"}
+                if content_length := upstream.headers.get("Content-Length"):
+                    headers["Content-Length"] = content_length
+                return Response(status_code=upstream.status_code, headers=headers)
+            playlist = hls_registry.rewrite_playlist(
+                plan,
+                plan.master,
+                upstream.text,
+                resolve=lambda parent, uri: media_server.resolve_hls_resource(plan, parent, uri),
+                app_prefix=config.APP_PREFIX,
+                token=token or "",
+            )
+            return Response(
+                content=playlist,
+                media_type="application/vnd.apple.mpegurl",
+                headers={"X-Content-Type-Options": "nosniff"},
+            )
+
         query_params = _sanitize_query(request.query_params.multi_items(), strict=True)
-        emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/master.m3u8"
+        media_server_url = config.MEDIA_SERVER_URL
+        emby_url = f"{media_server_url}/emby/Videos/{item_id}/master.m3u8"
 
         logger.debug(f"Proxying HLS master: {emby_url}")
         emby_resp = await emby_gateway.get(
@@ -328,7 +388,7 @@ async def proxy_hls_master(
 
         token = request.query_params.get("token") if config.ENABLE_HLS_TOKEN_VALIDATION else None
         playlist = _rewrite_playlist(
-            emby_resp.text, item_id, config.APP_PREFIX, config.EMBY_SERVER_URL, token
+            emby_resp.text, item_id, config.APP_PREFIX, media_server_url, token
         )
 
         return Response(
@@ -368,6 +428,145 @@ async def proxy_hls_master(
         )
 
 
+@router.api_route(
+    "/{stream_id}/resources/{resource_id}",
+    methods=["GET", "HEAD"],
+    responses={
+        200: {
+            "content": {"application/vnd.apple.mpegurl": {}},
+            "description": "Registered nested HLS playlist",
+        },
+        **PARTY_HOST_TOKEN_RESPONSES,
+        502: {"description": "Upstream media-server request failed"},
+    },
+)
+async def proxy_hls_resource(
+    stream_id: str,
+    resource_id: str,
+    request: Request,
+    party_session: PartySession = Depends(require_host_token),
+    config=Depends(get_config),
+    media_server=Depends(get_media_server),
+    hls_registry=Depends(get_hls_registry),
+    token_manager=Depends(get_token_manager),
+    party_manager=Depends(get_party_manager),
+    logger=Depends(get_logger),
+):
+    access_token, _, _ = _resolve_host_creds(
+        request,
+        config,
+        token_manager,
+        party_manager,
+        logger,
+        session_party_id=party_session.party_id,
+    )
+    if not access_token:
+        return Response(
+            content='{"error": "Unauthorized"}',
+            status_code=401,
+            media_type="application/json",
+        )
+    token = request.query_params.get("token")
+    if config.ENABLE_HLS_TOKEN_VALIDATION:
+        claims = token_manager.get_claims(token or "")
+        sid = claims[1] if claims else None
+    else:
+        sid = next(
+            (
+                candidate_sid
+                for candidate_sid, client_id in party_session.party.sid_client_ids.items()
+                if client_id == party_session.client_id
+            ),
+            None,
+        )
+    plan = hls_registry.get_plan(stream_id)
+    stream = party_session.party.user_streams.get(sid) if sid else None
+    resource = hls_registry.resolve(stream_id, resource_id)
+    if plan is None or resource is None or stream is None or stream.stream_id != plan.stream_id:
+        return Response(
+            content='{"error": "Unauthorized"}',
+            status_code=401,
+            media_type="application/json",
+        )
+    try:
+        is_playlist = _is_playlist(urlsplit(resource.url).path)
+        is_streaming = request.method == "GET" and not is_playlist
+        if is_streaming:
+            upstream = await media_server.open_hls_resource(
+                plan,
+                resource,
+                range_header=request.headers.get("range"),
+            )
+        else:
+            upstream = await media_server.fetch_hls_resource(
+                plan,
+                resource,
+                range_header=request.headers.get("range"),
+                head=request.method == "HEAD",
+            )
+        if upstream.is_redirect:
+            await upstream.aclose()
+            logger.warning("Media server redirected an HLS resource request; not followed")
+            return Response(
+                content='{"error": "Upstream redirect not followed"}',
+                status_code=502,
+                media_type="application/json",
+            )
+        response_headers = {"X-Content-Type-Options": "nosniff"}
+        for header in ("Content-Range", "Accept-Ranges", "Content-Length"):
+            if value := upstream.headers.get(header):
+                response_headers[header] = value
+        if upstream.status_code == 416:
+            await upstream.aclose()
+            return Response(status_code=416, headers=response_headers)
+        try:
+            upstream.raise_for_status()
+        except httpx.HTTPError:
+            await upstream.aclose()
+            raise
+        if request.method == "HEAD":
+            return Response(status_code=upstream.status_code, headers=response_headers)
+        if is_streaming:
+
+            async def stream_body():
+                try:
+                    async for chunk in upstream.aiter_bytes():
+                        yield chunk
+                finally:
+                    await upstream.aclose()
+
+            return StreamingResponse(
+                stream_body(),
+                status_code=upstream.status_code,
+                media_type=(
+                    "video/MP2T"
+                    if _is_segment(urlsplit(resource.url).path)
+                    else "application/octet-stream"
+                ),
+                headers=response_headers,
+            )
+        playlist = hls_registry.rewrite_playlist(
+            plan,
+            resource,
+            upstream.text,
+            resolve=lambda parent, uri: media_server.resolve_hls_resource(plan, parent, uri),
+            app_prefix=config.APP_PREFIX,
+            token=token or "",
+        )
+        return Response(
+            content=playlist,
+            media_type="application/vnd.apple.mpegurl",
+            headers={"X-Content-Type-Options": "nosniff"},
+        )
+    except (ValueError, httpx.HTTPError) as exc:
+        logger.error("Failed to fetch opaque HLS resource: error=%s", type(exc).__name__)
+        return Response(
+            content='{"error": "Failed to fetch HLS resource"}',
+            status_code=502,
+            media_type="application/json",
+        )
+
+
 @router.get(
     "/{item_id}/{subpath:path}",
     responses={
@@ -381,7 +580,7 @@ async def proxy_hls_master(
         },
         **PARTY_HOST_TOKEN_RESPONSES,
         500: {"description": "Internal proxy error"},
-        502: {"description": "Upstream Emby request failed"},
+        502: {"description": "Upstream media-server request failed"},
     },
 )
 async def proxy_hls_segment(
@@ -421,7 +620,8 @@ async def proxy_hls_segment(
         query_params = _sanitize_query(
             request.query_params.multi_items(), strict=False, logger=logger
         )
-        emby_url = f"{config.EMBY_SERVER_URL}/emby/Videos/{item_id}/{subpath}"
+        media_server_url = config.MEDIA_SERVER_URL
+        emby_url = f"{media_server_url}/emby/Videos/{item_id}/{subpath}"
 
         logger.debug(f"Proxying HLS segment: {subpath} -> {emby_url}")
 
@@ -437,7 +637,7 @@ async def proxy_hls_segment(
                 request.query_params.get("token") if config.ENABLE_HLS_TOKEN_VALIDATION else None
             )
             playlist = _rewrite_playlist(
-                emby_resp.text, item_id, config.APP_PREFIX, config.EMBY_SERVER_URL, token
+                emby_resp.text, item_id, config.APP_PREFIX, media_server_url, token
             )
             return Response(
                 content=playlist,

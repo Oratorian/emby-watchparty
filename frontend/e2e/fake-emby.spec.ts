@@ -18,7 +18,7 @@ test('party host login shows backend rate-limit detail', async ({ page }) => {
   ).click()
   await page.getByPlaceholder('Emby username').fill('Alice')
   await page.getByPlaceholder('Emby password').fill('password')
-  await page.route('**/api/auth/login', (route) => route.fulfill({
+  await page.route('**/api/v2/auth/login', (route) => route.fulfill({
     status: 429,
     headers: { 'content-type': 'application/json', 'retry-after': '7' },
     body: JSON.stringify({

@@ -96,7 +96,7 @@ https://discord.gg/RWUpxq9xsA
 - **Refined Cyber UI**: cyan/magenta/violet palette, glass surfaces, chip/pill controls, animated LIVE badge, iOS-style A-Z library jump bar
 - **Reverse-proxy ready**: `APP_PREFIX` wired end-to-end so one Docker image sits behind any subpath (`https://example.com/watchparty/...`)
 - **Admin panel with hot-reload**: runtime settings editable from `/admin` as an in-party modal, `.env` reserved for boot-only keys
-- **Reload-as-rejoin + healthchecks**: refresh in an active party rejoins via persistent `client_id`; `/api/health` reports liveness and `/api/ready` verifies Emby readiness; rsyslog-style logging with rotation
+- **Reload-as-rejoin + healthchecks**: refresh in an active party rejoins via persistent `client_id`; `/api/health` reports liveness and `/api/ready` verifies the media server is reachable **and** that the configured API key is accepted; rsyslog-style logging with rotation
 
 ## Browser compatibility
 
@@ -156,13 +156,13 @@ Emby Watch Party works best with the following browsers:
    ```
 
    `.env.example` is a **production** template and 3.0 starts fail-closed, so it will not
-   serve until every production field is set: `EMBY_SERVER_URL`, `EMBY_API_KEY`,
+   serve until every production field is set: `MEDIA_SERVER_URL`, `MEDIA_SERVER_API_KEY`,
    `SESSION_SECRET` (`openssl rand -hex 32`), `CORS_ALLOWED_ORIGINS`, and
    `SESSION_COOKIE_SECURE` plus `BEHIND_PROXY`, which ship commented out because there is
    no safe default for either. For a local development run, set `APP_ENV=development`
    instead and none of the rest is required.
 
-   Only boot-essential settings live in `.env` - see [`.env.example`](.env.example) for the full annotated list (bind/port, `APP_PREFIX`, `SESSION_SECRET`, `SESSION_COOKIE_SECURE`, `CORS_ALLOWED_ORIGINS`, `EMBY_SERVER_URL`, `EMBY_API_KEY`). All other runtime options (logging, rate limits, late-join vote, `FORCE_TRANSCODE`, `REQUIRE_LOGIN`, etc.) are managed live from the Admin Panel at `/admin` and persisted to `config.json`.
+   Only boot-essential settings live in `.env` - see [`.env.example`](.env.example) for the full annotated list (bind/port, `APP_PREFIX`, `SESSION_SECRET`, `SESSION_COOKIE_SECURE`, `CORS_ALLOWED_ORIGINS`, `MEDIA_SERVER_TYPE`, `MEDIA_SERVER_URL`, `MEDIA_SERVER_API_KEY`). All other runtime options (logging, rate limits, late-join vote, `FORCE_TRANSCODE`, `REQUIRE_LOGIN`, etc.) are managed live from the Admin Panel at `/admin` and persisted to `config.json`.
 
 4. **Run the application** from the repository root:
 
@@ -203,7 +203,7 @@ The pre-built multi-arch image is published to GitHub Container Registry:
 docker pull ghcr.io/oratorian/emby-watchparty:latest
 ```
 
-**Recommended: use the compose example.** Copy [`docker-compose.yml.example`](docker-compose.yml.example) to `docker-compose.yml`, copy `.env.example` to `.env` and fill in your Emby URL + API key, then:
+**Recommended: use the compose example.** Copy [`docker-compose.yml.example`](docker-compose.yml.example) to `docker-compose.yml`, copy `.env.example` to `.env` and fill in `MEDIA_SERVER_TYPE`, `MEDIA_SERVER_URL` and `MEDIA_SERVER_API_KEY`, then:
 
 ```bash
 # One-time: pre-create config.json so Docker does not create it as a
@@ -216,9 +216,10 @@ docker pull ghcr.io/oratorian/emby-watchparty:latest
 docker compose up -d
 ```
 
-The template is production-shaped, so fill in `.env` before starting: Emby URL and API key,
-`SESSION_SECRET`, `CORS_ALLOWED_ORIGINS`, and the commented-out `SESSION_COOKIE_SECURE` and
-`BEHIND_PROXY`. If any required field is missing the container stays up and answers
+The template is production-shaped, so fill in `.env` before starting: `MEDIA_SERVER_URL`,
+`MEDIA_SERVER_API_KEY`, `SESSION_SECRET`, `CORS_ALLOWED_ORIGINS`, and the commented-out
+`SESSION_COOKIE_SECURE` and `BEHIND_PROXY`. If any required field is missing the container
+stays up and answers
 `setup_required` on `/api/health`, naming the fields on stderr rather than starting.
 
 The supplied container always listens on `0.0.0.0:5000`. To expose another host port, edit only
@@ -336,10 +337,51 @@ APP_ENV=development
 SESSION_SECRET=generate-one-stable-64-character-random-hex-value
 SESSION_COOKIE_SECURE=false
 CORS_ALLOWED_ORIGINS=*
-EMBY_SERVER_URL=http://localhost:8096
-EMBY_API_KEY=your-dedicated-emby-api-key
+MEDIA_SERVER_TYPE=emby
+MEDIA_SERVER_URL=http://localhost:8096
+MEDIA_SERVER_API_KEY=your-dedicated-emby-api-key
 ENABLE_HLS_TOKEN_VALIDATION=true
 ```
+
+Jellyfin 10.10+ uses the same two settings and only changes the provider:
+
+```env
+MEDIA_SERVER_TYPE=jellyfin
+MEDIA_SERVER_URL=http://jellyfin:8096
+MEDIA_SERVER_API_KEY=your-dedicated-jellyfin-api-key
+```
+
+There is one URL and one key for both providers, because neither was ever
+provider-specific; only `MEDIA_SERVER_TYPE` is. It stays explicit, with no
+auto-detection: it names which server `MEDIA_SERVER_URL` points at and which
+server issued `MEDIA_SERVER_API_KEY`, and changing it requires a restart. Mint
+the key on that server, from its own admin dashboard, and keep it dedicated to
+Watch Party.
+
+**Renamed in 3.0, with no fallback.** `EMBY_SERVER_URL` and
+`JELLYFIN_SERVER_URL` are now `MEDIA_SERVER_URL`; `EMBY_API_KEY` and
+`JELLYFIN_API_KEY` are now `MEDIA_SERVER_API_KEY`. The old names are not read
+at all, so leaving one in place is a boot error naming its replacement rather
+than a silently ignored line. See [the migration guide](docs/Migration-HowTo.md).
+
+Jellyfin playback is HLS-only: HLS stream copy/remux/transcode are supported.
+Progressive/direct-file playback, Live TV, Jellyfin SyncPlay, and reuse of GPL
+Jellyfin Web code are out of scope. Browser receives opaque local HLS resource
+IDs; Jellyfin credentials remain server-side.
+
+**Skip Intro on Jellyfin needs the Intro Skipper plugin.** Watch Party reads
+intro timings from Jellyfin's `/MediaSegments` API, which ships with Jellyfin
+but stays empty until something detects the segments. Install **Intro Skipper**
+from the Jellyfin dashboard and let it scan your library.
+
+Its companion **File Transformation** plugin is not required by Watch Party. It
+exists so Intro Skipper can add a skip button to *Jellyfin's own web UI*
+without patching Jellyfin's web files, which is unrelated to the API we read.
+Installing it does no harm if you also use the Jellyfin web client.
+
+Without Intro Skipper the endpoint returns nothing, so Skip Intro simply never
+appears; playback is unaffected. On Emby the equivalent data comes from the
+server itself and needs no plugin.
 
 Use this only for local development over plain HTTP. Do not expose this permissive configuration to untrusted networks.
 
@@ -350,8 +392,9 @@ APP_ENV=production
 SESSION_SECRET=generate-one-stable-64-character-random-hex-value
 SESSION_COOKIE_SECURE=true
 CORS_ALLOWED_ORIGINS=https://watchparty.example.com
-EMBY_SERVER_URL=http://emby:8096
-EMBY_API_KEY=your-dedicated-emby-api-key
+MEDIA_SERVER_TYPE=emby
+MEDIA_SERVER_URL=http://emby:8096
+MEDIA_SERVER_API_KEY=your-dedicated-emby-api-key
 ENABLE_HLS_TOKEN_VALIDATION=true
 TRUSTED_PROXY_CIDRS=172.16.0.0/12
 ```
@@ -377,9 +420,12 @@ Boot-essential, restart required.
 | `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist for the Socket.IO server (`https://a.example.com,https://b.example.com`). `*` accepts any origin (historical default). Pin to your real origin(s) in production. | `*` |
 | `TRUSTED_PROXY_CIDRS` | Comma-separated proxy CIDRs allowed to supply client-IP forwarding headers. Empty ignores forwarded headers. | (empty) |
 | `ENABLE_HLS_TOKEN_VALIDATION` | Restart-required stream-access protection. Production requires `true`. | `true` |
-| **Emby server** | | |
-| `EMBY_SERVER_URL` | Your Emby server URL | `http://localhost:8096` |
-| `EMBY_API_KEY` | Emby API key (server admin key) | (required) |
+| **Media server** | | |
+| `MEDIA_SERVER_TYPE` | Explicit provider: `emby` or `jellyfin`. Not auto-detected; restart to change. | `emby` |
+| `MEDIA_SERVER_URL` | URL of the server named by `MEDIA_SERVER_TYPE`, reachable from the backend. | `http://localhost:8096` |
+| `MEDIA_SERVER_API_KEY` | Administrative API key issued by that same server. Required in production. | (empty) |
+
+`EMBY_SERVER_URL`, `JELLYFIN_SERVER_URL`, `EMBY_API_KEY` and `JELLYFIN_API_KEY` were retired in 3.0 and are never read; a leftover one fails the boot with the name of its replacement.
 
 `REQUIRE_LOGIN` was previously here. It now lives in the admin panel as a runtime, hot-reloadable setting; see the host-provider authentication model in [Architecture](#architecture) for the full semantics.
 
@@ -445,7 +491,7 @@ Each viewer gets their own `PlaySessionId` and a fresh Emby transcode session bu
 
 ### Host-provider authentication
 
-There is no application user database. Any party member can promote themselves to **host** by authenticating with Emby credentials from inside the party (`POST /api/auth/login`). The resulting `AccessToken` lives **in RAM only** on the `PartyManager` party record and is never persisted or sent to clients. When the host disconnects, a **5-second grace timer** starts; a refresh/reconnect during that window silently reclaims host. If the timer expires, the party transitions through a three-state lock:
+There is no application user database. Any party member can promote themselves to **host** by authenticating with media-server credentials from inside the party (`POST /api/v2/auth/login`). The resulting `AccessToken` lives **in RAM only** on the `PartyManager` party record and is never persisted or sent to clients. When the host disconnects, a **5-second grace timer** starts; a refresh/reconnect during that window silently reclaims host. If the timer expires, the party transitions through a three-state lock:
 
 - **UNLOCKED** - host present, all playback and library browsing allowed.
 - **PLAYING-ONLY** - host gone mid-playback; the in-flight token is retained so viewers can finish the current video, but no new playback or seeks may start.
@@ -474,17 +520,15 @@ Emby Watch Party 2.0 ships a FastAPI backend (REST + OpenAPI) and a Socket.IO re
 
 ### REST API (representative endpoints)
 
-The FastAPI app is composed of nine routers under `backend/src/routers/`. A small sample:
+Everything that touches the media server lives under **`/api/v2`**, which is the canonical surface and the one the bundled web client speaks. The v1 library, media and auth routes it replaced were removed in 3.0; see the changelog for the mapping. A small sample of what is there now:
 
-- **`auth`** - `POST /api/auth/login` (Emby login, host-claim), `POST /api/auth/logout`
+- **`v2`** - `POST /api/v2/auth/login` (media-server login, host-claim), `GET /api/v2/libraries`, `POST /api/v2/items/query`, `GET /api/v2/items/{item_id}/streams`
 - **`party`** - `POST /api/party/create`, `POST /api/party/{id}/join`, `GET /api/party/{id}/info`
-- **`library`** - `GET /api/libraries`, `GET /api/items?parentId=...`, `GET /api/item/{item_id}`
-- **`media`** - `GET /api/media/{item_id}/streams`, `GET /api/media/{item_id}/versions`
-- **`hls`** - `GET /api/hls/{session}/master.m3u8`, segment + subtitle proxy passthrough
-- **`quality`** - `GET /api/quality/profiles`, `GET /api/quality/default`
+- **`hls`** - `GET /hls/{item_id}/master.m3u8`, segment and nested-playlist proxy passthrough
+- **`quality`** - `GET /api/quality-options`
 - **`avatar`** - `POST /api/avatar/upload`, `GET /api/avatar/{uuid}`
-- **`admin`** - `GET/PUT /api/admin/config`, `POST /api/admin/party/{id}/dissolve`
-- **`health`** - `GET /api/health` (liveness), `GET /api/ready` (Emby readiness), `GET /api/version`
+- **`admin`** - `GET/PUT /api/admin/config`, `POST /api/admin/login`
+- **`health`** - `GET /api/health` (liveness), `GET /api/ready` (media server reachable and credentials accepted), `GET /api/version`
 
 See `/docs` for the full parameter, response, and auth-scope details.
 
@@ -510,7 +554,7 @@ Common issues and fixes are catalogued on the wiki: **[Troubleshooting](https://
 Quick checks before opening an issue:
 
 - **App unreachable.** Confirm the backend is bound on `WATCH_PARTY_BIND`/`WATCH_PARTY_PORT` and that clients can reach it. Behind a reverse proxy, verify `APP_PREFIX` matches the mount path and that WebSocket upgrades are forwarded.
-- **Can't browse or play media.** The admin `EMBY_API_KEY` in `.env` must be valid, and the Emby server (`EMBY_SERVER_URL`) must be reachable from the backend. To play, someone in the party has to click **Login to Become Host** and supply their own Emby credentials - nothing plays until a host provider is attached.
+- **Can't browse or play media.** The admin `MEDIA_SERVER_API_KEY` in `.env` must be valid for the server named by `MEDIA_SERVER_TYPE`, and that server (`MEDIA_SERVER_URL`) must be reachable from the backend. A key minted on the other server is a valid key against the wrong server and reads as "credentials rejected". To play, someone in the party has to click **Login to Become Host** and supply their own credentials - nothing plays until a host provider is attached.
 - **Playback works, sync doesn't.** Confirm the Socket.IO transport isn't being downgraded or blocked by an intermediate proxy, and that `CORS_ALLOWED_ORIGINS` includes your real origin.
 - **Session cookie rejected / kicked out on every restart.** `SESSION_SECRET` must be set to a stable value (`openssl rand -hex 32`). An unset secret regenerates on boot and invalidates every existing cookie; with `--workers >1` each worker signs differently.
 - **Logs.** Logging goes to stdout by default. File logging is opt-in from **/admin -> Logging**; the log path shown there is where to look once enabled.
@@ -519,12 +563,12 @@ Quick checks before opening an issue:
 
 - **Proxy architecture.** The Emby server stays on your internal network. All HLS segments and playlists are pulled by the backend and re-served to clients, so browsers never talk to Emby directly.
 - **Credential model.**
-  - `.env` holds only the admin `EMBY_API_KEY`, used for library browsing and administrative Emby calls. **Do not commit `.env`.**
+  - `.env` holds only the admin `MEDIA_SERVER_API_KEY`, used for library browsing and administrative calls against the media server. **Do not commit `.env`.**
   - Per-user Emby credentials are never persisted. Any party member can click **Login to Become Host** in-app and authenticate against Emby; the resulting AccessToken lives in memory as that party's *host provider* and is used to open per-user transcode sessions. Tokens are discarded when the host provider changes or the party ends.
   - Standalone admin login also keeps its Emby token server-side in a bounded, expiring in-memory session. The browser cookie contains only an opaque handle.
 - **Production mode.** Set `APP_ENV=production`; startup then rejects missing stable session keys, insecure cookies, wildcard CORS, disabled HLS token validation, or missing Emby credentials.
 - **Session secret and process model.** `SESSION_SECRET` must remain stable across restarts. Run exactly one application process/worker; party state, admin sessions, limiters, background tasks, streams, and HLS tokens are intentionally in-memory and are not shared between workers.
-- **HLS URLs.** Since beta18, HLS playlist and segment URLs served to the browser no longer carry the admin `EMBY_API_KEY` as a query parameter. Access is gated by a per-stream HLS token bound to the session cookie; the API key stays server-side.
+- **HLS URLs.** Since beta18, HLS playlist and segment URLs served to the browser no longer carry the admin `MEDIA_SERVER_API_KEY` as a query parameter. Access is gated by a per-stream HLS token bound to the session cookie; the API key stays server-side.
 - **Party codes** are generated with cryptographically secure random tokens.
 - **Built-in controls.** HLS token validation is on by default and is a restart-required boot setting, `ENABLE_HLS_TOKEN_VALIDATION`. Bounded per-IP API/party-creation rate limiting and party size limits remain tunable in **/admin -> Security**. Configure `TRUSTED_PROXY_CIDRS` when a reverse proxy supplies client addresses.
 - **For internet-facing deployments**, terminate TLS at a reverse proxy (nginx, Caddy, Traefik), set `SESSION_COOKIE_SECURE=true`, and pin `CORS_ALLOWED_ORIGINS` to your real origin(s) instead of `*`.

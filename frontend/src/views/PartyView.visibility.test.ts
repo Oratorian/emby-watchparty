@@ -142,6 +142,16 @@ describe('the hide-party control', () => {
     expect(eye(wrapper).attributes('aria-pressed')).toBe('true')
     wrapper.unmount()
   })
+
+  it('names the selected provider when the party is locked', async () => {
+    const { wrapper, auth } = await mountJoined(false)
+    auth.mediaServerType = 'jellyfin'
+    await settle()
+
+    expect(wrapper.get('.no-video').text()).toContain('A Jellyfin login is needed')
+    expect(wrapper.get('.no-video').text()).not.toContain('An Emby login is needed')
+    wrapper.unmount()
+  })
 })
 
 describe('landing on a party that no longer exists', () => {

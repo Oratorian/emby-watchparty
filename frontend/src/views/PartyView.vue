@@ -734,7 +734,7 @@ async function copyPartyId() {
 
 async function leaveParty() {
   // Await so the session-clear request lands before any subsequent
-  // navigation to /admin or /version reads /api/auth/status.
+  // navigation to /admin or /version reads /api/v2/auth/status.
   await party.leave()
   router.push('/')
 }
@@ -1297,7 +1297,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
           ref="adminTriggerBtn"
           type="button"
           class="ico-btn"
-          title="Open the admin panel (Emby admin policy required)"
+          :title="`Open the admin panel (${auth.mediaServerName} admin policy required)`"
           aria-label="Admin"
           @click="showAdminModal = true"
         >
@@ -1368,7 +1368,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
           </template>
           <template v-else>
             <h2>Party is locked</h2>
-            <p>An Emby login is needed before anyone can browse the library. Any party member can do it.</p>
+            <p>{{ auth.mediaServerName === 'Emby' ? 'An' : 'A' }} {{ auth.mediaServerName }} login is needed before anyone can browse the library. Any party member can do it.</p>
             <button @click="libraryButtonAction" class="btn btn-primary">Login to Become Host</button>
           </template>
         </div>
@@ -1601,7 +1601,8 @@ async function submitBecomeHost(payload: { username: string; password: string })
   <EmbyLoginModal
     v-if="showBecomeHostModal"
     title="Login to Become Host"
-    description="Any party member can log in with valid Emby credentials. The host's library becomes browsable for everyone in the room."
+    :description="`Any party member can log in with valid ${auth.mediaServerName} credentials. The host's library becomes browsable for everyone in the room.`"
+    :provider-name="auth.mediaServerName"
     submit-label="Become Host"
     :busy="becomeHostBusy"
     :error-message="becomeHostError"

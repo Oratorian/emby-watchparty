@@ -14,7 +14,7 @@
       <div class="panel-header">
         <div v-if="!currentParentId" class="library-home-heading">
           <h2>Choose a library</h2>
-          <p>Browse your Emby media and pick what the party watches next.</p>
+          <p>Browse your {{ mediaServerName }} media and pick what the party watches next.</p>
         </div>
         <div v-else class="breadcrumbs">
           <span class="crumb" @click="goToRoot">Libraries</span>
@@ -42,6 +42,7 @@
 
       <div v-if="currentParentId" class="library-tools">
         <LibraryFilters
+          v-if="filtersEnabled"
           :controls="filterControls"
           :model-value="filterState"
           @update:model-value="applyFilters"
@@ -174,12 +175,17 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { api, type FilterControl, type GroupedSearchResponse, type LibraryFilterState, type LibraryItem, type LibraryQueryRequest, type PlaybackSelection } from '@/api/client'
 import { usePartyStore } from '@/stores/party'
 import { useAuthStore } from '@/stores/auth'
+import { useMediaServerStore } from '@/stores/mediaServer'
 import LibraryFilters from './LibraryFilters.vue'
 import GlobalLibrarySearch from './GlobalLibrarySearch.vue'
 import TitleDetails from './TitleDetails.vue'
 
 const party = usePartyStore()
 const auth = useAuthStore()
+const mediaServer = useMediaServerStore()
+const mediaServerName = computed(
+  () => mediaServer.info?.display_name ?? auth.mediaServerName,
+)
 // Drives the LIVE badge + EQ animation overlay on the currently-playing
 // card. Falls back to null when nothing is selected so the overlay never
 // renders accidentally on a stale match.
@@ -376,6 +382,7 @@ async function browseDetail(item: LibraryItem) {
 }
 const filterControls = ref<FilterControl[]>([])
 const filterState = ref<LibraryFilterState>({})
+const filtersEnabled = computed(() => mediaServer.filterControlsSupported)
 const sortField = ref<LibraryQueryRequest['sort']['field']>('SortName')
 const sortDirection = ref<LibraryQueryRequest['sort']['direction']>('Ascending')
 let configuredParentId: string | null = null
@@ -386,6 +393,8 @@ const FILTER_FIELDS: Record<string, string> = {
   studio: 'studios',
   tag: 'tags',
   year: 'years',
+  community_rating: 'community_rating_min',
+  critic_rating: 'critic_rating_min',
   container: 'containers',
   video_codec: 'video_codecs',
   video_type: 'video_types',
@@ -401,18 +410,27 @@ function filterStorageKey(parentId: string): string {
   return `emby-watchparty-library-filters:${parentId}`
 }
 
-function configureFilters(parentId: string) {
-  if (configuredParentId === parentId) return
-  configuredParentId = parentId
-  try {
-    const saved = JSON.parse(localStorage.getItem(filterStorageKey(parentId)) || '{}')
-    filterState.value = saved.filters && typeof saved.filters === 'object' ? saved.filters : {}
-    sortField.value = saved.sortField || 'SortName'
-    sortDirection.value = saved.sortDirection || 'Ascending'
-  } catch {
-    filterState.value = {}
+async function configureFilters(parentId: string) {
+  const changedParent = configuredParentId !== parentId
+  if (changedParent) {
+    configuredParentId = parentId
+    filterControls.value = []
+    try {
+      const saved = JSON.parse(localStorage.getItem(filterStorageKey(parentId)) || '{}')
+      filterState.value = saved.filters && typeof saved.filters === 'object' ? saved.filters : {}
+      sortField.value = saved.sortField || 'SortName'
+      sortDirection.value = saved.sortDirection || 'Ascending'
+    } catch {
+      filterState.value = {}
+    }
   }
-  // /api/items/filter-options fans out to ten Emby catalogue endpoints, so it
+  const supported = await mediaServer.load()
+  if (!supported) {
+    filterControls.value = []
+    return
+  }
+  if (!changedParent) return
+  // /api/v2/items/filter-options fans out to ten media-server catalogue endpoints, so it
   // is the slowest request on the page and the most likely to be in flight
   // when navigation aborts the shared controller. An abort is not a failure:
   // treating it as one emptied filterControls, and because this function is
@@ -422,18 +440,17 @@ function configureFilters(parentId: string) {
   // saved filter kept filtering the grid with no chips, no active count and no
   // "Reset All" to clear it.
   const myToken = navToken
-  api.filterOptions({ parentId }, navigationSignal())
-    .then((response) => {
-      if (configuredParentId === parentId) filterControls.value = response.controls
-    })
-    .catch((error) => {
-      if (myToken !== navToken || error?.name === 'AbortError') {
-        // Superseded, not broken. Clear the memo so the next visit refetches.
-        if (configuredParentId === parentId) configuredParentId = null
-        return
-      }
-      if (configuredParentId === parentId) filterControls.value = []
-    })
+  try {
+    const response = await api.filterOptions({ parentId }, navigationSignal())
+    if (configuredParentId === parentId) filterControls.value = response.controls
+  } catch (error: unknown) {
+    if (myToken !== navToken || (error instanceof Error && error.name === 'AbortError')) {
+      // Superseded, not broken. Clear the memo so the next visit refetches.
+      if (configuredParentId === parentId) configuredParentId = null
+      return
+    }
+    if (configuredParentId === parentId) filterControls.value = []
+  }
 }
 
 function persistFilters() {
@@ -462,18 +479,48 @@ function applySort() {
   void fetchItems(currentParentId.value)
 }
 
+function selectedYears(value: string | string[]): number[] {
+  if (Array.isArray(value)) {
+    return value.map(Number).filter(Number.isInteger)
+  }
+  const [mode, firstRaw, secondRaw] = value.split(':')
+  const first = Number(firstRaw)
+  const second = Number(secondRaw)
+  const currentYear = new Date().getFullYear()
+  const valid = (year: number) => Number.isInteger(year) && year >= 1888 && year <= currentYear
+  if (mode === 'exact' && valid(first)) return [first]
+  if (mode === 'range' && valid(first) && valid(second) && first <= second) {
+    return Array.from({ length: second - first + 1 }, (_, index) => first + index)
+  }
+  if (mode === 'decade' && valid(first) && first % 10 === 0) {
+    return Array.from(
+      { length: Math.min(first + 9, currentYear) - Math.max(first, 1888) + 1 },
+      (_, index) => Math.max(first, 1888) + index,
+    )
+  }
+  const legacyYear = Number(value)
+  return valid(legacyYear) ? [legacyYear] : []
+}
+
 function queryFilters(): LibraryQueryRequest['filters'] {
   const result: LibraryQueryRequest['filters'] = {}
-  for (const [id, value] of Object.entries(filterState.value)) {
-    const target = FILTER_FIELDS[id] || id
-    if (id === 'favorite' || id === 'duplicates' || id === 'is_3d') {
-      result[target] = value === 'true'
-    } else if (id === 'year') {
-      result[target] = (Array.isArray(value) ? value : [value]).map(Number)
-    } else if (id === 'resolution') {
-      result[target] = Array.isArray(value) ? value : [value]
-    } else {
-      result[target] = value
+  if (filtersEnabled.value) {
+    const supportedIds = new Set(filterControls.value.map(control => control.id))
+    for (const [id, value] of Object.entries(filterState.value)) {
+      if (!supportedIds.has(id)) continue
+      const target = FILTER_FIELDS[id] || id
+      if (id === 'favorite' || id === 'duplicates' || id === 'is_3d') {
+        result[target] = value === 'true'
+      } else if (id === 'community_rating' || id === 'critic_rating') {
+        result[target] = Number(value)
+      } else if (id === 'year') {
+        const years = selectedYears(value)
+        if (years.length) result[target] = years
+      } else if (id === 'resolution') {
+        result[target] = Array.isArray(value) ? value : [value]
+      } else {
+        result[target] = value
+      }
     }
   }
   if (selectedPerson.value) result.person_ids = [selectedPerson.value.Id]
@@ -483,7 +530,7 @@ function queryFilters(): LibraryQueryRequest['filters'] {
 function queryScope(parentId: string): LibraryQueryRequest['scope'] {
   // Deliberately sends no types and no recursion: the backend resolves both
   // from the library's collection type, the same way it already does for the
-  // unfiltered GET /api/items browse.
+  // unfiltered POST /api/v2/items/query browse.
   //
   // This used to carry a second, independently written copy of that map, and
   // the two disagreed. It sent MediaTypes=Video for tvshows, but a real Emby
@@ -718,7 +765,8 @@ async function fetchPrefixes(parentId: string) {
     return
   }
   try {
-    const data = Object.keys(filterState.value).length || selectedPerson.value
+    const data = Object.keys(queryFilters()).length
+      || selectedPerson.value
       ? await api.queryPrefixes({
           scope: { parent_id: parentId, include_item_types: [], media_types: [], recursive: false },
           page: { start_index: 0, limit: PAGE_SIZE },
@@ -753,7 +801,7 @@ async function fetchItems(
     items.value = []
     itemsError.value = ''
     currentParentId.value = parentId
-    configureFilters(parentId)
+    await configureFilters(parentId)
     hasPrevious.value = false
     hasMore.value = false
   }
@@ -779,7 +827,7 @@ async function fetchItems(
       sortMode: alphabeticalMode.value ? 'alphabetical' : 'default',
     }
     if (anchorPrefix) params.anchorPrefix = anchorPrefix
-    const useQuery = Object.keys(filterState.value).length > 0
+    const useQuery = Object.keys(queryFilters()).length > 0
       || selectedPerson.value !== null
       || sortField.value !== 'SortName'
       || sortDirection.value !== 'Ascending'
@@ -1031,6 +1079,7 @@ defineExpose({ goToRoot })
 
 onMounted(() => {
   setupObserver()
+  void mediaServer.load()
   restoreOrFetchRoot()
 })
 

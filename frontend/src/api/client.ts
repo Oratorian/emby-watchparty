@@ -9,6 +9,19 @@
  * works" because withPrefix() is a no-op.
  */
 import { withPrefix } from '@/utils/appPrefix'
+import type {
+  CatalogFiltersV2,
+  CatalogQueryV2,
+  GroupedSearchV2,
+  IntroSegmentV2,
+  MediaItemDetailsV2,
+  MediaItemV2,
+  MediaPageV2,
+  MediaSectionV2,
+  MediaServerInfoV2,
+  PrefixesV2,
+  StreamCatalogV2,
+} from '@/types/api.generated'
 
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]
@@ -70,13 +83,14 @@ function responseError(resp: Response, body: JsonValue | undefined): ApiError {
 export interface SuccessResponse { success?: boolean; message?: string }
 export interface AuthResponse extends SuccessResponse {
   authenticated?: boolean
-  username?: string
+  username?: string | null
   is_admin?: boolean
   is_host?: boolean
   require_login?: boolean
-  party_id?: string
+  party_id?: string | null
   host_username?: string | null
   party_unlocked?: boolean
+  media_server_type?: 'emby' | 'jellyfin'
 }
 export interface VersionResponse {
   version?: string
@@ -144,6 +158,101 @@ export interface LibraryResponse {
   TotalRecordCount?: number
   StartIndex?: number
 }
+
+// v2 reports `kind` in snake_case; the components still switch on the Emby
+// `Type` string, so every kind the backend can emit needs an entry here.
+//
+// An unmapped kind becomes 'Other', which is in none of LibraryBrowser's
+// browsableTypes / playableTypes / displayableTypes sets, so the row is at once
+// unclickable, unopenable and (in a mixed listing) filtered away. It fails
+// silently: no type error, no console warning, just a card that does nothing.
+//
+// BoxSet, Video, MusicAlbum, MusicArtist and Audio are the load-bearing
+// additions. Those five are named in LibraryBrowser's own sets while being
+// unreachable through this map, so a Collections library rendered rows labelled
+// "Other" that ignored every click.
+//
+// The keys come from _snake() in providers/normalization.py, which inserts an
+// underscore before each interior capital: BoxSet -> box_set, MusicAlbum ->
+// music_album. Kept in step by the contract test in client.test.ts.
+const legacyItemKinds: Record<string, string> = {
+  audio: 'Audio',
+  box_set: 'BoxSet',
+  collection_folder: 'CollectionFolder',
+  episode: 'Episode',
+  folder: 'Folder',
+  genre: 'Genre',
+  movie: 'Movie',
+  music_album: 'MusicAlbum',
+  music_artist: 'MusicArtist',
+  music_genre: 'MusicGenre',
+  music_video: 'MusicVideo',
+  person: 'Person',
+  photo: 'Photo',
+  playlist: 'Playlist',
+  season: 'Season',
+  series: 'Series',
+  studio: 'Studio',
+  trailer: 'Trailer',
+  user_view: 'UserView',
+  video: 'Video',
+}
+
+function projectMediaItem(item: MediaItemV2): LibraryItem {
+  return {
+    Id: item.id,
+    Name: item.name,
+    Type: legacyItemKinds[item.kind] ?? 'Other',
+    CollectionType: item.collection_kind ?? undefined,
+    Overview: item.overview,
+    RunTimeTicks: item.runtime_seconds === null ? undefined : item.runtime_seconds * 10_000_000,
+    ProductionYear: item.production_year ?? undefined,
+    ParentId: item.parent_id ?? undefined,
+    SeriesId: item.series_id ?? undefined,
+    SeriesName: item.series_name ?? undefined,
+    SeasonId: item.season_id ?? undefined,
+    SeasonName: item.season_name ?? undefined,
+    IndexNumber: item.index_number ?? undefined,
+    ParentIndexNumber: item.parent_index_number ?? undefined,
+    IsFolder: item.is_folder,
+    ImageTags: item.has_primary_image ? { Primary: 'available' } : {},
+    BackdropImageTags: Array.from({ length: item.backdrop_count }, (_, index) => String(index)),
+    PrimaryImageAspectRatio: item.primary_image_aspect_ratio ?? undefined,
+    UserData: {
+      PlaybackPositionTicks: item.user_state.playback_position_seconds * 10_000_000,
+      PlayedPercentage: item.user_state.played_percentage ?? undefined,
+      Played: item.user_state.played,
+      IsFavorite: item.user_state.favorite,
+    },
+    MediaSourceCount: item.media_source_count,
+  }
+}
+
+function projectMediaPage(page: MediaPageV2): LibraryResponse {
+  return {
+    Items: page.items.map(projectMediaItem),
+    TotalRecordCount: page.total ?? undefined,
+    StartIndex: page.start,
+  }
+}
+
+function projectMediaDetails(item: MediaItemDetailsV2): LibraryItem {
+  return {
+    ...projectMediaItem(item),
+    Tagline: item.tagline ?? undefined,
+    Genres: item.genres,
+    TagItems: item.tags.map(name => ({ Name: name })),
+    People: item.people.map(person => ({
+      Id: person.id,
+      Name: person.name,
+      Type: person.kind,
+    })),
+    Studios: item.studios.map(Name => ({ Name })),
+    OfficialRating: item.official_rating ?? undefined,
+    CommunityRating: item.community_rating ?? undefined,
+    CriticRating: item.critic_rating ?? undefined,
+  }
+}
 export interface LibraryPrefixesResponse {
   Prefixes: string[]
 }
@@ -169,9 +278,43 @@ export interface LibraryQueryRequest {
       | 'CommunityRating' | 'CriticRating' | 'Runtime' | 'Random'
     direction: 'Ascending' | 'Descending'
   }
-  filters: Record<string, string | string[] | number[] | boolean | null>
+  filters: CatalogFiltersV2 & Record<
+    string, string | number | string[] | number[] | boolean | null | undefined
+  >
   search_term?: string | null
   anchor_prefix?: string | null
+}
+
+const v2SortFields: Record<LibraryQueryRequest['sort']['field'], NonNullable<CatalogQueryV2['sort']>['field']> = {
+  SortName: 'name',
+  DateCreated: 'date_created',
+  PremiereDate: 'premiere_date',
+  ProductionYear: 'year',
+  CommunityRating: 'community_rating',
+  CriticRating: 'critic_rating',
+  Runtime: 'runtime',
+  Random: 'random',
+}
+
+function toCatalogQueryV2(query: LibraryQueryRequest): CatalogQueryV2 {
+  return {
+    scope: {
+      parent_id: query.scope.parent_id,
+      include_kinds: query.scope.include_item_types.map(kind => kind.replace(
+        /([a-z0-9])([A-Z])/g, '$1_$2',
+      ).toLowerCase()),
+      media_kinds: query.scope.media_types.map(kind => kind.toLowerCase()),
+      recursive: query.scope.recursive,
+    },
+    page: { start: query.page.start_index, limit: query.page.limit },
+    sort: {
+      field: v2SortFields[query.sort.field],
+      direction: query.sort.direction.toLowerCase() === 'descending' ? 'descending' : 'ascending',
+    },
+    filters: query.filters,
+    search_term: query.search_term,
+    anchor_prefix: query.anchor_prefix,
+  }
 }
 export interface SearchGroup {
   id: 'movies' | 'series' | 'episodes' | 'people' | 'collections' | 'other'
@@ -341,98 +484,215 @@ export async function apiFetch<T = JsonValue>(path: string, options: RequestInit
 export const api = {
   // Auth (become host of current party)
   login: (username: string, password: string, signal?: AbortSignal) =>
-    apiFetch<AuthResponse>('/api/auth/login', {
+    apiFetch<AuthResponse>('/api/v2/auth/login', {
       method: 'POST', body: JSON.stringify({ username, password }), signal,
     }),
   logout: (signal?: AbortSignal) => apiFetch<SuccessResponse>(
-    '/api/auth/logout', { method: 'POST', signal },
+    '/api/v2/auth/logout', { method: 'POST', signal },
   ),
-  authStatus: (signal?: AbortSignal) => apiFetch<AuthResponse>('/api/auth/status', { signal }),
+  authStatus: (signal?: AbortSignal) => apiFetch<AuthResponse>('/api/v2/auth/status', { signal }),
+  mediaServerInfo: (signal?: AbortSignal) => apiFetch<MediaServerInfoV2>(
+    '/api/v2/media-server', { signal },
+  ),
   version: (signal?: AbortSignal) => apiFetch<VersionResponse>('/api/version', { signal }),
 
   // Library
-  libraries: (signal?: AbortSignal) => apiFetch<LibraryResponse>('/api/libraries', { signal }),
-  items: (params: Record<string, string | number | boolean>, signal?: AbortSignal) => {
-    const qs = new URLSearchParams(
-      Object.entries(params).map(([key, value]) => [key, String(value)]),
-    ).toString()
-    return apiFetch<LibraryResponse>(`/api/items?${qs}`, { signal })
-  },
-  itemPrefixes: (parentId: string, signal?: AbortSignal) => apiFetch<LibraryPrefixesResponse>(
-    `/api/items/prefixes?${new URLSearchParams({ parentId }).toString()}`,
-    { signal },
+  libraries: async (signal?: AbortSignal) => projectMediaPage(
+    await apiFetch<MediaPageV2>('/api/v2/libraries', { signal }),
   ),
+  items: async (
+    params: Record<string, string | number | boolean>, signal?: AbortSignal,
+  ) => projectMediaPage(await apiFetch<MediaPageV2>('/api/v2/items/query', {
+    method: 'POST',
+    body: JSON.stringify({
+      scope: {
+        parent_id: typeof params.parentId === 'string' ? params.parentId : null,
+        include_kinds: typeof params.type === 'string'
+          ? params.type.split(',').filter(Boolean).map(kind => kind.replace(
+              /([a-z0-9])([A-Z])/g, '$1_$2',
+            ).toLowerCase())
+          : [],
+        media_kinds: [],
+        recursive: params.recursive === true || params.recursive === 'true',
+      },
+      page: {
+        start: typeof params.startIndex === 'number' ? params.startIndex : 0,
+        limit: typeof params.limit === 'number' ? params.limit : 50,
+      },
+      // LibraryBrowser passes sortMode and this dropped it, hardcoding name
+      // ordering. Only alphabetical mode survived, and it is false for exactly
+      // the parents that need index order, so browsing a series listed
+      // "Season 1, Season 10, Season 11, Season 2".
+      sort: {
+        field: params.sortMode === 'alphabetical' ? 'name' : 'index',
+        direction: 'ascending',
+      },
+      filters: {},
+      anchor_prefix: typeof params.anchorPrefix === 'string' ? params.anchorPrefix : undefined,
+    } satisfies CatalogQueryV2),
+    signal,
+  })),
+  itemPrefixes: async (parentId: string, signal?: AbortSignal) => {
+    const response = await apiFetch<PrefixesV2>('/api/v2/items/prefixes', {
+      method: 'POST',
+      body: JSON.stringify({ scope: { parent_id: parentId } } satisfies CatalogQueryV2),
+      signal,
+    })
+    return { Prefixes: response.prefixes }
+  },
   filterOptions: (
     params: { parentId?: string; includeItemTypes?: string; mediaTypes?: string },
     signal?: AbortSignal,
-  ) => apiFetch<FilterOptionsResponse>(
-    `/api/items/filter-options?${new URLSearchParams(params).toString()}`,
-    { signal },
-  ),
-  queryItems: (query: LibraryQueryRequest, signal?: AbortSignal) => apiFetch<LibraryResponse>(
-    '/api/items/query',
-    { method: 'POST', body: JSON.stringify(query), signal },
-  ),
-  queryPrefixes: (query: LibraryQueryRequest, signal?: AbortSignal) =>
-    apiFetch<LibraryPrefixesResponse>('/api/items/prefixes/query', {
-      method: 'POST', body: JSON.stringify(query), signal,
+  ) => {
+    const query = new URLSearchParams()
+    if (params.parentId) query.set('parent_id', params.parentId)
+    if (params.includeItemTypes) {
+      query.set('include_kinds', params.includeItemTypes.split(',').map(kind => kind.replace(
+        /([a-z0-9])([A-Z])/g, '$1_$2',
+      ).toLowerCase()).join(','))
+    }
+    if (params.mediaTypes) query.set('media_kinds', params.mediaTypes.toLowerCase())
+    return apiFetch<FilterOptionsResponse>(`/api/v2/items/filter-options?${query}`, { signal })
+  },
+  queryItems: async (query: LibraryQueryRequest, signal?: AbortSignal) => projectMediaPage(
+    await apiFetch<MediaPageV2>('/api/v2/items/query', {
+      method: 'POST', body: JSON.stringify(toCatalogQueryV2(query)), signal,
     }),
-  search: (q: string, signal?: AbortSignal) => apiFetch<LibraryResponse>(
-    `/api/search?q=${encodeURIComponent(q)}`, { signal },
   ),
-  groupedSearch: (q: string, signal?: AbortSignal) => apiFetch<GroupedSearchResponse>(
-    `/api/search/grouped?q=${encodeURIComponent(q)}`, { signal },
+  queryPrefixes: async (query: LibraryQueryRequest, signal?: AbortSignal) => {
+    const response = await apiFetch<PrefixesV2>('/api/v2/items/prefixes', {
+      method: 'POST', body: JSON.stringify(toCatalogQueryV2(query)), signal,
+    })
+    return { Prefixes: response.prefixes }
+  },
+  search: async (q: string, signal?: AbortSignal) => projectMediaPage(
+    await apiFetch<MediaPageV2>(`/api/v2/items/search?q=${encodeURIComponent(q)}`, { signal }),
   ),
-  itemDetails: (id: string, signal?: AbortSignal) => apiFetch<LibraryItem>(
-    `/api/item/${id}`, { signal },
+  groupedSearch: async (q: string, signal?: AbortSignal): Promise<GroupedSearchResponse> => {
+    const response = await apiFetch<GroupedSearchV2>(
+      `/api/v2/items/search/groups?q=${encodeURIComponent(q)}`, { signal },
+    )
+    const groupIds = new Set<SearchGroup['id']>([
+      'movies', 'series', 'episodes', 'people', 'collections', 'other',
+    ])
+    return {
+      query: response.query,
+      groups: response.groups.map(group => ({
+        id: groupIds.has(group.id as SearchGroup['id'])
+          ? group.id as SearchGroup['id']
+          : 'other',
+        label: group.label,
+        items: group.items.map(projectMediaItem),
+      })),
+    }
+  },
+  itemDetails: async (id: string, signal?: AbortSignal) => projectMediaDetails(
+    await apiFetch<MediaItemDetailsV2>(`/api/v2/items/${id}`, { signal }),
   ),
-  itemSection: (id: string, section: ItemSection, signal?: AbortSignal) =>
-    apiFetch<ItemSectionResponse>(`/api/item/${id}/sections/${section}`, { signal }),
-  seriesSeasons: (id: string, signal?: AbortSignal) =>
-    apiFetch<ItemChildrenResponse>(`/api/item/${id}/seasons`, { signal }),
-  seriesEpisodes: (id: string, seasonId?: string, signal?: AbortSignal) => {
-    const query = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ''
-    return apiFetch<ItemChildrenResponse>(`/api/item/${id}/episodes${query}`, { signal })
+  itemSection: async (
+    id: string, section: ItemSection, signal?: AbortSignal,
+  ): Promise<ItemSectionResponse> => {
+    const response = await apiFetch<MediaSectionV2>(
+      `/api/v2/items/${id}/sections/${section}`, { signal },
+    )
+    return { section: response.section, items: response.items.map(projectMediaItem) }
+  },
+  seriesSeasons: async (id: string, signal?: AbortSignal): Promise<ItemChildrenResponse> => ({
+    items: projectMediaPage(
+      await apiFetch<MediaPageV2>(`/api/v2/items/${id}/seasons`, { signal }),
+    ).Items,
+  }),
+  seriesEpisodes: async (
+    id: string, seasonId?: string, signal?: AbortSignal,
+  ): Promise<ItemChildrenResponse> => {
+    const query = seasonId ? `?season_id=${encodeURIComponent(seasonId)}` : ''
+    const page = await apiFetch<MediaPageV2>(`/api/v2/items/${id}/episodes${query}`, { signal })
+    return { items: projectMediaPage(page).Items }
   },
   setFavorite: (id: string, favorite: boolean, signal?: AbortSignal) =>
-    apiFetch<{ success: boolean; favorite: boolean }>(`/api/item/${id}/favorite`, {
+    apiFetch<{ success: boolean; favorite: boolean }>(`/api/v2/items/${id}/favorite`, {
       method: 'PUT', body: JSON.stringify({ favorite }), signal,
     }),
   setPlayed: (id: string, played: boolean, signal?: AbortSignal) =>
-    apiFetch<{ success: boolean; played: boolean }>(`/api/item/${id}/played`, {
+    apiFetch<{ success: boolean; played: boolean }>(`/api/v2/items/${id}/played`, {
       method: 'PUT', body: JSON.stringify({ played }), signal,
     }),
-  playlists: (signal?: AbortSignal) => apiFetch<PlaylistListResponse>('/api/playlists', { signal }),
+  playlists: async (signal?: AbortSignal): Promise<PlaylistListResponse> => ({
+    items: projectMediaPage(await apiFetch<MediaPageV2>('/api/v2/playlists', { signal })).Items,
+  }),
   createPlaylist: (name: string, signal?: AbortSignal) =>
-    apiFetch<{ id: string; name: string }>('/api/playlists', {
+    apiFetch<{ id: string; name: string }>('/api/v2/playlists', {
       method: 'POST', body: JSON.stringify({ name }), signal,
     }),
   addPlaylistItem: (playlistId: string, itemId: string, signal?: AbortSignal) =>
-    apiFetch<{ success: boolean }>(`/api/playlists/${playlistId}/items`, {
+    apiFetch<{ success: boolean }>(`/api/v2/playlists/${playlistId}/items`, {
       method: 'POST', body: JSON.stringify({ item_id: itemId }), signal,
     }),
   // mediaSourceId optionally scopes the response to one alternate
   // version. When omitted, the audio/subtitle arrays describe Emby's
   // default source and `versions` still lists every alternate.
-  itemStreams: (id: string, mediaSourceId?: string, signal?: AbortSignal) => {
+  itemStreams: async (id: string, mediaSourceId?: string, signal?: AbortSignal) => {
     const qs = mediaSourceId ? `?media_source_id=${encodeURIComponent(mediaSourceId)}` : ''
-    return apiFetch<StreamsResponse>(`/api/item/${id}/streams${qs}`, { signal })
+    const streams = await apiFetch<StreamCatalogV2>(`/api/v2/items/${id}/streams${qs}`, { signal })
+    return {
+      audio: streams.audio.map(stream => ({
+        index: stream.index,
+        language: stream.language,
+        displayLanguage: stream.display_language,
+        codec: stream.codec,
+        channels: stream.channels,
+        isDefault: stream.is_default,
+        title: stream.title,
+      })),
+      subtitles: streams.subtitles.map(stream => ({
+        index: stream.index,
+        language: stream.language,
+        displayLanguage: stream.display_language,
+        codec: stream.codec,
+        isDefault: stream.is_default,
+        isForced: stream.is_forced,
+        isExternal: stream.is_external,
+        isPGS: stream.is_image,
+        isTextSubtitleStream: stream.is_text,
+        title: stream.title,
+      })),
+      media_source_id: streams.media_source_id,
+      versions: streams.versions.map(version => ({
+        id: version.id,
+        name: version.name,
+        container: version.container,
+        run_time_ticks: version.runtime_seconds === null
+          ? null
+          : version.runtime_seconds * 10_000_000,
+      })),
+    } satisfies StreamsResponse
   },
 
   // Media
-  intro: (id: string, signal?: AbortSignal) => apiFetch<IntroResponse>(`/api/intro/${id}`, { signal }),
+  intro: async (id: string, signal?: AbortSignal): Promise<IntroResponse> => {
+    const intro = await apiFetch<IntroSegmentV2>(`/api/v2/items/${id}/intro`, { signal })
+    return {
+      hasIntro: intro.has_intro,
+      start: intro.start_seconds ?? undefined,
+      end: intro.end_seconds ?? undefined,
+      duration: intro.duration_seconds ?? undefined,
+    }
+  },
   imageUrl: (
     id: string,
     type = 'Primary',
     opts?: { index?: number; maxWidth?: number; maxHeight?: number; quality?: number },
   ) => {
-    const params = new URLSearchParams({ type })
+    const params = new URLSearchParams()
     if (opts?.index !== undefined) params.set('index', String(opts.index))
-    if (opts?.maxWidth) params.set('maxWidth', String(opts.maxWidth))
-    if (opts?.maxHeight) params.set('maxHeight', String(opts.maxHeight))
+    if (opts?.maxWidth) params.set('max_width', String(opts.maxWidth))
+    if (opts?.maxHeight) params.set('max_height', String(opts.maxHeight))
     if (opts?.quality) params.set('quality', String(opts.quality))
-    return withPrefix(`/api/image/${id}?${params.toString()}`)
+    return withPrefix(`/api/v2/items/${id}/images/${type.toLowerCase()}?${params.toString()}`)
   },
+  subtitleUrl: (id: string, mediaSourceId: string, subtitleIndex: number) => withPrefix(
+    `/api/v2/items/${id}/subtitles/${mediaSourceId}/${subtitleIndex}`,
+  ),
 
   // Quality
   qualityOptions: (signal?: AbortSignal) => apiFetch<QualityOptionsResponse>(

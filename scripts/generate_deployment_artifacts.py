@@ -474,6 +474,21 @@ def _markdown_code(value: Any) -> str:
     return f"<code>{escaped}</code>"
 
 
+def _required_cell(setting: dict[str, Any]) -> str:
+    """The Required column, including any conditional requirement.
+
+    `production.required_when` is validated by _validate_production and was then
+    rendered by nothing, so a conditionally required field read as plain
+    "optional" in the one document describing it -- a licence to leave blank
+    something the boot gate rejects the moment its condition holds.
+    """
+    required = setting["required"]
+    condition = (setting.get("production") or {}).get("required_when")
+    if not condition:
+        return required
+    return f"{required} (required when `{condition['field']}={condition['equals']}`)"
+
+
 def _environment_reference(schema: dict[str, Any]) -> str:
     lines = [
         "<!-- Generated from deploy/schema.json; do not edit. -->",
@@ -489,7 +504,7 @@ def _environment_reference(schema: dict[str, Any]) -> str:
     for setting in schema["settings"]:
         safe_example = "—" if setting["secret"] else _markdown_code(setting["safe_example"])
         lines.append(
-            f"| `{setting['name']}` | {setting['type']} | {setting['required']} | "
+            f"| `{setting['name']}` | {setting['type']} | {_required_cell(setting)} | "
             f"{'yes' if setting['secret'] else 'no'} | {_markdown_code(setting['validation'])} | "
             f"{safe_example} | {setting['description']} |"
         )

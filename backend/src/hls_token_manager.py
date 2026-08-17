@@ -11,6 +11,12 @@ from datetime import UTC, datetime
 from backend.src.config import Config
 
 
+def attach_hls_token(stream_url: str, token: str) -> str:
+    """Attach browser HLS token without corrupting queryless opaque URLs."""
+    separator = "&" if "?" in stream_url else "?"
+    return f"{stream_url}{separator}token={token}"
+
+
 class HLSTokenManager:
     """Manages HLS stream access tokens"""
 
@@ -125,6 +131,12 @@ class HLSTokenManager:
         if time.time() > data["expires"]:
             return None
         return data["party_id"]
+
+    def get_claims(self, token: str) -> tuple[str, str] | None:
+        data = self._tokens.get(token)
+        if not data or time.time() > data["expires"]:
+            return None
+        return str(data["party_id"]), str(data["sid"])
 
     def revoke_party(self, party_id: str) -> int:
         """Wipe every token issued for this party. Returns count removed.

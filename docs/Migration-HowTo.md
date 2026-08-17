@@ -9,8 +9,41 @@ the latest 2.1.x release, then return here.
 
 ## Do you need to change anything?
 
-Possibly not. If your existing `.env` already satisfies the checks below, 3.0
-boots on it unchanged. Read this section first and skip the rest if it applies.
+**Yes. Two variables were renamed, and the old names are no longer read.**
+Practically every 2.1.x deployment sets at least one of them, so this edit is
+unavoidable. Past that, if your `.env` also satisfies the checks below, 3.0
+boots on it unchanged.
+
+### The server URL and API key were renamed
+
+| 2.1.x | 3.0 |
+|---|---|
+| `EMBY_SERVER_URL` | `MEDIA_SERVER_URL` |
+| `JELLYFIN_SERVER_URL` | `MEDIA_SERVER_URL` |
+| `EMBY_API_KEY` | `MEDIA_SERVER_API_KEY` |
+| `JELLYFIN_API_KEY` | `MEDIA_SERVER_API_KEY` |
+
+Rename the key; the value does not change. `MEDIA_SERVER_TYPE` is untouched and
+stays explicit, `emby` or `jellyfin`, with no auto-detection. It is the only
+setting that was ever provider-specific: the address and the credential never
+were, which is why one of each now serves both.
+
+**There is no alias and no fallback read.** A retired name left in `.env` or in
+the container environment fails the boot and names its replacement, rather than
+being silently ignored:
+
+```
+EMBY_SERVER_URL: was replaced by MEDIA_SERVER_URL in 3.0; rename it and remove the old name
+```
+
+Failing is the point. Silently ignoring the old name would have started the
+server against the default `http://localhost:8096` with an empty library, an
+unhelpful symptom a long way from its cause. Rename the line and delete the old
+one; keeping both is the same error.
+
+The preflight below reports this as a `REQUIRED ACTION` naming your exact
+situation, including the case where a deployment carries both an Emby and a
+Jellyfin variant and a human has to decide which value survives.
 
 **Checked in every environment, development included:**
 
@@ -18,7 +51,7 @@ boots on it unchanged. Read this section first and skip the rest if it applies.
 - `WATCH_PARTY_PORT` is between 1 and 65535
 - `APP_PREFIX`, if set, is slash-prefixed and uses only letters, numbers, dots,
   underscores, tildes or hyphens
-- `EMBY_SERVER_URL` is a valid HTTP(S) URL
+- `MEDIA_SERVER_URL` is a valid HTTP(S) URL
 - `TRUSTED_PROXY_CIDRS`, if set, contains valid IP networks
 - `BEHIND_PROXY=true` is not paired with an empty `TRUSTED_PROXY_CIDRS`, which
   is a self-contradiction in any environment
@@ -30,13 +63,14 @@ boots on it unchanged. Read this section first and skip the rest if it applies.
 - `SESSION_SECRET` is set and at least 32 characters
 - `SESSION_COOKIE_SECURE` is `true`
 - `CORS_ALLOWED_ORIGINS` is explicit, not `*`
-- `EMBY_API_KEY` is set
+- `MEDIA_SERVER_API_KEY` is set
 - `ENABLE_HLS_TOKEN_VALIDATION` is enabled
 
 So for a production deployment coming from 2.1.x that already sets a session
-secret, secure cookies and explicit origins, **`BEHIND_PROXY` is normally the
-only addition**. Everything else in this guide is either detail, a
-platform-specific note, or applies only if you build from source.
+secret, secure cookies and explicit origins, **the rename above plus
+`BEHIND_PROXY` are normally the only edits**. Everything else in this guide is
+either detail, a platform-specific note, or applies only if you build from
+source.
 
 **One exception, and it is a hard boot failure rather than a warning.** If you
 ever turned HLS token validation **off** in **Admin → Security**, you must also
@@ -62,6 +96,10 @@ days. See the section on it below.
 
 3.0 changes deployment requirements and configuration ownership:
 
+- `EMBY_SERVER_URL` and `JELLYFIN_SERVER_URL` become `MEDIA_SERVER_URL`;
+  `EMBY_API_KEY` and `JELLYFIN_API_KEY` become `MEDIA_SERVER_API_KEY`. No
+  aliases, no fallback reads, and a retired name still present is a boot error.
+  `MEDIA_SERVER_TYPE` is unchanged and still has to be stated.
 - Python 3.12.x is required for source installs.
 - Node 20.19 or newer is required when building the frontend from source. The
   project CI and Docker builder use Node 24.
@@ -183,8 +221,8 @@ Fix the named variables where your deployment defines them, then restart. On
 Unraid, CasaOS, Portainer or TrueNAS that is the container template; under
 Compose it is the `environment:` block or `.env`.
 
-Treat `SESSION_SECRET` and the Emby API key as credentials. Never attach them
-to an issue or support log.
+Treat `SESSION_SECRET` and `MEDIA_SERVER_API_KEY` as credentials. Never attach
+them to an issue or support log.
 
 ### Upgrading from a 3.0 development build
 
@@ -214,8 +252,9 @@ A typical reverse-proxy deployment supplies:
 
 ```env
 APP_ENV=production
-EMBY_SERVER_URL=http://emby:8096
-EMBY_API_KEY=your-dedicated-emby-api-key
+MEDIA_SERVER_TYPE=emby
+MEDIA_SERVER_URL=http://emby:8096
+MEDIA_SERVER_API_KEY=your-dedicated-emby-api-key
 SESSION_SECRET=one-stable-random-secret-at-least-32-characters
 SESSION_COOKIE_SECURE=true
 CORS_ALLOWED_ORIGINS=https://watchparty.example.com

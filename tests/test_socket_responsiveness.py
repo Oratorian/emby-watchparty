@@ -14,7 +14,7 @@ async def _exercise_independent_controls(live_watchparty) -> None:
         f"/api/party/{party_id}/join",
         json={"client_id": "client-1", "display_name": "Alice"},
     )
-    await client.post("/api/auth/login", json={"username": "Alice", "password": "password"})
+    await client.post("/api/v2/auth/login", json={"username": "Alice", "password": "password"})
     cookie = "; ".join(f"{name}={value}" for name, value in client.cookies.items())
     realtime = socketio.AsyncClient()
     selected = asyncio.Event()
@@ -77,7 +77,7 @@ async def _exercise_progress_coalescing(live_watchparty) -> None:
             f"/api/party/{party_id}/join",
             json={"client_id": "progress-client", "display_name": "Alice"},
         )
-        await client.post("/api/auth/login", json={"username": "Alice", "password": "password"})
+        await client.post("/api/v2/auth/login", json={"username": "Alice", "password": "password"})
         cookie = "; ".join(f"{name}={value}" for name, value in client.cookies.items())
         realtime = socketio.AsyncClient()
         selected = asyncio.Event()

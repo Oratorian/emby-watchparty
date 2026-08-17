@@ -3,10 +3,16 @@ import { api } from '@/api/client'
 import type { LibraryItem, PlaybackSelection, StreamsResponse } from '@/api/client'
 import type { usePartyStore } from '@/stores/party'
 import type { useSocketStore } from '@/stores/socket'
-import { withPrefix } from '@/utils/appPrefix'
 
 type SocketStore = ReturnType<typeof useSocketStore>
 type PartyStore = ReturnType<typeof usePartyStore>
+
+// What the pre-playback "Off" option sends, and what the party then reports
+// back in video_selected. A real subtitle stream never carries index -1, so
+// looking it up returns undefined and reads as "nothing chosen" unless it is
+// checked for first. The in-player control strip already special-cases it in
+// changeTextSubtitle, which is why that selector always behaved.
+const NO_SUBTITLE = -1
 
 interface PendingVersionPick {
   item: LibraryItem
@@ -182,12 +188,23 @@ export function usePartyStream(
           // view can pick a text subtitle for everyone before playback starts,
           // and seeding only from isDefault discarded it: the selection reached
           // the backend, but no viewer ever displayed the track.
+          //
+          // -1 is "Off", chosen deliberately, and is not the same as "nothing
+          // chosen". No subtitle stream carries index -1, so running it through
+          // find() returns undefined and the ?? below used to substitute the
+          // source's default track: picking Off started the episode with
+          // subtitles on, and the player's CC control showed the first track as
+          // active. Treat it as a decision, not a failed lookup.
           const partyIndex = party.currentVideo?.subtitle_index ?? null
-          const partyChoice = partyIndex === null
-            ? undefined
-            : textSubtitles.find((stream) => stream.index === partyIndex)
-          const defaultSubtitle = partyChoice ?? textSubtitles.find((stream) => stream.isDefault)
-          if (defaultSubtitle) selectedTextSubIndex.value = defaultSubtitle.index
+          if (partyIndex === NO_SUBTITLE) {
+            selectedTextSubIndex.value = null
+          } else {
+            const partyChoice = partyIndex === null
+              ? undefined
+              : textSubtitles.find((stream) => stream.index === partyIndex)
+            const defaultSubtitle = partyChoice ?? textSubtitles.find((stream) => stream.isDefault)
+            if (defaultSubtitle) selectedTextSubIndex.value = defaultSubtitle.index
+          }
         }
         const targetIndex = selectedTextSubIndex.value
         for (const subtitle of textSubtitles) {
@@ -199,9 +216,7 @@ export function usePartyStream(
           if (subtitle.isExternal) label += ' [External]'
           track.label = label
           track.srclang = subtitle.language || 'und'
-          track.src = withPrefix(
-            `/api/subtitles/${itemId}/${mediaSourceId}/${subtitle.index}`,
-          )
+          track.src = api.subtitleUrl(itemId, mediaSourceId, subtitle.index)
           video.appendChild(track)
           if (track.track) {
             track.track.mode = subtitle.index === targetIndex ? 'showing' : 'hidden'
@@ -210,7 +225,7 @@ export function usePartyStream(
         if (targetIndex !== null) {
           video.addEventListener('loadeddata', () => {
             for (const track of Array.from(video.querySelectorAll('track'))) {
-              const match = track.src.match(/\/api\/subtitles\/[^/]+\/[^/]+\/(\d+)/)
+              const match = track.src.match(/\/subtitles\/[^/]+\/(\d+)/)
               const index = match?.[1] ? parseInt(match[1], 10) : null
               track.track.mode = index === targetIndex ? 'showing' : 'hidden'
             }

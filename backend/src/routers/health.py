@@ -2,20 +2,20 @@
 Health Router -- container liveness probe.
 
 Anonymous. Returns 200 as long as the process can serve the request.
-Does not depend on Emby, the avatar DB, or any other subsystem so a
+Does not depend on the media server, avatar DB, or any other subsystem so a
 transient outage upstream cannot cause a restart loop in Docker /
 Kubernetes / a reverse-proxy healthcheck.
 
 Readiness is exposed separately at `/api/ready`; Docker continues to
-use liveness so an Emby outage cannot trigger a container restart loop.
+use liveness so a media-server outage cannot trigger a container restart loop.
 """
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from backend.src import __codename__, __version__
-from backend.src.dependencies import get_avatar_store, get_config, get_emby_gateway
-from backend.src.schemas import HealthResponse
+from backend.src.dependencies import get_avatar_store, get_config, get_media_server
+from backend.src.schemas import HealthResponse, ReadinessResponse
 
 router = APIRouter(prefix="/api", tags=["health"])
 
@@ -29,29 +29,46 @@ def health():
     )
 
 
-@router.get("/ready")
+@router.get(
+    "/ready",
+    response_model=ReadinessResponse,
+    responses={
+        200: {"description": "Every check passed"},
+        # Declared because it is the answer this endpoint exists to give. A
+        # probe written from a document showing only 200 accepts any JSON and
+        # never goes unready, which is the failure the endpoint was added to
+        # prevent.
+        503: {"description": "At least one check failed; see `checks`"},
+    },
+)
 async def ready(
     config=Depends(get_config),
-    emby_gateway=Depends(get_emby_gateway),
+    media_server=Depends(get_media_server),
     avatar_store=Depends(get_avatar_store),
 ):
-    configured = bool(config.EMBY_SERVER_URL and config.EMBY_API_KEY)
-    reachable = False
+    configured = bool(config.MEDIA_SERVER_URL and config.MEDIA_SERVER_API_KEY)
+    reachable = credentials_valid = False
     if configured:
         try:
-            response = await emby_gateway.get(
-                "/emby/System/Info/Public",
-                timeout=2.0,
-            )
-            reachable = response.status_code == 200
+            provider_check = await media_server.readiness()
+            reachable = provider_check.reachable
+            credentials_valid = provider_check.credentials_valid
         except Exception:
-            reachable = False
+            reachable = credentials_valid = False
 
     checks = {
         "config": configured,
         "storage": avatar_store.readiness_check(),
-        "emby": reachable,
+        "media_server_reachable": reachable,
+        "media_server_credentials": credentials_valid,
     }
+    if config.MEDIA_SERVER_TYPE == "emby":
+        # Kept for consumers written against the pre-provider shape, but it has
+        # to mean what the overall status means. Aliasing `reachable` alone said
+        # "emby": true inside a 503 whenever the server answered and the key was
+        # rejected -- the one key an existing monitor reads reporting healthy
+        # while the endpoint reported not_ready.
+        checks["emby"] = reachable and credentials_valid
     is_ready = all(checks.values())
     return JSONResponse(
         {"status": "ready" if is_ready else "not_ready", "checks": checks},

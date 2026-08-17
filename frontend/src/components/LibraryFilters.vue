@@ -27,7 +27,70 @@
 
         <div v-if="section.id === 'quick' || advancedOpen" class="filter-grid">
           <div v-for="control in section.controls" :key="control.id" class="filter-control">
-            <label v-if="control.kind === 'select'" class="filter-select">
+            <div v-if="control.id === 'year'" class="filter-multi">
+              <button
+                type="button"
+                class="filter-choice"
+                :aria-label="`${activeGroup === control.id ? 'Close' : 'Open'} ${control.label} filter`"
+                :aria-expanded="activeGroup === control.id"
+                @click="toggleGroup(control.id)"
+              >
+                <span>{{ control.label }}</span>
+                <span>{{ yearSummary || 'Any' }}</span>
+              </button>
+              <div v-if="activeGroup === control.id" class="option-popover year-popover">
+                <div class="year-modes" aria-label="Year filter mode">
+                  <button
+                    v-for="mode in YEAR_MODES"
+                    :key="mode.id"
+                    type="button"
+                    :aria-label="mode.ariaLabel"
+                    :aria-pressed="yearMode === mode.id"
+                    @click="yearMode = mode.id"
+                  >
+                    {{ mode.label }}
+                  </button>
+                </div>
+                <label v-if="yearMode === 'exact'" class="year-field">
+                  <span>Year</span>
+                  <input v-model="exactYear" aria-label="Exact year" type="number" :min="MIN_YEAR" :max="MAX_YEAR">
+                </label>
+                <div v-else-if="yearMode === 'range'" class="year-range">
+                  <label class="year-field">
+                    <span>Start</span>
+                    <input v-model="rangeStart" aria-label="Start year" type="number" :min="MIN_YEAR" :max="MAX_YEAR">
+                  </label>
+                  <label class="year-field">
+                    <span>End</span>
+                    <input v-model="rangeEnd" aria-label="End year" type="number" :min="MIN_YEAR" :max="MAX_YEAR">
+                  </label>
+                </div>
+                <label v-else class="year-field">
+                  <span>Decade</span>
+                  <select v-model="decadeStart" aria-label="Year decade">
+                    <option v-for="decade in decades" :key="decade" :value="String(decade)">
+                      {{ decade }}–{{ Math.min(decade + 9, MAX_YEAR) }}
+                    </option>
+                  </select>
+                </label>
+                <p v-if="yearMode === 'range' && !yearSelectionValid" class="option-hint">
+                  Start year must not be later than end year.
+                </p>
+                <div class="year-actions">
+                  <button type="button" aria-label="Clear year filter" @click="clearYear">Clear</button>
+                  <button
+                    type="button"
+                    aria-label="Apply year filter"
+                    :disabled="!yearSelectionValid"
+                    @click="applyYear"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <label v-else-if="control.kind === 'select'" class="filter-select">
               <span>{{ control.label }}</span>
               <select
                 :aria-label="control.label"
@@ -117,8 +180,26 @@ const selected = ref<LibraryFilterState>({ ...props.modelValue })
 const activeGroup = ref<string | null>(null)
 const optionQueries = ref<Record<string, string>>({})
 const OPTION_PREVIEW_LIMIT = 8
+const MIN_YEAR = 1888
+const MAX_YEAR = new Date().getFullYear()
+type YearMode = 'exact' | 'range' | 'decade'
+const YEAR_MODES: { id: YearMode, label: string, ariaLabel: string }[] = [
+  { id: 'exact', label: 'Exact', ariaLabel: 'Exact year mode' },
+  { id: 'range', label: 'Range', ariaLabel: 'Year range mode' },
+  { id: 'decade', label: 'Decade', ariaLabel: 'Decade mode' },
+]
+const yearMode = ref<YearMode>('exact')
+const exactYear = ref(String(MAX_YEAR))
+const rangeStart = ref(String(MAX_YEAR - 9))
+const rangeEnd = ref(String(MAX_YEAR))
+const decadeStart = ref(String(Math.floor(MAX_YEAR / 10) * 10))
+const decades = Array.from(
+  { length: Math.floor(MAX_YEAR / 10) - Math.floor(MIN_YEAR / 10) + 1 },
+  (_, index) => Math.floor(MAX_YEAR / 10) * 10 - (index * 10),
+)
 const QUICK_FILTER_IDS = new Set([
-  'playstate', 'favorite', 'genre', 'year', 'official_rating', 'resolution',
+  'playstate', 'favorite', 'genre', 'year', 'official_rating', 'community_rating',
+  'critic_rating', 'resolution',
 ])
 
 const quickControls = computed(() => props.controls.filter((control) => QUICK_FILTER_IDS.has(control.id)))
@@ -160,8 +241,83 @@ function toggleAdvanced() {
 }
 
 function toggleGroup(id: string) {
+  if (id === 'year' && activeGroup.value !== id) hydrateYearDraft()
   activeGroup.value = activeGroup.value === id ? null : id
 }
+
+function validYear(value: string): number | null {
+  if (!/^\d{4}$/.test(value)) return null
+  const year = Number(value)
+  return year >= MIN_YEAR && year <= MAX_YEAR ? year : null
+}
+
+function hydrateYearDraft() {
+  const value = selected.value.year
+  if (Array.isArray(value) && value.length) {
+    const years = value.map(Number).filter(Number.isInteger).sort((left, right) => left - right)
+    if (years.length === 1) {
+      yearMode.value = 'exact'
+      exactYear.value = String(years[0])
+    } else if (years.length) {
+      yearMode.value = 'range'
+      rangeStart.value = String(years[0])
+      rangeEnd.value = String(years.at(-1))
+    }
+    return
+  }
+  if (typeof value !== 'string') return
+  const parts = value.split(':')
+  if (parts[0] === 'exact' && parts[1]) {
+    yearMode.value = 'exact'
+    exactYear.value = parts[1]
+  } else if (parts[0] === 'range' && parts[1] && parts[2]) {
+    yearMode.value = 'range'
+    rangeStart.value = parts[1]
+    rangeEnd.value = parts[2]
+  } else if (parts[0] === 'decade' && parts[1]) {
+    yearMode.value = 'decade'
+    decadeStart.value = parts[1]
+  }
+}
+
+const yearSelectionValid = computed(() => {
+  if (yearMode.value === 'exact') return validYear(exactYear.value) !== null
+  if (yearMode.value === 'decade') return validYear(decadeStart.value) !== null
+  const start = validYear(rangeStart.value)
+  const end = validYear(rangeEnd.value)
+  return start !== null && end !== null && start <= end
+})
+
+function applyYear() {
+  if (!yearSelectionValid.value) return
+  const value = yearMode.value === 'exact'
+    ? `exact:${exactYear.value}`
+    : yearMode.value === 'range'
+      ? `range:${rangeStart.value}:${rangeEnd.value}`
+      : `decade:${decadeStart.value}`
+  publish({ ...selected.value, year: value })
+}
+
+function clearYear() {
+  const next = { ...selected.value }
+  delete next.year
+  publish(next)
+}
+
+const yearSummary = computed(() => {
+  const value = selected.value.year
+  if (Array.isArray(value)) {
+    if (value.length === 1) return value[0]
+    if (value.length > 1) return `${value[0]}–${value.at(-1)}`
+    return ''
+  }
+  if (typeof value !== 'string') return ''
+  const [mode, first, second] = value.split(':')
+  if (mode === 'exact') return first ?? ''
+  if (mode === 'range') return first && second ? `${first}–${second}` : ''
+  if (mode === 'decade' && first) return `${first}–${Math.min(Number(first) + 9, MAX_YEAR)}`
+  return value
+})
 
 function displayedOptions(control: FilterControl) {
   const query = (optionQueries.value[control.id] ?? '').trim().toLocaleLowerCase()
@@ -219,6 +375,9 @@ function optionLabel(control: FilterControl, value: string): string {
 
 const chips = computed(() => props.controls.flatMap((control) => {
   const value = selected.value[control.id]
+  if (control.id === 'year' && yearSummary.value) {
+    return [{ key: `year:${String(value)}`, label: `Year: ${yearSummary.value}` }]
+  }
   const values = Array.isArray(value) ? value : value ? [value] : []
   return values.map((entry) => ({
     key: `${control.id}:${entry}`,
@@ -334,6 +493,23 @@ function reset() {
 .option-list label:hover { background: var(--bg-surface-hover); }
 .option-list input { margin-top: .15rem; flex: 0 0 auto; }
 .option-hint { margin: .35rem .3rem .15rem; color: var(--text-secondary); font-size: max(.75rem, 13px); }
+.year-popover { display: grid; gap: .65rem; }
+.year-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: .3rem; }
+.year-modes button, .year-actions button {
+  min-height: 2.25rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.year-modes button[aria-pressed="true"] { border-color: var(--accent-primary); background: var(--bg-surface-hover); }
+.year-field { display: grid; gap: .3rem; color: var(--text-secondary); font-size: max(.75rem, 13px); }
+.year-field input, .year-field select { width: 100%; min-height: 2.5rem; }
+.year-range { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.year-actions { display: flex; justify-content: flex-end; gap: .4rem; }
+.year-actions button { padding: .35rem .75rem; }
+.year-actions button:disabled { cursor: not-allowed; opacity: .5; }
 .active-filters { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
 .filter-chip { padding: .25rem .55rem; border-radius: 999px; background: var(--bg-surface); }
 @media (max-width: 640px) {

@@ -243,11 +243,16 @@ jobs:
           E2E_FAKE_EMBY_HOST: 0.0.0.0
         run: |
           python scripts/run_fake_emby.py > fake-emby.log 2>&1 &
+          # MEDIA_SERVER_TYPE is stated rather than left to its "emby" default:
+          # the address and the key are provider-neutral names now, so this is
+          # the only line that records which provider the gate exercises, and
+          # the listener above serves Emby's contract.
           docker run --detach --name watchparty-ci --publish 5013:5000 \
             --add-host host.docker.internal:host-gateway \
             --env APP_ENV=development \
-            --env EMBY_SERVER_URL=http://host.docker.internal:5012 \
-            --env EMBY_API_KEY=e2e-key \
+            --env MEDIA_SERVER_TYPE=emby \
+            --env MEDIA_SERVER_URL=http://host.docker.internal:5012 \
+            --env MEDIA_SERVER_API_KEY=e2e-key \
             --env SESSION_SECRET=container-ci-session-secret-at-least-32-characters \
             --env SESSION_COOKIE_SECURE=false \
             emby-watchparty:ci
@@ -310,6 +315,73 @@ jobs:
             frontend/test-results
           retention-days: 14
           if-no-files-found: ignore
+
+  jellyfin:
+    name: Jellyfin ${{ matrix.version }} real-server journey
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["10.10.7", "10.11.11"]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - name: Install Chromium and FFmpeg
+        run: |
+          npx playwright install --with-deps chromium
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+        working-directory: frontend
+      - name: Build application image
+        run: docker build --tag emby-watchparty:jellyfin-ci .
+      - name: Start real Jellyfin and application
+        run: >-
+          python scripts/run_jellyfin_ci.py start
+          --state "${RUNNER_TEMP}/jellyfin-${{ matrix.version }}/state.json"
+          --jellyfin-image "jellyfin/jellyfin:${{ matrix.version }}"
+          --network "watchparty-jellyfin-${{ matrix.version }}"
+          --jellyfin-name "jellyfin-${{ matrix.version }}"
+          --app-name "watchparty-jellyfin-${{ matrix.version }}"
+      - name: Chromium login, browse, playback, seek, reconnect, stop
+        run: npx playwright test e2e/jellyfin-real.spec.ts --project=chromium
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://127.0.0.1:5013
+      - name: Verify playback and transcode cleanup
+        run: >-
+          python scripts/run_jellyfin_ci.py verify
+          --state "${RUNNER_TEMP}/jellyfin-${{ matrix.version }}/state.json"
+      - name: Capture real-server diagnostics
+        if: failure()
+        run: |
+          docker logs "jellyfin-${{ matrix.version }}" > jellyfin-${{ matrix.version }}.log 2>&1 || true
+          docker logs "watchparty-jellyfin-${{ matrix.version }}" > watchparty-jellyfin-${{ matrix.version }}.log 2>&1 || true
+      - name: Upload real-server diagnostics
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: jellyfin-${{ matrix.version }}-failure
+          path: |
+            jellyfin-${{ matrix.version }}.log
+            watchparty-jellyfin-${{ matrix.version }}.log
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Remove real-server containers and temporary volumes
+        if: always()
+        run: >-
+          python scripts/run_jellyfin_ci.py cleanup
+          --state "${RUNNER_TEMP}/jellyfin-${{ matrix.version }}/state.json"
 
   dependency-review:
     name: Dependency review
@@ -382,6 +454,7 @@ jobs:
       - browser
       - ios-native-hls
       - container
+      - jellyfin
       - dependency-review
       - changed-coverage
     runs-on: ubuntu-latest

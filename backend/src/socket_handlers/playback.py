@@ -15,12 +15,22 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 
+import httpx
+
 from backend.src.domain import (
     AutoAdvance,
     EpisodeRef,
     PlaybackState,
     SelectedMedia,
     UserStream,
+)
+from backend.src.hls_token_manager import attach_hls_token
+from backend.src.providers.models import (
+    PlaybackEvent,
+    PlaybackEventType,
+    PlaybackPlanError,
+    PlaybackRequest,
+    ProviderCredentials,
 )
 from backend.src.quality import (
     DEFAULT_QUALITY_ID,
@@ -68,6 +78,8 @@ def clamp_start_seconds(start_seconds: float | None, run_time: float | None) -> 
 def register(ctx):
     sio = ctx["sio"]
     emby_client = ctx["emby_client"]
+    media_server = ctx["media_server"]
+    hls_registry = ctx.get("hls_registry")
     config = ctx["config"]
     logger = ctx["logger"]
     party_manager = ctx["party_manager"]
@@ -248,7 +260,6 @@ def register(ctx):
         Returns the stream info dict, or None on failure.
         """
         access_token, user_id = _host_creds(party)
-        start_ticks_for_info = int(start_seconds * 10_000_000) if start_seconds > 0 else 0
         # Normalise so a stale / unknown quality stored on the party can't
         # break stream creation; resolve to a max bitrate (None for Auto
         # and the resolution-only tiers -- get_playback_info treats None
@@ -257,28 +268,6 @@ def register(ctx):
             quality,
             force_transcode=bool(config.FORCE_TRANSCODE),
         )
-        _, _, bitrate_kbps = resolve_quality(normalised)
-        max_streaming_bitrate = bitrate_kbps * 1000 if bitrate_kbps else None
-        playback_info = await emby_client.get_playback_info(
-            item_id,
-            audio_index=audio_index,
-            subtitle_index=subtitle_index,
-            media_source_id=media_source_id,
-            max_streaming_bitrate=max_streaming_bitrate,
-            start_time_ticks=start_ticks_for_info,
-            access_token=access_token,
-            user_id=user_id,
-        )
-        if not playback_info or "MediaSources" not in playback_info:
-            logger.error(f"Failed to get playback info for user stream (sid={sid})")
-            return None
-
-        user_media_source = playback_info["MediaSources"][0]
-        media_source_id = user_media_source["Id"]
-        play_session_id = playback_info.get("PlaySessionId")
-
-        start_ticks = int(start_seconds * 10_000_000) if start_seconds > 0 else None
-
         # Per-viewer codec capability. Streams are already per viewer, so
         # two people in the same party can legitimately get different
         # codecs: the one whose browser decodes HEVC keeps it, the one
@@ -286,27 +275,39 @@ def register(ctx):
         # never reported, which build_params treats as h264-only.
         client_id = _client_id_for_sid(party, sid)
         client_codecs = party.client_codecs.get(client_id) if client_id else None
+        try:
+            plan = await media_server.prepare_playback(
+                PlaybackRequest(
+                    item_id=item_id,
+                    credentials=ProviderCredentials(
+                        access_token=access_token or "",
+                        user_id=user_id or "",
+                    ),
+                    media_source_id=media_source_id,
+                    audio_index=audio_index,
+                    subtitle_index=subtitle_index,
+                    quality=normalised,
+                    start_seconds=start_seconds,
+                    client_codecs=frozenset(client_codecs or {"h264"}),
+                    force_transcode=bool(config.FORCE_TRANSCODE),
+                )
+            )
+        except (httpx.HTTPError, PlaybackPlanError, KeyError, ValueError) as exc:
+            logger.error("Failed to prepare user stream sid=%s error=%s", sid, type(exc).__name__)
+            return None
 
-        from backend.src.stream_builder import StreamBuilder
-
-        builder = StreamBuilder(emby_client, logger, config)
-        stream_url_base = builder.build_stream_url(
-            item_id=item_id,
-            app_prefix=config.APP_PREFIX,
-            media_source=user_media_source,
-            media_source_id=media_source_id,
-            play_session_id=play_session_id,
-            audio_index=audio_index,
-            subtitle_index=subtitle_index,
-            quality=normalised,
-            start_time_ticks=start_ticks,
-            client_codecs=client_codecs,
-        )
+        media_source_id = plan.media_source_id
+        play_session_id = plan.play_session_id
+        provider_opaque_path = f"/hls/{plan.stream_id}/master.m3u8"
+        opaque_path = f"{config.APP_PREFIX}{provider_opaque_path}"
+        uses_opaque_registry = plan.browser_path in {None, provider_opaque_path}
+        stream_url_base = opaque_path if uses_opaque_registry else plan.browser_path
 
         stream_info = UserStream(
             play_session_id=play_session_id,
             media_source_id=media_source_id,
             stream_url_base=stream_url_base,
+            stream_id=plan.stream_id,
             audio_index=audio_index,
             subtitle_index=subtitle_index,
             quality=normalised,
@@ -320,17 +321,30 @@ def register(ctx):
             )
             return None
 
+        if hls_registry is not None and uses_opaque_registry:
+            hls_registry.install(plan)
+
         run_time_seconds = party.current_video.run_time_seconds
-        await emby_client.report_playback_start(
-            item_id=item_id,
-            media_source_id=media_source_id,
-            play_session_id=play_session_id,
-            position_seconds=start_seconds,
-            audio_index=audio_index,
-            subtitle_index=subtitle_index if subtitle_index != -1 else None,
-            run_time_seconds=run_time_seconds,
-            access_token=access_token,
-            user_id=user_id,
+        # Through the provider, not emby_client. On Jellyfin the legacy name is
+        # an alias for the adapter and the call only worked by __getattr__
+        # falling through to the raw EmbyClient, which left
+        # JellyfinProvider.report_playback unreachable and the reporting path
+        # unnegotiated. EmbyProvider.report_playback forwards the identical
+        # kwargs to the identical client method, so the Emby wire format does
+        # not move.
+        await media_server.report_playback(
+            PlaybackEvent(
+                type=PlaybackEventType.START,
+                credentials=ProviderCredentials(access_token or "", user_id or ""),
+                item_id=item_id,
+                media_source_id=media_source_id,
+                play_session_id=play_session_id,
+                position_seconds=start_seconds,
+                audio_index=audio_index,
+                subtitle_index=subtitle_index if subtitle_index != -1 else None,
+                run_time_seconds=run_time_seconds,
+                is_paused=False,
+            )
         )
 
         logger.info(
@@ -340,7 +354,7 @@ def register(ctx):
         return stream_info
 
     async def _stop_user_stream(party, sid, position_seconds=0):
-        """Stop a single user's Emby transcode and clean up."""
+        """Stop one provider playback session and revoke its HLS plan."""
         user_streams = party.user_streams
         stream = user_streams.pop(sid, None)
         if not stream or not stream.play_session_id:
@@ -348,20 +362,43 @@ def register(ctx):
 
         access_token, user_id = _host_creds(party)
         current_video = party.current_video
-        if current_video:
-            await emby_client.report_playback_stopped(
-                item_id=current_video.item_id,
-                media_source_id=stream.media_source_id,
-                play_session_id=stream.play_session_id,
-                position_seconds=position_seconds,
-                run_time_seconds=current_video.run_time_seconds,
-                access_token=access_token,
-                user_id=user_id,
+        # The revoke is in a finally because the stream is already popped from
+        # party.user_streams above: if anything between here and there raises,
+        # nothing else can ever reach this plan to revoke it, and it keeps the
+        # host's token alive for the life of the process. The provider contract
+        # says stop_playback returns a bool rather than raising, and both
+        # adapters honour it, but this loop also runs from _stop_all_user_streams
+        # where one escaped exception would strand every remaining viewer.
+        # Unconditional, not `if current_video`. Killing the transcode needs
+        # only play_session_id, which the guard above already proved non-empty;
+        # it never needed the video. Before the provider merged the two calls,
+        # stop_active_encodings sat outside that branch for exactly this reason,
+        # and moving it inside narrowed a known-good invariant: hold a session
+        # id, kill the encode. clear_video_state nulls current_video without
+        # touching user_streams, so the two legitimately diverge and an Emby
+        # transcode would have been left running.
+        #
+        # The stopped-report half is best-effort when the video is already gone.
+        # Both adapters swallow an upstream rejection and return False, so a
+        # report for an unknown item costs a log line, not the teardown.
+        try:
+            await media_server.stop_playback(
+                PlaybackEvent(
+                    type=PlaybackEventType.STOP,
+                    credentials=ProviderCredentials(access_token or "", user_id or ""),
+                    audio_index=stream.audio_index,
+                    subtitle_index=stream.subtitle_index,
+                    run_time_seconds=current_video.run_time_seconds if current_video else None,
+                    is_paused=False,
+                    item_id=current_video.item_id if current_video else "",
+                    media_source_id=stream.media_source_id,
+                    play_session_id=stream.play_session_id,
+                    position_seconds=position_seconds,
+                )
             )
-        await emby_client.stop_active_encodings(
-            play_session_id=stream.play_session_id,
-            access_token=access_token,
-        )
+        finally:
+            if hls_registry is not None and stream.stream_id:
+                hls_registry.revoke(stream.stream_id)
 
     async def _stop_all_user_streams(party, position_seconds=0):
         """Stop all per-user transcodes."""
@@ -612,7 +649,7 @@ def register(ctx):
             if config.ENABLE_HLS_TOKEN_VALIDATION:
                 user_token = token_manager.get_or_create(party_id, user_sid)
                 if user_token:
-                    stream_url += f"&token={user_token}"
+                    stream_url = attach_hls_token(stream_url, user_token)
 
             await sio.emit(
                 "video_selected",
@@ -669,6 +706,7 @@ def register(ctx):
     # Expose the restart helper so party.py can reuse it for vote-pass restarts
     ctx["restart_video_from_beginning"] = _restart_video_from_beginning
     ctx["create_user_stream"] = _create_user_stream
+    ctx["stop_user_stream"] = _stop_user_stream
 
     @sio.on("select_video")
     async def handle_select_video(sid, data):
@@ -923,7 +961,7 @@ def register(ctx):
         if config.ENABLE_HLS_TOKEN_VALIDATION:
             user_token = token_manager.get_or_create(party_id, sid)
             if user_token:
-                stream_url += f"&token={user_token}"
+                stream_url = attach_hls_token(stream_url, user_token)
 
         await sio.emit(
             "streams_changed",
@@ -1372,20 +1410,27 @@ def register(ctx):
             if not decision.allowed:
                 return
 
-        await emby_client.report_playback_progress(
-            item_id=commit.video.item_id,
-            media_source_id=commit.stream.media_source_id,
-            play_session_id=commit.stream.play_session_id,
-            position_seconds=current_time,
-            is_paused=not commit.playing,
-            event_name="TimeUpdate",
-            audio_index=commit.stream.audio_index,
-            subtitle_index=(
-                commit.stream.subtitle_index if commit.stream.subtitle_index != -1 else None
-            ),
-            run_time_seconds=commit.video.run_time_seconds,
-            access_token=commit.host_access_token,
-            user_id=commit.host_user_id,
+        # event_name="TimeUpdate" is dropped deliberately: it is already the
+        # default on report_playback_progress, so passing it was redundant and
+        # the Emby payload is unchanged.
+        await media_server.report_playback(
+            PlaybackEvent(
+                type=PlaybackEventType.PROGRESS,
+                credentials=ProviderCredentials(
+                    commit.host_access_token or "",
+                    commit.host_user_id or "",
+                ),
+                item_id=commit.video.item_id,
+                media_source_id=commit.stream.media_source_id,
+                play_session_id=commit.stream.play_session_id,
+                position_seconds=current_time,
+                is_paused=not commit.playing,
+                audio_index=commit.stream.audio_index,
+                subtitle_index=(
+                    commit.stream.subtitle_index if commit.stream.subtitle_index != -1 else None
+                ),
+                run_time_seconds=commit.video.run_time_seconds,
+            )
         )
 
     @sio.on("stream_ready")

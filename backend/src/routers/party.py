@@ -2,7 +2,7 @@
 Party Router -- create / join / probe.
 
 `POST /api/party/create` branches on the runtime REQUIRE_LOGIN toggle:
-anonymous create when off, Emby-authenticated create-as-host when on.
+anonymous create when off, media-server-authenticated create-as-host when on.
 `POST /api/party/<id>/join` is always anonymous and issues the
 party-bound session cookie used by every protected route.
 """
@@ -14,14 +14,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from backend.src.dependencies import (
     get_admin_session_store,
     get_config,
-    get_emby_client,
     get_logger,
+    get_media_server,
     get_party_manager,
     get_sio,
     party_host_session_matches,
     scrub_legacy_admin_session,
 )
-from backend.src.emby_client import EmbyUnavailableError
+from backend.src.providers.models import MediaServerUnavailableError, ProviderCredentials
 
 # Shared dev-host gate -- single source of truth lives in auth.py so the
 # env var name and value-parsing rules can never drift between modules.
@@ -112,7 +112,7 @@ async def create_party(
     body: CreatePartyRequest | None = None,
     config=Depends(get_config),
     party_manager=Depends(get_party_manager),
-    emby_client=Depends(get_emby_client),
+    provider=Depends(get_media_server),
     admin_session_store=Depends(get_admin_session_store),
     logger=Depends(get_logger),
 ):
@@ -122,7 +122,7 @@ async def create_party(
     has no host -- the library stays locked until someone clicks
     "Login to Become Host" inside the party.
 
-    When REQUIRE_LOGIN is on, the request must supply valid Emby
+    When REQUIRE_LOGIN is on, the request must supply valid media-server
     credentials. The caller is authenticated, made host of the new
     party, and issued a party-bound session cookie atomically.
     """
@@ -156,7 +156,9 @@ async def create_party(
     stashed_is_admin = admin_session.is_admin if admin_session else False
 
     if stashed_token and stashed_user_id and body.client_id:
-        if not await emby_client.verify_access_token(stashed_token, stashed_user_id):
+        if not await provider.verify_user(
+            ProviderCredentials(access_token=stashed_token, user_id=stashed_user_id)
+        ):
             logger.warning(
                 f"Stashed admin token failed revalidation for user "
                 f"{stashed_user_id}; clearing session and falling back to "
@@ -198,7 +200,7 @@ async def create_party(
             return CreatePartyResponse(
                 party_id="",
                 url="",
-                message="Emby login is required to create a party",
+                message=f"{provider.identity.display_name} login is required to create a party",
             )
         if not body.client_id:
             return CreatePartyResponse(
@@ -208,46 +210,47 @@ async def create_party(
             )
 
         try:
-            auth = await emby_client.authenticate(body.username, body.password)
-        except EmbyUnavailableError:
+            auth = await provider.authenticate_user(body.username, body.password)
+        except MediaServerUnavailableError:
             return CreatePartyResponse(
                 party_id="",
                 url="",
-                message="Emby server unavailable; ask the operator to verify EMBY_SERVER_URL",
+                message=(
+                    f"{provider.identity.display_name} server unavailable; "
+                    "ask the operator to verify MEDIA_SERVER_URL"
+                ),
             )
         if not auth:
             return CreatePartyResponse(
                 party_id="",
                 url="",
-                message="Invalid Emby credentials",
+                message=f"Invalid {provider.identity.display_name} credentials",
             )
 
         party_id = party_manager.create_party()
-        display_name = body.display_name or auth["username"]
+        display_name = body.display_name or auth.username
         host_session_grant = secrets.token_urlsafe(32)
         party_manager.set_host(
             party_id,
             client_id=body.client_id,
             session_grant=host_session_grant,
-            user_id=auth["user_id"],
-            access_token=auth["access_token"],
-            username=auth["username"],
-            is_admin=auth["is_admin"],
+            user_id=auth.credentials.user_id,
+            access_token=auth.credentials.access_token,
+            username=auth.username,
+            is_admin=auth.is_admin,
         )
         # Bind the creator's session to the new party in a single step.
         request.session["party_id"] = party_id
         request.session["client_id"] = body.client_id
         request.session["display_name"] = display_name
         request.session["host_session_grant"] = host_session_grant
-        logger.info(
-            f"Created party {party_id} with host '{auth['username']}' (admin={auth['is_admin']})"
-        )
+        logger.info(f"Created party {party_id} with host '{auth.username}' (admin={auth.is_admin})")
         return CreatePartyResponse(
             party_id=party_id,
             url=f"{prefix}/party/{party_id}",
             is_host=True,
-            host_username=auth["username"],
-            is_admin=auth["is_admin"],
+            host_username=auth.username,
+            is_admin=auth.is_admin,
         )
 
     # REQUIRE_LOGIN=false -- anonymous create.
@@ -266,13 +269,13 @@ async def join_party(
     request: Request,
     config=Depends(get_config),
     party_manager=Depends(get_party_manager),
-    emby_client=Depends(get_emby_client),
+    provider=Depends(get_media_server),
     sio=Depends(get_sio),
     logger=Depends(get_logger),
 ):
     """Issue the party-bound session cookie used by every protected route.
 
-    Anonymous: no Emby credentials. The cookie carries `party_id`,
+    Anonymous: no media-server credentials. The cookie carries `party_id`,
     `client_id`, and `display_name` so the Socket.IO connect handler
     and HTTP gates can attribute requests to this caller.
     """
@@ -304,7 +307,7 @@ async def join_party(
     # `/api/party/leave` unbinds party_id and client_id, so a host who
     # left and came back has no session identity to own, only the grant.
     # Requiring both locked the genuine host out of their own party with
-    # no way back: /api/auth/login needs a bound party, which only a
+    # no way back: /api/v2/auth/login needs a bound party, which only a
     # successful join provides, and video_ended / stop_video are gated to
     # the selector, who is the locked-out host, so nobody left in the
     # party could end the video either.
@@ -338,8 +341,8 @@ async def join_party(
     is_host = party.host_client_id == body.client_id
     if dev_user and dev_pw and not party_manager.is_unlocked(party_id):
         try:
-            auth = await emby_client.authenticate(dev_user, dev_pw)
-        except EmbyUnavailableError:
+            auth = await provider.authenticate_user(dev_user, dev_pw)
+        except MediaServerUnavailableError:
             auth = None
         if auth:
             host_session_grant = secrets.token_urlsafe(32)
@@ -347,10 +350,10 @@ async def join_party(
                 party_id,
                 client_id=body.client_id,
                 session_grant=host_session_grant,
-                user_id=auth["user_id"],
-                access_token=auth["access_token"],
-                username=auth["username"],
-                is_admin=auth["is_admin"],
+                user_id=auth.credentials.user_id,
+                access_token=auth.credentials.access_token,
+                username=auth.username,
+                is_admin=auth.is_admin,
             )
             session["host_session_grant"] = host_session_grant
             is_host = True
@@ -361,16 +364,17 @@ async def join_party(
             await sio.emit(
                 "host_changed",
                 {
-                    "host_username": auth["username"],
+                    "host_username": auth.username,
                     "host_client_id": body.client_id,
-                    "is_admin": auth["is_admin"],
+                    "is_admin": auth.is_admin,
                     "unlocked": True,
                 },
                 room=party_id,
             )
         else:
             logger.error(
-                f"Party {party_id}: dev gate is set but Emby auth FAILED for "
+                f"Party {party_id}: dev gate is set but {provider.identity.display_name} "
+                f"auth FAILED for "
                 f"'{dev_user}' -- check EMBY_WATCHPARTY_X_DEV_HOST value"
             )
 

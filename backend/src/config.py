@@ -46,6 +46,18 @@ _PRIVATE_ENV_FIELDS = frozenset(
         "EMBY_WATCHPARTY_X_DEV_HOST_ACCEPT_RISK",
     }
 )
+# Retired in 3.0. One URL and one key now serve both providers, because the
+# address and the credential were never provider-specific -- only
+# MEDIA_SERVER_TYPE was. These are deliberately NOT read as fallbacks: an
+# operator who upgrades without renaming would otherwise boot against the
+# default localhost URL and get an empty library with no explanation, so the
+# retired name is a boot error naming its replacement.
+_RETIRED_PROVIDER_FIELDS: dict[str, str] = {
+    "EMBY_SERVER_URL": "MEDIA_SERVER_URL",
+    "JELLYFIN_SERVER_URL": "MEDIA_SERVER_URL",
+    "EMBY_API_KEY": "MEDIA_SERVER_API_KEY",
+    "JELLYFIN_API_KEY": "MEDIA_SERVER_API_KEY",
+}
 _RATE_LIMIT_FIELDS = frozenset(
     {
         "RATE_LIMIT_PARTY_CREATION",
@@ -106,8 +118,16 @@ class EnvConfig:
     WATCH_PARTY_PORT: int
     APP_PREFIX: str
     SESSION_EXPIRY: int
-    EMBY_SERVER_URL: str
-    EMBY_API_KEY: str
+    # Declared before the URL and the key so the three read as one
+    # decision, matching deploy/schema.json: the address and the
+    # credential are not provider-specific, this is the only field that
+    # names a provider. It carries no class-level default, because the
+    # field order that puts it here forbids one, and because a silent
+    # default would be an implicit provider guess -- the thing 3.0
+    # removed. `from_env` still resolves an absent value to "emby".
+    MEDIA_SERVER_TYPE: str
+    MEDIA_SERVER_URL: str
+    MEDIA_SERVER_API_KEY: str
     APP_ENV: str
     SESSION_SECRET: str
     SESSION_COOKIE_SECURE: bool
@@ -157,8 +177,9 @@ class EnvConfig:
             "WATCH_PARTY_PORT": "5000",
             "APP_PREFIX": "",
             "SESSION_EXPIRY": "86400",
-            "EMBY_SERVER_URL": "http://localhost:8096",
-            "EMBY_API_KEY": "",
+            "MEDIA_SERVER_URL": "http://localhost:8096",
+            "MEDIA_SERVER_API_KEY": "",
+            "MEDIA_SERVER_TYPE": "emby",
             "APP_ENV": "development",
             "SESSION_SECRET": "",
             "SESSION_COOKIE_SECURE": "false",
@@ -211,8 +232,9 @@ class EnvConfig:
             WATCH_PARTY_PORT=integer("WATCH_PARTY_PORT", 5000),
             APP_PREFIX=str(value("APP_PREFIX")).rstrip("/"),
             SESSION_EXPIRY=integer("SESSION_EXPIRY", 86400),
-            EMBY_SERVER_URL=str(value("EMBY_SERVER_URL")).strip(),
-            EMBY_API_KEY=str(value("EMBY_API_KEY")).strip(),
+            MEDIA_SERVER_TYPE=str(value("MEDIA_SERVER_TYPE")).strip().lower(),
+            MEDIA_SERVER_URL=str(value("MEDIA_SERVER_URL")).strip(),
+            MEDIA_SERVER_API_KEY=str(value("MEDIA_SERVER_API_KEY")).strip(),
             APP_ENV=str(value("APP_ENV")).strip().lower(),
             SESSION_SECRET=str(value("SESSION_SECRET")).strip(),
             SESSION_COOKIE_SECURE=boolean("SESSION_COOKIE_SECURE", False),
@@ -599,6 +621,7 @@ class Config:
         *,
         load_errors: dict[str, str] | None = None,
         private_env: dict[str, str] | None = None,
+        retired_fields: set[str] | None = None,
     ):
         # Use object.__setattr__ to avoid triggering __getattr__
         object.__setattr__(self, "_env", env)
@@ -606,16 +629,17 @@ class Config:
         object.__setattr__(self, "_lock", threading.Lock())
         object.__setattr__(self, "_load_errors", dict(load_errors or {}))
         object.__setattr__(self, "_private_env", dict(private_env or {}))
+        object.__setattr__(self, "_retired_fields", set(retired_fields or ()))
 
     def __getattr__(self, name: str):
+        env = object.__getattribute__(self, "_env")
         if name == "ENABLE_HLS_TOKEN_VALIDATION":
-            return object.__getattribute__(self, "_env").ENABLE_HLS_TOKEN_VALIDATION
+            return env.ENABLE_HLS_TOKEN_VALIDATION
         # Check runtime first (mutable settings), then env (frozen)
         runtime = object.__getattribute__(self, "_runtime")
         if hasattr(runtime, name):
             return getattr(runtime, name)
 
-        env = object.__getattribute__(self, "_env")
         if hasattr(env, name):
             return getattr(env, name)
 
@@ -642,6 +666,11 @@ class Config:
             runtime,
             load_errors=load_errors,
             private_env=private_env,
+            retired_fields={
+                name
+                for name in _RETIRED_PROVIDER_FIELDS
+                if name in os.environ or dot_env.get(name) is not None
+            },
         )
 
     def update_runtime(self, data: dict) -> tuple[list, list]:
@@ -705,8 +734,16 @@ class Config:
     def startup_errors(self) -> dict[str, str]:
         """Return safe field-level boot errors without including submitted values."""
         errors = dict(object.__getattribute__(self, "_load_errors"))
+        for name in sorted(object.__getattribute__(self, "_retired_fields")):
+            errors.setdefault(
+                name,
+                f"was replaced by {_RETIRED_PROVIDER_FIELDS[name]} in 3.0; "
+                "rename it and remove the old name",
+            )
         if self.APP_ENV not in {"development", "production"}:
             errors.setdefault("APP_ENV", "must be 'development' or 'production'")
+        if self.MEDIA_SERVER_TYPE not in {"emby", "jellyfin"}:
+            errors.setdefault("MEDIA_SERVER_TYPE", "must be 'emby' or 'jellyfin'")
         if not (1 <= self.WATCH_PARTY_PORT <= 65535):
             errors.setdefault("WATCH_PARTY_PORT", "must be between 1 and 65535")
         prefix = self.APP_PREFIX
@@ -721,8 +758,8 @@ class Config:
             except ValueError:
                 errors.setdefault("TRUSTED_PROXY_CIDRS", "must contain valid IP networks")
                 break
-        if not _valid_http_url(self.EMBY_SERVER_URL, origin=False):
-            errors.setdefault("EMBY_SERVER_URL", "must be a valid HTTP(S) URL")
+        if not _valid_http_url(self.MEDIA_SERVER_URL, origin=False):
+            errors.setdefault("MEDIA_SERVER_URL", "must be a valid HTTP(S) URL")
         # Unconditional: the operator has stated they sit behind a proxy
         # and then not said which addresses those proxies are, so the
         # forwarded header is discarded and every viewer keys onto the
@@ -757,8 +794,8 @@ class Config:
                             "CORS_ALLOWED_ORIGINS", "must contain valid HTTP(S) origins"
                         )
                         break
-            if not self.EMBY_API_KEY:
-                errors.setdefault("EMBY_API_KEY", "is required in production")
+            if not self.MEDIA_SERVER_API_KEY:
+                errors.setdefault("MEDIA_SERVER_API_KEY", "is required in production")
             if not self.ENABLE_HLS_TOKEN_VALIDATION:
                 errors.setdefault("ENABLE_HLS_TOKEN_VALIDATION", "must be enabled in production")
         return errors

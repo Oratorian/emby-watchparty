@@ -31,8 +31,9 @@ def _config(
             WATCH_PARTY_PORT=5000,
             APP_PREFIX="",
             SESSION_EXPIRY=session_expiry,
-            EMBY_SERVER_URL="http://emby.test",
-            EMBY_API_KEY="test-key",
+            MEDIA_SERVER_TYPE="emby",
+            MEDIA_SERVER_URL="http://emby.test",
+            MEDIA_SERVER_API_KEY="test-key",
             APP_ENV="development",
             SESSION_SECRET=TEST_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
@@ -298,15 +299,15 @@ def test_join_cannot_claim_existing_admin_host_identity(tmp_path: Path) -> None:
             )
             assert preclaimed.json()["success"] is True
             login = await host.post(
-                "/api/auth/login",
+                "/api/v2/auth/login",
                 json={"username": "Alice", "password": "password"},
             )
             assert login.json()["is_admin"] is True
             assert (await attacker.get("/api/admin/config")).json() == {
                 "error": "Not authenticated"
             }
-            assert (await attacker.get("/api/auth/status")).json()["is_host"] is False
-            assert (await attacker.post("/api/auth/logout")).json()["message"] == "Not the host"
+            assert (await attacker.get("/api/v2/auth/status")).json()["is_host"] is False
+            assert (await attacker.post("/api/v2/auth/logout")).json()["message"] == "Not the host"
 
             claimed = await attacker.post(
                 f"/api/party/{party_id}/join",
@@ -350,7 +351,7 @@ def test_departed_host_can_rejoin_their_own_party(tmp_path: Path) -> None:
     refuse the genuine host on return: the identity reads as reserved and
     the proof of ownership has just been discarded.
 
-    That is unrecoverable rather than merely annoying. `/api/auth/login`
+    That is unrecoverable rather than merely annoying. `/api/v2/auth/login`
     requires a bound party, which only a successful join provides, and
     `video_ended` / `stop_video` are both gated to the selector, who is
     the locked-out host. Nobody left in the party can end the video, so
@@ -367,7 +368,7 @@ def test_departed_host_can_rejoin_their_own_party(tmp_path: Path) -> None:
             )
             assert (
                 await host.post(
-                    "/api/auth/login", json={"username": "Alice", "password": "password"}
+                    "/api/v2/auth/login", json={"username": "Alice", "password": "password"}
                 )
             ).json()["is_admin"] is True
 
@@ -413,7 +414,9 @@ def test_departed_host_identity_still_needs_the_grant(tmp_path: Path) -> None:
                 f"/api/party/{party_id}/join",
                 json={"client_id": "host-client", "display_name": "Alice"},
             )
-            await host.post("/api/auth/login", json={"username": "Alice", "password": "password"})
+            await host.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "password"}
+            )
             assert (await host.post("/api/party/leave")).json()["success"] is True
 
             # A real member of the same party, with a real session.
@@ -559,7 +562,7 @@ def test_admin_login_and_logout_scrub_legacy_cookie_credentials(tmp_path: Path) 
             )
             assert joined.status_code == 200
             await client.post("/_test/seed-legacy")
-            assert (await client.get("/api/libraries")).status_code == 423
+            assert (await client.get("/api/v2/libraries")).status_code == 423
             assert not legacy_keys & cookie_keys(client)
 
             await client.post("/_test/seed-invalid-stashed-admin")

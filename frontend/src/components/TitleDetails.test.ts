@@ -10,7 +10,7 @@ describe('TitleDetails', () => {
       Id: 'movie-1',
       Name: 'Artifact Movie',
       Type: 'Movie',
-      Taglines: ['A real fixture tagline'],
+      Tagline: 'A real fixture tagline',
       CommunityRating: 8.2,
       OfficialRating: 'PG-13',
       RunTimeTicks: 7_200_000_000,

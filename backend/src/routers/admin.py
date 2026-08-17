@@ -2,14 +2,14 @@
 Admin Router - Settings management.
 
 Two paths in:
-1. **Party-host as admin.** A host whose Emby account has
-   `IsAdministrator=true` is automatically admin of the application.
-   No separate /admin login is needed; the same party-bound session
-   cookie used everywhere else also unlocks /admin.
+1. **Party-host as admin.** A host whose media-server account is an
+   administrator is automatically admin of the application. No separate
+   /admin login is needed; the same party-bound session cookie used
+   everywhere else also unlocks /admin.
 2. **Standalone login.** Kept so an admin can edit config without
-   joining a party. Posts Emby admin credentials to
+   joining a party. Posts media-server admin credentials to
    `POST /api/admin/login`; the cookie receives an opaque handle while
-   the Emby token remains in the bounded server-side session store.
+   the upstream token remains in the bounded server-side session store.
 """
 
 from fastapi import APIRouter, Depends, Request
@@ -19,15 +19,15 @@ from backend.src.dependencies import (
     admin_display_name,
     get_admin_session_store,
     get_config,
-    get_emby_client,
     get_logger,
+    get_media_server,
     get_party_manager,
     get_sio,
     is_admin_authenticated,
     scrub_legacy_admin_session,
 )
-from backend.src.emby_client import EmbyUnavailableError
 from backend.src.log_levels import apply_log_levels
+from backend.src.providers.models import MediaServerUnavailableError
 from backend.src.rate_limit import parse_rate, rate_limit_response
 from backend.src.schemas import (
     AdminLoginRequest,
@@ -51,7 +51,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 async def admin_login(
     body: AdminLoginRequest,
     request: Request,
-    emby_client=Depends(get_emby_client),
+    provider=Depends(get_media_server),
     admin_session_store=Depends(get_admin_session_store),
     logger=Depends(get_logger),
 ):
@@ -63,8 +63,8 @@ async def admin_login(
 
     Rate limited per IP. Prevents this
     endpoint from being used as a credential-stuffing oracle against
-    every Emby admin account -- previously there was no throttle at
-    all and the endpoint returned a clean success/failure signal.
+    every media-server admin account -- previously there was no throttle
+    at all and the endpoint returned a clean success/failure signal.
     """
     if request.app.state.config.ENABLE_RATE_LIMITING:
         ip = _client_ip(request)
@@ -80,30 +80,32 @@ async def admin_login(
             )
             return rate_limit_response("login attempts", decision.retry_after)
     try:
-        auth = await emby_client.authenticate(body.username, body.password)
-    except EmbyUnavailableError:
+        auth = await provider.authenticate_user(body.username, body.password)
+    except MediaServerUnavailableError:
         return {
             "success": False,
-            "message": "Emby server unavailable; verify EMBY_SERVER_URL",
+            "message": (
+                f"{provider.identity.display_name} server unavailable; verify MEDIA_SERVER_URL"
+            ),
         }
     if not auth:
         return {"success": False, "message": "Invalid credentials"}
     try:
-        if not auth["is_admin"]:
+        if not auth.is_admin:
             logger.warning(f"Admin login denied for '{body.username}' -- not administrator")
             return {
                 "success": False,
                 "message": "This account does not have administrator privileges",
             }
 
-        username = auth["username"]
+        username = auth.username
         old_handle = request.session.pop("admin_session_id", None)
         admin_session_store.revoke(old_handle)
         scrub_legacy_admin_session(request.session)
         request.session["admin_session_id"] = admin_session_store.create(
             username=username,
-            access_token=auth["access_token"],
-            user_id=auth["user_id"],
+            access_token=auth.credentials.access_token,
+            user_id=auth.credentials.user_id,
             is_admin=True,
         )
         logger.info(f"Admin login: '{username}'")
@@ -121,8 +123,8 @@ def admin_logout(
 ):
     """Clear the standalone admin session.
 
-    Does NOT touch host status -- a host who is also admin via Emby
-    policy stays admin as long as they remain host.
+    Does NOT touch host status -- a host who is also admin via
+    media-server policy stays admin as long as they remain host.
     """
     admin_session_store.revoke(request.session.pop("admin_session_id", None))
     scrub_legacy_admin_session(request.session)
@@ -165,8 +167,9 @@ async def update_config(
         "WATCH_PARTY_PORT",
         "APP_PREFIX",
         "SESSION_EXPIRY",
-        "EMBY_SERVER_URL",
-        "EMBY_API_KEY",
+        "MEDIA_SERVER_TYPE",
+        "MEDIA_SERVER_URL",
+        "MEDIA_SERVER_API_KEY",
         "ENABLE_HLS_TOKEN_VALIDATION",
     }
     env_only_hit = [k for k in payload if k in env_only]

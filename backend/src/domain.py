@@ -40,6 +40,7 @@ class PlaybackState:
 class UserStream:
     media_source_id: str
     stream_url_base: str
+    stream_id: str | None = None
     play_session_id: str | None = None
     audio_index: int | None = None
     subtitle_index: int | None = None

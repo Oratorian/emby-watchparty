@@ -28,7 +28,10 @@ from typing import TYPE_CHECKING
 
 from dotenv import dotenv_values
 
-from backend.src.config import Config, EnvConfig, RuntimeConfig
+# The retired-name map is imported, never restated. A second copy here is the
+# exact drift this module is built to avoid: it would let the preflight promise
+# a rename 3.0 does not want, or stay silent about one it refuses to boot without.
+from backend.src.config import _RETIRED_PROVIDER_FIELDS, Config, EnvConfig, RuntimeConfig
 from backend.src.rate_limit import parse_rate
 
 if TYPE_CHECKING:
@@ -73,18 +76,26 @@ class _Report:
         self.lines.append(f"INFO: {message}")
 
 
-def _read_dotenv(path: Path, report: _Report) -> dict[str, str]:
+def _read_dotenv(path: Path, report: _Report) -> tuple[dict[str, str], frozenset[str]]:
+    """Return the .env values this report echoes, and every name the file declares.
+
+    Two results out of one parse. The values stay filtered to `_BOOT_FIELDS` so
+    a secret cannot reach the output by accident; the names are not filtered,
+    because "is this variable present" is a question about the key alone. That
+    matters for the retired provider variables: two of the four hold an API key,
+    so their presence has to be answerable without their value ever being read.
+    """
     if not path.exists():
         report.info(".env not found; preserve the deployment's actual environment source")
-        return {}
+        return {}, frozenset()
     if not path.is_file():
         report.error(".env is not a regular file", incomplete=True)
-        return {}
+        return {}, frozenset()
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
         report.error(".env could not be read", incomplete=True)
-        return {}
+        return {}, frozenset()
 
     # Structural scan only: report lines the loader will silently ignore, so a
     # setting the operator believes is applied does not vanish without comment.
@@ -110,12 +121,16 @@ def _read_dotenv(path: Path, report: _Report) -> dict[str, str]:
         loaded = dotenv_values(path)
     except OSError:
         report.error(".env could not be read", incomplete=True)
-        return {}
-    return {
+        return {}, frozenset()
+    values = {
         key: value
         for key, value in loaded.items()
         if value is not None and key in _BOOT_FIELDS | set(_WORKER_FIELDS)
     }
+    # `is not None`, not truthiness: `Config.from_env` counts a declared-but-empty
+    # `EMBY_API_KEY=` as declared, so the preflight has to count it too or it will
+    # bless a file that stops the boot.
+    return values, frozenset(key for key, value in loaded.items() if value is not None)
 
 
 def _read_legacy(path: Path, report: _Report) -> dict[str, object]:
@@ -192,6 +207,7 @@ def _startup_errors(
     runtime: RuntimeConfig,
     environ: Mapping[str, str],
     target: str,
+    retired: set[str],
 ) -> dict[str, str]:
     """Ask 3.0's own boot gate what it would reject, without touching disk.
 
@@ -200,6 +216,12 @@ def _startup_errors(
     The caller therefore passes a `RuntimeConfig` already built from the JSON
     parsed here, and the env half comes from the real loader with the caller's
     environment injected. Both are pure reads.
+
+    `retired` is passed in for the same reason: the retired provider names are
+    no longer `EnvConfig` fields, so nothing the loader returns can reveal them,
+    and `Config.from_env` -- the constructor being skipped here -- is what
+    normally resolves them from the process environment and .env. Omitting them
+    would hand a 2.x .env whose only fault is the old names a clean all-clear.
 
     `startup_errors` gates its strictest rules on `APP_ENV`, so the config is
     evaluated as the environment the operator says they are migrating *to*.
@@ -214,7 +236,12 @@ def _startup_errors(
         errors=load_errors,
         environ=environ,
     )
-    config = Config(replace(env, APP_ENV=target), runtime, load_errors=load_errors)
+    config = Config(
+        replace(env, APP_ENV=target),
+        runtime,
+        load_errors=load_errors,
+        retired_fields=retired,
+    )
     errors = config.startup_errors()
     # Substituting the target hides one rule: `startup_errors` also checks that
     # APP_ENV is a value 3.0 accepts at all, and the substituted value always
@@ -258,12 +285,52 @@ def run_preflight(
     report = _Report()
     root = root.resolve()
     env = dict(os.environ if environ is None else environ)
-    dotenv = _read_dotenv(root / ".env", report)
+    dotenv, declared_in_dotenv = _read_dotenv(root / ".env", report)
     legacy = _read_legacy(root / "config.json", report)
     # Fields this report already gives a specific, actionable instruction for.
     # The boot gate below is authoritative but generic, so it only speaks for
     # the fields nothing here has already explained.
     handled: set[str] = set()
+
+    def declared(name: str) -> bool:
+        return name in env or name in declared_in_dotenv
+
+    # The break a 2.x operator actually walks into: their .env names the server
+    # address and the credential after the provider, and 3.0 reads neither name.
+    # Nothing is aliased, so the old value is simply not seen. The boot gate
+    # below does report each retired name, but it reports them one at a time,
+    # and an operator carrying both provider variants would read that as two
+    # instructions to move two different values into the same variable. Deciding
+    # which value survives is the part only a human can do, so say that instead.
+    retired = {name for name in _RETIRED_PROVIDER_FIELDS if declared(name)}
+    handled |= retired
+    for replacement in dict.fromkeys(_RETIRED_PROVIDER_FIELDS.values()):
+        present = [
+            name
+            for name, new_name in _RETIRED_PROVIDER_FIELDS.items()
+            if new_name == replacement and name in retired
+        ]
+        if not present:
+            continue
+        if declared(replacement):
+            # Half-migrated. "Rename" here would produce a duplicate key, and
+            # python-dotenv keeps the last one, so the migration would appear
+            # done while the surviving value is whichever line landed lower.
+            report.action(
+                f"Remove {' and '.join(present)}; {replacement} is already set and is "
+                f"the only name 3.0 reads"
+            )
+        elif len(present) == 1:
+            source = "the process environment" if present[0] in env else ".env"
+            report.action(f"Rename {present[0]} to {replacement} in {source}")
+        else:
+            # No source named: the two can come from different places, and the
+            # instruction is the same either way.
+            report.action(
+                f"{present[0]} and {present[1]} are both set; 3.0 has one {replacement}, "
+                f"so keep the value for the provider MEDIA_SERVER_TYPE names, set it as "
+                f"{replacement}, and remove both old names"
+            )
 
     # Built once, from the JSON already parsed above, and reused for both the
     # legacy value lookups and the boot gate. Applying config.json twice would
@@ -363,7 +430,7 @@ def run_preflight(
     # collect a clean report and then serve 503 on every route.
     # `startup_errors` returns field names and fixed messages only, never the
     # submitted value, so nothing here can echo a secret.
-    boot_errors = _startup_errors(root, runtime, env, target)
+    boot_errors = _startup_errors(root, runtime, env, target, retired)
     for name in sorted(boot_errors):
         if name in handled:
             continue

@@ -6,6 +6,56 @@ The 2.0 "Midnight Premiere" log (beta1 through beta18, every Added / Changed / F
 
 ---
 
+## [Unreleased]
+
+### Four provider variables collapse into two
+
+**Blast radius: every deployment. 3.0 refuses to boot until the operator edits
+the environment.**
+
+`EMBY_SERVER_URL` and `JELLYFIN_SERVER_URL` become `MEDIA_SERVER_URL`;
+`EMBY_API_KEY` and `JELLYFIN_API_KEY` become `MEDIA_SERVER_API_KEY`.
+`MEDIA_SERVER_TYPE` is untouched, stays explicit, and is still not
+auto-detected.
+
+The four existed because Jellyfin support was added by duplicating the Emby
+pair rather than by asking which part of the configuration was actually
+provider-specific. One part was: which dialect the server speaks. A URL is a
+URL and an API key is an API key. The duplication bought a second name for each
+plus a rule to arbitrate between them, and that rule -- the selected provider
+never falls back to the other provider's variables -- only needed to exist
+because the second name did.
+
+**No aliases, no fallback reads.** A retired name found in the process
+environment or `.env` is a boot error naming its replacement, and it is an
+error even when the new name is set too, since a half-migrated `.env` holding
+both is precisely the case where which value survives depends on line order.
+Both softer options are worse. Reading the old name as a fallback postpones the
+break to a release where nobody is reading migration notes. Ignoring it boots
+the server against the default `http://localhost:8096`, which reaches the
+operator as an empty library rather than as a configuration error, a symptom a
+long way from its cause.
+
+`Config.boot_warnings()` is deleted along with the concept it existed to warn
+about: there is no inactive provider variable left to be inactive.
+`MEDIA_SERVER_URL` and `MEDIA_SERVER_API_KEY` are real `EnvConfig` fields
+rather than values synthesised in `Config.__getattr__` from whichever provider
+was selected, and `MEDIA_SERVER_URL_VARIABLE`, which existed only to report
+which field that had been, is gone entirely.
+
+The migration preflight reports the rename as a `REQUIRED ACTION` ahead of the
+boot gate, and separates the three shapes an operator can arrive in: one
+retired name to rename, both provider variants set so a human has to choose
+which value survives, or the new name already in place beside a leftover old
+one. The boot gate reports retired names one at a time, which would read as two
+instructions to move two different values into one variable.
+
+Deployment artifacts are regenerated from `deploy/schema.json`. Its
+`schema_version` stays `1`: that number versions the schema format, not its
+contents.
+
+---
+
 ## [3.0.0-beta3] - 2026-08-13 - Director's Cut
 
 Two bodies of work. A UX pass over the title detail view and the party header,
@@ -579,7 +629,7 @@ The symptom an operator actually sees is a third person trying to join movie nig
 
 Hostname validation runs unconditionally, outside the production-only block, and the DNS label pattern permits no underscore. Docker Compose service and container names may legally contain `_`, and Docker's embedded DNS resolves them. The value was also not stripped the way `SESSION_SECRET` is, so a trailing space failed too.
 
-**Resolved.** Underscores are accepted through a separate service-name pattern applied only to addresses this server dials itself. CORS origins keep the strict RFC 1123 form, because a browser cannot originate from such a host, so loosening it there would only ever accept a typo. `EMBY_SERVER_URL` and `EMBY_API_KEY` are both stripped now.
+**Resolved.** Underscores are accepted through a separate service-name pattern applied only to addresses this server dials itself. CORS origins keep the strict RFC 1123 form, because a browser cannot originate from such a host, so loosening it there would only ever accept a typo. `EMBY_SERVER_URL` and `EMBY_API_KEY` are both stripped now. Both were later renamed (see Unreleased, above); the validation and stripping behaviour carries over unchanged to `MEDIA_SERVER_URL` and `MEDIA_SERVER_API_KEY`.
 
 #### 6. The setup form silently discards edits to env-provided fields -- MOOT, and the reason the flow was removed
 

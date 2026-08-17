@@ -51,6 +51,12 @@ logs/
 
 #Configurations
 config.json
+/docker-compose.yml
+/docker-compose.yaml
+/dockercompose.yml
+/dockercompose.yaml
+/compose.yml
+/compose.yaml
 backend/static
 frontend/playwright-report/
 frontend/test-results/

@@ -260,6 +260,11 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
         state.record(request)
         return {"ServerName": "Fake Emby", "Version": "4.9.0"}
 
+    @app.get("/emby/System/Info")
+    async def authenticated_system_info(request: Request):
+        state.record(request)
+        return {"ServerName": "Fake Emby", "Version": "4.9.0"}
+
     @app.post("/emby/Users/AuthenticateByName")
     async def authenticate(request: Request):
         credentials = await request.json()

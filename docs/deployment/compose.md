@@ -30,7 +30,20 @@ the left side of `HOST_PORT:5000` under `ports`; do not change `WATCH_PARTY_BIND
 
 4. Fill every required `.env` field except the pinned container bind/port. Generate
    `SESSION_SECRET` once. Set `BEHIND_PROXY` explicitly. If true, use only actual proxy source
-   CIDRs.
+   CIDRs. `MEDIA_SERVER_URL` and `MEDIA_SERVER_API_KEY` serve both providers; `MEDIA_SERVER_TYPE`
+   is the only setting that distinguishes them, and Emby remains its default. For Jellyfin use:
+
+   ```env
+   MEDIA_SERVER_TYPE=jellyfin
+   MEDIA_SERVER_URL=http://jellyfin:8096
+   MEDIA_SERVER_API_KEY=your-dedicated-jellyfin-api-key
+   ```
+
+   The key must be issued by the server `MEDIA_SERVER_TYPE` names. Changing providers requires a
+   restart. A 2.1.x environment still carrying `EMBY_SERVER_URL`, `JELLYFIN_SERVER_URL`,
+   `EMBY_API_KEY` or `JELLYFIN_API_KEY` fails the boot with the name of its replacement: those
+   names were retired in 3.0 and are never read. Under Compose the retired name can also sit in
+   the service `environment:` block, which outranks `env_file`, so check both.
 5. Run read-only preflight with exact candidate environment and volumes:
 
    ```sh
@@ -47,6 +60,11 @@ the left side of `HOST_PORT:5000` under `ports`; do not change `WATCH_PARTY_BIND
 
 Do not publish `docker compose config` output for diagnosis: rendered output can contain
 environment secrets.
+
+Jellyfin support is HLS-only. HLS stream copy/remux/transcode are supported;
+progressive/direct-file playback, Live TV, and Jellyfin SyncPlay are not. The
+app interoperates through Jellyfin HTTP contracts and does not reuse Jellyfin
+Web source.
 
 ## Update and rollback
 

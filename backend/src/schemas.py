@@ -16,7 +16,7 @@ class LoginRequest(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    """Result of /api/auth/login (become host) and /api/auth/logout.
+    """Result of /api/v2/auth/login (become host) and /api/v2/auth/logout.
 
     On a successful become-host, host_username carries the Emby account
     name the caller is now hosting under.
@@ -129,119 +129,13 @@ class PartyInfoResponse(BaseModel):
 
 # ============== Library ==============
 
-
-class LibraryItem(BaseModel):
-    """A library item (movie, series, episode, season, folder, etc).
-    Fields are a pragmatic subset of what Emby returns -- additional fields
-    are allowed via the model config."""
-
-    Id: str
-    Name: str
-    Type: str | None = None
-    ServerId: str | None = None
-    ImageTags: dict | None = None
-    BackdropImageTags: list[str] | None = None
-    PrimaryImageAspectRatio: float | None = None
-    ProductionYear: int | None = None
-    Overview: str | None = None
-    RunTimeTicks: int | None = None
-    IsFolder: bool | None = None
-    ParentId: str | None = None
-    SeriesId: str | None = None
-    SeriesName: str | None = None
-    SeasonId: str | None = None
-    SeasonName: str | None = None
-    IndexNumber: int | None = None
-    ParentIndexNumber: int | None = None
-    CollectionType: str | None = None
-    UserData: dict | None = None
-
-    model_config = ConfigDict(extra="allow")
-
-
-class LibraryItemsResponse(BaseModel):
-    """Emby item list response, used by /api/libraries, /api/items, /api/search."""
-
-    Items: list[LibraryItem] = []
-    TotalRecordCount: int | None = None
-    StartIndex: int = 0
-
-    model_config = ConfigDict(extra="allow")
-
-
-class LibraryPrefixesResponse(BaseModel):
-    Prefixes: list[str] = []
+# Only the filter-rail models survive here. Everything else in this section
+# described the v1 library and media routes, which /api/v2 replaced; the v2
+# surface is modelled in v2_schemas.py.
 
 
 class StrictApiModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-
-class LibraryQueryScope(StrictApiModel):
-    parent_id: str | None = None
-    include_item_types: list[str] = Field(default_factory=list)
-    media_types: list[str] = Field(default_factory=list)
-    recursive: bool = False
-
-
-class LibraryQueryPage(StrictApiModel):
-    start_index: int = Field(default=0, ge=0)
-    limit: int = Field(default=50, ge=1, le=200)
-
-
-class LibraryQuerySort(StrictApiModel):
-    field: Literal[
-        "SortName",
-        "DateCreated",
-        "PremiereDate",
-        "ProductionYear",
-        "CommunityRating",
-        "CriticRating",
-        "Runtime",
-        "Random",
-    ] = "SortName"
-    direction: Literal["Ascending", "Descending"] = "Ascending"
-
-
-class LibraryQueryFilters(StrictApiModel):
-    playstate: Literal["any", "played", "unplayed", "resumable"] = "any"
-    favorite: bool | None = None
-    duplicates: bool | None = None
-    genres: list[str] = Field(default_factory=list)
-    official_ratings: list[str] = Field(default_factory=list)
-    studios: list[str] = Field(default_factory=list)
-    tags: list[str] = Field(default_factory=list)
-    person_ids: list[str] = Field(default_factory=list)
-    years: list[int] = Field(default_factory=list)
-    containers: list[str] = Field(default_factory=list)
-    video_codecs: list[str] = Field(default_factory=list)
-    video_types: list[str] = Field(default_factory=list)
-    resolutions: list[Literal["4K", "1080p", "720p", "SD"]] = Field(
-        default_factory=list, max_length=1
-    )
-    is_3d: bool | None = None
-    audio_codecs: list[str] = Field(default_factory=list)
-    audio_layouts: list[str] = Field(default_factory=list)
-    audio_languages: list[str] = Field(default_factory=list)
-    subtitles: Literal["any", "with", "without"] = "any"
-    subtitle_codecs: list[str] = Field(default_factory=list)
-    subtitle_languages: list[str] = Field(default_factory=list)
-    trailers: Literal["any", "with", "without"] = "any"
-    extras: Literal["any", "with", "without"] = "any"
-    theme_songs: Literal["any", "with", "without"] = "any"
-    theme_videos: Literal["any", "with", "without"] = "any"
-    locked: Literal["any", "yes", "no"] = "any"
-    overview: Literal["any", "with", "without"] = "any"
-    missing_provider_ids: list[Literal["imdb", "tmdb", "tvdb"]] = Field(default_factory=list)
-
-
-class LibraryQueryRequest(StrictApiModel):
-    scope: LibraryQueryScope = Field(default_factory=LibraryQueryScope)
-    page: LibraryQueryPage = Field(default_factory=LibraryQueryPage)
-    sort: LibraryQuerySort = Field(default_factory=LibraryQuerySort)
-    filters: LibraryQueryFilters = Field(default_factory=LibraryQueryFilters)
-    search_term: str | None = Field(default=None, max_length=200)
-    anchor_prefix: str | None = Field(default=None, min_length=1, max_length=8)
 
 
 class FilterOption(StrictApiModel):
@@ -258,151 +152,6 @@ class FilterControl(StrictApiModel):
 
 class FilterOptionsResponse(StrictApiModel):
     controls: list[FilterControl]
-
-
-class SearchGroup(StrictApiModel):
-    id: Literal["movies", "series", "episodes", "people", "collections", "other"]
-    label: str
-    items: list[LibraryItem] = Field(default_factory=list)
-
-
-class GroupedSearchResponse(StrictApiModel):
-    query: str
-    groups: list[SearchGroup] = Field(default_factory=list)
-
-
-class ItemSectionResponse(StrictApiModel):
-    section: Literal["related", "trailers", "extras"]
-    items: list[LibraryItem] = Field(default_factory=list)
-
-
-class ItemChildrenResponse(StrictApiModel):
-    items: list[LibraryItem] = Field(default_factory=list)
-
-
-class FavoriteRequest(StrictApiModel):
-    favorite: bool
-
-
-class FavoriteResponse(StrictApiModel):
-    success: bool
-    favorite: bool
-
-
-class PlayedRequest(StrictApiModel):
-    played: bool
-
-
-class PlayedResponse(StrictApiModel):
-    success: bool
-    played: bool
-
-
-class PlaylistListResponse(StrictApiModel):
-    items: list[LibraryItem] = Field(default_factory=list)
-
-
-class PlaylistCreateRequest(StrictApiModel):
-    name: str = Field(min_length=1, max_length=100)
-
-
-class PlaylistCreateResponse(StrictApiModel):
-    id: str
-    name: str
-
-
-class PlaylistAddRequest(StrictApiModel):
-    item_id: str = Field(min_length=1, max_length=200)
-
-
-class ActionSuccessResponse(StrictApiModel):
-    success: bool
-
-
-class ItemDetailsResponse(BaseModel):
-    """Single item with extended details. Wraps a LibraryItem plus any
-    additional fields Emby returns for that item type."""
-
-    Id: str
-    Name: str
-    Type: str | None = None
-    Overview: str | None = None
-    ProductionYear: int | None = None
-    RunTimeTicks: int | None = None
-    People: list[dict] | None = None
-    Genres: list[str] | None = None
-    Studios: list[dict] | None = None
-    MediaSources: list[dict] | None = None
-    MediaStreams: list[dict] | None = None
-    # UserData carries the host's per-item state -- specifically
-    # PlaybackPositionTicks (in 10M-ticks-per-second units, same scale
-    # as RunTimeTicks) and Played (bool). Used by the resume-from-
-    # last-position feature: when an item has PlaybackPositionTicks > 0
-    # and Played=false, the frontend offers "Resume at HH:MM:SS /
-    # Start over" instead of jumping straight to time 0.
-    UserData: dict | None = None
-
-    model_config = ConfigDict(extra="allow")
-
-
-# ============== Media ==============
-
-
-class IntroResponse(BaseModel):
-    hasIntro: bool
-    start: float | None = None
-    end: float | None = None
-    duration: float | None = None
-
-
-class AudioStreamInfo(BaseModel):
-    index: int
-    language: str
-    displayLanguage: str
-    codec: str
-    channels: int = 0
-    isDefault: bool = False
-    title: str = ""
-
-
-class SubtitleStreamInfo(BaseModel):
-    index: int
-    language: str
-    displayLanguage: str
-    codec: str
-    isDefault: bool = False
-    isForced: bool = False
-    isExternal: bool = False
-    isTextSubtitleStream: bool = False
-    isPGS: bool = False
-    title: str = ""
-
-
-class MediaVersionInfo(BaseModel):
-    """One entry in the multi-version dropdown.
-
-    Emby surfaces alternate versions of the same item (theatrical /
-    director's cut, mp4 / mkv, 1080p / 4K HDR) as separate entries in
-    `MediaSources`. `name` is the user-visible label Emby's own clients
-    show (literally "mp4" / "mkv" for stacked files named
-    `Title-mp4.mp4` / `Title-mkv.mkv`, or any custom label for stacked
-    `Title - Theatrical.mkv` / `Title - Director's Cut.mkv` style).
-    `id` is what we feed back into `MediaSourceId` to switch to that
-    version. Closes [#43](https://github.com/Oratorian/emby-watchparty/issues/43).
-    """
-
-    id: str
-    name: str
-    container: str | None = None
-    run_time_ticks: int | None = None
-
-
-class StreamsResponse(BaseModel):
-    audio: list[AudioStreamInfo]
-    subtitles: list[SubtitleStreamInfo]
-    media_source_id: str | None = None
-    # Always populated; UI shows a Version dropdown only when len > 1.
-    versions: list[MediaVersionInfo] = []
 
 
 # ============== Version ==============
@@ -428,6 +177,20 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     version: str
     codename: str
+
+
+class ReadinessResponse(BaseModel):
+    """Readiness probe payload, returned with 200 when ready and 503 when not.
+
+    The 503 is the whole point of the endpoint and was previously undeclared,
+    so an operator reading the schema saw an operation that only ever
+    succeeded and wired a probe that could not fail. `checks` is what they
+    diagnose from: every entry must be true for the overall status to be
+    `ready`, so the false one names the subsystem to look at.
+    """
+
+    status: str
+    checks: dict[str, bool]
 
 
 # ============== Admin ==============
@@ -459,7 +222,7 @@ class ConfigUpdateRequest(BaseModel):
     the `rejected` list in the response.
 
     Boot-only env keys (WATCH_PARTY_BIND / WATCH_PARTY_PORT /
-    APP_PREFIX / SESSION_EXPIRY / EMBY_SERVER_URL / EMBY_API_KEY) are
+    APP_PREFIX / SESSION_EXPIRY / MEDIA_SERVER_URL / MEDIA_SERVER_API_KEY) are
     rejected up front with `success: false` and no partial write.
 
     Example: `{"LOG_LEVEL": "DEBUG", "REQUIRE_LOGIN": true}`.

@@ -37,7 +37,17 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # curl is needed for HEALTHCHECK; everything else is pure Python.
+#
+# The upgrade is what keeps the Trivy gate honest. It blocks on fixable
+# HIGH/CRITICAL findings, and without this the image carries whatever the
+# base shipped, so every Debian security release reds CI until Docker Hub
+# happens to rebuild python:3.12-slim. That turns a security gate into a
+# waiting game, and a red gate nobody can act on is one a real regression
+# hides behind. It costs no reproducibility that this build had: the base
+# is a moving tag, not a digest pin, so image content already depends on
+# when it was built.
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 

@@ -100,7 +100,7 @@ class StreamBuilder:
             transcode_reasons.append("ContainerBitrateExceedsLimit")
 
         # NO api_key in the stream URL. Historically this embedded the
-        # admin EMBY_API_KEY so any party viewer could read the value
+        # admin MEDIA_SERVER_API_KEY so any party viewer could read the value
         # from `<video>.src` in DevTools and gain full admin access to
         # the Emby server. The /hls/... proxy authenticates upstream via
         # the party's host_access_token (routers/hls.py:_resolve_host_creds),
@@ -206,7 +206,7 @@ class StreamBuilder:
         # cannot render bitmap subtitle formats. Text subtitles are NOT
         # delivered via the HLS manifest -- the frontend preloads them
         # as side-channel <track> elements via
-        # /api/subtitles/<item>/<msid>/<idx>. Two parallel subtitle
+        # /api/v2/items/<item>/subtitles/<msid>/<idx>. Two parallel subtitle
         # delivery systems (manifest + side-channel) fight over
         # textTrack.mode state, so the manifest path is intentionally off.
         if subtitle_index is not None and subtitle_index != -1:

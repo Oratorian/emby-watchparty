@@ -31,7 +31,9 @@ async def _playing_host(base_url: str):
         f"/api/party/{party_id}/join",
         json={"client_id": "host-client", "display_name": "Host"},
     )
-    login = await client.post("/api/auth/login", json={"username": "Host", "password": "password"})
+    login = await client.post(
+        "/api/v2/auth/login", json={"username": "Host", "password": "password"}
+    )
     assert login.json()["success"] is True
     cookie = "; ".join(f"{key}={value}" for key, value in client.cookies.items())
     realtime = socketio.AsyncClient()

@@ -44,6 +44,6 @@ support, not native compatibility test results.
 ## Security boundary
 
 Environment-only deployment does not make values secret from host or Docker administrators.
-Generated artifacts leave `SESSION_SECRET` and `EMBY_API_KEY` blank, never print rendered
+Generated artifacts leave `SESSION_SECRET` and `MEDIA_SERVER_API_KEY` blank, never print rendered
 environment, never include client IPs or limiter buckets, and retain production HLS validation.
 Operators keep full backups and previous image/configuration until real playback succeeds.

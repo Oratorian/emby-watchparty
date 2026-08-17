@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import secrets
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 from urllib.parse import quote
 
 import httpx
+
+from backend.src import __version__
 
 if TYPE_CHECKING:
     from backend.src.emby_gateway import EmbyGateway
@@ -30,7 +32,7 @@ class EmbyClient:
         if access_token:
             auth_value = (
                 f'Emby UserId="{user_id or ""}", Client="WatchParty", '
-                f'Device="Web", DeviceId="{self.device_id}", Version="1.0", '
+                f'Device="Web", DeviceId="{self.device_id}", Version="{__version__}", '
                 f'Token="{access_token}"'
             )
             return {
@@ -48,7 +50,7 @@ class EmbyClient:
             "Content-Type": "application/json",
             "X-Emby-Authorization": (
                 f'Emby Client="WatchParty", Device="Web", '
-                f'DeviceId="{self.device_id}", Version="1.0"'
+                f'DeviceId="{self.device_id}", Version="{__version__}"'
             ),
         }
         try:
@@ -289,6 +291,30 @@ class EmbyClient:
         response.raise_for_status()
         return response.json()
 
+    @overload
+    async def query_items(
+        self,
+        query: dict[str, Any],
+        access_token: str | None = None,
+        user_id: str | None = None,
+        *,
+        prefixes: Literal[False] = False,
+        name_starts_with: str | None = None,
+        root_items: bool = False,
+    ) -> dict[str, Any]: ...
+
+    @overload
+    async def query_items(
+        self,
+        query: dict[str, Any],
+        access_token: str | None = None,
+        user_id: str | None = None,
+        *,
+        prefixes: Literal[True],
+        name_starts_with: str | None = None,
+        root_items: bool = False,
+    ) -> list[dict[str, Any]]: ...
+
     async def query_items(
         self,
         query: dict[str, Any],
@@ -296,6 +322,8 @@ class EmbyClient:
         user_id: str | None = None,
         *,
         prefixes: bool = False,
+        name_starts_with: str | None = None,
+        root_items: bool = False,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Run a strict watchparty library query through Emby's allowlisted API."""
         if not user_id:
@@ -306,7 +334,7 @@ class EmbyClient:
         sort = query["sort"]
         filters = query["filters"]
 
-        # Same resolver GET /api/items uses. The caller sends no item types for
+        # Same resolver POST /api/v2/items/query uses. The caller sends no item types for
         # a library root and this decides them from the collection type, so the
         # filtered view and the unfiltered browse cannot disagree about which
         # items the same on-screen library contains.
@@ -335,8 +363,20 @@ class EmbyClient:
             "IncludeItemTypes": include_item_types,
             "MediaTypes": ",".join(scope["media_types"]),
             "SearchTerm": query.get("search_term"),
+            "MinCommunityRating": filters.get("community_rating_min"),
+            "MinCriticRating": filters.get("critic_rating_min"),
         }
         params.update({key: value for key, value in scalar_values.items() if value})
+        items_path = "/emby/Items" if root_items else f"/emby/Users/{user_id}/Items"
+        if root_items:
+            params["UserId"] = user_id
+
+        if name_starts_with is not None:
+            params["StartIndex"] = 0
+            params["Limit"] = 1
+            params["EnableTotalRecordCount"] = "true"
+            if name_starts_with:
+                params["NameStartsWith"] = name_starts_with
 
         playstate = {
             "played": "IsPlayed",
@@ -429,7 +469,7 @@ class EmbyClient:
                 "Limit": 1,
             }
             count_response = await self.gateway.get(
-                f"/emby/Users/{user_id}/Items",
+                items_path,
                 headers=self._headers(access_token, user_id),
                 params=count_params,
             )
@@ -437,7 +477,7 @@ class EmbyClient:
             params["StartIndex"] = int(count_response.json().get("TotalRecordCount") or 0)
 
         response = await self.gateway.get(
-            f"/emby/Users/{user_id}/Items",
+            items_path,
             headers=self._headers(access_token, user_id),
             params=params,
         )
@@ -640,8 +680,18 @@ class EmbyClient:
             ]
             return {"Items": items, "TotalRecordCount": len(items)}
         except httpx.HTTPError as exc:
+            # Deliberately re-raised rather than answered with an empty list.
+            # "The server is unreachable" and "your library holds nothing
+            # matching that" are different facts, and collapsing them told a
+            # viewer their search had no results while the media server was
+            # restarting. The application-level httpx.HTTPError handler turns
+            # this into a 502, which is what the search UI needs to show its
+            # unavailable state instead of its empty state.
+            # Type name only, never the exception itself: an httpx error
+            # carries the request URL, and this client's URLs carry the admin
+            # API key. There is no value-based scrubber behind this.
             self.logger.error("Error searching items: error=%s", type(exc).__name__)
-            return {"Items": []}
+            raise
 
     @staticmethod
     def _compact_search_text(value: str) -> str:

@@ -20,18 +20,21 @@ def register_all(
     stream_builder,
     config,
     logger,
+    hls_registry=None,
     session_secret=None,
     rate_limiter=None,
 ):
     """Register all socket event handlers"""
     ctx = {
         "sio": sio,
+        "media_server": emby_client,
         "emby_client": emby_client,
         "party_manager": party_manager,
         "token_manager": token_manager,
         "stream_builder": stream_builder,
         "config": config,
         "logger": logger,
+        "hls_registry": hls_registry,
         "session_secret": session_secret,
         "rate_limiter": rate_limiter,
     }

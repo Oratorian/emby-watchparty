@@ -74,4 +74,35 @@ describe('LibraryFilters', () => {
     expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(1)
     expect(wrapper.text()).toContain('Drama')
   })
+
+  it('applies exact, range, and decade year modes only after confirmation', async () => {
+    const wrapper = mount(LibraryFilters, {
+      props: {
+        controls: [{
+          id: 'year', label: 'Year', kind: 'multi',
+          values: [{ value: '2026', label: '2026' }, { value: '1888', label: '1888' }],
+        }],
+        modelValue: {},
+      },
+    })
+
+    await wrapper.get('button.filter-toggle').trigger('click')
+    await wrapper.get('button[aria-label="Open Year filter"]').trigger('click')
+    await wrapper.get('input[aria-label="Exact year"]').setValue('2014')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    await wrapper.get('button[aria-label="Apply year filter"]').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([{ year: 'exact:2014' }])
+
+    await wrapper.get('button[aria-label="Year range mode"]').trigger('click')
+    await wrapper.get('input[aria-label="Start year"]').setValue('2014')
+    await wrapper.get('input[aria-label="End year"]').setValue('2021')
+    await wrapper.get('button[aria-label="Apply year filter"]').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([{ year: 'range:2014:2021' }])
+
+    await wrapper.get('button[aria-label="Decade mode"]').trigger('click')
+    await wrapper.get('select[aria-label="Year decade"]').setValue('2000')
+    await wrapper.get('button[aria-label="Apply year filter"]').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([{ year: 'decade:2000' }])
+    expect(wrapper.get('.filter-chip').text()).toBe('Year: 2000–2009')
+  })
 })

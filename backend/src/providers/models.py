@@ -1,0 +1,299 @@
+"""Provider-neutral media-server domain models."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import Literal
+
+import httpx
+
+MediaServerType = Literal["emby", "jellyfin"]
+
+
+class PlaybackMethod(StrEnum):
+    HLS_COPY = "hls_copy"
+    HLS_REMUX = "hls_remux"
+    HLS_TRANSCODE = "hls_transcode"
+
+
+class PlaybackEventType(StrEnum):
+    START = "start"
+    PROGRESS = "progress"
+    STOP = "stop"
+
+
+@dataclass(frozen=True)
+class ProviderIdentity:
+    type: MediaServerType
+    display_name: str
+
+
+@dataclass(frozen=True)
+class ProviderCapabilities:
+    filter_controls: bool
+
+
+@dataclass(frozen=True, repr=False)
+class ProviderCredentials:
+    access_token: str
+    user_id: str
+
+    def __repr__(self) -> str:
+        return f"ProviderCredentials(user_id={self.user_id!r}, access_token=<redacted>)"
+
+
+@dataclass(frozen=True)
+class AuthenticatedUser:
+    credentials: ProviderCredentials
+    username: str
+    is_admin: bool
+
+
+@dataclass(frozen=True)
+class UserMediaState:
+    playback_position_seconds: float = 0.0
+    played_percentage: float | None = None
+    played: bool = False
+    favorite: bool = False
+
+
+@dataclass(frozen=True)
+class MediaItem:
+    id: str
+    name: str
+    kind: str = "other"
+    collection_kind: str | None = None
+    overview: str = ""
+    runtime_seconds: float | None = None
+    production_year: int | None = None
+    parent_id: str | None = None
+    series_id: str | None = None
+    series_name: str | None = None
+    season_id: str | None = None
+    season_name: str | None = None
+    index_number: int | None = None
+    parent_index_number: int | None = None
+    is_folder: bool = False
+    is_playable: bool = False
+    is_browsable: bool = False
+    has_primary_image: bool = False
+    backdrop_count: int = 0
+    primary_image_aspect_ratio: float | None = None
+    user_state: UserMediaState = field(default_factory=UserMediaState)
+    media_source_count: int = 0
+
+
+@dataclass(frozen=True)
+class MediaItemDetails(MediaItem):
+    tagline: str | None = None
+    genres: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+    people: tuple[dict, ...] = ()
+    studios: tuple[str, ...] = ()
+    official_rating: str | None = None
+    community_rating: float | None = None
+    critic_rating: float | None = None
+
+
+@dataclass(frozen=True)
+class MediaPage:
+    items: tuple[MediaItem, ...]
+    total: int | None = None
+    start: int = 0
+
+
+@dataclass(frozen=True)
+class IntroSegment:
+    start_seconds: float
+    end_seconds: float
+
+
+@dataclass(frozen=True)
+class AudioStream:
+    index: int
+    language: str
+    display_language: str
+    codec: str
+    channels: int = 0
+    is_default: bool = False
+    title: str = ""
+
+
+@dataclass(frozen=True)
+class SubtitleStream:
+    index: int
+    language: str
+    display_language: str
+    codec: str
+    is_default: bool = False
+    is_forced: bool = False
+    is_external: bool = False
+    is_text: bool = False
+    is_image: bool = False
+    title: str = ""
+
+
+@dataclass(frozen=True)
+class MediaVersion:
+    id: str
+    name: str
+    container: str | None = None
+    runtime_seconds: float | None = None
+
+
+@dataclass(frozen=True)
+class StreamCatalog:
+    audio: tuple[AudioStream, ...]
+    subtitles: tuple[SubtitleStream, ...]
+    media_source_id: str | None
+    versions: tuple[MediaVersion, ...]
+
+
+@dataclass(frozen=True)
+class CatalogScope:
+    parent_id: str | None = None
+    include_kinds: tuple[str, ...] = ()
+    media_kinds: tuple[str, ...] = ()
+    recursive: bool = False
+
+
+@dataclass(frozen=True)
+class CatalogPage:
+    start: int = 0
+    limit: int = 50
+
+
+@dataclass(frozen=True)
+class CatalogSort:
+    field: str = "name"
+    direction: str = "ascending"
+
+
+@dataclass(frozen=True)
+class CatalogFilters:
+    playstate: str = "any"
+    favorite: bool | None = None
+    duplicates: bool | None = None
+    genres: tuple[str, ...] = ()
+    official_ratings: tuple[str, ...] = ()
+    studios: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+    person_ids: tuple[str, ...] = ()
+    years: tuple[int, ...] = ()
+    community_rating_min: float | None = None
+    critic_rating_min: float | None = None
+    containers: tuple[str, ...] = ()
+    video_codecs: tuple[str, ...] = ()
+    video_types: tuple[str, ...] = ()
+    resolutions: tuple[str, ...] = ()
+    is_3d: bool | None = None
+    audio_codecs: tuple[str, ...] = ()
+    audio_layouts: tuple[str, ...] = ()
+    audio_languages: tuple[str, ...] = ()
+    subtitles: str = "any"
+    subtitle_codecs: tuple[str, ...] = ()
+    subtitle_languages: tuple[str, ...] = ()
+    trailers: str = "any"
+    extras: str = "any"
+    theme_songs: str = "any"
+    theme_videos: str = "any"
+    locked: str = "any"
+    overview: str = "any"
+    missing_provider_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class CatalogQuery:
+    scope: CatalogScope = field(default_factory=CatalogScope)
+    page: CatalogPage = field(default_factory=CatalogPage)
+    sort: CatalogSort = field(default_factory=CatalogSort)
+    filters: CatalogFilters = field(default_factory=CatalogFilters)
+    search_term: str | None = None
+    anchor_prefix: str | None = None
+
+
+@dataclass(frozen=True)
+class PlaybackRequest:
+    item_id: str
+    credentials: ProviderCredentials
+    media_source_id: str | None = None
+    audio_index: int | None = None
+    subtitle_index: int | None = None
+    quality: str = "auto"
+    start_seconds: float = 0.0
+    client_codecs: frozenset[str] = frozenset({"h264"})
+    force_transcode: bool = False
+
+
+@dataclass(frozen=True, repr=False)
+class HLSResource:
+    url: str
+
+    def __repr__(self) -> str:
+        return "HLSResource(url=<redacted>)"
+
+
+@dataclass
+class PlaybackPlan:
+    stream_id: str
+    item_id: str
+    media_source_id: str
+    play_session_id: str
+    method: PlaybackMethod
+    master: HLSResource
+    credentials: ProviderCredentials = field(repr=False)
+    browser_path: str | None = None
+    upstream_headers: dict[str, str] = field(default_factory=dict, repr=False)
+    resources: dict[str, HLSResource] = field(default_factory=dict, repr=False)
+
+
+@dataclass(frozen=True)
+class PlaybackEvent:
+    type: PlaybackEventType
+    item_id: str
+    media_source_id: str
+    play_session_id: str
+    position_seconds: float
+    credentials: ProviderCredentials
+    is_paused: bool = False
+    audio_index: int | None = None
+    subtitle_index: int | None = None
+    run_time_seconds: float | None = None
+
+
+@dataclass(frozen=True)
+class AssetRequest:
+    item_id: str
+    kind: str
+    credentials: ProviderCredentials
+    index: int | None = None
+    media_source_id: str | None = None
+    max_width: int | None = None
+    max_height: int | None = None
+    quality: int | None = None
+
+
+@dataclass(frozen=True)
+class ProviderReadiness:
+    reachable: bool
+    credentials_valid: bool
+
+
+class MediaServerError(Exception):
+    """Base provider failure safe to translate at router seam."""
+
+
+class MediaServerUnavailableError(MediaServerError):
+    """Selected media server could not be reached."""
+
+
+class PlaybackPlanError(MediaServerError):
+    """Provider could not produce an approved HLS plan."""
+
+
+class UnsafeProviderResourceError(MediaServerError):
+    """Provider returned a resource outside its approved playback roots."""
+
+
+ProviderResponse = httpx.Response

@@ -192,9 +192,9 @@ def test_schema_rejects_malformed_metadata_values(
             r"settings\[3\]\.artifact_default: must be an integer",
         ),
         (
-            ("settings", 8, "safe_example"),
+            ("settings", 9, "safe_example"),
             "true",
-            r"settings\[8\]\.safe_example: must be a boolean",
+            r"settings\[9\]\.safe_example: must be a boolean",
         ),
         (("settings", 0, "type"), "mystery", r"settings\[0\]\.type: is not supported"),
         (("settings", 0, "required"), "sometimes", r"settings\[0\]\.required: is not supported"),

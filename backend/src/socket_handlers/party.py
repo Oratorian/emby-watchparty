@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from backend.src.dependencies import party_host_session_matches
 from backend.src.domain import JoinVote
+from backend.src.hls_token_manager import attach_hls_token
 from backend.src.quality import DEFAULT_QUALITY_ID
 from backend.src.utils import generate_random_username
 
@@ -32,6 +33,7 @@ def register(ctx):
     logger = ctx["logger"]
     party_manager = ctx["party_manager"]
     token_manager = ctx["token_manager"]
+    hls_registry = ctx.get("hls_registry")
     rate_limiter = ctx.get("rate_limiter")
     restart_video_from_beginning = ctx["restart_video_from_beginning"]
     create_user_stream = ctx.get("create_user_stream")
@@ -95,20 +97,25 @@ def register(ctx):
             return
         old_stream = commit.stream
         current_video = commit.current_video
-        if old_stream and old_stream.play_session_id and current_video:
-            await emby_client.report_playback_stopped(
-                item_id=current_video.item_id,
-                media_source_id=old_stream.media_source_id,
-                play_session_id=old_stream.play_session_id,
-                position_seconds=commit.playback_time,
-                run_time_seconds=current_video.run_time_seconds,
-                access_token=commit.host_access_token,
-                user_id=commit.host_user_id,
-            )
-            await emby_client.stop_active_encodings(
-                play_session_id=old_stream.play_session_id,
-                access_token=commit.host_access_token,
-            )
+        if old_stream:
+            try:
+                if old_stream.play_session_id and current_video:
+                    await emby_client.report_playback_stopped(
+                        item_id=current_video.item_id,
+                        media_source_id=old_stream.media_source_id,
+                        play_session_id=old_stream.play_session_id,
+                        position_seconds=commit.playback_time,
+                        run_time_seconds=current_video.run_time_seconds,
+                        access_token=commit.host_access_token,
+                        user_id=commit.host_user_id,
+                    )
+                    await emby_client.stop_active_encodings(
+                        play_session_id=old_stream.play_session_id,
+                        access_token=commit.host_access_token,
+                    )
+            finally:
+                if hls_registry is not None and old_stream.stream_id:
+                    hls_registry.revoke(old_stream.stream_id)
 
     async def _build_rejoin_video(party, party_id, sid):
         """Create a fresh per-user stream for a known participant rejoining."""
@@ -139,7 +146,7 @@ def register(ctx):
         if config.ENABLE_HLS_TOKEN_VALIDATION:
             user_token = token_manager.get_or_create(party_id, sid)
             if user_token:
-                stream_url += f"&token={user_token}"
+                stream_url = attach_hls_token(stream_url, user_token)
 
         return {
             "item_id": current_video.item_id,

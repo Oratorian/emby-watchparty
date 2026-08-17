@@ -18,8 +18,42 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **Four provider variables became two.** `EMBY_SERVER_URL` and `JELLYFIN_SERVER_URL` are now `MEDIA_SERVER_URL`; `EMBY_API_KEY` and `JELLYFIN_API_KEY` are now `MEDIA_SERVER_API_KEY`. `MEDIA_SERVER_TYPE` is unchanged and still has to be stated. The address and the credential were never provider-specific; only the type was, and it already decides which server answers them.
+
+  **Existing deployments must rename these before upgrading**, in `.env`, in the compose `environment:` block, or in the TrueNAS/CasaOS app settings, wherever you set them. There is no alias and no fallback read: a retired name left in place is a boot error naming its replacement, and the container comes up serving 503 with the fields listed on stderr until it is fixed. Blanking the value is not enough, since a declared but empty `EMBY_API_KEY=` still counts as declared; remove the line.
+
+  `python -m backend.migration_preflight` reports the rename as a REQUIRED ACTION before you upgrade, and [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) carries the full mapping. Failing loudly is deliberate: reading the old value as a fallback would have let a half-renamed deployment boot against the default `http://localhost:8096` and show an empty library with nothing to explain it.
+
+- **The v1 library, media and auth REST routes are gone.** Twenty-four endpoints that `/api/v2` had already replaced were removed; the web client migrated to v2 before this release and calls none of them. Each has a direct successor:
+
+  | Removed | Replacement |
+  | --- | --- |
+  | `GET /api/libraries` | `GET /api/v2/libraries` |
+  | `GET /api/items`, `POST /api/items/query` | `POST /api/v2/items/query` |
+  | `GET /api/items/prefixes`, `POST /api/items/prefixes/query` | `POST /api/v2/items/prefixes` |
+  | `GET /api/items/filter-options` | `GET /api/v2/items/filter-options` |
+  | `GET /api/search` | `GET /api/v2/items/search` |
+  | `GET /api/search/grouped` | `GET /api/v2/items/search/groups` |
+  | `GET /api/item/{id}` | `GET /api/v2/items/{id}` |
+  | `GET /api/item/{id}/sections/{section}` | `GET /api/v2/items/{id}/sections/{section}` |
+  | `GET /api/item/{id}/seasons`, `GET /api/item/{id}/episodes` | `GET /api/v2/items/{id}/seasons`, `GET /api/v2/items/{id}/episodes` |
+  | `PUT /api/item/{id}/favorite`, `PUT /api/item/{id}/played` | `PUT /api/v2/items/{id}/favorite`, `PUT /api/v2/items/{id}/played` |
+  | `GET /api/item/{id}/streams` | `GET /api/v2/items/{id}/streams` |
+  | `GET /api/image/{id}` | `GET /api/v2/items/{id}/images/{image_type}` |
+  | `GET /api/intro/{id}` | `GET /api/v2/items/{id}/intro` |
+  | `GET /api/subtitles/{id}/{media_source_id}/{index}` | `GET /api/v2/items/{id}/subtitles/{media_source_id}/{index}` |
+  | `GET`/`POST /api/playlists`, `POST /api/playlists/{id}/items` | the same paths under `/api/v2` |
+  | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/status` | the same paths under `/api/v2` |
+
+  **Anything calling these directly must move to the v2 path before upgrading**, whether that is a script, a bookmark or a third-party client. There is no redirect and no compatibility shim: a removed route now answers 404. The v2 response shapes are not identical to their v1 predecessors, so the committed contract in `frontend/src/types/api.generated.ts` and the interactive docs at `/docs` are the reference for the new field names.
+
+  `GET /api/version` and `GET /api/quality-options` are unaffected and stay where they are, as does everything under `/api/party`, `/api/admin`, `/api/avatar`, `/api/health`, `/api/ready` and `/hls`.
+
 ### Changed
 
+- `/api/ready` now also requires the media server to accept the configured API key, not just to answer. A deployment with a reachable server and a stale or non-admin key reported ready before and reports 503 now, so a monitor that was green can go red on upgrade without the server having changed. The `checks.emby` key is retained for existing consumers and now mirrors the overall status rather than reachability alone, which previously let it report `true` inside a `not_ready` body.
 - The Emby client's public library methods now declare their argument and return types. The annotations are checked inside the client itself, where they already caught two response shapes that were described wrong; call sites are not covered yet, because the client is injected untyped.
 
 ### Fixed
@@ -27,6 +61,10 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 - Saving from the admin panel now works when `config.json` is bind-mounted as a single file, the layout the README and `docker-compose.yml.example` both recommend. Every save was rejected with "Device or resource busy", the setting reverted, and a stray temp file was left behind on each attempt. Reported by **[xux1217](https://github.com/xux1217)** in [#66](https://github.com/Oratorian/emby-watchparty/issues/66), who diagnosed it in full: the failing call, the errno, and the exact lines. Shipped on the stable line as 2.1.3 and carried here so upgrading to 3.0 does not undo it.
 - Generated REST client types can no longer silently drift away from the backend response contract.
 - Windows contributors can run changed-line coverage against UTF-8 source diffs without locale decoder crashes.
+
+### Security
+
+- The container image now applies pending Debian security updates at build time rather than shipping whatever the base image happened to carry. The immediate case was `CVE-2026-53615`, a fixable HIGH in util-linux reaching the image through nine packages, but the point is general: the vulnerability gate blocks on fixable findings, so without this the build stayed red until Docker Hub rebuilt `python:3.12-slim` on its own schedule, and a red gate nobody can act on is one a real regression hides behind.
 
 ---
 

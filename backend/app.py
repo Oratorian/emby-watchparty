@@ -20,14 +20,15 @@ from backend.src import __codename__, __version__
 from backend.src.admin_session_store import AdminSessionStore
 from backend.src.avatar_store import AvatarStore
 from backend.src.config import Config
-from backend.src.emby_client import EmbyClient
-from backend.src.emby_gateway import EmbyGateway
+from backend.src.emby_gateway import MediaServerGateway
+from backend.src.hls_registry import HLSResourceRegistry
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.log_levels import apply_log_levels
 from backend.src.observability import RequestLogMiddleware
 from backend.src.party_manager import PartyManager
+from backend.src.providers import create_provider
 from backend.src.rate_limit import RateLimitMiddleware, SlidingWindowRateLimiter
-from backend.src.routers import admin, auth, avatar, health, hls, library, media, party, quality
+from backend.src.routers import API_ROUTERS
 from backend.src.socket_handlers import register_all as register_socket_handlers
 from backend.src.stream_builder import StreamBuilder
 from backend.src.update_checker import check_for_updates
@@ -35,15 +36,96 @@ from backend.src.update_checker import check_for_updates
 PROJECT_ROOT = Path(__file__).parent.parent
 STATIC_ROOT = Path(__file__).parent / "static"
 
+API_TITLE = "Emby Watch Party"
+
+# Names both servers rather than one. The product name is historical and
+# stays, but the description is what an operator reads at /docs, and on a
+# Jellyfin deployment an Emby-only sentence describes a server they are
+# not running.
+API_DESCRIPTION = (
+    "Synchronized video watching for Emby and Jellyfin media servers.\n\n"
+    "`/api/v2` is the canonical media surface and the one the bundled web client "
+    "speaks. The remaining `/api` routes are party, admin, avatar, quality and "
+    "probe endpoints that have no v2 equivalent."
+)
+
+# Swagger groups by tag whether or not we describe them, so without this
+# the reader gets eight bare words and has to open operations to find out
+# which surface is current. Every tag a router declares appears here.
+API_TAGS = [
+    {
+        "name": "v2",
+        "description": (
+            "The canonical media surface: libraries, item queries, streams, subtitles, "
+            "playlists, images, and host authentication. Prefer these routes; the v1 "
+            "equivalents they replaced have been removed."
+        ),
+    },
+    {
+        "name": "party",
+        "description": (
+            "Create, join, probe and leave a watch party. Joining issues the party-bound "
+            "session cookie that every protected route and the Socket.IO channel read."
+        ),
+    },
+    {
+        "name": "hls",
+        "description": (
+            "Authenticated proxy for the media server's HLS playlists and segments. Not "
+            "called directly: the playback flow hands out these URLs already carrying a "
+            "short-lived per-viewer token."
+        ),
+    },
+    {
+        "name": "avatar",
+        "description": (
+            "Passwordless chat avatars, by upload, Gravatar association or recovery code, "
+            "plus a proxy for the current host's media-server profile image."
+        ),
+    },
+    {
+        "name": "admin",
+        "description": (
+            "Runtime configuration, and the standalone admin session for editing it "
+            "without joining a party. A host whose media-server account is an "
+            "administrator is already an admin here and needs no separate login."
+        ),
+    },
+    {
+        "name": "health",
+        "description": (
+            "Container probes. `/api/health` is liveness and deliberately contacts "
+            "nothing, so an upstream outage cannot cause a restart loop; `/api/ready` "
+            "is readiness and does check the media server."
+        ),
+    },
+    {
+        "name": "quality",
+        "description": (
+            "The resolution and bitrate presets the per-user quality dropdown offers, "
+            "and which of them is the safe default for the current admin config."
+        ),
+    },
+    {
+        "name": "auth",
+        "description": (
+            "Version and build identity. The login, logout and status routes that once "
+            "shared this tag now live under `v2`."
+        ),
+    },
+]
+
 
 def _json_for_html_script(value: str) -> str:
     return json.dumps(value).replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
 
 
+def _boot_error_lines(config: Config) -> list[str]:
+    return [f"{name}: {message}" for name, message in sorted(config.startup_errors().items())]
+
+
 def _describe_boot_errors(config: Config) -> str:
-    return "; ".join(
-        f"{name}: {message}" for name, message in sorted(config.startup_errors().items())
-    )
+    return "; ".join(_boot_error_lines(config))
 
 
 @asynccontextmanager
@@ -101,13 +183,19 @@ def _create_setup_app(config: Config, project_root: Path) -> FastAPI:
     # banner-framed on purpose. On appliance platforms this is read
     # through a web log viewer, where a single line among startup noise
     # is missed; this is the only diagnosis the operator now gets.
-    detail = _describe_boot_errors(config)
+    #
+    # One line per failing field, built from the errors rather than by
+    # re-splitting the joined string. The join exists for the single log
+    # line, and splitting it back apart made "; " structural: the first
+    # message to contain one, the retired-name rename instruction that
+    # this banner exists for, broke in half and left its imperative on a
+    # line naming no field.
     print(
         "",
         "=" * 72,
         "  Emby Watch Party cannot start: invalid boot configuration.",
         "",
-        *(f"    {item}" for item in detail.split("; ")),
+        *(f"    {item}" for item in _boot_error_lines(config)),
         "",
         "  Set these in the environment (container template, compose",
         "  environment:, or .env) and restart. Nothing else is served",
@@ -229,6 +317,7 @@ async def lifespan(application: FastAPI):
         )
         party_manager = PartyManager(config, logger)
         token_manager = HLSTokenManager(config, logger)
+        hls_registry = HLSResourceRegistry()
         avatar_store = AvatarStore(
             db_path=root / "data" / "avatars.db",
             avatars_dir=root / "images" / "avatars",
@@ -236,30 +325,35 @@ async def lifespan(application: FastAPI):
         )
         admin_session_store = AdminSessionStore(ttl_seconds=config.SESSION_EXPIRY)
         rate_limiter = SlidingWindowRateLimiter()
-        emby_gateway = EmbyGateway(http_client, config.EMBY_SERVER_URL, logger)
-        emby_client = EmbyClient(config.EMBY_SERVER_URL, config.EMBY_API_KEY, logger, emby_gateway)
-        stream_builder = StreamBuilder(emby_client, logger, config)
+        media_server_gateway = MediaServerGateway(http_client, config.MEDIA_SERVER_URL, logger)
+        media_server = create_provider(config, logger, media_server_gateway)
+        stream_builder = StreamBuilder(media_server.client, logger, config)
 
         application.state.config = config
         application.state.logger = logger
-        application.state.emby_client = emby_client
+        application.state.media_server = media_server
+        # Compatibility aliases while v1 routes retain historical dependency names.
+        application.state.emby_client = media_server
         application.state.party_manager = party_manager
         application.state.token_manager = token_manager
+        application.state.hls_registry = hls_registry
         application.state.stream_builder = stream_builder
         application.state.avatar_store = avatar_store
         application.state.admin_session_store = admin_session_store
         application.state.rate_limiter = rate_limiter
         application.state.http_client = http_client
-        application.state.emby_gateway = emby_gateway
+        application.state.media_server_gateway = media_server_gateway
+        application.state.emby_gateway = media_server_gateway
 
         socket_context = register_socket_handlers(
             application.state.sio,
-            emby_client,
+            media_server,
             party_manager,
             token_manager,
             stream_builder,
             config,
             logger,
+            hls_registry=hls_registry,
             session_secret=application.state.session_secret,
             rate_limiter=rate_limiter,
         )
@@ -275,7 +369,7 @@ async def lifespan(application: FastAPI):
         )
 
         logger.info('Emby Watch Party v%s - "%s"', __version__, __codename__)
-        logger.info("Emby Server: %s", config.EMBY_SERVER_URL)
+        logger.info("%s Server: %s", media_server.identity.display_name, config.MEDIA_SERVER_URL)
         if application.state.session_ephemeral:
             logger.warning(
                 "SESSION_SECRET is empty; using an ephemeral key. Sessions expire on restart."
@@ -288,8 +382,8 @@ async def lifespan(application: FastAPI):
         yield
 
 
-async def _upstream_unavailable(_request, exc: httpx.HTTPError) -> JSONResponse:
-    """Any Emby transport failure that reaches here is a bad gateway, not a bug.
+async def _upstream_unavailable(request, exc: httpx.HTTPError) -> JSONResponse:
+    """Any media-server transport failure that reaches here is a bad gateway, not a bug.
 
     Registered once rather than per route. Thirteen of the eighteen library
     routes had no such mapping, so a timeout or refused connection surfaced as
@@ -297,26 +391,46 @@ async def _upstream_unavailable(_request, exc: httpx.HTTPError) -> JSONResponse:
     operator to look in the wrong place. Routes that map it themselves are
     unaffected, since their own handler runs first.
     """
+    media_server = getattr(request.app.state, "media_server", None)
+    display_name = getattr(getattr(media_server, "identity", None), "display_name", "Media server")
     logging.getLogger("watchparty.upstream").warning(
-        "Emby upstream unavailable: %s", type(exc).__name__
+        "%s upstream unavailable: %s", display_name, type(exc).__name__
     )
-    return JSONResponse(status_code=502, content={"detail": "Emby upstream unavailable"})
+    return JSONResponse(
+        status_code=502,
+        content={"detail": f"{display_name} upstream unavailable"},
+    )
 
 
-def _install_api_and_socket_routes(application: FastAPI, prefix: str) -> None:
-    application.add_exception_handler(httpx.HTTPError, _upstream_unavailable)  # type: ignore[arg-type]
-    for api_router in (
-        auth.router,
-        library.router,
-        media.router,
-        hls.router,
-        party.router,
-        admin.router,
-        avatar.router,
-        health.router,
-        quality.router,
-    ):
+def build_api_app(*, prefix: str = "", **fastapi_kwargs) -> FastAPI:
+    """The single definition of the documented API surface.
+
+    Both the served app and scripts/generate_openapi_types.py go through
+    here, so the contract the generated TypeScript is derived from is the
+    same document /docs renders. The generator used to construct a bare
+    `FastAPI()` and inherit the placeholder `FastAPI 0.1.0` info block,
+    which made the two documents differ in the one field that identifies
+    which build a contract belongs to.
+
+    Deliberately takes no Config. The generator has to be importable and
+    runnable in CI, where no media server is configured and
+    `Config.from_env` would not validate; anything requiring config
+    belongs in `create_app` instead.
+    """
+    application = FastAPI(
+        title=API_TITLE,
+        version=__version__,
+        description=API_DESCRIPTION,
+        openapi_tags=API_TAGS,
+        **fastapi_kwargs,
+    )
+    for api_router in API_ROUTERS:
         application.include_router(api_router, prefix=prefix)
+    return application
+
+
+def _install_runtime_routes(application: FastAPI, prefix: str) -> None:
+    application.add_exception_handler(httpx.HTTPError, _upstream_unavailable)  # type: ignore[arg-type]
 
     socket_path = f"{prefix}/socket.io"
     application.mount(
@@ -392,12 +506,7 @@ def create_app(
         ping_timeout=30,
         ping_interval=12,
     )
-    application = FastAPI(
-        title="Emby Watch Party",
-        version=__version__,
-        description="Synchronized video watching for Emby media servers",
-        lifespan=lifespan,
-    )
+    application = build_api_app(prefix=prefix, lifespan=lifespan)
     application.state.bootstrap_config = resolved_config
     application.state.project_root = resolved_root
     application.state.http_transport = http_transport
@@ -421,7 +530,7 @@ def create_app(
         same_site="lax",
         https_only=resolved_config.SESSION_COOKIE_SECURE,
     )
-    _install_api_and_socket_routes(application, prefix)
+    _install_runtime_routes(application, prefix)
     _install_static_routes(application, prefix, Path(static_root or STATIC_ROOT))
     return application
 
