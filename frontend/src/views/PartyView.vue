@@ -734,7 +734,7 @@ async function copyPartyId() {
 
 async function leaveParty() {
   // Await so the session-clear request lands before any subsequent
-  // navigation to /admin or /version reads /api/auth/status.
+  // navigation to /admin or /version reads /api/v2/auth/status.
   await party.leave()
   router.push('/')
 }

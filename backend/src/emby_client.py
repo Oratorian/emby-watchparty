@@ -334,7 +334,7 @@ class EmbyClient:
         sort = query["sort"]
         filters = query["filters"]
 
-        # Same resolver GET /api/items uses. The caller sends no item types for
+        # Same resolver POST /api/v2/items/query uses. The caller sends no item types for
         # a library root and this decides them from the collection type, so the
         # filtered view and the unfiltered browse cannot disagree about which
         # items the same on-screen library contains.

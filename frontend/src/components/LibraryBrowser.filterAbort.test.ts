@@ -8,7 +8,7 @@ import LibraryBrowser from './LibraryBrowser.vue'
 /**
  * A navigation abort is not a load failure.
  *
- * /api/items/filter-options fans out to ten Emby catalogue endpoints, so it is
+ * /api/v2/items/filter-options fans out to ten media-server catalogue endpoints, so it is
  * the slowest request on the page and the most likely to still be in flight
  * when navigation aborts the shared controller. Treating that as a failure
  * emptied filterControls, and because configureFilters is memoised on

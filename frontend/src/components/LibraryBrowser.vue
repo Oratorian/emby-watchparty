@@ -430,7 +430,7 @@ async function configureFilters(parentId: string) {
     return
   }
   if (!changedParent) return
-  // /api/items/filter-options fans out to ten Emby catalogue endpoints, so it
+  // /api/v2/items/filter-options fans out to ten media-server catalogue endpoints, so it
   // is the slowest request on the page and the most likely to be in flight
   // when navigation aborts the shared controller. An abort is not a failure:
   // treating it as one emptied filterControls, and because this function is
@@ -530,7 +530,7 @@ function queryFilters(): LibraryQueryRequest['filters'] {
 function queryScope(parentId: string): LibraryQueryRequest['scope'] {
   // Deliberately sends no types and no recursion: the backend resolves both
   // from the library's collection type, the same way it already does for the
-  // unfiltered GET /api/items browse.
+  // unfiltered POST /api/v2/items/query browse.
   //
   // This used to carry a second, independently written copy of that map, and
   // the two disagreed. It sent MediaTypes=Video for tvshows, but a real Emby

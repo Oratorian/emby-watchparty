@@ -339,7 +339,7 @@ export const usePartyStore = defineStore('party', () => {
     const auth = useAuthStore()
     socket.emit('leave_party', { party_id: partyId.value })
     // Drop the party-bound session cookie too. Without this,
-    // /api/auth/status keeps returning the old party_id and the
+    // /api/v2/auth/status keeps returning the old party_id and the
     // "Back to Party" link on /admin or /version would route the user
     // into a party they just left.
     try { await api.leaveParty() } catch { /* best effort */ }

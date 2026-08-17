@@ -89,9 +89,12 @@ describe('usePartyStream', () => {
     await nextTick()
     await vi.waitFor(() => expect(api.itemStreams).toHaveBeenCalled())
 
+    // The URL VideoControls actually hands over, so the preload's rebuilt
+    // track and the user's carry the same src. That is the case a naive
+    // implementation double-appends rather than reconciles.
     stream.changeTextSubtitle({
       index: 3,
-      url: '/api/subtitles/item-1/source-b/3',
+      url: '/api/v2/items/item-1/subtitles/source-b/3',
     })
     expect(wrapper.findAll('track')).toHaveLength(1)
 
@@ -119,8 +122,9 @@ describe('usePartyStream', () => {
     // finished and could not have seen a duplicate however many appeared.
     await flushPromises()
 
-    // Identity, not just the count: the surviving track has to be the one the
-    // user picked, not the preload's own copy of the same subtitle.
+    // Identity, not just the count: the survivor has to be the subtitle the
+    // user picked, rather than the preload having dropped it for the source's
+    // own default.
     const sources = wrapper.findAll('track')
       .map((track) => (track.element as HTMLTrackElement).getAttribute('src'))
     expect(sources).toEqual(['/api/v2/items/item-1/subtitles/source-b/3'])

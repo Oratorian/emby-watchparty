@@ -364,7 +364,7 @@ describe('apiFetch', () => {
       },
     )))
 
-    await expect(apiFetch('/api/libraries')).rejects.toEqual(
+    await expect(apiFetch('/api/v2/libraries')).rejects.toEqual(
       new ApiError(423, 'Party has no host', { detail: 'Party has no host' }),
     )
   })
