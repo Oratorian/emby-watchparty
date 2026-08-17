@@ -455,3 +455,147 @@ describe('apiFetch', () => {
     )
   })
 })
+
+describe('item kind projection', () => {
+  // v2 reports snake_case `kind`; the components switch on the Emby `Type`.
+  // An unmapped kind lands on 'Other', which is in none of LibraryBrowser's
+  // type sets, so the row becomes unclickable, unopenable and filtered out of
+  // mixed listings, with no error anywhere to say so.
+  const kindToType: Record<string, string> = {
+    audio: 'Audio',
+    box_set: 'BoxSet',
+    collection_folder: 'CollectionFolder',
+    episode: 'Episode',
+    folder: 'Folder',
+    movie: 'Movie',
+    music_album: 'MusicAlbum',
+    music_artist: 'MusicArtist',
+    music_video: 'MusicVideo',
+    person: 'Person',
+    playlist: 'Playlist',
+    season: 'Season',
+    series: 'Series',
+    trailer: 'Trailer',
+    user_view: 'UserView',
+    video: 'Video',
+  }
+
+  function itemOfKind(kind: string) {
+    return {
+      id: `item-${kind}`,
+      name: kind,
+      kind,
+      collection_kind: null,
+      overview: '',
+      runtime_seconds: null,
+      production_year: null,
+      parent_id: null,
+      series_id: null,
+      series_name: null,
+      season_id: null,
+      season_name: null,
+      index_number: null,
+      parent_index_number: null,
+      is_folder: false,
+      is_playable: false,
+      is_browsable: false,
+      has_primary_image: false,
+      backdrop_count: 0,
+      primary_image_aspect_ratio: null,
+      user_state: {
+        playback_position_seconds: 0,
+        played_percentage: null,
+        played: false,
+        favorite: false,
+      },
+      media_source_count: 0,
+    }
+  }
+
+  it('maps every kind the backend can emit to its Emby Type', async () => {
+    const kinds = Object.keys(kindToType)
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      items: kinds.map(itemOfKind),
+      total: kinds.length,
+      start: 0,
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const page = await api.libraries()
+
+    expect(
+      Object.fromEntries(page.Items.map((item) => [item.Name, item.Type])),
+    ).toEqual(kindToType)
+  })
+
+  it('never leaves a known kind as Other', async () => {
+    // 'Other' is the tell. Before this map was completed, a Collections
+    // library rendered every row as Other: cards printing the literal word,
+    // ignoring every click.
+    const kinds = Object.keys(kindToType)
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      items: kinds.map(itemOfKind),
+      total: kinds.length,
+      start: 0,
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const page = await api.libraries()
+
+    expect(page.Items.filter((item) => item.Type === 'Other')).toEqual([])
+  })
+
+  it('still falls back to Other for a kind nobody has taught it', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      items: [itemOfKind('holographic_broadcast')],
+      total: 1,
+      start: 0,
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const page = await api.libraries()
+
+    expect(page.Items[0]?.Type).toBe('Other')
+  })
+})
+
+describe('browse ordering', () => {
+  function queryBody(fetchMock: ReturnType<typeof vi.fn>) {
+    const [, init] = fetchMock.mock.calls[0] ?? []
+    return JSON.parse((init as RequestInit).body as string)
+  }
+
+  function emptyPage() {
+    return new Response(JSON.stringify({ items: [], total: 0, start: 0 }), { status: 200 })
+  }
+
+  it('asks for index order when the browser is not in alphabetical mode', async () => {
+    // The parents where alphabeticalMode is false are exactly Series and
+    // Season, the two that need index order. Losing it listed a 10-season
+    // show as "Season 1, Season 10, Season 11, Season 2".
+    const fetchMock = vi.fn().mockResolvedValue(emptyPage())
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.items({ parentId: 'series-1', sortMode: 'default' })
+
+    expect(queryBody(fetchMock).sort).toEqual({ field: 'index', direction: 'ascending' })
+  })
+
+  it('asks for name order in alphabetical mode', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(emptyPage())
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.items({ parentId: 'library-1', sortMode: 'alphabetical' })
+
+    expect(queryBody(fetchMock).sort).toEqual({ field: 'name', direction: 'ascending' })
+  })
+
+  it('defaults to index order when no sortMode is given', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(emptyPage())
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.items({ parentId: 'series-1' })
+
+    expect(queryBody(fetchMock).sort.field).toBe('index')
+  })
+})

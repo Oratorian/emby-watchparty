@@ -102,6 +102,11 @@ class CatalogPageV2(V2Model):
 
 class CatalogSortV2(V2Model):
     field: Literal[
+        # Season and episode order, the composite the v1 browse route used by
+        # default. Without a member for it the ordering was not merely unsent
+        # but unrequestable, so a 10-season show listed "Season 1, Season 10,
+        # Season 11, Season 2".
+        "index",
         "name",
         "date_created",
         "premiere_date",

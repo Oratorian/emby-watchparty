@@ -194,6 +194,10 @@ def normalize_stream_catalog(scoped: dict, full: dict) -> StreamCatalog:
 
 def emby_family_query(query: CatalogQuery) -> dict:
     sort_fields = {
+        # The composite v1 used for default browse ordering. SortName is the
+        # tie-break for rows carrying no index at all, matching
+        # emby_client.get_items' non-alphabetical branch exactly.
+        "index": "ParentIndexNumber,IndexNumber,SortName",
         "name": "SortName",
         "date_created": "DateCreated",
         "premiere_date": "PremiereDate",

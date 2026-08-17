@@ -163,3 +163,30 @@ def test_a_wrong_item_id_is_visible_rather_than_answered(
         client.close()
 
     assert response.status_code == expected
+
+
+def test_index_sort_maps_to_the_composite_v1_used_for_browse_ordering() -> None:
+    """Season and episode order has to survive the v1 -> v2 move.
+
+    v1's browse route sorted by ParentIndexNumber,IndexNumber,SortName unless
+    the caller asked for alphabetical. CatalogSortV2 shipped without a member
+    for that composite, so the ordering was not merely unsent by the client but
+    unrequestable: a 10-season show listed as Season 1, 10, 11, 2.
+    """
+    from backend.src.providers.models import CatalogPage, CatalogQuery, CatalogScope, CatalogSort
+    from backend.src.providers.normalization import emby_family_query
+
+    query = CatalogQuery(
+        scope=CatalogScope(parent_id="series-1"),
+        page=CatalogPage(start=0, limit=50),
+        sort=CatalogSort(field="index", direction="ascending"),
+    )
+
+    assert emby_family_query(query)["sort"]["field"] == "ParentIndexNumber,IndexNumber,SortName"
+
+
+def test_index_is_an_accepted_sort_field_on_the_wire() -> None:
+    """A backend mapping is useless if the schema rejects the request first."""
+    from backend.src.v2_schemas import CatalogSortV2
+
+    assert CatalogSortV2(field="index").field == "index"

@@ -159,17 +159,43 @@ export interface LibraryResponse {
   StartIndex?: number
 }
 
+// v2 reports `kind` in snake_case; the components still switch on the Emby
+// `Type` string, so every kind the backend can emit needs an entry here.
+//
+// An unmapped kind becomes 'Other', which is in none of LibraryBrowser's
+// browsableTypes / playableTypes / displayableTypes sets, so the row is at once
+// unclickable, unopenable and (in a mixed listing) filtered away. It fails
+// silently: no type error, no console warning, just a card that does nothing.
+//
+// BoxSet, Video, MusicAlbum, MusicArtist and Audio are the load-bearing
+// additions. Those five are named in LibraryBrowser's own sets while being
+// unreachable through this map, so a Collections library rendered rows labelled
+// "Other" that ignored every click.
+//
+// The keys come from _snake() in providers/normalization.py, which inserts an
+// underscore before each interior capital: BoxSet -> box_set, MusicAlbum ->
+// music_album. Kept in step by the contract test in client.test.ts.
 const legacyItemKinds: Record<string, string> = {
+  audio: 'Audio',
+  box_set: 'BoxSet',
   collection_folder: 'CollectionFolder',
   episode: 'Episode',
   folder: 'Folder',
+  genre: 'Genre',
   movie: 'Movie',
+  music_album: 'MusicAlbum',
+  music_artist: 'MusicArtist',
+  music_genre: 'MusicGenre',
   music_video: 'MusicVideo',
   person: 'Person',
+  photo: 'Photo',
   playlist: 'Playlist',
   season: 'Season',
   series: 'Series',
+  studio: 'Studio',
   trailer: 'Trailer',
+  user_view: 'UserView',
+  video: 'Video',
 }
 
 function projectMediaItem(item: MediaItemV2): LibraryItem {
@@ -493,7 +519,14 @@ export const api = {
         start: typeof params.startIndex === 'number' ? params.startIndex : 0,
         limit: typeof params.limit === 'number' ? params.limit : 50,
       },
-      sort: { field: 'name', direction: 'ascending' },
+      // LibraryBrowser passes sortMode and this dropped it, hardcoding name
+      // ordering. Only alphabetical mode survived, and it is false for exactly
+      // the parents that need index order, so browsing a series listed
+      // "Season 1, Season 10, Season 11, Season 2".
+      sort: {
+        field: params.sortMode === 'alphabetical' ? 'name' : 'index',
+        direction: 'ascending',
+      },
       filters: {},
       anchor_prefix: typeof params.anchorPrefix === 'string' ? params.anchorPrefix : undefined,
     } satisfies CatalogQueryV2),
