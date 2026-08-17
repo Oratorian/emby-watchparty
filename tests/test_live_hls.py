@@ -30,7 +30,7 @@ async def _select_video(base_url: str) -> tuple[httpx.AsyncClient, socketio.Asyn
         json={"client_id": "client-1", "display_name": "Alice"},
     )
     authenticated = await client.post(
-        "/api/auth/login", json={"username": "Alice", "password": "password"}
+        "/api/v2/auth/login", json={"username": "Alice", "password": "password"}
     )
     assert authenticated.json()["success"] is True
 
@@ -401,7 +401,7 @@ async def _exercise_select_leave_race(live_watchparty) -> None:
         f"/api/party/{party_id}/join",
         json={"client_id": "racing-client", "display_name": "Alice"},
     )
-    await client.post("/api/auth/login", json={"username": "Alice", "password": "password"})
+    await client.post("/api/v2/auth/login", json={"username": "Alice", "password": "password"})
     cookie = "; ".join(f"{name}={value}" for name, value in client.cookies.items())
     realtime = socketio.AsyncClient()
     await realtime.connect(live_watchparty.url, headers={"Cookie": cookie})

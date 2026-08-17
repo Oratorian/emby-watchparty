@@ -112,7 +112,7 @@ async def _exercise_preclaimed_host_identity(base_url: str) -> None:
             json={"client_id": "future-host", "display_name": "Mallory"},
         )
         login = await host.post(
-            "/api/auth/login",
+            "/api/v2/auth/login",
             json={"username": "Alice", "password": "password"},
         )
         assert login.json()["is_host"] is True

@@ -97,7 +97,7 @@ def test_party_login_reports_unreachable_emby_without_blending_with_credentials(
             )
 
             response = await client.post(
-                "/api/auth/login",
+                "/api/v2/auth/login",
                 json={"username": "operator", "password": "submitted-password"},
             )
 
@@ -109,6 +109,7 @@ def test_party_login_reports_unreachable_emby_without_blending_with_credentials(
             "is_admin": False,
             "is_host": False,
             "host_username": None,
+            "media_server_type": "emby",
         }
 
     asyncio.run(exercise())

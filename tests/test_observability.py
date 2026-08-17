@@ -105,14 +105,14 @@ def test_ordinary_routes_still_log_at_info(caplog):
     app.state.logger = logger
     app.add_middleware(RequestLogMiddleware)
 
-    for path in ("/api/party/create", "/api/auth/login", "/api/admin/config"):
+    for path in ("/api/party/create", "/api/v2/auth/login", "/api/admin/config"):
         app.add_api_route(path, lambda: {"ok": True}, methods=["GET"])
 
     with caplog.at_level(logging.DEBUG, logger=logger.name):
 
         async def exercise() -> None:
             async with asgi_client(app) as client:
-                for path in ("/api/party/create", "/api/auth/login", "/api/admin/config"):
+                for path in ("/api/party/create", "/api/v2/auth/login", "/api/admin/config"):
                     await client.get(path)
 
         asyncio.run(exercise())
