@@ -14,6 +14,11 @@
  * runtime is whatever the backend sends, so Generated must be assignable to
  * HandWritten, not the other way round.
  *
+ * Most assertions now pin v2 schemas rather than the shapes in api/client.ts.
+ * Those shapes outlived the v1 routes that once returned them verbatim: the
+ * client keeps them as its internal vocabulary and projects the v2 payloads
+ * into them, so v2 is the only place a real contract change can enter.
+ *
  * This file has no runtime output. It exists purely to be typechecked.
  */
 
@@ -23,13 +28,6 @@ import type {
   FilterControl,
   FilterOption,
   FilterOptionsResponse,
-  GroupedSearchResponse,
-  ItemChildrenResponse,
-  ItemSectionResponse,
-  LibraryItem,
-  LibraryPrefixesResponse,
-  PlaylistListResponse,
-  SearchGroup,
   SuccessResponse,
 } from '@/api/client'
 
@@ -39,45 +37,6 @@ type Satisfies<To, From extends To> = From
 type _FilterOption = Satisfies<FilterOption, Generated.FilterOption>
 type _FilterControl = Satisfies<FilterControl, Generated.FilterControl>
 type _FilterOptions = Satisfies<FilterOptionsResponse, Generated.FilterOptionsResponse>
-type _LibraryPrefixes = Satisfies<LibraryPrefixesResponse, Generated.LibraryPrefixesResponse>
-
-/**
- * LibraryItem is checked on field PRESENCE rather than full assignability.
- *
- * The backend model declares most fields `X | None`, while the frontend
- * declares the structured shapes its components actually rely on
- * (ImageTags.Primary, UserData.PlayedPercentage) where the generated type only
- * knows Record<string, unknown>. Asserting full assignability would therefore
- * force every component to re-narrow types it already handles correctly, which
- * is a larger change than this guard is worth and one that risks playback code.
- *
- * What this DOES catch is the drift that actually bites: the backend adding or
- * renaming a field the frontend never learns about. That is what happened with
- * Tags/TagItems, where a section silently never rendered.
- */
-type FieldsBackendSendsThatClientIgnores = Exclude<
-  keyof Generated.LibraryItem,
-  keyof LibraryItem
->
-type _NoUnknownLibraryItemFields = Satisfies<never, FieldsBackendSendsThatClientIgnores>
-
-type _SearchGroupKeys = Satisfies<never, Exclude<keyof Generated.SearchGroup, keyof SearchGroup>>
-type _GroupedSearchKeys = Satisfies<
-  never,
-  Exclude<keyof Generated.GroupedSearchResponse, keyof GroupedSearchResponse>
->
-type _ItemChildrenKeys = Satisfies<
-  never,
-  Exclude<keyof Generated.ItemChildrenResponse, keyof ItemChildrenResponse>
->
-type _ItemSectionKeys = Satisfies<
-  never,
-  Exclude<keyof Generated.ItemSectionResponse, keyof ItemSectionResponse>
->
-type _PlaylistListKeys = Satisfies<
-  never,
-  Exclude<keyof Generated.PlaylistListResponse, keyof PlaylistListResponse>
->
 
 type KeyDrift<Actual, Expected extends PropertyKey> =
   Exclude<keyof Actual, Expected> | Exclude<Expected, keyof Actual>
@@ -111,6 +70,22 @@ type _V2PageProjection = Satisfies<
 type _V2SectionProjection = Satisfies<
   never, KeyDrift<Generated.MediaSectionV2, 'section' | 'items'>
 >
+
+/**
+ * Search and prefixes are asserted here rather than against the shapes in
+ * api/client.ts, because those shapes are no longer what the server sends:
+ * the v1 routes that returned them are gone, and the client now builds them by
+ * projecting the v2 payloads below. Pinning the v2 keys is what still catches
+ * the drift the old assertions caught, a backend field the frontend never
+ * learns about, at the boundary where the data actually crosses.
+ */
+type _V2SearchGroupProjection = Satisfies<
+  never, KeyDrift<Generated.SearchGroupV2, 'id' | 'label' | 'items'>
+>
+type _V2GroupedSearchProjection = Satisfies<
+  never, KeyDrift<Generated.GroupedSearchV2, 'query' | 'groups'>
+>
+type _V2PrefixesProjection = Satisfies<never, KeyDrift<Generated.PrefixesV2, 'prefixes'>>
 type _V2StreamsProjection = Satisfies<never, KeyDrift<
   Generated.StreamCatalogV2,
   'audio' | 'subtitles' | 'media_source_id' | 'versions'
@@ -143,13 +118,6 @@ export type {
   _FilterOption,
   _FilterControl,
   _FilterOptions,
-  _LibraryPrefixes,
-  _NoUnknownLibraryItemFields,
-  _SearchGroupKeys,
-  _GroupedSearchKeys,
-  _ItemChildrenKeys,
-  _ItemSectionKeys,
-  _PlaylistListKeys,
   _V2AudioProjection,
   _V2AuthStatusContract,
   _V2LoginContract,
@@ -165,4 +133,7 @@ export type {
   _V2StreamsProjection,
   _V2SubtitleProjection,
   _V2UserStateProjection,
+  _V2SearchGroupProjection,
+  _V2GroupedSearchProjection,
+  _V2PrefixesProjection,
 }
