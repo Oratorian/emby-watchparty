@@ -65,7 +65,7 @@ Thanks to **@stealthydruid** and **@xyxxyxxy** for the bug reports and feature r
 
 ### Discord
 
-https://discord.gg/RWUpxq9xsA
+[https://discord.gg/RWUpxq9xsA](https://discord.gg/RWUpxq9xsA)
 
 ---
 
