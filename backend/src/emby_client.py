@@ -680,8 +680,18 @@ class EmbyClient:
             ]
             return {"Items": items, "TotalRecordCount": len(items)}
         except httpx.HTTPError as exc:
+            # Deliberately re-raised rather than answered with an empty list.
+            # "The server is unreachable" and "your library holds nothing
+            # matching that" are different facts, and collapsing them told a
+            # viewer their search had no results while the media server was
+            # restarting. The application-level httpx.HTTPError handler turns
+            # this into a 502, which is what the search UI needs to show its
+            # unavailable state instead of its empty state.
+            # Type name only, never the exception itself: an httpx error
+            # carries the request URL, and this client's URLs carry the admin
+            # API key. There is no value-based scrubber behind this.
             self.logger.error("Error searching items: error=%s", type(exc).__name__)
-            return {"Items": []}
+            raise
 
     @staticmethod
     def _compact_search_text(value: str) -> str:

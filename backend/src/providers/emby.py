@@ -247,22 +247,28 @@ class EmbyProvider:
                 controls.append(
                     {"id": control_id, "label": label, "kind": "multi", "values": values}
                 )
+        controls.extend(_STATIC_CONTROLS)
         return tuple(controls)
 
     async def search_catalog(self, term: str, limit: int, credentials: ProviderCredentials):
-        from backend.src.providers.models import CatalogPage, CatalogScope
-
-        return await self.query_catalog(
-            CatalogQuery(
-                scope=CatalogScope(
-                    include_kinds=("movie", "series", "episode", "person", "box_set"),
-                    recursive=True,
-                ),
-                page=CatalogPage(limit=limit),
-                search_term=term,
-            ),
-            credentials,
+        # Not query_catalog with a search_term. Emby's SearchTerm matching is
+        # punctuation-sensitive, so a plain catalog query answers "spiderman",
+        # "spider man" and "spidreman" with nothing for a library that holds
+        # "Spider-Man". search_items is the only implementation of the
+        # punctuation-stripped prefix re-query, the local edit-distance ranking
+        # and the last-word retry that finds a misspelled person, and it is also
+        # the only request that asks Emby for RunTimeTicks, which the result
+        # cards need for their duration and resume readouts.
+        payload = await self._client.search_items(
+            term,
+            access_token=credentials.access_token,
+            user_id=credentials.user_id,
+            include_item_types="Movie,Series,Episode,Person,BoxSet",
         )
+        # search_items caps the upstream request at its own limit and then ranks
+        # what came back, so the caller's limit can only be applied here.
+        items = list(payload.get("Items") or [])[:limit]
+        return normalize_page({"Items": items, "TotalRecordCount": len(items)})
 
     async def get_details(self, item_id: str, credentials: ProviderCredentials):
         payload = await self._client.get_item_details(
