@@ -32,6 +32,7 @@ from backend.src.providers.normalization import (
     normalize_details,
     normalize_page,
     normalize_stream_catalog,
+    prioritize_parental_ratings,
 )
 
 if TYPE_CHECKING:
@@ -179,6 +180,8 @@ class EmbyProvider:
                 for item in (catalogs.get(control_id) or {}).get("Items", [])
                 if item.get("Name")
             ]
+            if control_id == "official_rating":
+                values = prioritize_parental_ratings(values)
             if values:
                 controls.append(
                     {"id": control_id, "label": label, "kind": "multi", "values": values}

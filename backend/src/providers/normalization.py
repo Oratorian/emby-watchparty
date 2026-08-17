@@ -17,6 +17,33 @@ from backend.src.providers.models import (
     UserMediaState,
 )
 
+# Emby returns parental ratings in whatever order its catalog produced,
+# which puts the certificate most viewers are looking for somewhere in the
+# middle of a list that also carries every regional board the library has
+# ever seen. Jellyfin's list is a static literal already in this order, so
+# only Emby is reordered in practice, but the rule lives here rather than
+# in either adapter so the two cannot drift into presenting the same filter
+# differently.
+_US_MOVIE_RATING_ORDER = (
+    "G",
+    "PG",
+    "PG-13",
+    "R",
+    "NC-17",
+    "NR",
+    "NOT RATED",
+)
+
+
+def prioritize_parental_ratings(values: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Put familiar US movie ratings first, preserving all other source order."""
+    priority = {rating: index for index, rating in enumerate(_US_MOVIE_RATING_ORDER)}
+    return sorted(
+        values,
+        key=lambda value: priority.get(value["value"].strip().upper(), len(priority)),
+    )
+
+
 _PLAYABLE = frozenset(
     {"audio", "episode", "livetvprogram", "movie", "musicvideo", "trailer", "video"}
 )
