@@ -50,6 +50,19 @@ _IMAGE_SUBTITLE_CODECS = frozenset({"pgssub", "pgs", "dvd_subtitle", "dvdsub", "
 # SubtitlePlaybackMode. The two are not interchangeable.
 NO_SUBTITLE = -1
 
+# quality.py leaves 360p/240p/144p without a bitrate on purpose: Emby takes a
+# resolution cap alone and picks a sensible rate itself. Jellyfin does not. Sent
+# no MaxStreamingBitrate it encodes at `-b:v 0` and then downscales far past the
+# cap; 360p was measured arriving as 416x234 at zero bitrate.
+#
+# So these are Jellyfin-side floors, not a change to the shared tier table, and
+# Emby keeps choosing for itself. Each sits below the lowest 480p rung (420
+# kbps) so the ladder stays monotonic -- the whole point of this exercise was a
+# menu where a lower tier could cost more than a higher one -- while staying
+# generous enough at these small frame sizes that Jellyfin does not look worse
+# than Emby at the same selection.
+_MIN_BITRATE_KBPS_BY_HEIGHT = {360: 400, 240: 250, 144: 150}
+
 
 def _subtitle_must_be_burned_in(source: dict, subtitle_index: int) -> bool:
     """Whether Jellyfin has to draw this subtitle into the video itself.
@@ -518,6 +531,8 @@ class JellyfinProvider:
         # only way a stream copy stays eligible, which is the whole point of
         # the tier (see quality.py's module docstring).
         max_width, max_height, bitrate_kbps = resolve_quality(request.quality)
+        if bitrate_kbps is None and max_height is not None:
+            bitrate_kbps = _MIN_BITRATE_KBPS_BY_HEIGHT.get(max_height)
         max_bitrate = bitrate_kbps * 1000 if bitrate_kbps else None
         video_codecs = [
             codec for codec in ("h264", "hevc", "av1", "vp9") if codec in request.client_codecs
@@ -594,13 +609,17 @@ class JellyfinProvider:
                             "AudioCodec": "aac,mp3",
                             "Protocol": "hls",
                             "Context": "Streaming",
-                            # Downmix rather than passing 5.1/7.1 through, and
-                            # cut segments on keyframes. Both are Emby-path
-                            # settings that never crossed over; without the
-                            # first, a surround track reaches a stereo browser
-                            # at source channel count.
+                            # Downmix rather than passing 5.1/7.1 through.
+                            # Without it a surround track reaches a stereo
+                            # browser at source channel count.
+                            #
+                            # No BreakOnNonKeyFrames here, unlike the Emby path.
+                            # Jellyfin's DynamicHlsController refuses it and
+                            # logs "Current HLS implementation doesn't support
+                            # non-keyframe breaks but one is requested" on every
+                            # transcode. Sending it buys nothing and fills the
+                            # operator's log.
                             "MaxAudioChannels": "2",
-                            "BreakOnNonKeyFrames": True,
                             # Jellyfin's own default, restated because turning
                             # it on is the second way to get doubled subtitles.
                             # It makes Jellyfin advertise subtitle renditions

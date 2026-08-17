@@ -1354,12 +1354,12 @@ def _resolution_caps(body: dict) -> dict[str, str]:
         ("auto", None, {}),
         ("1080p-10000", 10_000_000, {"Width": "1920", "Height": "1080"}),
         ("480p-1000", 1_000_000, {"Width": "854", "Height": "480"}),
-        # The three bitrate-free tiers. Measured before the fix: 144p produced a
-        # byte-identical ffmpeg command to auto, 10 Mbps at full resolution, so
-        # the cheapest option on the menu cost 14x the one three steps above it.
-        ("360p", None, {"Width": "640", "Height": "360"}),
-        ("240p", None, {"Width": "426", "Height": "240"}),
-        ("144p", None, {"Width": "256", "Height": "144"}),
+        # The three tiers quality.py leaves bitrate-free for Emby. They need a
+        # Jellyfin-side floor: sent a resolution cap alone, Jellyfin encodes at
+        # -b:v 0 and overshoots the downscale (360p measured at 416x234).
+        ("360p", 400_000, {"Width": "640", "Height": "360"}),
+        ("240p", 250_000, {"Width": "426", "Height": "240"}),
+        ("144p", 150_000, {"Width": "256", "Height": "144"}),
     ],
 )
 def test_quality_tier_reaches_jellyfin_as_bitrate_and_resolution(
@@ -1385,6 +1385,38 @@ def test_no_quality_tier_falls_back_to_a_default_bitrate(tmp_path) -> None:
         )
 
 
+def test_the_quality_ladder_never_charges_more_for_a_smaller_picture(tmp_path) -> None:
+    """The defect this whole area came from: an inverted menu.
+
+    144p once requested 10 Mbps at full resolution, roughly 14x what 480p-1000
+    cost three steps above it. Any future tier that asks for more bitrate than
+    a larger one is the same bug returning, so assert the shape rather than the
+    individual numbers.
+    """
+    descending = ["1080p-10000", "720p-1000", "480p-420", "360p", "240p", "144p"]
+    rates = [_playback_request_for(tmp_path, q)["MaxStreamingBitrate"] for q in descending]
+
+    assert all(rate is not None for rate in rates), dict(zip(descending, rates, strict=True))
+    assert rates == sorted(rates, reverse=True), (
+        f"quality ladder is not monotonic: {dict(zip(descending, rates, strict=True))}"
+    )
+
+
+def test_auto_sends_no_cap_at_all(tmp_path) -> None:
+    """Auto is the only tier where a stream copy stays eligible.
+
+    quality.py: Auto "sends no resolution or bitrate cap to Emby, which is the
+    only way stream-copy stays on the table". A bitrate here silently forces a
+    re-encode of material that would otherwise be copied, which is the opposite
+    of what 2.1.2 was for.
+    """
+    body = _playback_request_for(tmp_path, "auto")
+
+    assert body["MaxStreamingBitrate"] is None
+    assert body["DeviceProfile"]["MaxStreamingBitrate"] is None
+    assert body["DeviceProfile"]["CodecProfiles"] == []
+
+
 def test_device_profile_states_only_audio_the_browser_can_decode(tmp_path) -> None:
     """A DeviceProfile is a capability claim, not a wish list.
 
@@ -1398,7 +1430,11 @@ def test_device_profile_states_only_audio_the_browser_can_decode(tmp_path) -> No
     assert "ac3" not in transcoding["AudioCodec"]
     assert transcoding["AudioCodec"] == "aac,mp3"
     assert transcoding["MaxAudioChannels"] == "2"
-    assert transcoding["BreakOnNonKeyFrames"] is True
+    # Not BreakOnNonKeyFrames: Jellyfin's DynamicHlsController refuses it and
+    # logs a line on every transcode. The Emby path sends it because Emby
+    # honours it; carrying it over was porting a setting without checking the
+    # far end supports it.
+    assert "BreakOnNonKeyFrames" not in transcoding
 
 
 def test_stop_playback_reports_failure_instead_of_raising(tmp_path) -> None:
