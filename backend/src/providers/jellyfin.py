@@ -44,6 +44,11 @@ from backend.src.providers.normalization import (
 # when a server omits IsTextSubtitleStream.
 _IMAGE_SUBTITLE_CODECS = frozenset({"pgssub", "pgs", "dvd_subtitle", "dvdsub", "vobsub"})
 
+# Emby and Jellyfin both read -1 as "deliver no subtitle". null/absent means
+# "no preference", which lets the server pick one from the account's
+# SubtitlePlaybackMode. The two are not interchangeable.
+NO_SUBTITLE = -1
+
 
 def _subtitle_must_be_burned_in(source: dict, subtitle_index: int) -> bool:
     """Whether Jellyfin has to draw this subtitle into the video itself.
@@ -510,7 +515,17 @@ class JellyfinProvider:
         # <track> element, so the viewer sees the line twice, offset. Text
         # tracks are the frontend's job; only bitmap tracks come back here, in
         # the second pass below.
-        def build_body(subtitle_index: int | None) -> dict:
+        #
+        # NO_SUBTITLE must be -1, not None. A null SubtitleStreamIndex means
+        # "not specified", not "none": Jellyfin then falls back to the media
+        # source's DefaultSubtitleStreamIndex, which follows the *user account's*
+        # SubtitlePlaybackMode. An account set to Always play subtitles gets a
+        # track auto-selected and, missing the vtt/srt profiles, burned in --
+        # the exact bug this function exists to avoid, arriving via a route we
+        # never asked for. httpx serialises None as JSON null rather than
+        # omitting the key, so the Emby habit of filtering None out of params
+        # (emby_client._params) does not carry over here.
+        def build_body(subtitle_index: int) -> dict:
             return {
                 "UserId": request.credentials.user_id,
                 "MaxStreamingBitrate": max_bitrate,
@@ -519,7 +534,7 @@ class JellyfinProvider:
                 "SubtitleStreamIndex": subtitle_index,
                 # Explicit rather than relying on a SubtitleProfiles miss to
                 # fall through to Encode: say what we mean in both directions.
-                "AlwaysBurnInSubtitleWhenTranscoding": subtitle_index is not None,
+                "AlwaysBurnInSubtitleWhenTranscoding": subtitle_index != NO_SUBTITLE,
                 "MediaSourceId": request.media_source_id,
                 "EnableDirectPlay": False,
                 "EnableDirectStream": True,
@@ -538,7 +553,16 @@ class JellyfinProvider:
                             "AudioCodec": "aac,mp3,ac3",
                             "Protocol": "hls",
                             "Context": "Streaming",
-                            "EnableSubtitlesInManifest": True,
+                            # Jellyfin's own default, restated because turning
+                            # it on is the second way to get doubled subtitles.
+                            # It makes Jellyfin advertise subtitle renditions
+                            # as #EXT-X-MEDIA in the manifest; the proxy
+                            # rewrites every URI= faithfully, so hls.js builds
+                            # a text track from it while the frontend has
+                            # already added its own <track> for the same lines.
+                            # The Emby path keeps the manifest route off for
+                            # exactly this reason (stream_builder.build_params).
+                            "EnableSubtitlesInManifest": False,
                             "MinSegments": 1,
                             "SegmentLength": 6,
                         }
@@ -552,7 +576,7 @@ class JellyfinProvider:
                 },
             }
 
-        async def negotiate(subtitle_index: int | None) -> tuple[dict, dict | None]:
+        async def negotiate(subtitle_index: int) -> tuple[dict, dict | None]:
             response = await self._client.gateway.post(
                 f"/Items/{request.item_id}/PlaybackInfo",
                 headers=self._client._headers(
@@ -572,7 +596,7 @@ class JellyfinProvider:
                 None,
             )
 
-        payload, source = await negotiate(None)
+        payload, source = await negotiate(NO_SUBTITLE)
         # The catalog only reaches us in the response, so the bitmap case costs
         # a second round trip. It is the rare one; text tracks, which is nearly
         # everything, still negotiate in a single call.
@@ -637,23 +661,47 @@ class JellyfinProvider:
         return await self._send_playback_event("/Sessions/Playing/Stopped", event)
 
     async def _send_playback_event(self, path: str, event: PlaybackEvent) -> bool:
-        response = await self._client.gateway.post(
-            path,
-            headers=self._client._headers(
-                event.credentials.access_token,
-                event.credentials.user_id,
-            ),
-            json={
-                "ItemId": event.item_id,
-                "MediaSourceId": event.media_source_id,
-                "PlaySessionId": event.play_session_id,
-                "PositionTicks": round(event.position_seconds * 10_000_000),
-                "IsPaused": event.is_paused,
-                "CanSeek": True,
-            },
-        )
-        response.raise_for_status()
-        return True
+        """Report a playback event. Returns success; never raises.
+
+        The Protocol declares `-> bool` and the Emby side cannot raise:
+        EmbyClient._report and stop_active_encodings both swallow
+        httpx.HTTPError and return False. This has to match, because
+        _stop_user_stream has no try/except around it and was written when
+        the call physically could not fail. Letting an exception through
+        there skips hls_registry.revoke for the viewer, aborts
+        _stop_all_user_streams part-way so every remaining viewer keeps a
+        live plan, and leaves the party with a video that will not stop.
+
+        A stop report is also the only thing that tells Jellyfin to end the
+        transcode, so a swallowed failure still costs an orphaned ffmpeg
+        job. Losing one is better than wedging the party, but it is worth
+        the warning.
+        """
+        try:
+            response = await self._client.gateway.post(
+                path,
+                headers=self._client._headers(
+                    event.credentials.access_token,
+                    event.credentials.user_id,
+                ),
+                json={
+                    "ItemId": event.item_id,
+                    "MediaSourceId": event.media_source_id,
+                    "PlaySessionId": event.play_session_id,
+                    "PositionTicks": round(event.position_seconds * 10_000_000),
+                    "IsPaused": event.is_paused,
+                    "CanSeek": True,
+                },
+            )
+            response.raise_for_status()
+            return True
+        except httpx.HTTPError as exc:
+            self._client.logger.warning(
+                "Jellyfin playback event failed: path=%s error=%s",
+                path,
+                type(exc).__name__,
+            )
+            return False
 
     def resolve_hls_resource(
         self, plan: PlaybackPlan, parent: HLSResource, uri: str

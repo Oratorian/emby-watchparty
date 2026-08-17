@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import httpx
@@ -1189,7 +1190,9 @@ def test_jellyfin_posted_playback_info_becomes_hls_plan(tmp_path) -> None:
     # Index 4 is a text track, so it is NOT named here. Naming it asks Jellyfin
     # to deliver it, and with no matching SubtitleProfile that means burning it
     # into the video, on top of the <track> the frontend already loaded.
-    assert request["SubtitleStreamIndex"] is None
+    # -1 rather than null: null means "no preference" and lets the account's
+    # SubtitlePlaybackMode pick a track for us.
+    assert request["SubtitleStreamIndex"] == -1
     assert request["AlwaysBurnInSubtitleWhenTranscoding"] is False
     assert request["MaxStreamingBitrate"] == 4_000_000
     assert request["EnableDirectPlay"] is False
@@ -1200,6 +1203,12 @@ def test_jellyfin_posted_playback_info_becomes_hls_plan(tmp_path) -> None:
     assert profile["Name"] == "Emby Watch Party HLS"
     assert profile["TranscodingProfiles"][0]["Protocol"] == "hls"
     assert profile["TranscodingProfiles"][0]["Container"] == "ts"
+    # Subtitles must not ride in the manifest. hls.js would build a text track
+    # from an #EXT-X-MEDIA rendition while the frontend is already showing the
+    # same lines from its own <track>, which is the second route to doubled
+    # subtitles and survives the burn-in fix. Jellyfin defaults this to false;
+    # asking for true was the bug.
+    assert profile["TranscodingProfiles"][0]["EnableSubtitlesInManifest"] is False
 
 
 def test_jellyfin_text_subtitle_negotiates_once_and_is_never_burned_in(tmp_path) -> None:
@@ -1236,7 +1245,10 @@ def test_jellyfin_text_subtitle_negotiates_once_and_is_never_burned_in(tmp_path)
     asyncio.run(exercise())
     # One round trip: the text case never needs to re-negotiate.
     assert len(fake_state.playback_requests) == 1
-    assert fake_state.playback_requests[0]["SubtitleStreamIndex"] is None
+    # Explicitly -1. A null here is "no preference", which hands the choice to
+    # the account's SubtitlePlaybackMode and can auto-select a track we then
+    # burn in, which is the bug this test is named after.
+    assert fake_state.playback_requests[0]["SubtitleStreamIndex"] == -1
     assert fake_state.playback_requests[0]["AlwaysBurnInSubtitleWhenTranscoding"] is False
 
 
@@ -1274,9 +1286,85 @@ def test_jellyfin_image_subtitle_is_burned_in_on_a_second_negotiation(tmp_path) 
     # costs a second call. The first must still not name the subtitle, or a
     # server that honours it would burn the track in during the throwaway pass.
     assert len(fake_state.playback_requests) == 2
-    assert fake_state.playback_requests[0]["SubtitleStreamIndex"] is None
+    assert fake_state.playback_requests[0]["SubtitleStreamIndex"] == -1
     assert fake_state.playback_requests[1]["SubtitleStreamIndex"] == 5
     assert fake_state.playback_requests[1]["AlwaysBurnInSubtitleWhenTranscoding"] is True
+
+
+def test_no_playback_info_request_ever_leaves_the_subtitle_unspecified() -> None:
+    """A null SubtitleStreamIndex is the bug, not a neutral value.
+
+    Jellyfin reads null as "no preference" and falls back to the media source's
+    DefaultSubtitleStreamIndex, which follows the account's SubtitlePlaybackMode.
+    An account set to always show subtitles then gets a track auto-selected and,
+    with only vtt/srt advertised as External, burned into the video.
+
+    httpx serialises None as JSON null rather than dropping the key, so this is
+    reachable purely by passing None where -1 was meant.
+    """
+    adapter = Path(__file__).resolve().parents[1] / "backend" / "src" / "providers" / "jellyfin.py"
+    source = adapter.read_text(encoding="utf-8")
+
+    assert "NO_SUBTITLE = -1" in source
+    assert "negotiate(NO_SUBTITLE)" in source
+    assert "negotiate(None)" not in source
+
+
+def test_stop_playback_reports_failure_instead_of_raising(tmp_path) -> None:
+    """The Protocol says `-> bool`, and _stop_user_stream has no try/except.
+
+    EmbyProvider cannot raise here: EmbyClient._report and stop_active_encodings
+    both swallow httpx.HTTPError and return False. Jellyfin must match. If it
+    raises, an expired host token on stop skips hls_registry.revoke, aborts
+    _stop_all_user_streams part-way so every remaining viewer keeps a live plan
+    and a running transcode, and wedges the party with a video that will not
+    stop.
+    """
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    event = PlaybackEvent(
+        type=PlaybackEventType.STOP,
+        item_id="movie-1",
+        media_source_id="source-1",
+        play_session_id="jellyfin-play-session-1",
+        position_seconds=1.0,
+        run_time_seconds=100.0,
+        credentials=ProviderCredentials(
+            access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+            user_id="jellyfin-user-1",
+        ),
+        is_paused=False,
+    )
+
+    # Both shapes the gateway can produce: a transport failure, and a non-2xx
+    # turned into an exception by raise_for_status. The gateway retries only
+    # GET/HEAD, so a POST gets neither a retry nor a swallow underneath us.
+    failures = [
+        httpx.ConnectError("jellyfin went away"),
+        httpx.HTTPStatusError(
+            "401 Unauthorized",
+            request=httpx.Request("POST", "http://jellyfin.test/Sessions/Playing/Stopped"),
+            response=httpx.Response(401),
+        ),
+    ]
+
+    async def exercise() -> None:
+        async with asgi_client(app):
+            provider = app.state.media_server
+            for failure in failures:
+                provider._client.gateway.post = AsyncMock(side_effect=failure)
+                assert await provider.stop_playback(event) is False, (
+                    f"stop_playback raised or reported success on {type(failure).__name__}; "
+                    "_stop_user_stream has no try/except and will skip hls_registry.revoke"
+                )
+
+    asyncio.run(exercise())
 
 
 @pytest.mark.parametrize(
