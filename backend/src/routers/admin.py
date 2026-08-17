@@ -85,8 +85,7 @@ async def admin_login(
         return {
             "success": False,
             "message": (
-                f"{provider.identity.display_name} server unavailable; "
-                "verify MEDIA_SERVER_URL"
+                f"{provider.identity.display_name} server unavailable; verify MEDIA_SERVER_URL"
             ),
         }
     if not auth:

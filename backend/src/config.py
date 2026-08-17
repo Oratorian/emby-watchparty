@@ -118,6 +118,14 @@ class EnvConfig:
     WATCH_PARTY_PORT: int
     APP_PREFIX: str
     SESSION_EXPIRY: int
+    # Declared before the URL and the key so the three read as one
+    # decision, matching deploy/schema.json: the address and the
+    # credential are not provider-specific, this is the only field that
+    # names a provider. It carries no class-level default, because the
+    # field order that puts it here forbids one, and because a silent
+    # default would be an implicit provider guess -- the thing 3.0
+    # removed. `from_env` still resolves an absent value to "emby".
+    MEDIA_SERVER_TYPE: str
     MEDIA_SERVER_URL: str
     MEDIA_SERVER_API_KEY: str
     APP_ENV: str
@@ -141,7 +149,6 @@ class EnvConfig:
     # single-source deployment. Making the operator state it is what
     # turns the ambiguity into a contradiction we can catch.
     BEHIND_PROXY: bool | None = None
-    MEDIA_SERVER_TYPE: str = "emby"
 
     @classmethod
     def from_env(
@@ -225,6 +232,7 @@ class EnvConfig:
             WATCH_PARTY_PORT=integer("WATCH_PARTY_PORT", 5000),
             APP_PREFIX=str(value("APP_PREFIX")).rstrip("/"),
             SESSION_EXPIRY=integer("SESSION_EXPIRY", 86400),
+            MEDIA_SERVER_TYPE=str(value("MEDIA_SERVER_TYPE")).strip().lower(),
             MEDIA_SERVER_URL=str(value("MEDIA_SERVER_URL")).strip(),
             MEDIA_SERVER_API_KEY=str(value("MEDIA_SERVER_API_KEY")).strip(),
             APP_ENV=str(value("APP_ENV")).strip().lower(),
@@ -236,7 +244,6 @@ class EnvConfig:
                 "ENABLE_HLS_TOKEN_VALIDATION", legacy_hls_validation
             ),
             BEHIND_PROXY=boolean("BEHIND_PROXY", False) if declared("BEHIND_PROXY") else None,
-            MEDIA_SERVER_TYPE=str(value("MEDIA_SERVER_TYPE")).strip().lower(),
         )
 
 
