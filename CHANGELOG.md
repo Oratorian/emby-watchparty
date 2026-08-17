@@ -37,6 +37,10 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 - Generated REST client types can no longer silently drift away from the backend response contract.
 - Windows contributors can run changed-line coverage against UTF-8 source diffs without locale decoder crashes.
 
+### Security
+
+- The container image now applies pending Debian security updates at build time rather than shipping whatever the base image happened to carry. The immediate case was `CVE-2026-53615`, a fixable HIGH in util-linux reaching the image through nine packages, but the point is general: the vulnerability gate blocks on fixable findings, so without this the build stayed red until Docker Hub rebuilt `python:3.12-slim` on its own schedule, and a red gate nobody can act on is one a real regression hides behind.
+
 ---
 
 ## [3.0.0-beta3] - 2026-08-13 - Director's Cut
