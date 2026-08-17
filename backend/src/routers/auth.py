@@ -1,8 +1,11 @@
 """
-Auth Router -- become-host / drop-host / status / version.
+Auth Router -- version, plus the become-host / drop-host / status handlers.
 
-`POST /api/auth/login` takes Emby credentials from a party-bound caller
-and promotes them to host of their current party.
+`GET /api/version` is the only route this module still publishes. The three
+handlers below it are the implementation behind `/api/v2/auth/login`,
+`/api/v2/auth/logout` and `/api/v2/auth/status`: v2.py calls them directly and
+wraps their result in the v2 response models, so they are plain functions here
+rather than routes. Their parameter names are load-bearing at that call site.
 """
 
 import secrets
@@ -28,7 +31,7 @@ from backend.src.schemas import (
     VersionResponse,
 )
 
-router = APIRouter(prefix="/api", tags=["auth"])
+router = APIRouter(prefix="/api", tags=["version"])
 
 
 # Undocumented dev gate. When set in the process environment, the
@@ -81,7 +84,6 @@ def _env_dev_host_creds(config) -> tuple[str | None, str | None]:
     return user, pw
 
 
-@router.post("/auth/login", response_model=LoginResponse)
 async def api_login(
     body: LoginRequest,
     request: Request,
@@ -188,7 +190,6 @@ async def api_login(
     )
 
 
-@router.post("/auth/logout", response_model=LoginResponse)
 async def api_logout(
     request: Request,
     party_manager=Depends(get_party_manager),
@@ -248,7 +249,6 @@ async def api_logout(
     return LoginResponse(success=True, message="Logged out")
 
 
-@router.get("/auth/status", response_model=AuthStatusResponse)
 def api_auth_status(
     request: Request,
     config=Depends(get_config),
