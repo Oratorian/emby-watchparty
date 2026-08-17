@@ -13,12 +13,15 @@ from pathlib import Path
 import pytest
 import yaml
 
-from backend.src.config import EnvConfig
+from backend.src.config import _RETIRED_PROVIDER_FIELDS, EnvConfig
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE = ROOT / "docker-compose.dev.yml"
 # The only two a developer genuinely has to supply.
-REQUIRED = {"EMBY_SERVER_URL": "http://emby.example:8096", "EMBY_API_KEY": "test-key"}
+REQUIRED = {
+    "MEDIA_SERVER_URL": "http://media-server.example:8096",
+    "MEDIA_SERVER_API_KEY": "test-key",
+}
 
 
 def _environment() -> dict[str, str]:
@@ -41,7 +44,7 @@ def _expand(value: object, provided: dict[str, str]) -> str:
     return text
 
 
-def test_dev_compose_boots_with_nothing_but_the_emby_credentials() -> None:
+def test_dev_compose_boots_with_nothing_but_the_media_server_credentials() -> None:
     errors: dict[str, str] = {}
     environment = {key: _expand(value, REQUIRED) for key, value in _environment().items()}
 
@@ -49,6 +52,20 @@ def test_dev_compose_boots_with_nothing_but_the_emby_credentials() -> None:
 
     assert errors == {}, f"development compose cannot boot: {errors}"
     assert config.APP_ENV in {"development", "production"}
+    assert REQUIRED["MEDIA_SERVER_URL"] == config.MEDIA_SERVER_URL
+
+
+def test_dev_compose_does_not_set_a_name_that_is_now_a_boot_error() -> None:
+    """This file is hand-maintained and outside the schema drift gate.
+
+    Which makes it the one place a retired name can survive unnoticed. It
+    would not degrade quietly: Config.from_env turns any retired name in the
+    environment into a startup error, so `docker compose -f
+    docker-compose.dev.yml up` would refuse to start at all.
+    """
+    retired = sorted(set(_environment()) & set(_RETIRED_PROVIDER_FIELDS))
+
+    assert not retired, f"development compose sets names 3.0 refuses to boot with: {retired}"
 
 
 def test_every_dev_compose_variable_declares_a_default_or_is_marked_required() -> None:

@@ -20,11 +20,9 @@ def test_jellyfin_master_playlist_uses_bound_opaque_resources(tmp_path) -> None:
             WATCH_PARTY_PORT=5000,
             APP_PREFIX="",
             SESSION_EXPIRY=3600,
-            EMBY_SERVER_URL="",
-            EMBY_API_KEY="",
             MEDIA_SERVER_TYPE="jellyfin",
-            JELLYFIN_SERVER_URL="http://jellyfin.test",
-            JELLYFIN_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
+            MEDIA_SERVER_URL="http://jellyfin.test",
+            MEDIA_SERVER_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
             APP_ENV="development",
             SESSION_SECRET=TEST_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
@@ -110,7 +108,15 @@ def test_jellyfin_master_playlist_uses_bound_opaque_resources(tmp_path) -> None:
     ), "the proxy stopped authenticating upstream; the rewrite assertions above would still pass"
 
 
-def test_jellyfin_legacy_hls_fallback_uses_selected_provider_url(tmp_path) -> None:
+def test_jellyfin_legacy_hls_fallback_dials_the_configured_media_server(tmp_path) -> None:
+    """The unregistered-stream fallback must build its upstream from config.
+
+    This used to set a second, wrong Emby address and prove the selected
+    provider's own URL won. 3.0 has one MEDIA_SERVER_URL for both providers,
+    so that contrast cannot be expressed; what is still worth pinning is that
+    the legacy route composes the address from configuration at all, rather
+    than from the localhost default or a hardcoded host.
+    """
     fake_state = FakeJellyfinState()
     config = Config(
         EnvConfig(
@@ -118,11 +124,9 @@ def test_jellyfin_legacy_hls_fallback_uses_selected_provider_url(tmp_path) -> No
             WATCH_PARTY_PORT=5000,
             APP_PREFIX="",
             SESSION_EXPIRY=3600,
-            EMBY_SERVER_URL="http://wrong-emby.test",
-            EMBY_API_KEY="wrong-emby-key",
             MEDIA_SERVER_TYPE="jellyfin",
-            JELLYFIN_SERVER_URL="http://jellyfin.test",
-            JELLYFIN_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
+            MEDIA_SERVER_URL="http://jellyfin.test",
+            MEDIA_SERVER_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
             APP_ENV="development",
             SESSION_SECRET=TEST_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
@@ -182,11 +186,9 @@ def test_jellyfin_playlist_resource_overflow_fails_closed_without_partial_regist
             WATCH_PARTY_PORT=5000,
             APP_PREFIX="",
             SESSION_EXPIRY=3600,
-            EMBY_SERVER_URL="http://wrong-emby.test",
-            EMBY_API_KEY="wrong-emby-key",
             MEDIA_SERVER_TYPE="jellyfin",
-            JELLYFIN_SERVER_URL="http://jellyfin.test",
-            JELLYFIN_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
+            MEDIA_SERVER_URL="http://jellyfin.test",
+            MEDIA_SERVER_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
             APP_ENV="development",
             SESSION_SECRET=TEST_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
@@ -264,11 +266,9 @@ def test_jellyfin_nested_playlist_is_fetched_by_registered_resource_id(tmp_path)
             WATCH_PARTY_PORT=5000,
             APP_PREFIX="",
             SESSION_EXPIRY=3600,
-            EMBY_SERVER_URL="",
-            EMBY_API_KEY="",
             MEDIA_SERVER_TYPE="jellyfin",
-            JELLYFIN_SERVER_URL="http://jellyfin.test",
-            JELLYFIN_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
+            MEDIA_SERVER_URL="http://jellyfin.test",
+            MEDIA_SERVER_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
             APP_ENV="development",
             SESSION_SECRET=TEST_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
@@ -347,11 +347,9 @@ def test_jellyfin_opaque_segment_forwards_byte_range(tmp_path) -> None:
             WATCH_PARTY_PORT=5000,
             APP_PREFIX="",
             SESSION_EXPIRY=3600,
-            EMBY_SERVER_URL="",
-            EMBY_API_KEY="",
             MEDIA_SERVER_TYPE="jellyfin",
-            JELLYFIN_SERVER_URL="http://jellyfin.test",
-            JELLYFIN_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
+            MEDIA_SERVER_URL="http://jellyfin.test",
+            MEDIA_SERVER_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
             APP_ENV="development",
             SESSION_SECRET=TEST_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
@@ -437,11 +435,9 @@ def test_jellyfin_opaque_segment_supports_head_without_body(tmp_path) -> None:
             WATCH_PARTY_PORT=5000,
             APP_PREFIX="",
             SESSION_EXPIRY=3600,
-            EMBY_SERVER_URL="",
-            EMBY_API_KEY="",
             MEDIA_SERVER_TYPE="jellyfin",
-            JELLYFIN_SERVER_URL="http://jellyfin.test",
-            JELLYFIN_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
+            MEDIA_SERVER_URL="http://jellyfin.test",
+            MEDIA_SERVER_API_KEY=TEST_JELLYFIN_ACCESS_TOKEN,
             APP_ENV="development",
             SESSION_SECRET=TEST_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,

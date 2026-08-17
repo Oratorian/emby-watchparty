@@ -46,22 +46,27 @@ def _routing_only(row: dict) -> dict:
 
 
 def _config(provider: str, *, require_login: bool = False, dev_host: bool = False) -> Config:
+    """One address and one key, pointed at whichever server the type names.
+
+    The URL is derived from `provider` only so the two adapters keep visibly
+    distinct fake hosts in assertions; nothing in the config is
+    provider-specific any more, so a test cannot express "the Emby address"
+    and "the Jellyfin address" at the same time.
+    """
     return Config(
         EnvConfig(
             WATCH_PARTY_BIND="127.0.0.1",
             WATCH_PARTY_PORT=5000,
             APP_PREFIX="",
             SESSION_EXPIRY=3600,
-            EMBY_SERVER_URL="http://emby.test",
-            EMBY_API_KEY="emby-key",
+            MEDIA_SERVER_URL=f"http://{provider}.test",
+            MEDIA_SERVER_API_KEY=f"{provider}-key",
             APP_ENV="development",
             SESSION_SECRET="",
             SESSION_COOKIE_SECURE=False,
             CORS_ALLOWED_ORIGINS=("*",),
             TRUSTED_PROXY_CIDRS=(),
             MEDIA_SERVER_TYPE=provider,
-            JELLYFIN_SERVER_URL="http://jellyfin.test",
-            JELLYFIN_API_KEY="jellyfin-key",
         ),
         RuntimeConfig(LOG_TO_FILE=False, REQUIRE_LOGIN=require_login),
         private_env=(
@@ -176,7 +181,7 @@ def test_jellyfin_v2_login_names_selected_provider_when_unavailable(tmp_path) ->
 
             assert response.status_code == 200
             assert response.json()["message"] == (
-                "Jellyfin server unavailable; ask the operator to verify JELLYFIN_SERVER_URL"
+                "Jellyfin server unavailable; ask the operator to verify MEDIA_SERVER_URL"
             )
 
     asyncio.run(exercise())

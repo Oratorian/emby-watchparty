@@ -3,6 +3,7 @@ from pathlib import Path
 
 import yaml
 
+from backend.src.config import _RETIRED_PROVIDER_FIELDS
 from scripts.generate_deployment_artifacts import generate_artifacts, load_schema, main
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,21 +40,41 @@ def test_compose_uses_production_safe_schema_defaults() -> None:
     assert len(compose["services"]) == 1
 
 
-def test_generated_artifacts_expose_explicit_provider_configuration() -> None:
+def test_generated_artifacts_expose_one_address_and_key_under_an_explicit_provider() -> None:
+    """Provider selection stays explicit; the address and credential do not.
+
+    3.0 collapsed the two pairs into one, because only MEDIA_SERVER_TYPE was
+    ever provider-specific. There is still deliberately no auto-detection, so
+    the type has to keep shipping in every artifact next to the pair it names.
+    """
     artifacts = generate_artifacts(SCHEMA)
     compose = yaml.safe_load(artifacts[Path("docker-compose.yml.example")])
     environment = compose["services"]["emby-watchparty"]["environment"]
 
     assert environment["MEDIA_SERVER_TYPE"] == "${MEDIA_SERVER_TYPE:-emby}"
-    assert environment["EMBY_SERVER_URL"] == "${EMBY_SERVER_URL:-http://emby:8096}"
-    assert environment["EMBY_API_KEY"] == "${EMBY_API_KEY:-}"
-    assert environment["JELLYFIN_SERVER_URL"] == "${JELLYFIN_SERVER_URL:-}"
-    assert environment["JELLYFIN_API_KEY"] == "${JELLYFIN_API_KEY:-}"
+    assert environment["MEDIA_SERVER_URL"] == "${MEDIA_SERVER_URL:-http://emby:8096}"
+    assert environment["MEDIA_SERVER_API_KEY"] == "${MEDIA_SERVER_API_KEY:-}"
 
     env_example = artifacts[Path(".env.example")]
     assert "MEDIA_SERVER_TYPE=emby" in env_example
-    assert "JELLYFIN_SERVER_URL=" in env_example
-    assert "JELLYFIN_API_KEY=" in env_example
+    assert "MEDIA_SERVER_URL=http://emby:8096" in env_example
+    assert re.search(r"^MEDIA_SERVER_API_KEY=$", env_example, re.MULTILINE)
+
+
+def test_no_artifact_ships_a_name_that_is_now_a_boot_error() -> None:
+    """The retired names are not aliases; setting one refuses the boot.
+
+    An artifact that still emitted EMBY_SERVER_URL would hand the operator a
+    container that cannot start, and the failure would read as a bug in the
+    application rather than in the file that set it. Keyed off the config
+    module's own retirement map so adding a name there without purging the
+    artifacts fails here.
+    """
+    artifacts = generate_artifacts(SCHEMA)
+
+    for path, content in artifacts.items():
+        for retired in _RETIRED_PROVIDER_FIELDS:
+            assert retired not in content, f"{path} still ships {retired}"
 
 
 def test_checked_in_platform_artifacts_match_the_schema_contract() -> None:
@@ -92,9 +113,9 @@ def test_generated_examples_never_contain_secret_values() -> None:
     combined = "\n".join(artifacts.values())
 
     assert "SENTINEL_SESSION_SECRET" not in combined
-    assert "SENTINEL_EMBY_API_KEY" not in combined
+    assert "SENTINEL_MEDIA_SERVER_API_KEY" not in combined
     assert re.search(r"^SESSION_SECRET=$", artifacts[Path(".env.example")], re.MULTILINE)
-    assert re.search(r"^EMBY_API_KEY=$", artifacts[Path(".env.example")], re.MULTILINE)
+    assert re.search(r"^MEDIA_SERVER_API_KEY=$", artifacts[Path(".env.example")], re.MULTILINE)
 
 
 def test_generation_is_byte_deterministic() -> None:
@@ -114,6 +135,14 @@ def test_environment_reference_carries_schema_metadata() -> None:
         "<code>5000</code> |" in reference
     )
     assert "| `SESSION_SECRET` | string | production | yes |" in reference
+    # The conditional-requirement rendering. TRUSTED_PROXY_CIDRS is now the
+    # only setting carrying production.required_when: the two Jellyfin
+    # settings that also used it were retired in 3.0, and with them went the
+    # redundancy that kept this renderer covered by accident.
+    assert (
+        "| `TRUSTED_PROXY_CIDRS` | csv_cidr | when_proxy (required when `BEHIND_PROXY=True`) |"
+        in reference
+    )
     assert "| — | Stable signing secret" in reference
     assert "&#124;" in reference
     assert "Supplied container artifacts pin this to 0.0.0.0" in reference
@@ -135,7 +164,7 @@ def test_casaos_manifest_is_compose_with_current_top_level_metadata() -> None:
 
     assert model["name"] == "emby-watchparty"
     assert list(service["environment"]) == EMITTED_NAMES
-    assert service["environment"]["EMBY_API_KEY"] == ""
+    assert service["environment"]["MEDIA_SERVER_API_KEY"] == ""
     assert service["environment"]["SESSION_SECRET"] == ""
     assert metadata["id"] == "com.oratorian.emby-watchparty"
     assert metadata["main"] == "emby-watchparty"
@@ -151,7 +180,7 @@ def test_truenas_custom_app_uses_host_paths_without_privilege() -> None:
     service = model["services"]["emby-watchparty"]
 
     assert list(service["environment"]) == EMITTED_NAMES
-    assert service["environment"]["EMBY_API_KEY"] == ""
+    assert service["environment"]["MEDIA_SERVER_API_KEY"] == ""
     assert service["environment"]["SESSION_SECRET"] == ""
     assert service["ports"] == ["5000:5000"]
     assert all(volume.startswith("/mnt/") for volume in service["volumes"])
