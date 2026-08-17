@@ -23,7 +23,7 @@ def test_preflight_reports_precedence_rates_and_never_writes_or_prints_secrets(
         "TRUSTED_PROXY_CIDRS=172.16.0.0/12\n"
         "ENABLE_HLS_TOKEN_VALIDATION=false\n"
         "SESSION_SECRET=DOTENV_SENTINEL_SECRET\n"
-        "EMBY_API_KEY=DOTENV_SENTINEL_KEY\n",
+        "MEDIA_SERVER_API_KEY=DOTENV_SENTINEL_KEY\n",
         encoding="utf-8",
     )
     (tmp_path / "config.json").write_text(
@@ -287,7 +287,7 @@ def test_production_boot_blockers_outside_the_boot_field_list_are_reported(
     assert code == 0
     assert "REQUIRED ACTION: CORS_ALLOWED_ORIGINS must be explicit in production" in output
     assert "REQUIRED ACTION: SESSION_COOKIE_SECURE must be true in production" in output
-    assert "REQUIRED ACTION: EMBY_API_KEY is required in production" in output
+    assert "REQUIRED ACTION: MEDIA_SERVER_API_KEY is required in production" in output
     assert "REQUIRED ACTION: SESSION_SECRET must be at least 32 characters in production" in output
     assert "SHORT_SENTINEL_SECRET" not in output
 
@@ -300,8 +300,8 @@ def test_a_valid_production_config_earns_an_explicit_all_clear(tmp_path: Path) -
         f"SESSION_SECRET={'a' * 40}\n"
         "SESSION_COOKIE_SECURE=true\n"
         "CORS_ALLOWED_ORIGINS=https://watchparty.example.com\n"
-        "EMBY_SERVER_URL=http://emby.example.com:8096\n"
-        "EMBY_API_KEY=an-api-key\n",
+        "MEDIA_SERVER_URL=http://emby.example.com:8096\n"
+        "MEDIA_SERVER_API_KEY=an-api-key\n",
         encoding="utf-8",
     )
 
@@ -310,6 +310,8 @@ def test_a_valid_production_config_earns_an_explicit_all_clear(tmp_path: Path) -
     assert code == 0
     assert "INFO: 3.0 boot validation passes for target=production" in output
     assert "3.0 will not start otherwise" not in output
+    # A .env already on the 3.0 names is finished; it must not be told to rename.
+    assert "REQUIRED ACTION: Rename" not in output
 
 
 def test_development_target_is_not_judged_against_production_rules(tmp_path: Path) -> None:
@@ -412,8 +414,8 @@ def test_an_unrecognised_app_env_is_reported_not_substituted_away(tmp_path: Path
         f"SESSION_SECRET={'a' * 40}\n"
         "SESSION_COOKIE_SECURE=true\n"
         "CORS_ALLOWED_ORIGINS=https://watchparty.example.com\n"
-        "EMBY_SERVER_URL=http://emby.example.com:8096\n"
-        "EMBY_API_KEY=an-api-key\n",
+        "MEDIA_SERVER_URL=http://emby.example.com:8096\n"
+        "MEDIA_SERVER_API_KEY=an-api-key\n",
         encoding="utf-8",
     )
 
@@ -433,8 +435,8 @@ def test_a_valid_app_env_differing_from_the_target_is_not_an_error(tmp_path: Pat
         f"SESSION_SECRET={'a' * 40}\n"
         "SESSION_COOKIE_SECURE=true\n"
         "CORS_ALLOWED_ORIGINS=https://watchparty.example.com\n"
-        "EMBY_SERVER_URL=http://emby.example.com:8096\n"
-        "EMBY_API_KEY=an-api-key\n",
+        "MEDIA_SERVER_URL=http://emby.example.com:8096\n"
+        "MEDIA_SERVER_API_KEY=an-api-key\n",
         encoding="utf-8",
     )
 
@@ -443,6 +445,112 @@ def test_a_valid_app_env_differing_from_the_target_is_not_an_error(tmp_path: Pat
     assert code == 0
     assert "APP_ENV must be" not in output
     assert "INFO: 3.0 boot validation passes for target=production" in output
+
+
+def test_retired_provider_names_are_renamed_without_echoing_the_key(tmp_path: Path) -> None:
+    """The 2.x .env is exactly this, and 3.0 reads neither name.
+
+    Nothing is aliased, so an operator who upgrades without renaming boots
+    against the default localhost URL with no credential. The verdict must not
+    read as an all-clear, the instruction must name the replacement, and the
+    key must be named without its value: this module is value-free about
+    secrets and the retired names include two of them.
+    """
+    (tmp_path / ".env").write_text(
+        "EMBY_SERVER_URL=http://emby.example.com:8096\nEMBY_API_KEY=RETIRED_SENTINEL_KEY\n",
+        encoding="utf-8",
+    )
+
+    code, output = run_preflight(tmp_path, target="development", environ={})
+
+    assert code == 0
+    assert "REQUIRED ACTION: Rename EMBY_SERVER_URL to MEDIA_SERVER_URL in .env" in output
+    assert "REQUIRED ACTION: Rename EMBY_API_KEY to MEDIA_SERVER_API_KEY in .env" in output
+    assert "RETIRED_SENTINEL_KEY" not in output
+    assert "3.0 boot validation passes" not in output
+    # `handled` keeps the generic boot gate from restating what the two
+    # specific actions above have already explained.
+    assert "was replaced by" not in output
+
+
+def test_a_retired_name_is_reported_against_the_source_that_holds_it(tmp_path: Path) -> None:
+    """Compose `environment:` blocks carry these too; .env is not the only place.
+
+    Naming the wrong file sends the operator to edit something that does not
+    contain the setting, and the rename then looks like it did not take.
+    """
+    code, output = run_preflight(
+        tmp_path,
+        target="development",
+        environ={"JELLYFIN_SERVER_URL": "http://jellyfin.example.com:8096"},
+    )
+
+    assert code == 0
+    assert (
+        "REQUIRED ACTION: Rename JELLYFIN_SERVER_URL to MEDIA_SERVER_URL "
+        "in the process environment" in output
+    )
+
+
+def test_both_variants_of_one_setting_get_one_instruction_not_two(tmp_path: Path) -> None:
+    """Two names now collapse into one variable, so two renames contradict.
+
+    "Rename EMBY_SERVER_URL to MEDIA_SERVER_URL" beside "Rename
+    JELLYFIN_SERVER_URL to MEDIA_SERVER_URL" tells the operator to put two
+    different values in one place. Which value survives follows from
+    MEDIA_SERVER_TYPE, which only the operator knows.
+    """
+    (tmp_path / ".env").write_text(
+        "EMBY_SERVER_URL=http://emby.example.com:8096\n"
+        "JELLYFIN_SERVER_URL=http://jellyfin.example.com:8096\n"
+        "EMBY_API_KEY=EMBY_SENTINEL_KEY\n"
+        "JELLYFIN_API_KEY=JELLYFIN_SENTINEL_KEY\n",
+        encoding="utf-8",
+    )
+
+    code, output = run_preflight(tmp_path, target="development", environ={})
+
+    assert code == 0
+    assert "EMBY_SERVER_URL and JELLYFIN_SERVER_URL are both set" in output
+    assert "EMBY_API_KEY and JELLYFIN_API_KEY are both set" in output
+    assert "MEDIA_SERVER_TYPE" in output
+    assert "REQUIRED ACTION: Rename" not in output
+    assert "SENTINEL_KEY" not in output
+
+
+def test_a_half_migrated_file_is_told_to_remove_not_to_rename(tmp_path: Path) -> None:
+    """Renaming onto a name that already exists writes the key twice.
+
+    python-dotenv keeps the last occurrence, so the migration would look done
+    while the value that survives is whichever line happened to land lower.
+    """
+    (tmp_path / ".env").write_text(
+        "MEDIA_SERVER_URL=http://emby.example.com:8096\n"
+        "EMBY_SERVER_URL=http://old.example.com:8096\n",
+        encoding="utf-8",
+    )
+
+    code, output = run_preflight(tmp_path, target="development", environ={})
+
+    assert code == 0
+    assert "REQUIRED ACTION: Remove EMBY_SERVER_URL; MEDIA_SERVER_URL is already set" in output
+    assert "Rename EMBY_SERVER_URL" not in output
+
+
+def test_an_emptied_retired_name_still_stops_the_boot_and_is_reported(tmp_path: Path) -> None:
+    """`EMBY_API_KEY=` is declared, and `Config.from_env` counts it as declared.
+
+    Blanking the value rather than deleting the line is the obvious way to
+    "turn a setting off", and it leaves a boot error behind. Testing presence
+    by truthiness here would have blessed the file.
+    """
+    (tmp_path / ".env").write_text("EMBY_API_KEY=\n", encoding="utf-8")
+
+    code, output = run_preflight(tmp_path, target="development", environ={})
+
+    assert code == 0
+    assert "REQUIRED ACTION: Rename EMBY_API_KEY to MEDIA_SERVER_API_KEY in .env" in output
+    assert "3.0 boot validation passes" not in output
 
 
 def test_corrupt_legacy_config_is_never_side_moved_by_the_preflight(tmp_path: Path) -> None:
