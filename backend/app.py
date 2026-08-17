@@ -41,10 +41,12 @@ def _json_for_html_script(value: str) -> str:
     return json.dumps(value).replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
 
 
+def _boot_error_lines(config: Config) -> list[str]:
+    return [f"{name}: {message}" for name, message in sorted(config.startup_errors().items())]
+
+
 def _describe_boot_errors(config: Config) -> str:
-    return "; ".join(
-        f"{name}: {message}" for name, message in sorted(config.startup_errors().items())
-    )
+    return "; ".join(_boot_error_lines(config))
 
 
 @asynccontextmanager
@@ -102,13 +104,19 @@ def _create_setup_app(config: Config, project_root: Path) -> FastAPI:
     # banner-framed on purpose. On appliance platforms this is read
     # through a web log viewer, where a single line among startup noise
     # is missed; this is the only diagnosis the operator now gets.
-    detail = _describe_boot_errors(config)
+    #
+    # One line per failing field, built from the errors rather than by
+    # re-splitting the joined string. The join exists for the single log
+    # line, and splitting it back apart made "; " structural: the first
+    # message to contain one, the retired-name rename instruction that
+    # this banner exists for, broke in half and left its imperative on a
+    # line naming no field.
     print(
         "",
         "=" * 72,
         "  Emby Watch Party cannot start: invalid boot configuration.",
         "",
-        *(f"    {item}" for item in detail.split("; ")),
+        *(f"    {item}" for item in _boot_error_lines(config)),
         "",
         "  Set these in the environment (container template, compose",
         "  environment:, or .env) and restart. Nothing else is served",
