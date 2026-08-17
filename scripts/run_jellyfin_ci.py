@@ -279,8 +279,8 @@ def start(args: argparse.Namespace) -> None:
             (
                 "APP_ENV=development",
                 "MEDIA_SERVER_TYPE=jellyfin",
-                "JELLYFIN_SERVER_URL=http://jellyfin:8096",
-                f"JELLYFIN_API_KEY={api_key}",
+                "MEDIA_SERVER_URL=http://jellyfin:8096",
+                f"MEDIA_SERVER_API_KEY={api_key}",
                 "SESSION_SECRET=jellyfin-ci-session-secret-at-least-32-characters",
                 "SESSION_COOKIE_SECURE=false",
             )

@@ -243,11 +243,16 @@ jobs:
           E2E_FAKE_EMBY_HOST: 0.0.0.0
         run: |
           python scripts/run_fake_emby.py > fake-emby.log 2>&1 &
+          # MEDIA_SERVER_TYPE is stated rather than left to its "emby" default:
+          # the address and the key are provider-neutral names now, so this is
+          # the only line that records which provider the gate exercises, and
+          # the listener above serves Emby's contract.
           docker run --detach --name watchparty-ci --publish 5013:5000 \
             --add-host host.docker.internal:host-gateway \
             --env APP_ENV=development \
-            --env EMBY_SERVER_URL=http://host.docker.internal:5012 \
-            --env EMBY_API_KEY=e2e-key \
+            --env MEDIA_SERVER_TYPE=emby \
+            --env MEDIA_SERVER_URL=http://host.docker.internal:5012 \
+            --env MEDIA_SERVER_API_KEY=e2e-key \
             --env SESSION_SECRET=container-ci-session-secret-at-least-32-characters \
             --env SESSION_COOKIE_SECURE=false \
             emby-watchparty:ci

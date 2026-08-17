@@ -55,8 +55,8 @@ export default defineConfig({
       env: {
         APP_ENV: 'development',
         MEDIA_SERVER_TYPE: 'emby',
-        EMBY_SERVER_URL: 'http://127.0.0.1:5012',
-        EMBY_API_KEY: 'e2e-key',
+        MEDIA_SERVER_URL: 'http://127.0.0.1:5012',
+        MEDIA_SERVER_API_KEY: 'e2e-key',
         SESSION_SECRET: 'playwright-session-secret-at-least-32-characters',
         // E2E runs over plain loopback HTTP. Override any operator `.env`
         // value so WebKit does not receive a Secure cookie it cannot send.

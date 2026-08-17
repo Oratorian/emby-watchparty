@@ -124,8 +124,17 @@ def _request_provenance(response: httpx.Response, sanitizer: Sanitizer) -> dict[
 
 def main() -> None:
     env = _dotenv()
-    server = env.get("EMBY_SERVER_URL", "http://127.0.0.1:8096").rstrip("/")
-    token = env["EMBY_API_KEY"]
+    # The address and the credential are shared by both providers, but this
+    # capture is not: it writes Emby-shaped contracts into tests/artifacts/emby
+    # and stamps an Emby version on the manifest. Under the retired
+    # EMBY_-prefixed names, a Jellyfin operator's .env pointed this at an Emby
+    # that was not there and it failed on connect. That accidental guard is
+    # gone with the shared names, and Jellyfin answers /emby paths, so pointing
+    # this at one would silently fill the corpus with the wrong server.
+    if env.get("MEDIA_SERVER_TYPE", "emby").strip().lower() != "emby":
+        raise RuntimeError("This capture requires an Emby server: set MEDIA_SERVER_TYPE=emby")
+    server = env.get("MEDIA_SERVER_URL", "http://127.0.0.1:8096").rstrip("/")
+    token = env["MEDIA_SERVER_API_KEY"]
     sanitizer = Sanitizer()
     manifest_rows: list[dict[str, Any]] = []
 
