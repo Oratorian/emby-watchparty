@@ -96,7 +96,7 @@ https://discord.gg/RWUpxq9xsA
 - **Refined Cyber UI**: cyan/magenta/violet palette, glass surfaces, chip/pill controls, animated LIVE badge, iOS-style A-Z library jump bar
 - **Reverse-proxy ready**: `APP_PREFIX` wired end-to-end so one Docker image sits behind any subpath (`https://example.com/watchparty/...`)
 - **Admin panel with hot-reload**: runtime settings editable from `/admin` as an in-party modal, `.env` reserved for boot-only keys
-- **Reload-as-rejoin + healthchecks**: refresh in an active party rejoins via persistent `client_id`; `/api/health` reports liveness and `/api/ready` verifies Emby readiness; rsyslog-style logging with rotation
+- **Reload-as-rejoin + healthchecks**: refresh in an active party rejoins via persistent `client_id`; `/api/health` reports liveness and `/api/ready` verifies the media server is reachable **and** that the configured API key is accepted; rsyslog-style logging with rotation
 
 ## Browser compatibility
 
@@ -505,7 +505,7 @@ The FastAPI app is composed of nine routers under `backend/src/routers/`. A smal
 - **`quality`** - `GET /api/quality/profiles`, `GET /api/quality/default`
 - **`avatar`** - `POST /api/avatar/upload`, `GET /api/avatar/{uuid}`
 - **`admin`** - `GET/PUT /api/admin/config`, `POST /api/admin/party/{id}/dissolve`
-- **`health`** - `GET /api/health` (liveness), `GET /api/ready` (Emby readiness), `GET /api/version`
+- **`health`** - `GET /api/health` (liveness), `GET /api/ready` (media server reachable and credentials accepted), `GET /api/version`
 
 See `/docs` for the full parameter, response, and auth-scope details.
 

@@ -369,22 +369,33 @@ def register(ctx):
         # says stop_playback returns a bool rather than raising, and both
         # adapters honour it, but this loop also runs from _stop_all_user_streams
         # where one escaped exception would strand every remaining viewer.
+        # Unconditional, not `if current_video`. Killing the transcode needs
+        # only play_session_id, which the guard above already proved non-empty;
+        # it never needed the video. Before the provider merged the two calls,
+        # stop_active_encodings sat outside that branch for exactly this reason,
+        # and moving it inside narrowed a known-good invariant: hold a session
+        # id, kill the encode. clear_video_state nulls current_video without
+        # touching user_streams, so the two legitimately diverge and an Emby
+        # transcode would have been left running.
+        #
+        # The stopped-report half is best-effort when the video is already gone.
+        # Both adapters swallow an upstream rejection and return False, so a
+        # report for an unknown item costs a log line, not the teardown.
         try:
-            if current_video:
-                await media_server.stop_playback(
-                    PlaybackEvent(
-                        type=PlaybackEventType.STOP,
-                        credentials=ProviderCredentials(access_token or "", user_id or ""),
-                        audio_index=stream.audio_index,
-                        subtitle_index=stream.subtitle_index,
-                        run_time_seconds=current_video.run_time_seconds,
-                        is_paused=False,
-                        item_id=current_video.item_id,
-                        media_source_id=stream.media_source_id,
-                        play_session_id=stream.play_session_id,
-                        position_seconds=position_seconds,
-                    )
+            await media_server.stop_playback(
+                PlaybackEvent(
+                    type=PlaybackEventType.STOP,
+                    credentials=ProviderCredentials(access_token or "", user_id or ""),
+                    audio_index=stream.audio_index,
+                    subtitle_index=stream.subtitle_index,
+                    run_time_seconds=current_video.run_time_seconds if current_video else None,
+                    is_paused=False,
+                    item_id=current_video.item_id if current_video else "",
+                    media_source_id=stream.media_source_id,
+                    play_session_id=stream.play_session_id,
+                    position_seconds=position_seconds,
                 )
+            )
         finally:
             if hls_registry is not None and stream.stream_id:
                 hls_registry.revoke(stream.stream_id)

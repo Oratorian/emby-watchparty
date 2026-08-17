@@ -474,6 +474,22 @@ def _markdown_code(value: Any) -> str:
     return f"<code>{escaped}</code>"
 
 
+def _required_cell(setting: dict[str, Any]) -> str:
+    """The Required column, including any conditional requirement.
+
+    `production.required_when` is validated by _validate_production and was then
+    rendered by nothing, so the reference told an operator JELLYFIN_SERVER_URL
+    and JELLYFIN_API_KEY were "optional" and stopped there. The boot gate
+    rejects both as blank the moment MEDIA_SERVER_TYPE=jellyfin, so the one
+    document describing them read as a licence to leave them empty.
+    """
+    required = setting["required"]
+    condition = (setting.get("production") or {}).get("required_when")
+    if not condition:
+        return required
+    return f"{required} (required when `{condition['field']}={condition['equals']}`)"
+
+
 def _environment_reference(schema: dict[str, Any]) -> str:
     lines = [
         "<!-- Generated from deploy/schema.json; do not edit. -->",
@@ -489,7 +505,7 @@ def _environment_reference(schema: dict[str, Any]) -> str:
     for setting in schema["settings"]:
         safe_example = "—" if setting["secret"] else _markdown_code(setting["safe_example"])
         lines.append(
-            f"| `{setting['name']}` | {setting['type']} | {setting['required']} | "
+            f"| `{setting['name']}` | {setting['type']} | {_required_cell(setting)} | "
             f"{'yes' if setting['secret'] else 'no'} | {_markdown_code(setting['validation'])} | "
             f"{safe_example} | {setting['description']} |"
         )

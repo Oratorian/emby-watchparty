@@ -34,6 +34,17 @@ from tests.support.fake_emby import FakeEmbyState, create_fake_emby_app
 from tests.support.fake_jellyfin import FakeJellyfinState, create_fake_jellyfin_app
 
 
+def _routing_only(row: dict) -> dict:
+    """Just where the request went, dropping raw_query and headers.
+
+    The fake records those so a test can prove a credential is or is not
+    in a URL. Assertions about routing and query shape do not care, and
+    comparing the whole dict made them break whenever the fake learned to
+    record something new.
+    """
+    return {key: row[key] for key in ("method", "path", "query")}
+
+
 def _config(provider: str, *, require_login: bool = False, dev_host: bool = False) -> Config:
     return Config(
         EnvConfig(
@@ -609,7 +620,9 @@ def test_jellyfin_v2_supported_filters_use_root_items_and_server_side_scope(
             assert response.json()["start"] == 20
 
     asyncio.run(exercise())
-    item_request = next(row for row in fake_state.requests if row["path"] == "/Items")
+    item_request = _routing_only(
+        next(row for row in fake_state.requests if row["path"] == "/Items")
+    )
     assert item_request == {
         "method": "GET",
         "path": "/Items",
@@ -892,7 +905,7 @@ def test_jellyfin_v2_filter_options_use_scoped_catalogs_without_item_scan(tmp_pa
                 "Science Fiction",
             ]
             assert [value["value"] for value in by_id["studio"]["values"]] == ["Paramount"]
-            catalog_requests = fake_state.requests[before:]
+            catalog_requests = [_routing_only(row) for row in fake_state.requests[before:]]
             assert catalog_requests == [
                 {
                     "method": "GET",
@@ -2724,3 +2737,74 @@ def test_the_prefix_rail_strips_the_same_filters_as_the_grid() -> None:
     assert supported.filters.tags == ()
     # Untouched elsewhere: stripping is for the request, not the caller's query.
     assert query.filters.tags == ("must-not-reach-jellyfin",)
+
+
+@pytest.mark.parametrize(
+    ("transcoding_url", "reason"),
+    [
+        ("http://evil.test/Videos/movie-1/master.m3u8", "different host"),
+        ("https://jf.test:8096/Videos/movie-1/master.m3u8", "different scheme"),
+        ("file:///etc/passwd", "non-http scheme"),
+        ("/Videos/movie-1/stream.mp4", "not a playlist"),
+        ("/Videos/some-other-item/master.m3u8", "item id does not match the request"),
+    ],
+)
+def test_an_unsafe_playback_plan_is_rejected(transcoding_url, reason) -> None:
+    """The SSRF guard on a URL the media server chooses.
+
+    TranscodingUrl arrives from upstream and is then fetched server-side with
+    the host's credentials, so it is a confused-deputy surface. Every branch of
+    the guard was previously unexercised: the fake only ever returns a
+    same-origin .m3u8 for the requested item, so nothing proved a rejection
+    could happen at all.
+    """
+    try:
+        _plan_for_server("http://jf.test:8096", transcoding_url)
+    except PlaybackPlanError:
+        return
+    raise AssertionError(f"an unsafe plan was accepted: {reason}")
+
+
+def test_a_non_hls_plan_is_rejected() -> None:
+    """The other rejection block: a source with no usable HLS protocol."""
+    import asyncio as _asyncio
+
+    from backend.src.emby_client import EmbyClient
+
+    class _Response:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "PlaySessionId": "session-1",
+                "MediaSources": [
+                    {
+                        "Id": "source-1",
+                        "TranscodingUrl": "/Videos/movie-1/master.m3u8",
+                        "TranscodingSubProtocol": "dash",
+                        "MediaStreams": [],
+                    }
+                ],
+            }
+
+    class _Gateway:
+        async def post(self, _path, **_kwargs):
+            return _Response()
+
+    provider = JellyfinProvider(
+        EmbyClient("http://jf.test:8096", "api-key", logging.getLogger("t"), _Gateway())
+    )
+    with pytest.raises(PlaybackPlanError):
+        _asyncio.run(
+            provider.prepare_playback(
+                PlaybackRequest(
+                    item_id="movie-1",
+                    credentials=ProviderCredentials(TEST_JELLYFIN_ACCESS_TOKEN, "u"),
+                    media_source_id="source-1",
+                    quality="480p-1000",
+                )
+            )
+        )

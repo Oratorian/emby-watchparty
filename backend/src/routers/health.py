@@ -52,7 +52,12 @@ async def ready(
         "media_server_credentials": credentials_valid,
     }
     if config.MEDIA_SERVER_TYPE == "emby":
-        checks["emby"] = reachable
+        # Kept for consumers written against the pre-provider shape, but it has
+        # to mean what the overall status means. Aliasing `reachable` alone said
+        # "emby": true inside a 503 whenever the server answered and the key was
+        # rejected -- the one key an existing monitor reads reporting healthy
+        # while the endpoint reported not_ready.
+        checks["emby"] = reachable and credentials_valid
     is_ready = all(checks.values())
     return JSONResponse(
         {"status": "ready" if is_ready else "not_ready", "checks": checks},

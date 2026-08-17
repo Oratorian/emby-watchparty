@@ -17,12 +17,12 @@ Generated from `deploy/schema.json`. Every field requires container recreation.
 | `SESSION_SECRET` | string | production | yes | <code>{"minimum_length_in_production":32}</code> | — | Stable signing secret generated once and retained across updates. |
 | `SESSION_COOKIE_SECURE` | boolean | always | no | <code>{"allowed_strings":["true","false","1","0","yes","no"]}</code> | <code>true</code> | Restrict session cookies to HTTPS. |
 | `CORS_ALLOWED_ORIGINS` | csv_http_origins | production | no | <code>{"item_schemes":["http","https"]}</code> | <code>"https://watchparty.example.com"</code> | Comma-separated public HTTP(S) origins allowed by Socket.IO. |
-| `TRUSTED_PROXY_CIDRS` | csv_cidr | when_proxy | no | <code>{"items":"cidr"}</code> | <code>"192.0.2.0/24"</code> | Comma-separated proxy source networks trusted for forwarded client IPs. |
+| `TRUSTED_PROXY_CIDRS` | csv_cidr | when_proxy (required when `BEHIND_PROXY=True`) | no | <code>{"items":"cidr"}</code> | <code>"192.0.2.0/24"</code> | Comma-separated proxy source networks trusted for forwarded client IPs. |
 | `ENABLE_HLS_TOKEN_VALIDATION` | boolean | always | no | <code>{"allowed_strings":["true","false","1","0","yes","no"]}</code> | <code>true</code> | Validate signed HLS playlist and segment tokens. |
 | `BEHIND_PROXY` | boolean | production | no | <code>{"allowed_strings":["true","false","1","0","yes","no"]}</code> | <code>false</code> | Declare whether a reverse proxy terminates client connections. |
 | `MEDIA_SERVER_TYPE` | enum | always | no | <code>{"allowed_strings":["emby","jellyfin"]}</code> | <code>"emby"</code> | Explicit media-server provider selected at boot. |
-| `JELLYFIN_SERVER_URL` | http_url | optional | no | <code>{"schemes":["http","https"]}</code> | <code>"http://jellyfin:8096"</code> | HTTP(S) URL reachable from the container to Jellyfin when selected. |
-| `JELLYFIN_API_KEY` | string | optional | yes | <code>{"minimum_length":1}</code> | — | Dedicated Jellyfin administrative API key used when Jellyfin is selected. |
+| `JELLYFIN_SERVER_URL` | http_url | optional (required when `MEDIA_SERVER_TYPE=jellyfin`) | no | <code>{"schemes":["http","https"]}</code> | <code>"http://jellyfin:8096"</code> | HTTP(S) URL reachable from the container to Jellyfin when selected. |
+| `JELLYFIN_API_KEY` | string | optional (required when `MEDIA_SERVER_TYPE=jellyfin`) | yes | <code>{"minimum_length":1}</code> | — | Dedicated Jellyfin administrative API key used when Jellyfin is selected. |
 
 BEHIND_PROXY=true requires TRUSTED_PROXY_CIDRS; no universal CIDR is safe.
 Production requires explicit origins, secure cookies, and HLS token validation.

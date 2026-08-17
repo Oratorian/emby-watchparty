@@ -20,6 +20,7 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ### Changed
 
+- `/api/ready` now also requires the media server to accept the configured API key, not just to answer. A deployment with a reachable server and a stale or non-admin key reported ready before and reports 503 now, so a monitor that was green can go red on upgrade without the server having changed. The `checks.emby` key is retained for existing consumers and now mirrors the overall status rather than reachability alone, which previously let it report `true` inside a `not_ready` body.
 - The Emby client's public library methods now declare their argument and return types. The annotations are checked inside the client itself, where they already caught two response shapes that were described wrong; call sites are not covered yet, because the client is injected untyped.
 
 ### Fixed

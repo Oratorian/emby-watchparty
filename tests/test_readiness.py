@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 
 import httpx
@@ -101,3 +102,44 @@ def test_not_ready_when_emby_api_key_is_missing(
 
     assert response.status_code == 503
     assert response.json()["checks"]["config"] is False
+
+
+def test_the_emby_compat_key_agrees_with_the_overall_status() -> None:
+    """A monitor reading only `checks.emby` must not be told the opposite.
+
+    The key aliased `reachable` alone while readiness also requires
+    credentials_valid, so a reachable server with a rejected API key answered
+    503 not_ready with "emby": true inside it.
+    """
+    from types import SimpleNamespace
+
+    from backend.src.routers import health
+
+    class _Provider:
+        async def readiness(self):
+            return SimpleNamespace(reachable=True, credentials_valid=False)
+
+    class _AvatarStore:
+        def readiness_check(self) -> bool:
+            return True
+
+    config = SimpleNamespace(
+        MEDIA_SERVER_URL="http://emby.test",
+        MEDIA_SERVER_API_KEY="key",
+        MEDIA_SERVER_TYPE="emby",
+    )
+
+    response = asyncio.run(
+        health.ready(
+            config=config,
+            media_server=_Provider(),
+            avatar_store=_AvatarStore(),
+        )
+    )
+    body = json.loads(response.body)
+
+    assert response.status_code == 503
+    assert body["status"] == "not_ready"
+    assert body["checks"]["emby"] is False, (
+        "the compat key claimed the media server was fine inside a not_ready body"
+    )

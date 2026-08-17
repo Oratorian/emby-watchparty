@@ -28,6 +28,11 @@ class FakeJellyfinState:
                 "method": request.method,
                 "path": request.url.path,
                 "query": query,
+                # Unredacted, so a test can assert a credential is NOT in the
+                # URL. Asserting against `query` above proved only that this
+                # fake redacts, which it does unconditionally.
+                "raw_query": str(request.url.query),
+                "headers": dict(request.headers),
             }
         )
         self.request_hosts.append(request.url.netloc)

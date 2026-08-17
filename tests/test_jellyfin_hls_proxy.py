@@ -90,7 +90,24 @@ def test_jellyfin_master_playlist_uses_bound_opaque_resources(tmp_path) -> None:
             assert "main.M3U8" not in response.text
 
     asyncio.run(exercise())
-    assert not any(TEST_JELLYFIN_ACCESS_TOKEN in str(row) for row in fake_state.requests)
+    # No assertion that the token is absent upstream: it belongs there. The
+    # proxy authenticates with it via x-emby-token / x-emby-authorization, and
+    # Jellyfin's own TranscodingUrl embeds api_key= in the query it hands us.
+    #
+    # The line that used to sit here checked `TEST_..._TOKEN in str(row)` over
+    # the recorded requests, which passed only because the fake redacted
+    # api_key and access_token before storing and recorded no headers at all.
+    # It asserted the fake's redaction, not the proxy's behaviour, and once the
+    # fake began recording raw values it failed -- correctly, because the
+    # premise was wrong.
+    #
+    # The property worth guarding is that none of it reaches the browser, and
+    # that is what the response-body assertions above do: the rewriter replaces
+    # every upstream URL with an opaque resource id, so a leak shows up there.
+    assert any(
+        TEST_JELLYFIN_ACCESS_TOKEN in row["headers"].get("x-emby-token", "")
+        for row in fake_state.requests
+    ), "the proxy stopped authenticating upstream; the rewrite assertions above would still pass"
 
 
 def test_jellyfin_legacy_hls_fallback_uses_selected_provider_url(tmp_path) -> None:
