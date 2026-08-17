@@ -359,6 +359,20 @@ Progressive/direct-file playback, Live TV, Jellyfin SyncPlay, and reuse of GPL
 Jellyfin Web code are out of scope. Browser receives opaque local HLS resource
 IDs; Jellyfin credentials remain server-side.
 
+**Skip Intro on Jellyfin needs the Intro Skipper plugin.** Watch Party reads
+intro timings from Jellyfin's `/MediaSegments` API, which ships with Jellyfin
+but stays empty until something detects the segments. Install **Intro Skipper**
+from the Jellyfin dashboard and let it scan your library.
+
+Its companion **File Transformation** plugin is not required by Watch Party. It
+exists so Intro Skipper can add a skip button to *Jellyfin's own web UI*
+without patching Jellyfin's web files, which is unrelated to the API we read.
+Installing it does no harm if you also use the Jellyfin web client.
+
+Without Intro Skipper the endpoint returns nothing, so Skip Intro simply never
+appears; playback is unaffected. On Emby the equivalent data comes from the
+server itself and needs no plugin.
+
 Use this only for local development over plain HTTP. Do not expose this permissive configuration to untrusted networks.
 
 Production reverse-proxy example:

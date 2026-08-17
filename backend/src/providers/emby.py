@@ -333,13 +333,22 @@ class EmbyProvider:
         self, item_id: str, credentials: ProviderCredentials
     ) -> IntroSegment | None:
         del credentials
-        response = await self._client.gateway.get(
-            "/emby/Items/Intros",
-            headers=self._client._headers(),
-            params={"api_key": self._client.api_key},
-            timeout=5.0,
-        )
-        response.raise_for_status()
+        # Same degradation as the Jellyfin adapter: Skip Intro is an
+        # enhancement, and the route already models absence as has_intro=false,
+        # so an upstream failure should not turn the item page into a 500.
+        try:
+            response = await self._client.gateway.get(
+                "/emby/Items/Intros",
+                headers=self._client._headers(),
+                params={"api_key": self._client.api_key},
+                timeout=5.0,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            self._client.logger.debug(
+                "No intro data from Emby: item=%s error=%s", item_id, type(exc).__name__
+            )
+            return None
         row = next(
             (item for item in response.json() if str(item.get("Id")) == str(item_id)),
             None,

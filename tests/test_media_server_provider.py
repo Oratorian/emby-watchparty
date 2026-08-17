@@ -2808,3 +2808,51 @@ def test_a_non_hls_plan_is_rejected() -> None:
                 )
             )
         )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        httpx.HTTPStatusError(
+            "404 Not Found",
+            request=httpx.Request("GET", "http://jf.test/MediaSegments/movie-1"),
+            response=httpx.Response(404),
+        ),
+        httpx.HTTPStatusError(
+            "500 Internal Server Error",
+            request=httpx.Request("GET", "http://jf.test/MediaSegments/movie-1"),
+            response=httpx.Response(500),
+        ),
+        httpx.ConnectError("server went away"),
+    ],
+)
+def test_a_missing_intro_source_is_absence_not_an_error(failure) -> None:
+    """Skip Intro is an enhancement; it must not take the item page with it.
+
+    On Jellyfin the timings come from /MediaSegments, which ships with the
+    server but is populated only by the Intro Skipper plugin (which itself
+    needs File Transformation). An unplugged 10.10+ server returns an empty
+    list and degrades naturally, but an older server answers 404 and an
+    unhealthy plugin answers 500. Both used to propagate out of the route,
+    which models absence as has_intro=false and had no try/except.
+    """
+    import asyncio as _asyncio
+
+    from backend.src.emby_client import EmbyClient
+
+    class _Gateway:
+        async def get(self, _path, **_kwargs):
+            raise failure
+
+    credentials = ProviderCredentials(TEST_JELLYFIN_ACCESS_TOKEN, "jellyfin-user-1")
+
+    jellyfin = JellyfinProvider(
+        EmbyClient("http://jf.test", "api-key", logging.getLogger("t"), _Gateway())
+    )
+    assert _asyncio.run(jellyfin.get_intro("movie-1", credentials)) is None
+
+    emby = EmbyProvider(
+        EmbyClient("http://emby.test", "api-key", logging.getLogger("t"), _Gateway()),
+        _config("emby"),
+    )
+    assert _asyncio.run(emby.get_intro("movie-1", credentials)) is None

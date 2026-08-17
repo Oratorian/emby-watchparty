@@ -485,11 +485,26 @@ class JellyfinProvider:
     async def get_intro(
         self, item_id: str, credentials: ProviderCredentials
     ) -> IntroSegment | None:
-        response = await self._client.gateway.get(
-            f"/MediaSegments/{quote(item_id, safe='')}",
-            headers=self._client._headers(credentials.access_token, credentials.user_id),
-        )
-        response.raise_for_status()
+        """Intro segment, or None when the server has nothing to say.
+
+        /MediaSegments is core Jellyfin, but only a plugin such as Intro Skipper
+        populates it, so an unplugged server answers with an empty Items list
+        and lands on the None below. A server old enough to lack the endpoint
+        answers 404, and an unhealthy plugin can answer 500. Skip Intro is an
+        enhancement, so neither should become a 500 on the item page: the route
+        already models absence as has_intro=false.
+        """
+        try:
+            response = await self._client.gateway.get(
+                f"/MediaSegments/{quote(item_id, safe='')}",
+                headers=self._client._headers(credentials.access_token, credentials.user_id),
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            self._client.logger.debug(
+                "No intro data from Jellyfin: item=%s error=%s", item_id, type(exc).__name__
+            )
+            return None
         row = next(
             (
                 item
