@@ -14,6 +14,7 @@ from backend.src.dependencies import (
     PARTY_UNLOCKED_RESPONSES,
     PartySession,
     get_config,
+    get_hls_registry,
     get_logger,
     get_media_server,
     get_party_manager,
@@ -97,7 +98,15 @@ async def login(
     sio=Depends(get_sio),
     logger=Depends(get_logger),
 ):
-    result = await api_login(body, request, config, provider, party_manager, sio, logger)
+    result = await api_login(
+        body,
+        request,
+        config=config,
+        provider=provider,
+        party_manager=party_manager,
+        sio=sio,
+        logger=logger,
+    )
     return LoginResponseV2(
         **result.model_dump(),
         media_server_type=provider.identity.type,
@@ -108,10 +117,21 @@ async def login(
 async def logout(
     request: Request,
     party_manager=Depends(get_party_manager),
+    hls_registry=Depends(get_hls_registry),
     sio=Depends(get_sio),
     logger=Depends(get_logger),
 ):
-    result = await api_logout(request, party_manager, sio, logger)
+    # Keyword arguments, not positional. These v1 handlers are plain functions
+    # here rather than routes, so their parameter order is load-bearing at this
+    # call site and nothing checks it: adding a dependency to api_logout used to
+    # slide sio into its place silently.
+    result = await api_logout(
+        request,
+        party_manager=party_manager,
+        hls_registry=hls_registry,
+        sio=sio,
+        logger=logger,
+    )
     return LogoutResponseV2(success=result.success, message=result.message)
 
 

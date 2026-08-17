@@ -2,6 +2,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import httpx
@@ -2433,5 +2434,69 @@ def test_jellyfin_v2_streams_and_versions_are_normalized(tmp_path) -> None:
                     },
                 ],
             }
+
+    asyncio.run(exercise())
+
+
+def test_host_logout_drops_playback_plans_holding_that_host_token(tmp_path) -> None:
+    """A revoked credential should not outlive the request that revoked it.
+
+    Every PlaybackPlan carries a copy of the host's media-server token in
+    plan.credentials. Stepping down clears party.host_access_token, so the proxy
+    already 401s via _resolve_host_creds and nothing is still playable, but the
+    plans themselves used to sit in the registry holding that token until some
+    later teardown happened to fire.
+    """
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app()),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            party = app.state.party_manager.get(party_id)
+            registry = app.state.hls_registry
+            plan = await app.state.media_server.prepare_playback(
+                PlaybackRequest(
+                    item_id="movie-1",
+                    credentials=ProviderCredentials(
+                        access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+                        user_id="jellyfin-user-1",
+                    ),
+                    media_source_id="source-1",
+                    quality="480p-1000",
+                )
+            )
+            registry.install(plan)
+            party.user_streams = {
+                "sid-1": SimpleNamespace(
+                    stream_id=plan.stream_id,
+                    play_session_id=plan.play_session_id,
+                    media_source_id=plan.media_source_id,
+                    audio_index=None,
+                    subtitle_index=None,
+                )
+            }
+            assert registry.get_plan(plan.stream_id) is not None
+
+            await client.post("/api/v2/auth/logout")
+
+            assert registry.get_plan(plan.stream_id) is None, (
+                "logout left the departed host's token resident in the playback plan"
+            )
 
     asyncio.run(exercise())

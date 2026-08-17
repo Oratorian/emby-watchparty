@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Request
 from backend.src import __codename__, __version__
 from backend.src.dependencies import (
     get_config,
+    get_hls_registry,
     get_http_client,
     get_logger,
     get_media_server,
@@ -191,6 +192,7 @@ async def api_login(
 async def api_logout(
     request: Request,
     party_manager=Depends(get_party_manager),
+    hls_registry=Depends(get_hls_registry),
     sio=Depends(get_sio),
     logger=Depends(get_logger),
 ):
@@ -218,6 +220,19 @@ async def api_logout(
         return LoginResponse(success=True, message="Not the host")
 
     previous_username = party.host_username
+
+    # Drop the playback plans before clearing the party, because each one holds
+    # a copy of this host's media-server token in plan.credentials. The proxy
+    # already refuses to serve once host_access_token is gone
+    # (_resolve_host_creds returns 401), so nothing is still playable; without
+    # this the token simply stays resident until some later teardown happens to
+    # fire. A credential the operator has just revoked should not outlive the
+    # request that revoked it.
+    if hls_registry is not None:
+        for stream in list((party.user_streams or {}).values()):
+            if stream.stream_id:
+                hls_registry.revoke(stream.stream_id)
+
     party_manager.clear_host(party_id)
     session.pop("host_session_grant", None)
     logger.info(
