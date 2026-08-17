@@ -40,6 +40,39 @@ from backend.src.providers.normalization import (
     normalize_stream_catalog,
 )
 
+# Same list the Emby path uses (stream_builder.build_params). Only consulted
+# when a server omits IsTextSubtitleStream.
+_IMAGE_SUBTITLE_CODECS = frozenset({"pgssub", "pgs", "dvd_subtitle", "dvdsub", "vobsub"})
+
+
+def _subtitle_must_be_burned_in(source: dict, subtitle_index: int) -> bool:
+    """Whether Jellyfin has to draw this subtitle into the video itself.
+
+    Only bitmap subtitles do. hls.js cannot render PGS or VobSub, so an image
+    track reaches the viewer only if the server burns it in. Text tracks are
+    fetched separately by the frontend as `<track>` elements via the subtitle
+    asset route, exactly as on the Emby path (see stream_builder.build_params,
+    which keeps the manifest path off for the same reason: two delivery paths
+    fight over textTrack.mode).
+
+    Jellyfin answers this directly with `IsTextSubtitleStream`, a non-nullable
+    boolean in the API schema, so the codec list is only a fallback for a
+    server that omits it.
+
+    An unknown index, or a track we cannot classify, returns False. Not burning
+    in is the recoverable failure: the viewer can still switch tracks, and the
+    text path already covers the common case. Burning in the wrong track is
+    baked into the video for the life of the stream.
+    """
+    for stream in source.get("MediaStreams") or []:
+        if stream.get("Type") != "Subtitle" or stream.get("Index") != subtitle_index:
+            continue
+        is_text = stream.get("IsTextSubtitleStream")
+        if is_text is not None:
+            return not is_text
+        return str(stream.get("Codec") or "").lower() in _IMAGE_SUBTITLE_CODECS
+    return False
+
 
 class JellyfinProvider:
     identity = ProviderIdentity(type="jellyfin", display_name="Jellyfin")
@@ -468,61 +501,87 @@ class JellyfinProvider:
         ]
         if not video_codecs:
             video_codecs = ["h264"]
-        body = {
-            "UserId": request.credentials.user_id,
-            "MaxStreamingBitrate": max_bitrate,
-            "StartTimeTicks": round(request.start_seconds * 10_000_000),
-            "AudioStreamIndex": request.audio_index,
-            "SubtitleStreamIndex": request.subtitle_index,
-            "MediaSourceId": request.media_source_id,
-            "EnableDirectPlay": False,
-            "EnableDirectStream": True,
-            "EnableTranscoding": True,
-            "AllowVideoStreamCopy": not request.force_transcode,
-            "AllowAudioStreamCopy": True,
-            "DeviceProfile": {
-                "Name": "Emby Watch Party HLS",
+
+        # Deliberately NOT request.subtitle_index. Naming a subtitle here asks
+        # Jellyfin to deliver it, and its SubtitleProfiles below advertise only
+        # vtt and srt as External, so anything else -- ass/ssa above all -- has
+        # no matching profile and falls back to Encode, burning it into the
+        # video. The frontend has meanwhile already loaded the same track as a
+        # <track> element, so the viewer sees the line twice, offset. Text
+        # tracks are the frontend's job; only bitmap tracks come back here, in
+        # the second pass below.
+        def build_body(subtitle_index: int | None) -> dict:
+            return {
+                "UserId": request.credentials.user_id,
                 "MaxStreamingBitrate": max_bitrate,
-                "DirectPlayProfiles": [],
-                "TranscodingProfiles": [
-                    {
-                        "Container": "ts",
-                        "Type": "Video",
-                        "VideoCodec": ",".join(video_codecs),
-                        "AudioCodec": "aac,mp3,ac3",
-                        "Protocol": "hls",
-                        "Context": "Streaming",
-                        "EnableSubtitlesInManifest": True,
-                        "MinSegments": 1,
-                        "SegmentLength": 6,
-                    }
-                ],
-                "ContainerProfiles": [],
-                "CodecProfiles": [],
-                "SubtitleProfiles": [
-                    {"Format": "vtt", "Method": "External"},
-                    {"Format": "srt", "Method": "External"},
-                ],
-            },
-        }
-        response = await self._client.gateway.post(
-            f"/Items/{request.item_id}/PlaybackInfo",
-            headers=self._client._headers(
-                request.credentials.access_token, request.credentials.user_id
-            ),
-            json=body,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        sources = payload.get("MediaSources") or []
-        source = next(
-            (
-                row
-                for row in sources
-                if request.media_source_id is None or row.get("Id") == request.media_source_id
-            ),
-            None,
-        )
+                "StartTimeTicks": round(request.start_seconds * 10_000_000),
+                "AudioStreamIndex": request.audio_index,
+                "SubtitleStreamIndex": subtitle_index,
+                # Explicit rather than relying on a SubtitleProfiles miss to
+                # fall through to Encode: say what we mean in both directions.
+                "AlwaysBurnInSubtitleWhenTranscoding": subtitle_index is not None,
+                "MediaSourceId": request.media_source_id,
+                "EnableDirectPlay": False,
+                "EnableDirectStream": True,
+                "EnableTranscoding": True,
+                "AllowVideoStreamCopy": not request.force_transcode,
+                "AllowAudioStreamCopy": True,
+                "DeviceProfile": {
+                    "Name": "Emby Watch Party HLS",
+                    "MaxStreamingBitrate": max_bitrate,
+                    "DirectPlayProfiles": [],
+                    "TranscodingProfiles": [
+                        {
+                            "Container": "ts",
+                            "Type": "Video",
+                            "VideoCodec": ",".join(video_codecs),
+                            "AudioCodec": "aac,mp3,ac3",
+                            "Protocol": "hls",
+                            "Context": "Streaming",
+                            "EnableSubtitlesInManifest": True,
+                            "MinSegments": 1,
+                            "SegmentLength": 6,
+                        }
+                    ],
+                    "ContainerProfiles": [],
+                    "CodecProfiles": [],
+                    "SubtitleProfiles": [
+                        {"Format": "vtt", "Method": "External"},
+                        {"Format": "srt", "Method": "External"},
+                    ],
+                },
+            }
+
+        async def negotiate(subtitle_index: int | None) -> tuple[dict, dict | None]:
+            response = await self._client.gateway.post(
+                f"/Items/{request.item_id}/PlaybackInfo",
+                headers=self._client._headers(
+                    request.credentials.access_token, request.credentials.user_id
+                ),
+                json=build_body(subtitle_index),
+            )
+            response.raise_for_status()
+            payload = response.json()
+            sources = payload.get("MediaSources") or []
+            return payload, next(
+                (
+                    row
+                    for row in sources
+                    if request.media_source_id is None or row.get("Id") == request.media_source_id
+                ),
+                None,
+            )
+
+        payload, source = await negotiate(None)
+        # The catalog only reaches us in the response, so the bitmap case costs
+        # a second round trip. It is the rare one; text tracks, which is nearly
+        # everything, still negotiate in a single call.
+        if (
+            request.subtitle_index is not None
+            and source is not None
+            and _subtitle_must_be_burned_in(source, request.subtitle_index)
+        ):
+            payload, source = await negotiate(request.subtitle_index)
         play_session_id = payload.get("PlaySessionId")
         if not source or not source.get("Id") or not play_session_id:
             raise PlaybackPlanError("Jellyfin returned no playable HLS media source")

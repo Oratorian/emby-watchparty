@@ -12,6 +12,7 @@ from backend.src.dependencies import get_media_server
 from backend.src.domain import Participant, SelectedMedia
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.providers import EmbyProvider, JellyfinProvider, create_provider
+from backend.src.providers.jellyfin import _subtitle_must_be_burned_in
 from backend.src.providers.models import (
     AuthenticatedUser,
     HLSResource,
@@ -1185,7 +1186,11 @@ def test_jellyfin_posted_playback_info_becomes_hls_plan(tmp_path) -> None:
     assert request["MediaSourceId"] == "source-1"
     assert request["StartTimeTicks"] == 125_000_000
     assert request["AudioStreamIndex"] == 2
-    assert request["SubtitleStreamIndex"] == 4
+    # Index 4 is a text track, so it is NOT named here. Naming it asks Jellyfin
+    # to deliver it, and with no matching SubtitleProfile that means burning it
+    # into the video, on top of the <track> the frontend already loaded.
+    assert request["SubtitleStreamIndex"] is None
+    assert request["AlwaysBurnInSubtitleWhenTranscoding"] is False
     assert request["MaxStreamingBitrate"] == 4_000_000
     assert request["EnableDirectPlay"] is False
     assert request["EnableDirectStream"] is True
@@ -1195,6 +1200,110 @@ def test_jellyfin_posted_playback_info_becomes_hls_plan(tmp_path) -> None:
     assert profile["Name"] == "Emby Watch Party HLS"
     assert profile["TranscodingProfiles"][0]["Protocol"] == "hls"
     assert profile["TranscodingProfiles"][0]["Container"] == "ts"
+
+
+def test_jellyfin_text_subtitle_negotiates_once_and_is_never_burned_in(tmp_path) -> None:
+    """A text track must not reach Jellyfin's subtitle pipeline at all.
+
+    The DeviceProfile advertises only vtt and srt as External, so an ass/ssa
+    track matches no profile and Jellyfin falls back to Encode, burning it into
+    the video while the frontend is already rendering the same lines from the
+    subtitle asset route. The viewer sees every line twice, slightly offset.
+    """
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app):
+            await app.state.media_server.prepare_playback(
+                PlaybackRequest(
+                    item_id="movie-1",
+                    credentials=ProviderCredentials(
+                        access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+                        user_id="jellyfin-user-1",
+                    ),
+                    media_source_id="source-1",
+                    subtitle_index=4,
+                    quality="720p-4000",
+                )
+            )
+
+    asyncio.run(exercise())
+    # One round trip: the text case never needs to re-negotiate.
+    assert len(fake_state.playback_requests) == 1
+    assert fake_state.playback_requests[0]["SubtitleStreamIndex"] is None
+    assert fake_state.playback_requests[0]["AlwaysBurnInSubtitleWhenTranscoding"] is False
+
+
+def test_jellyfin_image_subtitle_is_burned_in_on_a_second_negotiation(tmp_path) -> None:
+    """Bitmap tracks are the one case that genuinely must be burned in.
+
+    hls.js cannot draw PGS or VobSub, so there is no side-channel path and the
+    server has to composite it. Index 5 in the fake is a PGS track.
+    """
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app):
+            await app.state.media_server.prepare_playback(
+                PlaybackRequest(
+                    item_id="movie-1",
+                    credentials=ProviderCredentials(
+                        access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+                        user_id="jellyfin-user-1",
+                    ),
+                    media_source_id="source-1",
+                    subtitle_index=5,
+                    quality="720p-4000",
+                )
+            )
+
+    asyncio.run(exercise())
+    # The stream catalog only arrives in the response, so classifying the track
+    # costs a second call. The first must still not name the subtitle, or a
+    # server that honours it would burn the track in during the throwaway pass.
+    assert len(fake_state.playback_requests) == 2
+    assert fake_state.playback_requests[0]["SubtitleStreamIndex"] is None
+    assert fake_state.playback_requests[1]["SubtitleStreamIndex"] == 5
+    assert fake_state.playback_requests[1]["AlwaysBurnInSubtitleWhenTranscoding"] is True
+
+
+@pytest.mark.parametrize(
+    ("stream", "expected"),
+    [
+        ({"Type": "Subtitle", "Index": 3, "IsTextSubtitleStream": True}, False),
+        ({"Type": "Subtitle", "Index": 3, "IsTextSubtitleStream": False}, True),
+        # A server that omits the flag falls back to the codec list.
+        ({"Type": "Subtitle", "Index": 3, "Codec": "pgssub"}, True),
+        ({"Type": "Subtitle", "Index": 3, "Codec": "vobsub"}, True),
+        ({"Type": "Subtitle", "Index": 3, "Codec": "ass"}, False),
+        ({"Type": "Subtitle", "Index": 3, "Codec": "subrip"}, False),
+        # The flag wins over the codec when both are present.
+        ({"Type": "Subtitle", "Index": 3, "Codec": "pgssub", "IsTextSubtitleStream": True}, False),
+        # Wrong index, and an audio stream that happens to share the index.
+        ({"Type": "Subtitle", "Index": 9, "IsTextSubtitleStream": False}, False),
+        ({"Type": "Audio", "Index": 3, "IsTextSubtitleStream": False}, False),
+    ],
+)
+def test_subtitle_burn_in_classification(stream, expected) -> None:
+    assert _subtitle_must_be_burned_in({"MediaStreams": [stream]}, 3) is expected
+
+
+def test_subtitle_burn_in_defaults_to_not_burning_when_the_track_is_absent() -> None:
+    """Not burning in is the recoverable failure; a burned-in track is permanent."""
+    assert _subtitle_must_be_burned_in({}, 3) is False
+    assert _subtitle_must_be_burned_in({"MediaStreams": []}, 3) is False
 
 
 def test_jellyfin_accepts_hyphenated_guid_in_server_hls_path(tmp_path) -> None:
@@ -2079,7 +2188,19 @@ def test_jellyfin_v2_streams_and_versions_are_normalized(tmp_path) -> None:
                         "is_text": True,
                         "is_image": False,
                         "title": "",
-                    }
+                    },
+                    {
+                        "index": 5,
+                        "language": "jpn",
+                        "display_language": "Japanese (PGS)",
+                        "codec": "pgssub",
+                        "is_default": False,
+                        "is_forced": False,
+                        "is_external": False,
+                        "is_text": False,
+                        "is_image": True,
+                        "title": "",
+                    },
                 ],
                 "media_source_id": "source-2",
                 "versions": [

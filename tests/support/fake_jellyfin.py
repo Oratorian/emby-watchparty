@@ -341,6 +341,18 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
                 "IsExternal": True,
                 "IsTextSubtitleStream": True,
             },
+            # A bitmap track, so the fake can represent the one case that
+            # legitimately has to be burned into the video. hls.js cannot
+            # draw PGS, so there is no side-channel path for it.
+            {
+                "Type": "Subtitle",
+                "Index": 5,
+                "Language": "jpn",
+                "DisplayTitle": "Japanese (PGS)",
+                "Codec": "pgssub",
+                "IsExternal": False,
+                "IsTextSubtitleStream": False,
+            },
         ]
         sources = [
             {
