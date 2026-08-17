@@ -86,7 +86,7 @@ Never commit your `.env` file. It contains sensitive credentials:
 
 ```bash
 # These should NEVER be in version control
-EMBY_API_KEY=your_api_key
+MEDIA_SERVER_API_KEY=your_api_key
 SESSION_SECRET=your_session_signing_key
 ```
 
@@ -112,13 +112,15 @@ chmod 600 .env
 
 Unsafe production boot settings start a restricted setup application rather than the normal service. A cryptographically random one-time token is printed once to the server console and is required in a request header for configuration writes. Never expose this token in URLs, screenshots, shared logs, or reverse-proxy configuration.
 
-Saved boot values live in `data/bootstrap.json`; this file contains `EMBY_API_KEY` and `SESSION_SECRET`. The application uses atomic replacement and requests restrictive permissions, but operators must protect the mounted directory and backups. Source precedence is process environment, then `.env`, then `data/bootstrap.json`, then defaults. Invalid explicit environment values must be fixed outside the browser.
+Saved boot values live in `data/bootstrap.json`; this file contains `MEDIA_SERVER_API_KEY` and `SESSION_SECRET`. The application uses atomic replacement and requests restrictive permissions, but operators must protect the mounted directory and backups. Source precedence is process environment, then `.env`, then `data/bootstrap.json`, then defaults. Invalid explicit environment values must be fixed outside the browser.
 
 Recovery: restart to receive a new token. For a damaged saved file, move or remove `data/bootstrap.json`, restart, then complete setup again. The setup endpoint never terminates or restarts the process.
 
 #### API Key Protection
 
-- Use a dedicated Emby API key for the watch party application
+- Issue a dedicated API key on the media server for the watch party
+  application. One key, `MEDIA_SERVER_API_KEY`, serves whichever server
+  `MEDIA_SERVER_TYPE` names; mint it on that server
 - Limit API key permissions where possible
 - Rotate API keys periodically
 - Never share API keys in logs or error messages
