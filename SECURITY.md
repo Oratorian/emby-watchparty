@@ -108,13 +108,15 @@ Ensure your `.env` file has restricted permissions:
 chmod 600 .env
 ```
 
-#### First-run bootstrap
+#### Unsafe boot configuration
 
-Unsafe production boot settings start a restricted setup application rather than the normal service. A cryptographically random one-time token is printed once to the server console and is required in a request header for configuration writes. Never expose this token in URLs, screenshots, shared logs, or reverse-proxy configuration.
+Unsafe production boot settings start a restricted application that serves a diagnosis and nothing else: every route answers 503, the invalid fields are named on stderr, and the process stays up so an orchestrator can be read rather than restart-looped.
 
-Saved boot values live in `data/bootstrap.json`; this file contains `MEDIA_SERVER_API_KEY` and `SESSION_SECRET`. The application uses atomic replacement and requests restrictive permissions, but operators must protect the mounted directory and backups. Source precedence is process environment, then `.env`, then `data/bootstrap.json`, then defaults. Invalid explicit environment values must be fixed outside the browser.
+There is no setup form and no bootstrap token. Both were removed in 3.0 because neither could work where the product is deployed: every field arrives through the environment on Unraid, CasaOS, Portainer and TrueNAS, so a submitted form wrote the same broken value back, and the token gating it had to be recovered from container logs or a root-owned file unreadable over the appdata share those platforms hand you. It bought nothing defensively either, since the environment overrides any persisted value and anyone able to read the token already had host access.
 
-Recovery: restart to receive a new token. For a damaged saved file, move or remove `data/bootstrap.json`, restart, then complete setup again. The setup endpoint never terminates or restarts the process.
+Configuration is therefore environment-only, and there is no persisted credential tier to protect. Source precedence is process environment, then `.env`, then built-in defaults. `data/bootstrap.json` from an earlier 3.0 development build is never read and is deleted at startup; the only files holding secrets are the ones you wrote, which is `.env` or your platform's environment store.
+
+Recovery: correct the named fields in the environment and restart.
 
 #### API Key Protection
 
