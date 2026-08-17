@@ -459,7 +459,7 @@ class ConfigUpdateRequest(BaseModel):
     the `rejected` list in the response.
 
     Boot-only env keys (WATCH_PARTY_BIND / WATCH_PARTY_PORT /
-    APP_PREFIX / SESSION_EXPIRY / EMBY_SERVER_URL / EMBY_API_KEY) are
+    APP_PREFIX / SESSION_EXPIRY / MEDIA_SERVER_URL / MEDIA_SERVER_API_KEY) are
     rejected up front with `success: false` and no partial write.
 
     Example: `{"LOG_LEVEL": "DEBUG", "REQUIRE_LOGIN": true}`.

@@ -139,7 +139,7 @@ async def api_login(
             success=False,
             message=(
                 f"{provider.identity.display_name} server unavailable; "
-                f"ask the operator to verify {config.MEDIA_SERVER_URL_VARIABLE}"
+                "ask the operator to verify MEDIA_SERVER_URL"
             ),
         )
     if not auth:

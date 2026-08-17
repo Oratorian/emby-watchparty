@@ -100,7 +100,7 @@ class StreamBuilder:
             transcode_reasons.append("ContainerBitrateExceedsLimit")
 
         # NO api_key in the stream URL. Historically this embedded the
-        # admin EMBY_API_KEY so any party viewer could read the value
+        # admin MEDIA_SERVER_API_KEY so any party viewer could read the value
         # from `<video>.src` in DevTools and gain full admin access to
         # the Emby server. The /hls/... proxy authenticates upstream via
         # the party's host_access_token (routers/hls.py:_resolve_host_creds),

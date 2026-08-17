@@ -86,7 +86,7 @@ async def admin_login(
             "success": False,
             "message": (
                 f"{provider.identity.display_name} server unavailable; "
-                f"verify {request.app.state.config.MEDIA_SERVER_URL_VARIABLE}"
+                "verify MEDIA_SERVER_URL"
             ),
         }
     if not auth:
@@ -168,8 +168,9 @@ async def update_config(
         "WATCH_PARTY_PORT",
         "APP_PREFIX",
         "SESSION_EXPIRY",
-        "EMBY_SERVER_URL",
-        "EMBY_API_KEY",
+        "MEDIA_SERVER_TYPE",
+        "MEDIA_SERVER_URL",
+        "MEDIA_SERVER_API_KEY",
         "ENABLE_HLS_TOKEN_VALIDATION",
     }
     env_only_hit = [k for k in payload if k in env_only]
