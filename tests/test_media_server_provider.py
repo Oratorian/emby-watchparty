@@ -1310,6 +1310,97 @@ def test_no_playback_info_request_ever_leaves_the_subtitle_unspecified() -> None
     assert "negotiate(None)" not in source
 
 
+def _playback_request_for(tmp_path, quality: str) -> dict:
+    """Run prepare_playback at a quality and hand back the PlaybackInfo body."""
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app):
+            await app.state.media_server.prepare_playback(
+                PlaybackRequest(
+                    item_id="movie-1",
+                    credentials=ProviderCredentials(
+                        access_token=TEST_JELLYFIN_ACCESS_TOKEN,
+                        user_id="jellyfin-user-1",
+                    ),
+                    media_source_id="source-1",
+                    quality=quality,
+                )
+            )
+
+    asyncio.run(exercise())
+    return fake_state.playback_requests[0]
+
+
+def _resolution_caps(body: dict) -> dict[str, str]:
+    return {
+        condition["Property"]: condition["Value"]
+        for profile in body["DeviceProfile"]["CodecProfiles"]
+        for condition in profile["Conditions"]
+    }
+
+
+@pytest.mark.parametrize(
+    ("quality", "bitrate", "caps"),
+    [
+        # Auto must stay entirely uncapped. A bitrate here makes a stream copy
+        # ineligible, which is the one thing the tier exists to allow.
+        ("auto", None, {}),
+        ("1080p-10000", 10_000_000, {"Width": "1920", "Height": "1080"}),
+        ("480p-1000", 1_000_000, {"Width": "854", "Height": "480"}),
+        # The three bitrate-free tiers. Measured before the fix: 144p produced a
+        # byte-identical ffmpeg command to auto, 10 Mbps at full resolution, so
+        # the cheapest option on the menu cost 14x the one three steps above it.
+        ("360p", None, {"Width": "640", "Height": "360"}),
+        ("240p", None, {"Width": "426", "Height": "240"}),
+        ("144p", None, {"Width": "256", "Height": "144"}),
+    ],
+)
+def test_quality_tier_reaches_jellyfin_as_bitrate_and_resolution(
+    tmp_path, quality, bitrate, caps
+) -> None:
+    body = _playback_request_for(tmp_path, quality)
+
+    assert body["MaxStreamingBitrate"] == bitrate
+    assert body["DeviceProfile"]["MaxStreamingBitrate"] == bitrate
+    assert _resolution_caps(body) == caps
+
+
+def test_no_quality_tier_falls_back_to_a_default_bitrate(tmp_path) -> None:
+    """The regex this replaced defaulted to 10 Mbps on any id without a suffix.
+
+    That silently inverted the bottom of the menu, and the default happened to
+    equal DEFAULT_QUALITY_ID's bitrate, so it looked correct in manual testing.
+    """
+    for quality in ("auto", "144p", "240p", "360p"):
+        body = _playback_request_for(tmp_path, quality)
+        assert body["MaxStreamingBitrate"] != 10_000_000, (
+            f"{quality} fell back to the old 10 Mbps default"
+        )
+
+
+def test_device_profile_states_only_audio_the_browser_can_decode(tmp_path) -> None:
+    """A DeviceProfile is a capability claim, not a wish list.
+
+    hls.js/MSE decodes AC-3 only on Safari, so advertising it lets Jellyfin
+    stream-copy an AC-3 track to a browser that plays silence, with no in-app
+    recovery. Overstating capability is the unrecoverable direction.
+    """
+    profile = _playback_request_for(tmp_path, "480p-1000")["DeviceProfile"]
+    transcoding = profile["TranscodingProfiles"][0]
+
+    assert "ac3" not in transcoding["AudioCodec"]
+    assert transcoding["AudioCodec"] == "aac,mp3"
+    assert transcoding["MaxAudioChannels"] == "2"
+    assert transcoding["BreakOnNonKeyFrames"] is True
+
+
 def test_stop_playback_reports_failure_instead_of_raising(tmp_path) -> None:
     """The Protocol says `-> bool`, and _stop_user_stream has no try/except.
 

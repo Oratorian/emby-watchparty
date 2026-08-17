@@ -39,6 +39,7 @@ from backend.src.providers.normalization import (
     normalize_page,
     normalize_stream_catalog,
 )
+from backend.src.quality import resolve_quality
 
 # Same list the Emby path uses (stream_builder.build_params). Only consulted
 # when a server omits IsTextSubtitleStream.
@@ -499,13 +500,47 @@ class JellyfinProvider:
         return normalize_stream_catalog(scoped, full)
 
     async def prepare_playback(self, request: PlaybackRequest) -> PlaybackPlan:
-        bitrate_match = re.search(r"-(\d+)$", request.quality)
-        max_bitrate = int(bitrate_match.group(1)) * 1000 if bitrate_match else 10_000_000
+        # resolve_quality is the same source the Emby path uses
+        # (stream_builder.build_params), so a tier means the same thing on both
+        # providers. Scraping the id with a regex instead lost two things:
+        #
+        #   - the resolution. Jellyfin infers one from the bitrate when no cap
+        #     is sent, so "480p" delivered 960x540: a label that lies, and more
+        #     pixels sharing the same bits than the viewer asked for.
+        #   - the three bitrate-free tiers. 360p/240p/144p carry no "-kbps"
+        #     suffix by design (resolve_quality returns a resolution cap and no
+        #     bitrate for them), so the regex missed and they fell to the
+        #     10 Mbps default. Measured: 144p produced a byte-identical ffmpeg
+        #     command to Auto, 14x the bitrate of 480p-1000, at full resolution.
+        #     The bottom of the menu cost more than the middle.
+        #
+        # Auto returns (None, None, None) and must stay uncapped: that is the
+        # only way a stream copy stays eligible, which is the whole point of
+        # the tier (see quality.py's module docstring).
+        max_width, max_height, bitrate_kbps = resolve_quality(request.quality)
+        max_bitrate = bitrate_kbps * 1000 if bitrate_kbps else None
         video_codecs = [
             codec for codec in ("h264", "hevc", "av1", "vp9") if codec in request.client_codecs
         ]
         if not video_codecs:
             video_codecs = ["h264"]
+
+        # Jellyfin takes resolution limits as ProfileConditions, not as the
+        # MaxWidth/MaxHeight query parameters the Emby path appends.
+        codec_profiles: list[dict] = []
+        dimensions = [("Width", max_width), ("Height", max_height)]
+        conditions = [
+            {
+                "Condition": "LessThanEqual",
+                "Property": prop,
+                "Value": str(value),
+                "IsRequired": False,
+            }
+            for prop, value in dimensions
+            if value is not None
+        ]
+        if conditions:
+            codec_profiles.append({"Type": "Video", "Conditions": conditions})
 
         # Deliberately NOT request.subtitle_index. Naming a subtitle here asks
         # Jellyfin to deliver it, and its SubtitleProfiles below advertise only
@@ -550,9 +585,22 @@ class JellyfinProvider:
                             "Container": "ts",
                             "Type": "Video",
                             "VideoCodec": ",".join(video_codecs),
-                            "AudioCodec": "aac,mp3,ac3",
+                            # NOT ac3. A DeviceProfile states what the client
+                            # can decode, and hls.js/MSE decodes AC-3 only on
+                            # Safari. Listing it invites Jellyfin to stream-copy
+                            # an AC-3 track straight through to a browser that
+                            # renders silence, with no in-app way to recover.
+                            # Same pair the Emby path sends (stream_builder).
+                            "AudioCodec": "aac,mp3",
                             "Protocol": "hls",
                             "Context": "Streaming",
+                            # Downmix rather than passing 5.1/7.1 through, and
+                            # cut segments on keyframes. Both are Emby-path
+                            # settings that never crossed over; without the
+                            # first, a surround track reaches a stereo browser
+                            # at source channel count.
+                            "MaxAudioChannels": "2",
+                            "BreakOnNonKeyFrames": True,
                             # Jellyfin's own default, restated because turning
                             # it on is the second way to get doubled subtitles.
                             # It makes Jellyfin advertise subtitle renditions
@@ -568,7 +616,7 @@ class JellyfinProvider:
                         }
                     ],
                     "ContainerProfiles": [],
-                    "CodecProfiles": [],
+                    "CodecProfiles": codec_profiles,
                     "SubtitleProfiles": [
                         {"Format": "vtt", "Method": "External"},
                         {"Format": "srt", "Method": "External"},
