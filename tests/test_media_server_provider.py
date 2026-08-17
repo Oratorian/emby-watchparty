@@ -1050,40 +1050,6 @@ def test_jellyfin_v2_item_sections_are_normalized(tmp_path) -> None:
     asyncio.run(exercise())
 
 
-def test_jellyfin_catalog_projects_through_legacy_v1_contracts(tmp_path) -> None:
-    app = create_app(
-        config=_config("jellyfin"),
-        project_root=tmp_path,
-        enable_update_check=False,
-        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app()),
-    )
-
-    async def exercise() -> None:
-        async with asgi_client(app) as client:
-            created = await client.post(
-                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
-            )
-            party_id = created.json()["party_id"]
-            await client.post(
-                f"/api/party/{party_id}/join",
-                json={"client_id": "client-1", "display_name": "Alice"},
-            )
-            await client.post(
-                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
-            )
-
-            libraries = await client.get("/api/libraries")
-            items = await client.get("/api/items", params={"parentId": "jellyfin-library-1"})
-            details = await client.get("/api/item/movie-1")
-
-            assert libraries.json()["Items"][0]["Id"] == "jellyfin-library-1"
-            assert items.json()["Items"][0]["Id"] == "movie-1"
-            assert details.json()["Id"] == "movie-1"
-            assert details.json()["Genres"] == ["Drama", "Science Fiction"]
-
-    asyncio.run(exercise())
-
-
 def test_jellyfin_host_avatar_uses_provider_root_route(tmp_path) -> None:
     fake_state = FakeJellyfinState()
     app = create_app(
@@ -2241,7 +2207,7 @@ def test_jellyfin_v2_auth_status_and_logout_are_provider_aware(tmp_path) -> None
     asyncio.run(exercise())
 
 
-def test_jellyfin_item_artwork_is_available_through_v1_and_v2(tmp_path) -> None:
+def test_jellyfin_item_artwork_is_proxied_through_the_neutral_route(tmp_path) -> None:
     fake_state = FakeJellyfinState()
     app = create_app(
         config=_config("jellyfin"),
@@ -2264,31 +2230,25 @@ def test_jellyfin_item_artwork_is_available_through_v1_and_v2(tmp_path) -> None:
                 "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
             )
 
-            legacy = await client.get(
-                "/api/image/movie-1",
-                params={"type": "Backdrop", "index": 1, "maxWidth": 640},
-            )
-            neutral = await client.get(
+            response = await client.get(
                 "/api/v2/items/movie-1/images/backdrop",
                 params={"index": 1, "max_width": 640},
             )
 
-            for response in (legacy, neutral):
-                assert response.status_code == 200
-                assert response.content == b"jellyfin-image"
-                assert response.headers["content-type"].startswith("image/png")
-                assert response.headers["x-content-type-options"] == "nosniff"
+            assert response.status_code == 200
+            assert response.content == b"jellyfin-image"
+            assert response.headers["content-type"].startswith("image/png")
+            assert response.headers["x-content-type-options"] == "nosniff"
 
     asyncio.run(exercise())
     images = [row for row in fake_state.requests if "/Images/" in row["path"]]
-    assert [row["path"] for row in images] == [
-        "/Items/movie-1/Images/Backdrop/1",
-        "/Items/movie-1/Images/Backdrop/1",
-    ]
+    # The sizing parameters have to survive the hop: without them the proxy
+    # pulls the full poster for every card in the grid.
+    assert [row["path"] for row in images] == ["/Items/movie-1/Images/Backdrop/1"]
     assert all(row["query"] == {"maxWidth": "640"} for row in images)
 
 
-def test_jellyfin_subtitles_are_available_through_v1_and_v2(tmp_path) -> None:
+def test_jellyfin_subtitles_are_proxied_through_the_neutral_route(tmp_path) -> None:
     fake_state = FakeJellyfinState()
     app = create_app(
         config=_config("jellyfin"),
@@ -2311,27 +2271,25 @@ def test_jellyfin_subtitles_are_available_through_v1_and_v2(tmp_path) -> None:
                 "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
             )
 
-            legacy = await client.get("/api/subtitles/movie-1/source-1/4")
-            neutral = await client.get(
-                "/api/v2/items/movie-1/subtitles/source-1/4",
-            )
+            response = await client.get("/api/v2/items/movie-1/subtitles/source-1/4")
 
-            for response in (legacy, neutral):
-                assert response.status_code == 200
-                assert response.text.startswith("WEBVTT")
-                assert response.headers["content-type"].startswith("text/vtt")
-                assert response.headers["x-content-type-options"] == "nosniff"
+            assert response.status_code == 200
+            assert response.text.startswith("WEBVTT")
+            assert response.headers["content-type"].startswith("text/vtt")
+            assert response.headers["x-content-type-options"] == "nosniff"
 
     asyncio.run(exercise())
     subtitles = [row for row in fake_state.requests if "/Subtitles/" in row["path"]]
+    # Item, source and stream index all reach Jellyfin: the <track> the player
+    # loads is addressed by all three, and dropping one silently serves the
+    # wrong language.
     assert [row["path"] for row in subtitles] == [
-        "/Videos/movie-1/source-1/Subtitles/4/Stream.vtt",
         "/Videos/movie-1/source-1/Subtitles/4/Stream.vtt",
     ]
     assert all(row["query"] == {} for row in subtitles)
 
 
-def test_jellyfin_intro_segment_is_available_through_v1_and_v2(tmp_path) -> None:
+def test_jellyfin_intro_segment_is_served_through_the_neutral_route(tmp_path) -> None:
     fake_state = FakeJellyfinState()
     app = create_app(
         config=_config("jellyfin"),
@@ -2354,16 +2312,9 @@ def test_jellyfin_intro_segment_is_available_through_v1_and_v2(tmp_path) -> None
                 "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
             )
 
-            legacy = await client.get("/api/intro/movie-1")
-            neutral = await client.get("/api/v2/items/movie-1/intro")
+            response = await client.get("/api/v2/items/movie-1/intro")
 
-            assert legacy.json() == {
-                "hasIntro": True,
-                "start": 2.5,
-                "end": 92.5,
-                "duration": 90.0,
-            }
-            assert neutral.json() == {
+            assert response.json() == {
                 "has_intro": True,
                 "start_seconds": 2.5,
                 "end_seconds": 92.5,
@@ -2372,8 +2323,129 @@ def test_jellyfin_intro_segment_is_available_through_v1_and_v2(tmp_path) -> None
 
     asyncio.run(exercise())
     segments = [row for row in fake_state.requests if row["path"] == "/MediaSegments/movie-1"]
-    assert len(segments) == 2
+    assert len(segments) == 1
     assert all(row["query"] == {} for row in segments)
+
+
+class _RewrittenPath(httpx.AsyncBaseTransport):
+    """Answers the chosen upstream paths itself and passes the rest through.
+
+    Lets a test degrade one endpoint of an otherwise healthy media server,
+    which is what the failure modes below actually look like in the field.
+    """
+
+    def __init__(self, inner: httpx.AsyncBaseTransport, match: str, response: httpx.Response):
+        self._inner = inner
+        self._match = match
+        self._response = response
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        if self._match in request.url.path:
+            return httpx.Response(
+                self._response.status_code,
+                content=self._response.content,
+                headers=self._response.headers,
+                request=request,
+            )
+        return await self._inner.handle_async_request(request)
+
+
+def test_an_intro_source_answering_with_html_is_absence_not_a_server_error(tmp_path) -> None:
+    """A reverse proxy or a sick plugin answers 200 with an HTML error page.
+
+    raise_for_status is happy with that, so the failure surfaces from .json()
+    as a JSONDecodeError, which is a ValueError and not an httpx.HTTPError:
+    neither the adapter's own catch nor the application-level upstream handler
+    sees it. Unmapped, every playback start becomes a 500 with a traceback,
+    where the route already has a well-formed way to say "no intro here".
+    """
+    fake_state = FakeJellyfinState()
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=_RewrittenPath(
+            httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+            "/MediaSegments/",
+            httpx.Response(200, html="<html><body>Bad Gateway</body></html>"),
+        ),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            party_id = (
+                await client.post(
+                    "/api/party/create",
+                    json={"client_id": "client-1", "display_name": "Alice"},
+                )
+            ).json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            response = await client.get("/api/v2/items/movie-1/intro")
+
+            assert response.status_code == 200
+            assert response.json() == {
+                "has_intro": False,
+                "start_seconds": None,
+                "end_seconds": None,
+                "duration_seconds": None,
+            }
+
+    asyncio.run(exercise())
+
+
+def test_a_server_with_no_stream_information_is_a_bad_gateway(tmp_path) -> None:
+    """An item the media server can no longer resolve is not an app fault.
+
+    PlaybackInfo and the item details both failing is what a deleted file or a
+    half-broken library looks like. The adapter says so with PlaybackPlanError,
+    which no HTTP-layer handler catches (the registered one is for
+    httpx.HTTPError, and the only other catch is in the socket playback path),
+    so unmapped it leaves the route as a 500 and points the operator at the
+    application rather than at their server.
+    """
+    fake_state = FakeEmbyState()
+    app = create_app(
+        config=_config("emby"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=_RewrittenPath(
+            httpx.ASGITransport(app=create_fake_emby_app(fake_state)),
+            "/movie-1",
+            httpx.Response(503),
+        ),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            party_id = (
+                await client.post(
+                    "/api/party/create",
+                    json={"client_id": "client-1", "display_name": "Alice"},
+                )
+            ).json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            response = await client.get("/api/v2/items/movie-1/streams")
+
+            assert response.status_code == 502
+            assert response.json() == {
+                "detail": "Could not fetch stream information from the media server"
+            }
+
+    asyncio.run(exercise())
 
 
 def test_jellyfin_v2_streams_and_versions_are_normalized(tmp_path) -> None:

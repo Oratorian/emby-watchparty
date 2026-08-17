@@ -1,46 +1,47 @@
+"""What the Emby adapter puts on the wire, checked against a live fake server.
+
+This file was written to prove the v1 library routes and their v2 twins agreed.
+There is only one side now, so each test asserts the surviving side directly:
+the request /api/v2 sends upstream, and the response it hands the viewer.
+
+The assertions are about the upstream call as much as the JSON, because the
+fake is permissive where a real Emby is not. A filter that never reaches the
+query string still returns a plausible page here.
+"""
+
 from __future__ import annotations
 
-import json
-from pathlib import Path
+from typing import Literal, get_args, get_origin
 
 import httpx
 
-from backend.src.routers.library import _prioritize_parental_ratings
+from backend.src.v2_schemas import CatalogFiltersV2
 
-ARTIFACT_ROOT = Path(__file__).parent / "artifacts" / "emby" / "4.9.5.0"
+# Control id -> the filter field its values are submitted as. Only the closed
+# vocabularies are listed: these are the ones where a control offering a token
+# the query side does not accept produces a filter the viewer can select and
+# the server then rejects with a 422.
+CLOSED_VOCABULARIES = {
+    "resolution": "resolutions",
+    "subtitles": "subtitles",
+    "trailers": "trailers",
+    "extras": "extras",
+    "theme_songs": "theme_songs",
+    "theme_videos": "theme_videos",
+    "locked": "locked",
+    "overview": "overview",
+    "missing_provider_ids": "missing_provider_ids",
+}
 
 
-def test_parental_ratings_put_standard_us_movie_ratings_first() -> None:
-    values = [
-        {"value": rating, "label": rating}
-        for rating in (
-            "12+",
-            "R",
-            "PG-13",
-            "TV-MA",
-            "G",
-            "PG",
-            "NC-17",
-            "NR",
-            "Not Rated",
-            "Approved",
-        )
-    ]
-
-    ordered = _prioritize_parental_ratings(values)
-
-    assert [value["value"] for value in ordered] == [
-        "G",
-        "PG",
-        "PG-13",
-        "R",
-        "NC-17",
-        "NR",
-        "Not Rated",
-        "12+",
-        "TV-MA",
-        "Approved",
-    ]
+def _accepted_tokens(field_name: str) -> set[str]:
+    """The literal values CatalogFiltersV2 will accept for a filter."""
+    annotation = CatalogFiltersV2.model_fields[field_name].annotation
+    if get_origin(annotation) is list:
+        annotation = get_args(annotation)[0]
+    if get_origin(annotation) is Literal:
+        return set(get_args(annotation))
+    raise AssertionError(f"{field_name} is not a closed vocabulary any more")
 
 
 def _unlocked_client(live_watchparty) -> httpx.Client:
@@ -51,7 +52,7 @@ def _unlocked_client(live_watchparty) -> httpx.Client:
         json={"client_id": "parity-client", "display_name": "Alice"},
     ).raise_for_status()
     client.post(
-        "/api/auth/login",
+        "/api/v2/auth/login",
         json={"username": "Alice", "password": "password"},
     ).raise_for_status()
     return client
@@ -61,16 +62,16 @@ def test_library_query_maps_viewer_filters_to_emby(live_watchparty) -> None:
     client = _unlocked_client(live_watchparty)
     try:
         response = client.post(
-            "/api/items/query",
+            "/api/v2/items/query",
             json={
                 "scope": {
                     "parent_id": "library-1",
-                    "include_item_types": ["Movie"],
-                    "media_types": ["Video"],
+                    "include_kinds": ["movie"],
+                    "media_kinds": ["video"],
                     "recursive": True,
                 },
-                "page": {"start_index": 10, "limit": 25},
-                "sort": {"field": "ProductionYear", "direction": "Descending"},
+                "page": {"start": 10, "limit": 25},
+                "sort": {"field": "year", "direction": "descending"},
                 "filters": {
                     "playstate": "resumable",
                     "favorite": True,
@@ -109,15 +110,15 @@ def test_library_query_maps_viewer_filters_to_emby(live_watchparty) -> None:
     recorded = httpx.get(f"{live_watchparty.fake.url}/__test__/requests").json()["requests"]
     upstream = next(row for row in recorded if row["path"].endswith("/Items"))
     query = dict(upstream["query"])
+    # Fields is asserted separately: which metadata a page asks for is a
+    # payload-size decision that moves, while every entry below is a filter a
+    # viewer set and must therefore reach Emby exactly as sent.
+    fields = query.pop("Fields")
     assert query == {
         "AudioCodecs": "aac",
         "AudioLanguages": "eng",
         "AudioLayouts": "stereo",
         "Containers": "mkv",
-        "Fields": (
-            "Overview,PrimaryImageAspectRatio,ProductionYear,IndexNumber,"
-            "ParentIndexNumber,SeriesId,SeasonId,UserData,MediaSourceCount"
-        ),
         "Filters": "IsResumable",
         "Genres": "Drama",
         "HasImdbId": "false",
@@ -152,42 +153,27 @@ def test_library_query_maps_viewer_filters_to_emby(live_watchparty) -> None:
         "VideoTypes": "VideoFile",
         "Years": "2024",
     }
+    # UserData carries the resume position every card draws its progress bar
+    # from, and MediaSourceCount is what marks an item as having versions.
+    assert {"UserData", "MediaSourceCount"} <= set(fields.split(","))
 
 
-def test_filtered_query_ignores_unnamed_upstream_folders(live_watchparty) -> None:
-    live_watchparty.fake.state.user_items = [
-        json.loads((ARTIFACT_ROOT / "filtered-unnamed-folder.json").read_text()),
-        {"Id": "movie-1", "Name": "Drama Movie", "Type": "Movie"},
-    ]
-    client = _unlocked_client(live_watchparty)
-    try:
-        response = client.post(
-            "/api/items/query",
-            json={
-                "scope": {"parent_id": "library-1"},
-                "filters": {"genres": ["Drama"]},
-            },
-        )
-    finally:
-        client.close()
+def test_filter_options_offer_every_control_the_query_side_accepts(live_watchparty) -> None:
+    """The rail is data-driven, so a control absent here is a filter nobody can reach.
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert [(item["Id"], item["Name"]) for item in payload["Items"]] == [
-        ("movie-1", "Drama Movie"),
-    ]
-    assert payload["TotalRecordCount"] == 1
-
-
-def test_filter_options_are_capability_driven_from_emby(live_watchparty) -> None:
+    The frontend renders exactly the controls this route returns and drops any
+    saved filter whose id is not among them. Emby still honours all of these on
+    the query side, so a missing control is a capability the server has and the
+    viewer cannot use, which is invisible from the outside.
+    """
     client = _unlocked_client(live_watchparty)
     try:
         response = client.get(
-            "/api/items/filter-options",
+            "/api/v2/items/filter-options",
             params={
-                "parentId": "library-1",
-                "includeItemTypes": "Movie",
-                "mediaTypes": "Video",
+                "parent_id": "library-1",
+                "include_kinds": "movie",
+                "media_kinds": "video",
             },
         )
     finally:
@@ -212,6 +198,72 @@ def test_filter_options_are_capability_driven_from_emby(live_watchparty) -> None
     assert {"value": "aac", "label": "AAC"} in controls["audio_codec"]["values"]
     assert {"value": "subrip", "label": "SUBRIP"} in controls["subtitle_codec"]["values"]
     assert "audio_language" not in controls
+
+    # The controls that are not derived from an Emby catalogue. They cost no
+    # upstream call, so nothing forces them to be built and they were silently
+    # absent for a release: eleven filters the query side accepted and the
+    # panel offered no way to set.
+    statics = {
+        "video_type": [
+            {"value": "VideoFile", "label": "VideoFile"},
+            {"value": "Bluray", "label": "Bluray"},
+            {"value": "Dvd", "label": "Dvd"},
+            {"value": "Iso", "label": "Iso"},
+        ],
+        "resolution": [
+            {"value": "any", "label": "Any"},
+            {"value": "4K", "label": "4K"},
+            {"value": "1080p", "label": "1080p"},
+            {"value": "720p", "label": "720p"},
+            {"value": "SD", "label": "SD"},
+        ],
+        "is_3d": [],
+        "subtitles": [
+            {"value": "any", "label": "Any"},
+            {"value": "with", "label": "With"},
+            {"value": "without", "label": "Without"},
+        ],
+        "trailers": [
+            {"value": "any", "label": "Any"},
+            {"value": "with", "label": "With"},
+            {"value": "without", "label": "Without"},
+        ],
+        "extras": [
+            {"value": "any", "label": "Any"},
+            {"value": "with", "label": "With"},
+            {"value": "without", "label": "Without"},
+        ],
+        "theme_songs": [
+            {"value": "any", "label": "Any"},
+            {"value": "with", "label": "With"},
+            {"value": "without", "label": "Without"},
+        ],
+        "theme_videos": [
+            {"value": "any", "label": "Any"},
+            {"value": "with", "label": "With"},
+            {"value": "without", "label": "Without"},
+        ],
+        "locked": [
+            {"value": "any", "label": "Any"},
+            {"value": "yes", "label": "With"},
+            {"value": "no", "label": "Without"},
+        ],
+        "overview": [
+            {"value": "any", "label": "Any"},
+            {"value": "with", "label": "With"},
+            {"value": "without", "label": "Without"},
+        ],
+        "missing_provider_ids": [
+            {"value": "imdb", "label": "IMDb Id"},
+            {"value": "tmdb", "label": "MovieDb Id"},
+            {"value": "tvdb", "label": "Tvdb Id"},
+        ],
+    }
+    missing = [control_id for control_id in statics if control_id not in controls]
+    assert not missing, f"filter controls the query side accepts but the rail cannot set: {missing}"
+    for control_id, values in statics.items():
+        assert controls[control_id]["values"] == values, control_id
+        assert controls[control_id]["label"], f"{control_id} has nothing to render as its title"
 
     recorded = httpx.get(f"{live_watchparty.fake.url}/__test__/requests").json()["requests"]
     catalogue_paths = {
@@ -245,6 +297,38 @@ def test_filter_options_are_capability_driven_from_emby(live_watchparty) -> None
     )
 
 
+def test_no_filter_control_offers_a_value_the_query_schema_rejects(live_watchparty) -> None:
+    """The rail and the query contract are written in two places and must agree.
+
+    A control offering a token CatalogFiltersV2 does not list gives the viewer a
+    filter that 422s the moment they pick it, and the panel has no way to tell
+    them why. 'any' is the rail's own no-op and is never submitted.
+    """
+    client = _unlocked_client(live_watchparty)
+    try:
+        response = client.get("/api/v2/items/filter-options", params={"parent_id": "library-1"})
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    controls = {control["id"]: control for control in response.json()["controls"]}
+    rejected = []
+    for control_id, field_name in CLOSED_VOCABULARIES.items():
+        control = controls.get(control_id)
+        if control is None:
+            continue
+        accepted = _accepted_tokens(field_name)
+        rejected.extend(
+            f"{control_id}: {value['value']!r} not in {sorted(accepted)}"
+            for value in control["values"]
+            if value["value"] != "any" and value["value"] not in accepted
+        )
+
+    assert not rejected, "filter controls offering values the server rejects:\n" + "\n".join(
+        rejected
+    )
+
+
 def test_grouped_search_normalizes_supported_emby_item_types(live_watchparty) -> None:
     live_watchparty.fake.state.search_items = [
         {"Id": "movie-1", "Name": "Matrix", "Type": "Movie"},
@@ -255,30 +339,60 @@ def test_grouped_search_normalizes_supported_emby_item_types(live_watchparty) ->
     ]
     client = _unlocked_client(live_watchparty)
     try:
-        response = client.get("/api/search/grouped", params={"q": "matrix"})
+        response = client.get("/api/v2/items/search/groups", params={"q": "matrix"})
     finally:
+        live_watchparty.fake.state.search_items = None
         client.close()
 
     assert response.status_code == 200
     groups = {group["id"]: group["items"] for group in response.json()["groups"]}
-    assert [item["Id"] for item in groups["movies"]] == ["movie-1"]
-    assert [item["Id"] for item in groups["series"]] == ["series-1"]
-    assert [item["Id"] for item in groups["episodes"]] == ["episode-1"]
-    assert [item["Id"] for item in groups["people"]] == ["person-1"]
-    assert [item["Id"] for item in groups["collections"]] == ["box-1"]
+    assert [item["id"] for item in groups["movies"]] == ["movie-1"]
+    assert [item["id"] for item in groups["series"]] == ["series-1"]
+    assert [item["id"] for item in groups["episodes"]] == ["episode-1"]
+    assert [item["id"] for item in groups["people"]] == ["person-1"]
+    assert [item["id"] for item in groups["collections"]] == ["box-1"]
     upstream = next(
         row
         for row in live_watchparty.fake.state.requests
         if ("SearchTerm", "matrix") in row["query"]
     )
-    assert ("SearchTerm", "matrix") in upstream["query"]
     assert (
         "IncludeItemTypes",
         "Movie,Series,Episode,Person,BoxSet",
     ) in upstream["query"]
 
 
+def test_search_asks_for_the_runtime_its_result_cards_display(live_watchparty) -> None:
+    """Search hits render into the same grid as a browse page, with a duration.
+
+    The card shows '1h 52m' and, for a part-watched item, 'Played: 1h 2m (41%)
+    of 2h 34m'. Both are computed from RunTimeTicks, which Emby only returns
+    when Fields asks for it, so dropping it from the search request empties
+    those readouts on every search result while browsing looks untouched.
+    """
+    client = _unlocked_client(live_watchparty)
+    try:
+        response = client.get("/api/v2/items/search/groups", params={"q": "matrix"})
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    search_requests = [
+        dict(row["query"])
+        for row in live_watchparty.fake.state.requests
+        if row["path"].endswith("/Items") and "SearchTerm" in dict(row["query"])
+    ]
+    assert search_requests, "no upstream search request recorded"
+    assert all("RunTimeTicks" in query["Fields"].split(",") for query in search_requests)
+
+
 def test_grouped_search_fuzzily_matches_spacing_punctuation_and_typos(live_watchparty) -> None:
+    """Emby's SearchTerm is punctuation-sensitive; the search box is not.
+
+    'spiderman', 'spider man' and a typo all have to reach 'Spider-Man', which
+    Emby answers with nothing for any of the three. The recall comes from a
+    second, punctuation-stripped prefix query that is then ranked locally.
+    """
     live_watchparty.fake.state.search_responses = {
         "spiderman": [],
         "spider man": [],
@@ -293,21 +407,25 @@ def test_grouped_search_fuzzily_matches_spacing_punctuation_and_typos(live_watch
     client = _unlocked_client(live_watchparty)
     try:
         responses = [
-            client.get("/api/search/grouped", params={"q": query})
+            client.get("/api/v2/items/search/groups", params={"q": query})
             for query in ("spiderman", "spider man", "spidreman")
         ]
     finally:
+        live_watchparty.fake.state.search_responses = None
         client.close()
 
     assert all(response.status_code == 200 for response in responses)
     assert [
-        [item["Name"] for item in response.json()["groups"][0]["items"]] for response in responses
+        [item["name"] for item in response.json()["groups"][0]["items"]] for response in responses
     ] == [["Spider-Man", "Spider-Man 2"]] * 3
     search_terms = [
         dict(row["query"])["SearchTerm"]
         for row in live_watchparty.fake.state.requests
         if row["path"].endswith("/Items") and "SearchTerm" in dict(row["query"])
     ]
+    # The literal term first, then the compacted prefix. The prefix is the
+    # whole mechanism: without a second upstream query there are no candidates
+    # to rank, however good the local scoring is.
     assert search_terms[-6:] == [
         "spiderman",
         "spid",
@@ -319,6 +437,11 @@ def test_grouped_search_fuzzily_matches_spacing_punctuation_and_typos(live_watch
 
 
 def test_grouped_search_retries_last_name_prefix_for_misspelled_people(live_watchparty) -> None:
+    """A misspelled surname leaves the first-name prefix with nothing to rank.
+
+    'sean conery' compacts to a 'sean' prefix, which returns candidates that
+    are all poor matches, so the surname gets its own bounded prefix query.
+    """
     live_watchparty.fake.state.search_responses = {
         "sean conery": [],
         "sean": [],
@@ -329,13 +452,14 @@ def test_grouped_search_retries_last_name_prefix_for_misspelled_people(live_watc
     }
     client = _unlocked_client(live_watchparty)
     try:
-        response = client.get("/api/search/grouped", params={"q": "sean conery"})
+        response = client.get("/api/v2/items/search/groups", params={"q": "sean conery"})
     finally:
+        live_watchparty.fake.state.search_responses = None
         client.close()
 
     assert response.status_code == 200
     groups = {group["id"]: group["items"] for group in response.json()["groups"]}
-    assert [item["Name"] for item in groups["people"]] == ["Sean Connery"]
+    assert [item["name"] for item in groups["people"]] == ["Sean Connery"]
     search_terms = [
         dict(row["query"])["SearchTerm"]
         for row in live_watchparty.fake.state.requests
@@ -348,7 +472,7 @@ def test_detail_sections_proxy_artifact_observed_boundaries(live_watchparty) -> 
     client = _unlocked_client(live_watchparty)
     try:
         responses = {
-            section: client.get(f"/api/item/movie-1/sections/{section}")
+            section: client.get(f"/api/v2/items/movie-1/sections/{section}")
             for section in ("related", "trailers", "extras")
         }
     finally:
@@ -370,7 +494,7 @@ def test_personal_actions_are_host_only_and_match_real_requests(live_watchparty)
         json={"client_id": "host-client", "display_name": "Host"},
     ).raise_for_status()
     host.post(
-        "/api/auth/login", json={"username": "Host", "password": "password"}
+        "/api/v2/auth/login", json={"username": "Host", "password": "password"}
     ).raise_for_status()
     guest = httpx.Client(base_url=live_watchparty.url)
     guest.post(
@@ -378,20 +502,23 @@ def test_personal_actions_are_host_only_and_match_real_requests(live_watchparty)
         json={"client_id": "guest-client", "display_name": "Guest"},
     ).raise_for_status()
     try:
-        assert host.put("/api/item/movie-1/favorite", json={"favorite": True}).json() == {
+        assert host.put("/api/v2/items/movie-1/favorite", json={"favorite": True}).json() == {
             "success": True,
             "favorite": True,
         }
-        assert host.put("/api/item/movie-1/played", json={"played": False}).json() == {
+        assert host.put("/api/v2/items/movie-1/played", json={"played": False}).json() == {
             "success": True,
             "played": False,
         }
-        assert host.get("/api/playlists").json()["items"][0]["Id"] == "playlist-1"
-        created = host.post("/api/playlists", json={"name": "Party picks"})
+        assert host.get("/api/v2/playlists").json()["items"][0]["id"] == "playlist-1"
+        created = host.post("/api/v2/playlists", json={"name": "Party picks"})
+        assert created.status_code == 201
         assert created.json() == {"id": "playlist-2", "name": "Party picks"}
-        added = host.post("/api/playlists/playlist-2/items", json={"item_id": "movie-1"})
+        added = host.post("/api/v2/playlists/playlist-2/items", json={"item_id": "movie-1"})
         assert added.json() == {"success": True}
-        assert guest.put("/api/item/movie-1/favorite", json={"favorite": True}).status_code == 403
+        assert (
+            guest.put("/api/v2/items/movie-1/favorite", json={"favorite": True}).status_code == 403
+        )
     finally:
         host.close()
         guest.close()
@@ -420,8 +547,8 @@ def test_personal_actions_are_host_only_and_match_real_requests(live_watchparty)
 def test_series_sections_use_observed_season_and_episode_endpoints(live_watchparty) -> None:
     client = _unlocked_client(live_watchparty)
     try:
-        seasons = client.get("/api/item/series-1/seasons")
-        episodes = client.get("/api/item/series-1/episodes", params={"seasonId": "season-1"})
+        seasons = client.get("/api/v2/items/series-1/seasons")
+        episodes = client.get("/api/v2/items/series-1/episodes", params={"season_id": "season-1"})
     finally:
         client.close()
 
@@ -441,10 +568,10 @@ def test_filtered_prefixes_forward_the_same_filter_contract(live_watchparty) -> 
     client = _unlocked_client(live_watchparty)
     try:
         response = client.post(
-            "/api/items/prefixes/query",
+            "/api/v2/items/prefixes",
             json={
                 "scope": {"parent_id": "library-1"},
-                "sort": {"field": "SortName", "direction": "Ascending"},
+                "sort": {"field": "name", "direction": "ascending"},
                 "filters": {"genres": ["Drama"], "playstate": "unplayed"},
             },
         )
@@ -469,16 +596,16 @@ def test_multi_value_filters_use_the_separator_emby_expects(live_watchparty) -> 
     client = _unlocked_client(live_watchparty)
     try:
         response = client.post(
-            "/api/items/query",
+            "/api/v2/items/query",
             json={
                 "scope": {
                     "parent_id": "library-1",
-                    "include_item_types": ["Movie"],
-                    "media_types": ["Video"],
+                    "include_kinds": ["movie"],
+                    "media_kinds": ["video"],
                     "recursive": True,
                 },
-                "page": {"start_index": 0, "limit": 25},
-                "sort": {"field": "SortName", "direction": "Ascending"},
+                "page": {"start": 0, "limit": 25},
+                "sort": {"field": "name", "direction": "ascending"},
                 "filters": {
                     "genres": ["Drama", "Sci-Fi"],
                     "official_ratings": ["PG-13", "R"],

@@ -1,36 +1,47 @@
 """What /docs and /redoc promise must match what the routes actually return.
 
-These are enumerated from the routers rather than listed by hand, so a route
-added later is covered by existing rather than by someone remembering to add
-it here. That matters more than usual for this file: the published schema is
-the only description of the API most callers will ever read, and a wrong one
-is worse than none because it is trusted.
+These are enumerated from the mounted route surface rather than listed by
+hand, so a route added later is covered by existing rather than by someone
+remembering to add it here. That matters more than usual for this file: the
+published schema is the only description of the API most callers will ever
+read, and a wrong one is worse than none because it is trusted.
+
+Enumerating API_ROUTERS rather than a tuple of modules is deliberate: the
+tuple could fall out of step with what the application mounts, and then this
+file would be checking a surface nobody serves.
 """
 
 from fastapi.routing import APIRoute
 
-from backend.src.routers import admin, auth, avatar, health, library, media, party, quality
+from backend.src.routers import API_ROUTERS
 
-ROUTERS = (admin, auth, avatar, health, library, media, party, quality)
-EMBY_DEPENDENCIES = {"get_emby_client", "get_emby_gateway"}
-# Routes that reach Emby but convert an upstream failure themselves, so a 502
-# can never escape them and declaring one would be its own kind of wrong.
+# Anything that can reach the media server can meet a transport failure.
+UPSTREAM_DEPENDENCIES = {"get_emby_client", "get_emby_gateway", "get_media_server"}
+# Routes that reach the media server but convert an upstream failure
+# themselves, so a 502 can never escape them and declaring one would be its own
+# kind of wrong.
 #
-# Every one of these goes through EmbyClient.authenticate, which is the single
-# method that translates httpx errors into EmbyUnavailableError; the routes
-# then answer with their own domain result. Everywhere else the httpx error
-# propagates to the application-level handler and becomes a 502.
+# The authentication routes go through the provider's authenticate/verify path,
+# which translates transport errors into a domain answer the caller can act on
+# ("server unavailable; check MEDIA_SERVER_URL"). /api/v2/media-server and
+# /api/v2/auth/status only read the configured provider's identity and never
+# leave the process. The intro route swallows every provider failure and
+# degrades to "no intro here", which is what keeps a degraded media server from
+# turning each playback start into a 500.
 #
 # Deliberately an explicit exception list rather than a heuristic: a route
 # added later is assumed to need the 502 until someone states otherwise here,
 # which is the direction that fails safe.
 SELF_HANDLED_UPSTREAM = {
-    ("admin", "/api/admin/login"),
-    ("auth", "/api/auth/login"),
-    ("avatar", "/api/avatar/host/{party_id}"),
-    ("health", "/api/ready"),
-    ("party", "/api/party/create"),
-    ("party", "/api/party/{party_id}/join"),
+    "/api/admin/login",
+    "/api/avatar/host/{party_id}",
+    "/api/ready",
+    "/api/party/create",
+    "/api/party/{party_id}/join",
+    "/api/v2/media-server",
+    "/api/v2/auth/login",
+    "/api/v2/auth/status",
+    "/api/v2/items/{item_id}/intro",
 }
 # Guard name -> the status codes it can produce, which the route must declare.
 GUARD_CODES = {
@@ -52,37 +63,38 @@ def _dependency_names(dependant) -> set[str]:
 
 
 def _routes():
-    for module in ROUTERS:
-        for route in module.router.routes:
+    for router in API_ROUTERS:
+        for route in router.routes:
             if isinstance(route, APIRoute):
-                name = module.__name__.rsplit(".", 1)[-1]
-                yield name, route, _dependency_names(route.dependant)
+                yield route, _dependency_names(route.dependant)
+
+
+def _label(route: APIRoute) -> str:
+    return f"{sorted(route.methods - {'HEAD', 'OPTIONS'})[0]} {route.path}"
 
 
 def _declared(route: APIRoute) -> set[int]:
     """Status codes the published schema lists, router defaults included."""
-    codes = {int(code) for code in route.responses}
-    router_level = getattr(route, "responses", None)
-    del router_level
-    return codes
+    return {int(code) for code in route.responses}
 
 
-def test_every_emby_backed_route_documents_the_upstream_failure() -> None:
-    """An Emby transport failure becomes a 502 through one app-level handler.
+def test_every_media_server_backed_route_documents_the_upstream_failure() -> None:
+    """A transport failure becomes a 502 through one app-level handler.
 
     Because that handler is central rather than per route, nothing forces a
-    route to mention it, and 23 of the 27 Emby-backed routes did not. /docs and
-    /redoc therefore described an error contract the server does not honour.
+    route to mention it. The v1 library router declared it once for all
+    eighteen of its routes; v2 declares it per route, which is exactly the
+    arrangement that let it drift the first time.
     """
     undocumented = [
-        f"{module}: {sorted(route.methods - {'HEAD', 'OPTIONS'})[0]} {route.path}"
-        for module, route, names in _routes()
-        if names & EMBY_DEPENDENCIES
-        and (module, route.path) not in SELF_HANDLED_UPSTREAM
+        _label(route)
+        for route, names in _routes()
+        if names & UPSTREAM_DEPENDENCIES
+        and route.path not in SELF_HANDLED_UPSTREAM
         and 502 not in _declared(route)
     ]
 
-    assert not undocumented, "Emby-backed routes that do not document 502:\n" + "\n".join(
+    assert not undocumented, "media-server-backed routes that do not document 502:\n" + "\n".join(
         sorted(undocumented)
     )
 
@@ -95,10 +107,10 @@ def test_no_route_documents_an_upstream_failure_it_cannot_produce() -> None:
     send, and never finds out.
     """
     overdocumented = [
-        f"{module}: {sorted(route.methods - {'HEAD', 'OPTIONS'})[0]} {route.path}"
-        for module, route, names in _routes()
+        _label(route)
+        for route, names in _routes()
         if 502 in _declared(route)
-        and (not names & EMBY_DEPENDENCIES or (module, route.path) in SELF_HANDLED_UPSTREAM)
+        and (not names & UPSTREAM_DEPENDENCIES or route.path in SELF_HANDLED_UPSTREAM)
     ]
 
     assert not overdocumented, "routes documenting a 502 they cannot return:\n" + "\n".join(
@@ -114,7 +126,7 @@ def test_every_guarded_route_documents_the_codes_its_guard_returns() -> None:
     would treat an authorization failure as an unexpected error.
     """
     gaps = []
-    for module, route, names in _routes():
+    for route, names in _routes():
         expected: set[int] = set()
         for guard, codes in GUARD_CODES.items():
             if guard in names:
@@ -123,9 +135,28 @@ def test_every_guarded_route_documents_the_codes_its_guard_returns() -> None:
             continue
         missing = expected - _declared(route)
         if missing:
-            method = sorted(route.methods - {"HEAD", "OPTIONS"})[0]
-            gaps.append(f"{module}: {method} {route.path} missing {sorted(missing)}")
+            gaps.append(f"{_label(route)} missing {sorted(missing)}")
 
     assert not gaps, "guarded routes whose schema hides their failure modes:\n" + "\n".join(
         sorted(gaps)
+    )
+
+
+def test_every_documented_response_says_what_it_is() -> None:
+    """A response row with no description renders as an empty cell in /docs.
+
+    The routes that hand back raw bytes are the ones that need the sentence
+    most: their schema is a media type and nothing else, so without a
+    description the reader is told a 200 returns image/jpeg and never what the
+    image is of.
+    """
+    undescribed = [
+        f"{_label(route)} -> {code}"
+        for route, _ in _routes()
+        for code, body in route.responses.items()
+        if not str(body.get("description") or "").strip()
+    ]
+
+    assert not undescribed, "documented responses with an empty description:\n" + "\n".join(
+        sorted(undescribed)
     )
