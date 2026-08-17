@@ -216,8 +216,6 @@ async def lifespan(application: FastAPI):
     config: Config = application.state.bootstrap_config
     config.validate_for_startup()
     logger = _setup_logging(config)
-    for warning in config.boot_warnings():
-        logger.warning(warning)
     root: Path = application.state.project_root
 
     async with AsyncExitStack() as resources:
