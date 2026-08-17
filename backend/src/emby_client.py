@@ -9,6 +9,8 @@ from urllib.parse import quote
 
 import httpx
 
+from backend.src import __version__
+
 if TYPE_CHECKING:
     from backend.src.emby_gateway import EmbyGateway
 
@@ -30,7 +32,7 @@ class EmbyClient:
         if access_token:
             auth_value = (
                 f'Emby UserId="{user_id or ""}", Client="WatchParty", '
-                f'Device="Web", DeviceId="{self.device_id}", Version="1.0", '
+                f'Device="Web", DeviceId="{self.device_id}", Version="{__version__}", '
                 f'Token="{access_token}"'
             )
             return {
@@ -48,7 +50,7 @@ class EmbyClient:
             "Content-Type": "application/json",
             "X-Emby-Authorization": (
                 f'Emby Client="WatchParty", Device="Web", '
-                f'DeviceId="{self.device_id}", Version="1.0"'
+                f'DeviceId="{self.device_id}", Version="{__version__}"'
             ),
         }
         try:
