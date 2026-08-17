@@ -30,6 +30,7 @@ from backend.src.providers.models import (
     CatalogQuery,
     CatalogScope,
     CatalogSort,
+    PlaybackPlanError,
     ProviderCredentials,
 )
 from backend.src.routers.auth import api_auth_status, api_login, api_logout
@@ -208,7 +209,7 @@ async def item_prefixes(
 @router.get(
     "/items/filter-options",
     response_model=FilterOptionsResponse,
-    responses=PARTY_UNLOCKED_RESPONSES,
+    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
 )
 async def filter_options(
     parent_id: str | None = None,
@@ -247,7 +248,13 @@ async def search_items(
         access_token=party.host_access_token or "",
         user_id=party.host_user_id or "",
     )
-    page = await provider.search_catalog(q.strip(), limit, credentials)
+    # Length is validated on the raw string, so "   " satisfies min_length and
+    # then reaches the provider as an empty term, which Emby answers with
+    # arbitrary library rows rather than nothing. Guard the stripped value.
+    term = q.strip()
+    if not term:
+        return MediaPageV2(items=[], total=0, start=0)
+    page = await provider.search_catalog(term, limit, credentials)
     return MediaPageV2.model_validate(asdict(page))
 
 
@@ -266,7 +273,11 @@ async def grouped_search(
         access_token=party.host_access_token or "",
         user_id=party.host_user_id or "",
     )
-    page = await provider.search_catalog(q.strip(), 50, credentials)
+    term = q.strip()
+    # Same guard as /items/search: min_length=2 counts whitespace.
+    if len(term) < 2:
+        return GroupedSearchV2(query=term, groups=[])
+    page = await provider.search_catalog(term, 50, credentials)
     definitions = (
         ("movies", "Movies", {"movie"}),
         ("series", "Series", {"series"}),
@@ -280,7 +291,7 @@ async def grouped_search(
         items = [item for item in normalized.items if item.kind in kinds]
         if items:
             groups.append(SearchGroupV2(id=group_id, label=label, items=items))
-    return GroupedSearchV2(query=q.strip(), groups=groups)
+    return GroupedSearchV2(query=term, groups=groups)
 
 
 @router.get(
@@ -334,9 +345,20 @@ async def item_details(
 @router.get(
     "/items/{item_id}/images/{image_type}",
     responses={
-        200: {"content": {"image/jpeg": {}, "image/png": {}, "image/webp": {}}},
-        404: {"description": "Image unavailable"},
+        # The guard spread goes FIRST so the route-specific entries below win.
+        # Spread last, its generic 404 "Party no longer exists" silently
+        # replaced this route's, and a client reading /docs would treat a
+        # missing poster as a dead party and evict a viewer mid-session.
         **PARTY_HOST_TOKEN_RESPONSES,
+        200: {
+            "content": {"image/jpeg": {}, "image/png": {}, "image/webp": {}},
+            "description": "Item poster / image bytes proxied from media server",
+        },
+        404: {"description": "Image unavailable, or party no longer exists"},
+        # Unlike its v1 predecessor this route does not swallow transport
+        # failures, so a down media server reaches the application-level
+        # httpx.HTTPError handler and the caller gets a 502, not a 404.
+        502: {"description": "Media server unavailable"},
     },
 )
 async def item_image(
@@ -379,9 +401,14 @@ async def item_image(
 @router.get(
     "/items/{item_id}/subtitles/{media_source_id}/{subtitle_index}",
     responses={
-        200: {"content": {"text/vtt": {}}},
-        404: {"description": "Subtitle unavailable"},
+        # Guard spread first; see the image route above.
         **PARTY_HOST_TOKEN_RESPONSES,
+        200: {
+            "content": {"text/vtt": {}},
+            "description": "WebVTT subtitle stream",
+        },
+        404: {"description": "Subtitle unavailable, or party no longer exists"},
+        502: {"description": "Media server unavailable"},
     },
 )
 async def item_subtitle(
@@ -422,15 +449,28 @@ async def item_intro(
     item_id: str,
     party_session: PartySession = Depends(require_party_unlocked),
     provider=Depends(get_media_server),
+    logger=Depends(get_logger),
 ):
     party = party_session.party
-    segment = await provider.get_intro(
-        item_id,
-        ProviderCredentials(
-            access_token=party.host_access_token or "",
-            user_id=party.host_user_id or "",
-        ),
-    )
+    # Skip Intro is an enhancement and "no intro here" is already part of this
+    # contract, so a degraded media server must not turn every playback start
+    # into a 500. The adapters only catch httpx.HTTPError, which leaves a
+    # response that is technically fine but not what was promised: a proxy
+    # answering 200 with an HTML error page reaches .json() and raises
+    # JSONDecodeError, and an unexpected body shape raises AttributeError or
+    # ValueError while parsing the ticks. None of those are HTTPError, so
+    # nothing else in the stack maps them.
+    try:
+        segment = await provider.get_intro(
+            item_id,
+            ProviderCredentials(
+                access_token=party.host_access_token or "",
+                user_id=party.host_user_id or "",
+            ),
+        )
+    except Exception as exc:
+        logger.warning("Intro fetch failed item=%s error=%s", item_id, type(exc).__name__)
+        return IntroSegmentV2(has_intro=False)
     if segment is None:
         return IntroSegmentV2(has_intro=False)
     return IntroSegmentV2(
@@ -444,7 +484,10 @@ async def item_intro(
 @router.get(
     "/items/{item_id}/streams",
     response_model=StreamCatalogV2,
-    responses=PARTY_UNLOCKED_RESPONSES,
+    responses={
+        **PARTY_UNLOCKED_RESPONSES,
+        502: {"description": "Could not fetch stream information from the media server"},
+    },
 )
 async def item_streams(
     item_id: str,
@@ -453,14 +496,25 @@ async def item_streams(
     provider=Depends(get_media_server),
 ):
     party = party_session.party
-    streams = await provider.get_streams(
-        item_id,
-        media_source_id,
-        ProviderCredentials(
-            access_token=party.host_access_token or "",
-            user_id=party.host_user_id or "",
-        ),
-    )
+    # PlaybackPlanError means the server answered but had nothing to say about
+    # this item. Nothing at the HTTP seam catches it (the only registered
+    # handler is for httpx.HTTPError, and the only other catch is in the socket
+    # playback path), so unmapped it escapes as a 500 and points the operator at
+    # an application bug instead of at their media server.
+    try:
+        streams = await provider.get_streams(
+            item_id,
+            media_source_id,
+            ProviderCredentials(
+                access_token=party.host_access_token or "",
+                user_id=party.host_user_id or "",
+            ),
+        )
+    except PlaybackPlanError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not fetch stream information from the media server",
+        ) from exc
     return StreamCatalogV2.model_validate(asdict(streams))
 
 
@@ -506,7 +560,7 @@ async def series_episodes(
 @router.put(
     "/items/{item_id}/favorite",
     response_model=FavoriteResultV2,
-    responses=PARTY_HOST_RESPONSES,
+    responses={**PARTY_HOST_RESPONSES, 502: {"description": "Media server unavailable"}},
 )
 async def set_favorite(
     item_id: str,
@@ -526,7 +580,7 @@ async def set_favorite(
 @router.put(
     "/items/{item_id}/played",
     response_model=PlayedResultV2,
-    responses=PARTY_HOST_RESPONSES,
+    responses={**PARTY_HOST_RESPONSES, 502: {"description": "Media server unavailable"}},
 )
 async def set_played(
     item_id: str,
@@ -546,7 +600,7 @@ async def set_played(
 @router.get(
     "/playlists",
     response_model=MediaPageV2,
-    responses=PARTY_HOST_RESPONSES,
+    responses={**PARTY_HOST_RESPONSES, 502: {"description": "Media server unavailable"}},
 )
 async def playlists(
     party_session: PartySession = Depends(require_party_host),
@@ -564,7 +618,7 @@ async def playlists(
 @router.post(
     "/playlists",
     response_model=PlaylistCreatedV2,
-    responses=PARTY_HOST_RESPONSES,
+    responses={**PARTY_HOST_RESPONSES, 502: {"description": "Media server unavailable"}},
     status_code=201,
 )
 async def create_playlist(
@@ -584,7 +638,7 @@ async def create_playlist(
 @router.post(
     "/playlists/{playlist_id}/items",
     response_model=ActionResultV2,
-    responses=PARTY_HOST_RESPONSES,
+    responses={**PARTY_HOST_RESPONSES, 502: {"description": "Media server unavailable"}},
 )
 async def add_playlist_item(
     playlist_id: str,

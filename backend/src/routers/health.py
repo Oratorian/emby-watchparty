@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 
 from backend.src import __codename__, __version__
 from backend.src.dependencies import get_avatar_store, get_config, get_media_server
-from backend.src.schemas import HealthResponse
+from backend.src.schemas import HealthResponse, ReadinessResponse
 
 router = APIRouter(prefix="/api", tags=["health"])
 
@@ -29,7 +29,18 @@ def health():
     )
 
 
-@router.get("/ready")
+@router.get(
+    "/ready",
+    response_model=ReadinessResponse,
+    responses={
+        200: {"description": "Every check passed"},
+        # Declared because it is the answer this endpoint exists to give. A
+        # probe written from a document showing only 200 accepts any JSON and
+        # never goes unready, which is the failure the endpoint was added to
+        # prevent.
+        503: {"description": "At least one check failed; see `checks`"},
+    },
+)
 async def ready(
     config=Depends(get_config),
     media_server=Depends(get_media_server),
