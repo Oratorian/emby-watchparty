@@ -40,6 +40,67 @@ if TYPE_CHECKING:
     from backend.src.emby_client import EmbyClient
 
 
+def _with_without(control_id: str, label: str) -> dict:
+    positive, negative = ("yes", "no") if control_id == "locked" else ("with", "without")
+    return {
+        "id": control_id,
+        "label": label,
+        "kind": "select",
+        "values": [
+            {"value": "any", "label": "Any"},
+            {"value": positive, "label": "With"},
+            {"value": negative, "label": "Without"},
+        ],
+    }
+
+
+# The tail of the filter rail: controls whose options are fixed rather than
+# derived from the library catalog. query_items translates every one of them
+# into an Emby query parameter, and the rail is data-driven off this list, so a
+# control missing here is a filter the viewer cannot reach even though the
+# server would honour it.
+#
+# Deliberately not shared with the Jellyfin adapter. JellyfinProvider._supported
+# drops all eleven from the outgoing query because Jellyfin has no equivalent
+# parameters, so offering them there would render a rail whose controls do
+# nothing.
+_STATIC_CONTROLS: tuple[dict, ...] = (
+    {
+        "id": "video_type",
+        "label": "Video type",
+        "kind": "multi",
+        "values": [
+            {"value": value, "label": value} for value in ("VideoFile", "Bluray", "Dvd", "Iso")
+        ],
+    },
+    {
+        "id": "resolution",
+        "label": "Resolution",
+        "kind": "select",
+        "values": [{"value": "any", "label": "Any"}]
+        + [{"value": value, "label": value} for value in ("4K", "1080p", "720p", "SD")],
+    },
+    {"id": "is_3d", "label": "3D", "kind": "toggle", "values": []},
+    _with_without("subtitles", "Subtitles"),
+    _with_without("trailers", "Trailers"),
+    _with_without("extras", "Extras"),
+    _with_without("theme_songs", "Theme songs"),
+    _with_without("theme_videos", "Theme videos"),
+    _with_without("locked", "Locked"),
+    _with_without("overview", "Overview"),
+    {
+        "id": "missing_provider_ids",
+        "label": "Missing metadata",
+        "kind": "multi",
+        "values": [
+            {"value": "imdb", "label": "IMDb Id"},
+            {"value": "tmdb", "label": "MovieDb Id"},
+            {"value": "tvdb", "label": "Tvdb Id"},
+        ],
+    },
+)
+
+
 class EmbyProvider:
     identity = ProviderIdentity(type="emby", display_name="Emby")
     capabilities = ProviderCapabilities(filter_controls=True)
