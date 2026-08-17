@@ -130,9 +130,26 @@ def normalize_item(raw: dict) -> MediaItem:
 
 
 def normalize_page(raw: dict) -> MediaPage:
+    """A page of rows, minus the ones no viewer could use.
+
+    An Emby-family server will happily return a row with no Name (an orphaned
+    folder is the usual one). MediaItem.name accepts that as an empty string and
+    the grid then draws a blank, clickable card. Dropping the row is only half
+    the fix: the count has to follow the drop, or paging walks past the end of
+    the list and a page shows one fewer title than its own counter claims.
+    """
+    supplied = raw.get("Items", []) or []
+    rows = [row for row in supplied if isinstance(row, dict)]
+    named = [row for row in rows if str(row.get("Name") or "").strip()]
+    total = raw.get("TotalRecordCount")
+    # Measured against what the server sent, not against `rows`. Both filters
+    # drop entries, so counting from the already-filtered list left a non-dict
+    # row in the total and reintroduced the paging drift on the other side.
+    if isinstance(total, int) and len(named) != len(supplied):
+        total = max(0, total - (len(supplied) - len(named)))
     return MediaPage(
-        items=tuple(normalize_item(item) for item in raw.get("Items", [])),
-        total=raw.get("TotalRecordCount"),
+        items=tuple(normalize_item(item) for item in named),
+        total=total,
         start=int(raw.get("StartIndex") or 0),
     )
 
