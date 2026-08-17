@@ -325,16 +325,26 @@ def register(ctx):
             hls_registry.install(plan)
 
         run_time_seconds = party.current_video.run_time_seconds
-        await emby_client.report_playback_start(
-            item_id=item_id,
-            media_source_id=media_source_id,
-            play_session_id=play_session_id,
-            position_seconds=start_seconds,
-            audio_index=audio_index,
-            subtitle_index=subtitle_index if subtitle_index != -1 else None,
-            run_time_seconds=run_time_seconds,
-            access_token=access_token,
-            user_id=user_id,
+        # Through the provider, not emby_client. On Jellyfin the legacy name is
+        # an alias for the adapter and the call only worked by __getattr__
+        # falling through to the raw EmbyClient, which left
+        # JellyfinProvider.report_playback unreachable and the reporting path
+        # unnegotiated. EmbyProvider.report_playback forwards the identical
+        # kwargs to the identical client method, so the Emby wire format does
+        # not move.
+        await media_server.report_playback(
+            PlaybackEvent(
+                type=PlaybackEventType.START,
+                credentials=ProviderCredentials(access_token or "", user_id or ""),
+                item_id=item_id,
+                media_source_id=media_source_id,
+                play_session_id=play_session_id,
+                position_seconds=start_seconds,
+                audio_index=audio_index,
+                subtitle_index=subtitle_index if subtitle_index != -1 else None,
+                run_time_seconds=run_time_seconds,
+                is_paused=False,
+            )
         )
 
         logger.info(
@@ -352,23 +362,32 @@ def register(ctx):
 
         access_token, user_id = _host_creds(party)
         current_video = party.current_video
-        if current_video:
-            await media_server.stop_playback(
-                PlaybackEvent(
-                    type=PlaybackEventType.STOP,
-                    credentials=ProviderCredentials(access_token or "", user_id or ""),
-                    audio_index=stream.audio_index,
-                    subtitle_index=stream.subtitle_index,
-                    run_time_seconds=current_video.run_time_seconds,
-                    is_paused=False,
-                    item_id=current_video.item_id,
-                    media_source_id=stream.media_source_id,
-                    play_session_id=stream.play_session_id,
-                    position_seconds=position_seconds,
+        # The revoke is in a finally because the stream is already popped from
+        # party.user_streams above: if anything between here and there raises,
+        # nothing else can ever reach this plan to revoke it, and it keeps the
+        # host's token alive for the life of the process. The provider contract
+        # says stop_playback returns a bool rather than raising, and both
+        # adapters honour it, but this loop also runs from _stop_all_user_streams
+        # where one escaped exception would strand every remaining viewer.
+        try:
+            if current_video:
+                await media_server.stop_playback(
+                    PlaybackEvent(
+                        type=PlaybackEventType.STOP,
+                        credentials=ProviderCredentials(access_token or "", user_id or ""),
+                        audio_index=stream.audio_index,
+                        subtitle_index=stream.subtitle_index,
+                        run_time_seconds=current_video.run_time_seconds,
+                        is_paused=False,
+                        item_id=current_video.item_id,
+                        media_source_id=stream.media_source_id,
+                        play_session_id=stream.play_session_id,
+                        position_seconds=position_seconds,
+                    )
                 )
-            )
-        if hls_registry is not None and stream.stream_id:
-            hls_registry.revoke(stream.stream_id)
+        finally:
+            if hls_registry is not None and stream.stream_id:
+                hls_registry.revoke(stream.stream_id)
 
     async def _stop_all_user_streams(party, position_seconds=0):
         """Stop all per-user transcodes."""
@@ -1380,20 +1399,27 @@ def register(ctx):
             if not decision.allowed:
                 return
 
-        await emby_client.report_playback_progress(
-            item_id=commit.video.item_id,
-            media_source_id=commit.stream.media_source_id,
-            play_session_id=commit.stream.play_session_id,
-            position_seconds=current_time,
-            is_paused=not commit.playing,
-            event_name="TimeUpdate",
-            audio_index=commit.stream.audio_index,
-            subtitle_index=(
-                commit.stream.subtitle_index if commit.stream.subtitle_index != -1 else None
-            ),
-            run_time_seconds=commit.video.run_time_seconds,
-            access_token=commit.host_access_token,
-            user_id=commit.host_user_id,
+        # event_name="TimeUpdate" is dropped deliberately: it is already the
+        # default on report_playback_progress, so passing it was redundant and
+        # the Emby payload is unchanged.
+        await media_server.report_playback(
+            PlaybackEvent(
+                type=PlaybackEventType.PROGRESS,
+                credentials=ProviderCredentials(
+                    commit.host_access_token or "",
+                    commit.host_user_id or "",
+                ),
+                item_id=commit.video.item_id,
+                media_source_id=commit.stream.media_source_id,
+                play_session_id=commit.stream.play_session_id,
+                position_seconds=current_time,
+                is_paused=not commit.playing,
+                audio_index=commit.stream.audio_index,
+                subtitle_index=(
+                    commit.stream.subtitle_index if commit.stream.subtitle_index != -1 else None
+                ),
+                run_time_seconds=commit.video.run_time_seconds,
+            )
         )
 
     @sio.on("stream_ready")

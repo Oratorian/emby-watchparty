@@ -2500,3 +2500,65 @@ def test_host_logout_drops_playback_plans_holding_that_host_token(tmp_path) -> N
             )
 
     asyncio.run(exercise())
+
+
+def test_playback_start_reports_through_the_provider_not_the_raw_client() -> None:
+    """Reporting must use the negotiated provider API, not __getattr__ fallthrough.
+
+    The socket handlers called emby_client.report_playback_start directly. On
+    Jellyfin that name is an alias for the adapter, so the call only worked by
+    __getattr__ forwarding to the raw EmbyClient underneath, which left
+    JellyfinProvider.report_playback unreachable dead code and the reporting
+    payload unnegotiated.
+
+    Asserted at the payload, because both routes end at the same URL once the
+    gateway strips the /emby prefix: only the body distinguishes them.
+    """
+    import asyncio as _asyncio
+
+    from backend.src.providers.models import PlaybackEvent, PlaybackEventType
+
+    sent: list[dict] = []
+
+    class _Response:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {}
+
+    class _Gateway:
+        async def post(self, path, json=None, **_kwargs):
+            sent.append({"path": path, "body": json})
+            return _Response()
+
+    from backend.src.emby_client import EmbyClient
+
+    client = EmbyClient("http://jellyfin.test", "api-key", logging.getLogger("t"), _Gateway())
+    provider = JellyfinProvider(client)
+
+    event = PlaybackEvent(
+        type=PlaybackEventType.START,
+        credentials=ProviderCredentials(TEST_JELLYFIN_ACCESS_TOKEN, "jellyfin-user-1"),
+        item_id="movie-1",
+        media_source_id="source-1",
+        play_session_id="session-1",
+        position_seconds=12.5,
+        is_paused=False,
+    )
+    assert _asyncio.run(provider.report_playback(event)) is True
+
+    assert len(sent) == 1
+    assert sent[0]["path"] == "/Sessions/Playing"
+    # Jellyfin's shape, from JellyfinProvider._send_playback_event. The raw
+    # EmbyClient builds a different body, so this pins which one ran.
+    assert sent[0]["body"] == {
+        "ItemId": "movie-1",
+        "MediaSourceId": "source-1",
+        "PlaySessionId": "session-1",
+        "PositionTicks": 125_000_000,
+        "IsPaused": False,
+        "CanSeek": True,
+    }
