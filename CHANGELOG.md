@@ -18,6 +18,14 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **Four provider variables became two.** `EMBY_SERVER_URL` and `JELLYFIN_SERVER_URL` are now `MEDIA_SERVER_URL`; `EMBY_API_KEY` and `JELLYFIN_API_KEY` are now `MEDIA_SERVER_API_KEY`. `MEDIA_SERVER_TYPE` is unchanged and still has to be stated. The address and the credential were never provider-specific; only the type was, and it already decides which server answers them.
+
+  **Existing deployments must rename these before upgrading**, in `.env`, in the compose `environment:` block, or in the TrueNAS/CasaOS app settings, wherever you set them. There is no alias and no fallback read: a retired name left in place is a boot error naming its replacement, and the container comes up serving 503 with the fields listed on stderr until it is fixed. Blanking the value is not enough, since a declared but empty `EMBY_API_KEY=` still counts as declared; remove the line.
+
+  `python -m backend.migration_preflight` reports the rename as a REQUIRED ACTION before you upgrade, and [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) carries the full mapping. Failing loudly is deliberate: reading the old value as a fallback would have let a half-renamed deployment boot against the default `http://localhost:8096` and show an empty library with nothing to explain it.
+
 ### Changed
 
 - `/api/ready` now also requires the media server to accept the configured API key, not just to answer. A deployment with a reachable server and a stale or non-admin key reported ready before and reports 503 now, so a monitor that was green can go red on upgrade without the server having changed. The `checks.emby` key is retained for existing consumers and now mirrors the overall status rather than reachability alone, which previously let it report `true` inside a `not_ready` body.
