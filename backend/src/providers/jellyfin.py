@@ -679,10 +679,30 @@ class JellyfinProvider:
         transcoding_url = source.get("TranscodingUrl")
         if not transcoding_url or source.get("TranscodingSubProtocol") != "hls":
             raise PlaybackPlanError("Jellyfin returned a non-HLS playback plan")
-        master_url = urljoin(f"{self._client.server_url}/", transcoding_url)
         configured = urlparse(self._client.server_url)
+        base_path = configured.path.rstrip("/")
+        # TranscodingUrl is root-relative and carries no base path, even when
+        # Jellyfin's own Base URL is configured. urljoin treats a leading "/"
+        # as absolute and discards the base, so a server at
+        # http://host:8096/jellyfin was asked for /Videos/... at the root.
+        # Jellyfin answers that with a redirect to the real location, the proxy
+        # refuses to follow it (following a media server's redirect is an SSRF
+        # vector), and playback dies as a 502 whose log line says only
+        # "Media server redirected an HLS master request".
+        if (
+            base_path
+            and transcoding_url.startswith("/")
+            and not transcoding_url.startswith(f"{base_path}/")
+        ):
+            transcoding_url = f"{base_path}{transcoding_url}"
+        master_url = urljoin(f"{self._client.server_url}/", transcoding_url)
         resolved = urlparse(master_url)
-        path_parts = resolved.path.strip("/").split("/")
+        # Compare below the base path, so /jellyfin/Videos/<id>/... reads the
+        # same as /Videos/<id>/... does at the root.
+        relative_path = resolved.path
+        if base_path and relative_path.startswith(base_path):
+            relative_path = relative_path[len(base_path) :]
+        path_parts = relative_path.strip("/").split("/")
         path_item_id = (
             path_parts[1] if len(path_parts) >= 3 and path_parts[0].lower() == "videos" else ""
         )
@@ -694,6 +714,10 @@ class JellyfinProvider:
         if (
             resolved.scheme not in {"http", "https"}
             or (resolved.scheme, resolved.netloc) != (configured.scheme, configured.netloc)
+            # The plan must stay inside the configured base path. Without this a
+            # crafted TranscodingUrl could walk out of /jellyfin to any other
+            # app sharing the host.
+            or not resolved.path.startswith(f"{base_path}/")
             or not resolved.path.lower().endswith(".m3u8")
             or canonical_item_id(path_item_id) != canonical_item_id(request.item_id)
         ):

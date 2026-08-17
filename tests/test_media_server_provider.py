@@ -22,6 +22,7 @@ from backend.src.providers.models import (
     PlaybackEventType,
     PlaybackMethod,
     PlaybackPlan,
+    PlaybackPlanError,
     PlaybackRequest,
     ProviderCredentials,
     ProviderIdentity,
@@ -2562,3 +2563,88 @@ def test_playback_start_reports_through_the_provider_not_the_raw_client() -> Non
         "IsPaused": False,
         "CanSeek": True,
     }
+
+
+def _plan_for_server(server_url: str, transcoding_url: str):
+    """Run prepare_playback against a stub gateway and return the plan."""
+    import asyncio as _asyncio
+
+    from backend.src.emby_client import EmbyClient
+
+    class _Response:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "PlaySessionId": "session-1",
+                "MediaSources": [
+                    {
+                        "Id": "source-1",
+                        "TranscodingUrl": transcoding_url,
+                        "TranscodingSubProtocol": "hls",
+                        "TranscodingReasons": ["VideoCodecNotSupported"],
+                        "MediaStreams": [],
+                    }
+                ],
+            }
+
+    class _Gateway:
+        async def post(self, _path, **_kwargs):
+            return _Response()
+
+    provider = JellyfinProvider(
+        EmbyClient(server_url, "api-key", logging.getLogger("t"), _Gateway())
+    )
+    return _asyncio.run(
+        provider.prepare_playback(
+            PlaybackRequest(
+                item_id="movie-1",
+                credentials=ProviderCredentials(TEST_JELLYFIN_ACCESS_TOKEN, "jellyfin-user-1"),
+                media_source_id="source-1",
+                quality="480p-1000",
+            )
+        )
+    )
+
+
+def test_a_base_path_survives_into_the_master_url() -> None:
+    """TranscodingUrl is root-relative and omits the base path.
+
+    urljoin treats its leading "/" as absolute and drops the base, so a server
+    at http://host/jellyfin was asked for /Videos/... at the root. Jellyfin
+    answers with a redirect to the real location, the proxy refuses to follow
+    it because following a media server's redirect is an SSRF vector, and
+    playback dies as a 502 reading only "Media server redirected an HLS master
+    request".
+    """
+    plan = _plan_for_server("http://jf.test:8096/jellyfin", "/Videos/movie-1/master.m3u8")
+
+    assert plan.master.url == "http://jf.test:8096/jellyfin/Videos/movie-1/master.m3u8"
+
+
+def test_a_root_server_is_unchanged() -> None:
+    """The overwhelmingly common case must not move."""
+    plan = _plan_for_server("http://jf.test:8096", "/Videos/movie-1/master.m3u8")
+
+    assert plan.master.url == "http://jf.test:8096/Videos/movie-1/master.m3u8"
+
+
+def test_a_transcoding_url_that_already_carries_the_base_path_is_not_doubled() -> None:
+    plan = _plan_for_server("http://jf.test:8096/jellyfin", "/jellyfin/Videos/movie-1/master.m3u8")
+
+    assert plan.master.url == "http://jf.test:8096/jellyfin/Videos/movie-1/master.m3u8"
+
+
+def test_a_plan_escaping_the_base_path_is_rejected() -> None:
+    """Staying inside the base path is a boundary, not a formatting detail.
+
+    Without it a crafted TranscodingUrl could walk out of /jellyfin and reach
+    any other application sharing the host.
+    """
+    with pytest.raises(PlaybackPlanError):
+        _plan_for_server(
+            "http://jf.test:8096/jellyfin", "http://jf.test:8096/other-app/master.m3u8"
+        )
