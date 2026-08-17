@@ -478,10 +478,9 @@ def _required_cell(setting: dict[str, Any]) -> str:
     """The Required column, including any conditional requirement.
 
     `production.required_when` is validated by _validate_production and was then
-    rendered by nothing, so the reference told an operator JELLYFIN_SERVER_URL
-    and JELLYFIN_API_KEY were "optional" and stopped there. The boot gate
-    rejects both as blank the moment MEDIA_SERVER_TYPE=jellyfin, so the one
-    document describing them read as a licence to leave them empty.
+    rendered by nothing, so a conditionally required field read as plain
+    "optional" in the one document describing it -- a licence to leave blank
+    something the boot gate rejects the moment its condition holds.
     """
     required = setting["required"]
     condition = (setting.get("production") or {}).get("required_when")
