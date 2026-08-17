@@ -12,8 +12,8 @@
   },
   "servers": [
     {
-      "url": "https://emby.andrew.home/emby",
-      "description": "central"
+      "url": "http://localhost:8096/emby",
+      "description": "Emby server"
     }
   ],
   "paths": {
