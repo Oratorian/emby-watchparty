@@ -599,3 +599,112 @@ describe('browse ordering', () => {
     expect(queryBody(fetchMock).sort.field).toBe('index')
   })
 })
+
+describe('field projection', () => {
+  // toMatchObject ignores missing keys, so every existing projection assertion
+  // would still pass if projectMediaItem returned {Id, Name, Type} and nothing
+  // else. A dropped, renamed or unit-wrong field is exactly the class of bug
+  // that reached users twice: the tagline that never rendered, and Tags read
+  // from a field Emby does not send. This uses toEqual so the shape is pinned.
+  const fullItem = {
+    id: 'item-1',
+    name: 'Arrival',
+    kind: 'movie',
+    collection_kind: 'movies',
+    overview: 'A linguist meets visitors.',
+    runtime_seconds: 696,
+    production_year: 2016,
+    parent_id: 'library-1',
+    series_id: 'series-1',
+    series_name: 'A Series',
+    season_id: 'season-1',
+    season_name: 'Season 1',
+    index_number: 3,
+    parent_index_number: 1,
+    is_folder: false,
+    is_playable: true,
+    is_browsable: false,
+    has_primary_image: true,
+    backdrop_count: 2,
+    primary_image_aspect_ratio: 1.78,
+    user_state: {
+      playback_position_seconds: 12,
+      played_percentage: 25.5,
+      played: false,
+      favorite: true,
+    },
+    media_source_count: 2,
+  }
+
+  it('projects every field, with the units the UI expects', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      items: [fullItem],
+      total: 1,
+      start: 0,
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const page = await api.libraries()
+
+    expect(page.Items[0]).toEqual({
+      Id: 'item-1',
+      Name: 'Arrival',
+      Type: 'Movie',
+      CollectionType: 'movies',
+      Overview: 'A linguist meets visitors.',
+      // Seconds on the wire, ticks in the UI. A unit slip here is silent.
+      RunTimeTicks: 6_960_000_000,
+      ProductionYear: 2016,
+      ParentId: 'library-1',
+      SeriesId: 'series-1',
+      SeriesName: 'A Series',
+      SeasonId: 'season-1',
+      SeasonName: 'Season 1',
+      IndexNumber: 3,
+      ParentIndexNumber: 1,
+      IsFolder: false,
+      ImageTags: { Primary: 'available' },
+      BackdropImageTags: ['0', '1'],
+      PrimaryImageAspectRatio: 1.78,
+      UserData: {
+        PlaybackPositionTicks: 120_000_000,
+        PlayedPercentage: 25.5,
+        Played: false,
+        IsFavorite: true,
+      },
+      MediaSourceCount: 2,
+    })
+  })
+
+  it('drops nulls rather than passing them through as null', async () => {
+    // The UI treats a missing optional as absent; a literal null renders as
+    // "null" in several places rather than being skipped.
+    const bare = {
+      ...fullItem,
+      collection_kind: null,
+      runtime_seconds: null,
+      production_year: null,
+      parent_id: null,
+      series_id: null,
+      series_name: null,
+      season_id: null,
+      season_name: null,
+      index_number: null,
+      parent_index_number: null,
+      has_primary_image: false,
+      backdrop_count: 0,
+      primary_image_aspect_ratio: null,
+      user_state: { ...fullItem.user_state, played_percentage: null },
+    }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      items: [bare], total: 1, start: 0,
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const projected = { ...(await api.libraries()).Items[0] } as Record<string, unknown>
+
+    expect(Object.values(projected)).not.toContain(null)
+    expect(projected.ImageTags).toEqual({})
+    expect(projected.BackdropImageTags).toEqual([])
+  })
+})

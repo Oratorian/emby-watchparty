@@ -27,20 +27,30 @@ test('@jellyfin-real login browse play seek reconnect stop', async ({ page }) =>
   await expect(page.getByText('Synthetic HLS', { exact: true })).toBeVisible()
   await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
 
+  // Every filter step asserts BOTH halves: the excluded title disappears and
+  // the matching one survives. Only the exclusion was checked before, so a
+  // filter returning the empty set satisfied all eight steps. That matters
+  // here more than anywhere else: this journey is the whole mitigation for
+  // fake-versus-real divergence, and the only place MinCommunityRating,
+  // MinCriticRating, OfficialRatings, Years, Genres and Studios ever reach
+  // a real Jellyfin.
   await page.getByRole('button', { name: /^Filters/ }).click()
   await page.getByLabel('Playstate').selectOption('played')
   await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Synthetic HLS', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Reset All', exact: true }).click()
   await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: /Favorite/ }).click()
   await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Synthetic HLS', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Reset All', exact: true }).click()
   await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Open Genre filter', exact: true }).click()
   await page.getByLabel('Journey Genre', { exact: true }).check()
   await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Synthetic HLS', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Reset All', exact: true }).click()
   await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
 
@@ -48,23 +58,27 @@ test('@jellyfin-real login browse play seek reconnect stop', async ({ page }) =>
   await page.getByRole('spinbutton', { name: 'Exact year', exact: true }).fill('2020')
   await page.getByRole('button', { name: 'Apply year filter', exact: true }).click()
   await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Synthetic HLS', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Close Year filter', exact: true }).click()
   await page.getByRole('button', { name: 'Reset All', exact: true }).click()
   await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
 
   await page.getByLabel('Community rating').selectOption('8')
   await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Synthetic HLS', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Reset All', exact: true }).click()
   await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
 
   await page.getByLabel('Critic rating').selectOption('80')
   await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Synthetic HLS', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Reset All', exact: true }).click()
   await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Open Parental rating filter', exact: true }).click()
   await page.getByLabel('PG-13', { exact: true }).check()
   await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Synthetic HLS', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Close Parental rating filter', exact: true }).click()
   await page.getByRole('button', { name: 'Reset All', exact: true }).click()
   await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
@@ -73,6 +87,7 @@ test('@jellyfin-real login browse play seek reconnect stop', async ({ page }) =>
   await page.getByRole('button', { name: 'Open Studio filter', exact: true }).click()
   await page.getByLabel('Journey Studio', { exact: true }).check()
   await expect(page.getByText('Other Movie', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Synthetic HLS', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Close Studio filter', exact: true }).click()
   await page.getByRole('button', { name: 'Reset All', exact: true }).click()
   await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()

@@ -17,6 +17,10 @@ class FakeJellyfinState:
     playback_requests: list[dict] = field(default_factory=list)
     playback_reports: list[dict] = field(default_factory=list)
     playback_path_item_id: str | None = None
+    # When set, /Users/{userId}/Items answers 404. That route is deprecated
+    # since Jellyfin 10.9 and slated for removal, so this is how a caller
+    # still using it can be made to fail here rather than on a future server.
+    reject_deprecated_user_items: bool = False
 
     def record(self, request: Request) -> None:
         query = {
@@ -133,8 +137,9 @@ def create_fake_jellyfin_app(state: FakeJellyfinState | None = None) -> FastAPI:
     @app.get("/Items")
     @app.get("/Users/{user_id}/Items")
     async def user_items(request: Request, user_id: str | None = None):
-        del user_id
         state.record(request)
+        if user_id is not None and state.reject_deprecated_user_items:
+            return Response("Gone", status_code=404)
         if request.query_params.get("EnableTotalRecordCount") == "true":
             prefix = request.query_params.get("NameStartsWith")
             if prefix == "A":

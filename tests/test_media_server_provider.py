@@ -2856,3 +2856,113 @@ def test_a_missing_intro_source_is_absence_not_an_error(failure) -> None:
         _config("emby"),
     )
     assert _asyncio.run(emby.get_intro("movie-1", credentials)) is None
+
+
+def test_browsing_survives_a_server_that_has_dropped_the_deprecated_route(tmp_path) -> None:
+    """The grid and the A-Z rail must both be off /Users/{userId}/Items.
+
+    That route has been deprecated since Jellyfin 10.9 and is slated for
+    removal. The rail was still on it while the grid used /Items, so one screen
+    queried two endpoints and only one of them had a future. The existing
+    10.10.7/10.11.11 parametrize could not see this: the fake reports a version
+    string and behaves identically either way, so both runs were byte-identical.
+    """
+    fake_state = FakeJellyfinState(reject_deprecated_user_items=True)
+    app = create_app(
+        config=_config("jellyfin"),
+        project_root=tmp_path,
+        enable_update_check=False,
+        http_transport=httpx.ASGITransport(app=create_fake_jellyfin_app(fake_state)),
+    )
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            created = await client.post(
+                "/api/party/create", json={"client_id": "client-1", "display_name": "Alice"}
+            )
+            party_id = created.json()["party_id"]
+            await client.post(
+                f"/api/party/{party_id}/join",
+                json={"client_id": "client-1", "display_name": "Alice"},
+            )
+            await client.post(
+                "/api/v2/auth/login", json={"username": "Alice", "password": "secret"}
+            )
+
+            body = {"scope": {"parent_id": "jellyfin-library-1"}, "page": {"limit": 10}}
+            grid = await client.post("/api/v2/items/query", json=body)
+            rail = await client.post("/api/v2/items/prefixes", json=body)
+
+            assert grid.status_code == 200, "the grid hit a route this server has removed"
+            assert rail.status_code == 200, "the A-Z rail hit a route this server has removed"
+
+    asyncio.run(exercise())
+    assert not any(
+        request["path"].startswith("/Users/") and request["path"].endswith("/Items")
+        for request in fake_state.requests
+    )
+
+
+def test_two_viewers_with_different_browsers_get_different_codecs() -> None:
+    """Per-viewer negotiation, the thing 2.1.2 was for.
+
+    Streams are built per viewer, so one person whose browser decodes HEVC
+    should keep it while another gets h264, in the same party and the same
+    item. Nothing on the Jellyfin path asserted this: the DeviceProfile is
+    built inside prepare_playback from request.client_codecs, so a change that
+    hoisted or cached it across viewers would silently give everyone whatever
+    the first viewer reported.
+    """
+    import asyncio as _asyncio
+
+    from backend.src.emby_client import EmbyClient
+
+    seen: list[str] = []
+
+    class _Response:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "PlaySessionId": "session-1",
+                "MediaSources": [
+                    {
+                        "Id": "source-1",
+                        "TranscodingUrl": "/Videos/movie-1/master.m3u8",
+                        "TranscodingSubProtocol": "hls",
+                        "MediaStreams": [],
+                    }
+                ],
+            }
+
+    class _Gateway:
+        async def post(self, _path, json=None, **_kwargs):
+            seen.append(json["DeviceProfile"]["TranscodingProfiles"][0]["VideoCodec"])
+            return _Response()
+
+    provider = JellyfinProvider(
+        EmbyClient("http://jf.test", "api-key", logging.getLogger("t"), _Gateway())
+    )
+
+    def plan_for(codecs: set[str]):
+        return _asyncio.run(
+            provider.prepare_playback(
+                PlaybackRequest(
+                    item_id="movie-1",
+                    credentials=ProviderCredentials(TEST_JELLYFIN_ACCESS_TOKEN, "u"),
+                    media_source_id="source-1",
+                    quality="1080p-10000",
+                    client_codecs=frozenset(codecs),
+                )
+            )
+        )
+
+    plan_for({"h264", "hevc"})
+    plan_for({"h264"})
+
+    assert "hevc" in seen[0], "the HEVC-capable viewer was not offered hevc"
+    assert "hevc" not in seen[-1], "hevc was offered to a viewer that never reported it"
+    assert seen[0] != seen[-1], "both viewers were negotiated with the same profile"
