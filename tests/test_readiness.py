@@ -34,11 +34,9 @@ def test_ready_reports_neutral_jellyfin_checks(tmp_path: Path) -> None:
             WATCH_PARTY_PORT=5000,
             APP_PREFIX="",
             SESSION_EXPIRY=3600,
-            EMBY_SERVER_URL="",
-            EMBY_API_KEY="",
             MEDIA_SERVER_TYPE="jellyfin",
-            JELLYFIN_SERVER_URL="http://jellyfin.test",
-            JELLYFIN_API_KEY="jellyfin-api-key",
+            MEDIA_SERVER_URL="http://jellyfin.test",
+            MEDIA_SERVER_API_KEY="jellyfin-api-key",
             APP_ENV="development",
             SESSION_SECRET=TEST_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
@@ -72,7 +70,7 @@ def test_ready_reports_neutral_jellyfin_checks(tmp_path: Path) -> None:
     }
 
 
-def test_not_ready_when_emby_api_key_is_missing(
+def test_not_ready_when_the_api_key_is_missing(
     tmp_path: Path,
     fake_emby_server,
 ) -> None:
@@ -82,8 +80,9 @@ def test_not_ready_when_emby_api_key_is_missing(
             WATCH_PARTY_PORT=5000,
             APP_PREFIX="",
             SESSION_EXPIRY=3600,
-            EMBY_SERVER_URL=fake_emby_server.url,
-            EMBY_API_KEY="",
+            MEDIA_SERVER_TYPE="emby",
+            MEDIA_SERVER_URL=fake_emby_server.url,
+            MEDIA_SERVER_API_KEY="",
             APP_ENV="development",
             SESSION_SECRET=TEST_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,

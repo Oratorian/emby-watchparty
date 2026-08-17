@@ -16,8 +16,9 @@ def _config(runtime: RuntimeConfig | None = None, **overrides) -> Config:
         "WATCH_PARTY_PORT": 5000,
         "APP_PREFIX": "",
         "SESSION_EXPIRY": 86400,
-        "EMBY_SERVER_URL": "http://emby.test",
-        "EMBY_API_KEY": "admin-key",
+        "MEDIA_SERVER_TYPE": "emby",
+        "MEDIA_SERVER_URL": "http://emby.test",
+        "MEDIA_SERVER_API_KEY": "admin-key",
         "APP_ENV": "production",
         "SESSION_SECRET": "",
         "SESSION_COOKIE_SECURE": True,
@@ -61,7 +62,7 @@ def test_failed_runtime_save_rolls_back_every_field_type() -> None:
 
 
 class UpstreamHostnameTests(unittest.TestCase):
-    """`EMBY_SERVER_URL` addresses a container, not a public host.
+    """`MEDIA_SERVER_URL` addresses a container, not a public host.
 
     Docker Compose service and container names may contain underscores and
     Docker's embedded DNS resolves them, so rejecting them stranded anyone
@@ -71,7 +72,7 @@ class UpstreamHostnameTests(unittest.TestCase):
     def test_underscored_service_name_is_accepted(self):
         _config(
             SESSION_SECRET="s" * 32,
-            EMBY_SERVER_URL="http://emby_server:8096",
+            MEDIA_SERVER_URL="http://emby_server:8096",
         ).validate_for_startup()
 
     def test_underscored_host_still_rejected_for_cors_origins(self):
@@ -87,24 +88,27 @@ class UpstreamHostnameTests(unittest.TestCase):
         # A trailing space in a Docker environment variable is invisible in
         # every management UI this project targets. SESSION_SECRET was
         # already stripped; these two were not, so the space reached the
-        # URL validator and the Emby auth header.
+        # URL validator and the upstream auth header.
         with (
             tempfile.TemporaryDirectory() as root,
             mock.patch.dict(
                 os.environ,
-                {"EMBY_SERVER_URL": "  http://emby.test  ", "EMBY_API_KEY": "  admin-key  "},
+                {
+                    "MEDIA_SERVER_URL": "  http://emby.test  ",
+                    "MEDIA_SERVER_API_KEY": "  admin-key  ",
+                },
             ),
         ):
             config = Config.from_env(project_root=Path(root))
-        assert config.EMBY_SERVER_URL == "http://emby.test"
-        assert config.EMBY_API_KEY == "admin-key"
+        assert config.MEDIA_SERVER_URL == "http://emby.test"
+        assert config.MEDIA_SERVER_API_KEY == "admin-key"
 
     def test_genuinely_malformed_upstream_url_still_rejected(self):
         errors = _config(
             SESSION_SECRET="s" * 32,
-            EMBY_SERVER_URL="http://emby server:8096",
+            MEDIA_SERVER_URL="http://emby server:8096",
         ).startup_errors()
-        assert "EMBY_SERVER_URL" in errors
+        assert "MEDIA_SERVER_URL" in errors
 
 
 class ProxyTopologyGateTests(unittest.TestCase):
@@ -180,41 +184,161 @@ class LegacyBootPrecedenceTests(unittest.TestCase):
                     assert Config.from_env(root).ENABLE_HLS_TOKEN_VALIDATION is False
 
 
+class RetiredProviderFieldTests(unittest.TestCase):
+    """3.0 consolidated four provider variables into two, with no aliases.
+
+    Reading a retired name as a fallback would have looked kinder and been
+    worse: the deployment keeps a variable the documentation no longer
+    mentions, and on the day the fallback goes away it boots against the
+    default localhost URL and serves an empty library with no explanation.
+    A boot error naming the replacement is therefore the entire migration
+    path, which is why each retired name is asserted on its own.
+
+    These all resolve through a temp project root so a real .env sitting in
+    the repo cannot supply a value none of them declared.
+    """
+
+    RETIRED_TO_REPLACEMENT = (
+        ("EMBY_SERVER_URL", "MEDIA_SERVER_URL"),
+        ("JELLYFIN_SERVER_URL", "MEDIA_SERVER_URL"),
+        ("EMBY_API_KEY", "MEDIA_SERVER_API_KEY"),
+        ("JELLYFIN_API_KEY", "MEDIA_SERVER_API_KEY"),
+    )
+
+    def test_each_retired_name_in_the_environment_names_its_replacement(self):
+        for retired, replacement in self.RETIRED_TO_REPLACEMENT:
+            with (
+                self.subTest(retired=retired),
+                tempfile.TemporaryDirectory() as raw_root,
+                mock.patch.dict(os.environ, {retired: "a-value-from-2.x"}, clear=True),
+            ):
+                errors = Config.from_env(Path(raw_root)).startup_errors()
+
+                assert errors[retired] == (
+                    f"was replaced by {replacement} in 3.0; rename it and remove the old name"
+                )
+
+    def test_a_retired_name_in_dotenv_names_its_replacement(self):
+        # .env is where an upgrading deployment's old value actually lives.
+        # A Compose file or an Unraid template gets re-pulled; the .env the
+        # operator hand-edited in 2.x is carried across untouched.
+        with tempfile.TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            (root / ".env").write_text("JELLYFIN_API_KEY=an-old-key\n", encoding="utf-8")
+
+            with mock.patch.dict(os.environ, {}, clear=True):
+                errors = Config.from_env(root).startup_errors()
+
+        assert errors["JELLYFIN_API_KEY"] == (
+            "was replaced by MEDIA_SERVER_API_KEY in 3.0; rename it and remove the old name"
+        )
+
+    def test_a_retired_value_is_never_read_as_a_fallback(self):
+        # The signpost is not an alias. With only the retired names set,
+        # the new fields resolve to their plain defaults, exactly as if
+        # nothing had been declared at all.
+        with (
+            tempfile.TemporaryDirectory() as raw_root,
+            mock.patch.dict(
+                os.environ,
+                {
+                    "EMBY_SERVER_URL": "http://retired-emby.example:8096",
+                    "EMBY_API_KEY": "retired-key",
+                },
+                clear=True,
+            ),
+        ):
+            config = Config.from_env(Path(raw_root))
+
+        assert config.MEDIA_SERVER_URL == "http://localhost:8096"
+        assert config.MEDIA_SERVER_API_KEY == ""
+
+    def test_a_retired_name_is_fatal_rather_than_advisory(self):
+        # Boot errors are what put the app into unconfigured mode, so this
+        # is the difference between "operator is told" and "operator finds
+        # out from an empty library".
+        with (
+            tempfile.TemporaryDirectory() as raw_root,
+            mock.patch.dict(
+                os.environ,
+                {
+                    "MEDIA_SERVER_URL": "http://emby.test",
+                    "MEDIA_SERVER_API_KEY": "admin-key",
+                    "EMBY_SERVER_URL": "http://emby.test",
+                },
+                clear=True,
+            ),
+        ):
+            config = Config.from_env(Path(raw_root))
+
+        with pytest.raises(ValueError, match="EMBY_SERVER_URL"):
+            config.validate_for_startup()
+
+    def test_the_new_names_alone_raise_no_retirement_error(self):
+        with (
+            tempfile.TemporaryDirectory() as raw_root,
+            mock.patch.dict(
+                os.environ,
+                {
+                    "MEDIA_SERVER_TYPE": "jellyfin",
+                    "MEDIA_SERVER_URL": "http://jellyfin.test",
+                    "MEDIA_SERVER_API_KEY": "jellyfin-key",
+                },
+                clear=True,
+            ),
+        ):
+            config = Config.from_env(Path(raw_root))
+
+        # The whole dict, not just the absence of the retirement error: a
+        # deployment that declares only the two new names is a complete
+        # deployment and has to boot clean.
+        assert config.startup_errors() == {}
+        assert config.MEDIA_SERVER_URL == "http://jellyfin.test"
+        assert config.MEDIA_SERVER_API_KEY == "jellyfin-key"
+
+
 class ProductionConfigTests(unittest.TestCase):
     def test_emby_remains_the_default_media_server(self):
-        config = _config(SESSION_SECRET="s" * 32)
+        # Resolved through from_env with nothing declared, because that is
+        # where the default now lives: EnvConfig carries no class-level
+        # default for MEDIA_SERVER_TYPE, so asserting it on a hand-built
+        # EnvConfig would only echo the value the test itself passed.
+        with (
+            tempfile.TemporaryDirectory() as raw_root,
+            mock.patch.dict(os.environ, {}, clear=True),
+        ):
+            config = Config.from_env(Path(raw_root))
 
         assert config.MEDIA_SERVER_TYPE == "emby"
-        assert config.MEDIA_SERVER_URL == "http://emby.test"
-        assert config.MEDIA_SERVER_API_KEY == "admin-key"
 
-    def test_jellyfin_uses_only_jellyfin_credentials(self):
+    def test_jellyfin_reads_the_same_url_and_key_as_emby(self):
+        # The address and the credential were never provider-specific, so
+        # switching provider is a one-line change to MEDIA_SERVER_TYPE and
+        # nothing else. Only the type distinguishes the two.
         config = _config(
             SESSION_SECRET="s" * 32,
             MEDIA_SERVER_TYPE="jellyfin",
-            JELLYFIN_SERVER_URL="https://jellyfin.example/base",
-            JELLYFIN_API_KEY="jellyfin-key",
-            EMBY_SERVER_URL="https://ignored-emby.example",
-            EMBY_API_KEY="ignored-emby-key",
+            MEDIA_SERVER_URL="https://jellyfin.example/base",
+            MEDIA_SERVER_API_KEY="jellyfin-key",
         )
 
         config.validate_for_startup()
         assert config.MEDIA_SERVER_URL == "https://jellyfin.example/base"
         assert config.MEDIA_SERVER_API_KEY == "jellyfin-key"
-        assert config.boot_warnings() == (
-            "Ignoring inactive provider fields: EMBY_API_KEY, EMBY_SERVER_URL",
-        )
 
-    def test_jellyfin_never_falls_back_to_emby_credentials(self):
+    def test_missing_url_and_key_are_reported_under_the_shared_names(self):
+        # Reported as MEDIA_SERVER_*, whatever the provider: an operator
+        # running Jellyfin must not be sent hunting for a JELLYFIN_ prefixed
+        # variable that no longer exists.
         errors = _config(
             SESSION_SECRET="s" * 32,
             MEDIA_SERVER_TYPE="jellyfin",
-            JELLYFIN_SERVER_URL="",
-            JELLYFIN_API_KEY="",
+            MEDIA_SERVER_URL="",
+            MEDIA_SERVER_API_KEY="",
         ).startup_errors()
 
-        assert "JELLYFIN_SERVER_URL" in errors
-        assert "JELLYFIN_API_KEY" in errors
+        assert "MEDIA_SERVER_URL" in errors
+        assert "MEDIA_SERVER_API_KEY" in errors
 
     def test_unknown_media_server_type_is_rejected(self):
         errors = _config(
@@ -232,11 +356,11 @@ class ProductionConfigTests(unittest.TestCase):
         with pytest.raises(ValueError, match="at least 32"):
             _config(SESSION_SECRET=REJECTED_SESSION_SECRET).validate_for_startup()
 
-    def test_production_rejects_invalid_emby_url(self):
-        with pytest.raises(ValueError, match="EMBY_SERVER_URL"):
+    def test_production_rejects_invalid_media_server_url(self):
+        with pytest.raises(ValueError, match="MEDIA_SERVER_URL"):
             _config(
                 SESSION_SECRET="s" * 32,
-                EMBY_SERVER_URL="file:///etc/passwd",
+                MEDIA_SERVER_URL="file:///etc/passwd",
             ).validate_for_startup()
 
     def test_production_rejects_other_insecure_boot_settings(self):
@@ -251,7 +375,11 @@ class ProductionConfigTests(unittest.TestCase):
                 None,
                 "CORS_ALLOWED_ORIGINS",
             ),
-            ({"SESSION_SECRET": "s" * 32, "EMBY_API_KEY": ""}, None, "EMBY_API_KEY"),
+            (
+                {"SESSION_SECRET": "s" * 32, "MEDIA_SERVER_API_KEY": ""},
+                None,
+                "MEDIA_SERVER_API_KEY",
+            ),
             (
                 {"SESSION_SECRET": "s" * 32, "ENABLE_HLS_TOKEN_VALIDATION": False},
                 None,
@@ -267,7 +395,7 @@ class ProductionConfigTests(unittest.TestCase):
             APP_ENV="development",
             SESSION_COOKIE_SECURE=False,
             CORS_ALLOWED_ORIGINS=("*",),
-            EMBY_API_KEY="",
+            MEDIA_SERVER_API_KEY="",
         ).validate_for_startup()
 
     def test_hls_validation_is_rejected_as_runtime_update(self):
@@ -327,7 +455,7 @@ class ProductionConfigTests(unittest.TestCase):
                     CORS_ALLOWED_ORIGINS=(origin,),
                 ).validate_for_startup()
 
-    def test_fully_validates_emby_url_while_allowing_base_paths(self):
+    def test_fully_validates_media_server_url_while_allowing_base_paths(self):
         invalid = (
             "https://emby.example:notaport",
             "https://emby.example:99999",
@@ -347,13 +475,13 @@ class ProductionConfigTests(unittest.TestCase):
             with self.subTest(url=url):
                 errors = _config(
                     SESSION_SECRET="s" * 32,
-                    EMBY_SERVER_URL=url,
+                    MEDIA_SERVER_URL=url,
                 ).startup_errors()
-                assert "EMBY_SERVER_URL" in errors
+                assert "MEDIA_SERVER_URL" in errors
 
         _config(
             SESSION_SECRET="s" * 32,
-            EMBY_SERVER_URL="https://emby.example/media/emby/",
+            MEDIA_SERVER_URL="https://emby.example/media/emby/",
         ).validate_for_startup()
 
 

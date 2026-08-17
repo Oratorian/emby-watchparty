@@ -25,8 +25,9 @@ def _invalid_production_config(*, prefix: str = "") -> Config:
             WATCH_PARTY_PORT=5000,
             APP_PREFIX=prefix,
             SESSION_EXPIRY=3600,
-            EMBY_SERVER_URL="http://emby.test",
-            EMBY_API_KEY="test-key",
+            MEDIA_SERVER_TYPE="emby",
+            MEDIA_SERVER_URL="http://emby.test",
+            MEDIA_SERVER_API_KEY="test-key",
             APP_ENV="production",
             SESSION_SECRET=REJECTED_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
@@ -180,13 +181,13 @@ def test_stale_bootstrap_artefacts_are_ignored_and_removed(tmp_path: Path, monke
     data = tmp_path / "data"
     data.mkdir()
     (data / "bootstrap.json").write_text(
-        '{"CONFIGURED": true, "APP_ENV": "production", "EMBY_API_KEY": "from-stale-file"}',
+        '{"CONFIGURED": true, "APP_ENV": "production", "MEDIA_SERVER_API_KEY": "from-stale-file"}',
         encoding="utf-8",
     )
     (data / "setup-token").write_text("stale-token\n", encoding="utf-8")
 
     config = Config.from_env(project_root=tmp_path)
-    assert config.EMBY_API_KEY != "from-stale-file", "persisted file was still being read"
+    assert config.MEDIA_SERVER_API_KEY != "from-stale-file", "persisted file was still being read"
 
     app = create_app(project_root=tmp_path, enable_update_check=False)
     assert (data / "setup-token").exists(), "setup token removed before startup succeeded"

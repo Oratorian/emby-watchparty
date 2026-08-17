@@ -11,13 +11,19 @@ from backend.src.config import Config, EnvConfig, RuntimeConfig
 from tests.support.asgi import asgi_client
 from tests.support.credentials import TEST_SESSION_SECRET
 
+# The upstream error text below has to carry the *same* string the app was
+# configured with, or the "never logged" assertion would only be proving that
+# a literal invented inside this file stayed out of the log. One constant
+# feeds both so the two cannot drift apart.
+UPSTREAM_API_KEY = "super-secret-api-key"
+
 
 class SensitiveFailureTransport(httpx.AsyncBaseTransport):
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
         password = body["Pw"]
         raise httpx.ConnectError(
-            f"upstream rejected password={password}&api_key=super-secret-api-key",
+            f"upstream rejected password={password}&api_key={UPSTREAM_API_KEY}",
             request=request,
         )
 
@@ -29,8 +35,9 @@ def _config() -> Config:
             WATCH_PARTY_PORT=5000,
             APP_PREFIX="",
             SESSION_EXPIRY=3600,
-            EMBY_SERVER_URL="http://emby.test",
-            EMBY_API_KEY="super-secret-api-key",
+            MEDIA_SERVER_TYPE="emby",
+            MEDIA_SERVER_URL="http://emby.test",
+            MEDIA_SERVER_API_KEY=UPSTREAM_API_KEY,
             APP_ENV="development",
             SESSION_SECRET=TEST_SESSION_SECRET,
             SESSION_COOKIE_SECURE=False,
@@ -68,7 +75,7 @@ def test_admin_login_logs_redact_upstream_credentials(
     asyncio.run(_login_with_sensitive_upstream_failure(tmp_path, caplog))
 
     assert "submitted-password" not in caplog.text
-    assert "super-secret-api-key" not in caplog.text
+    assert UPSTREAM_API_KEY not in caplog.text
     assert "ConnectError" in caplog.text
 
 
@@ -97,7 +104,7 @@ def test_party_login_reports_unreachable_emby_without_blending_with_credentials(
         assert response.status_code == 200
         assert response.json() == {
             "success": False,
-            "message": "Emby server unavailable; ask the operator to verify EMBY_SERVER_URL",
+            "message": "Emby server unavailable; ask the operator to verify MEDIA_SERVER_URL",
             "username": None,
             "is_admin": False,
             "is_host": False,

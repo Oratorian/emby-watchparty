@@ -79,6 +79,7 @@ def _run_watchparty(
             WATCH_PARTY_PORT=5000,
             APP_PREFIX="",
             SESSION_EXPIRY=3600,
+            MEDIA_SERVER_TYPE="emby",
             MEDIA_SERVER_URL=fake_emby_server.url,
             MEDIA_SERVER_API_KEY="test-key",
             APP_ENV="development",
