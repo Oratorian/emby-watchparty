@@ -17,13 +17,33 @@ import httpx
 
 from backend.src.v2_schemas import CatalogFiltersV2
 
-# Control id -> the filter field its values are submitted as. Only the closed
-# vocabularies are listed: these are the ones where a control offering a token
-# the query side does not accept produces a filter the viewer can select and
-# the server then rejects with a 422.
-CLOSED_VOCABULARIES = {
-    "resolution": "resolutions",
+# Every filter CatalogFiltersV2 accepts, mapped to the control id that lets a
+# viewer set it. This is the only hand-written half, and it is guarded: the
+# test below fails when a field exists in the schema and not in here, so
+# adding a filter forces an explicit decision about how it is reached.
+#
+# None means "deliberately not on the rail", with the reason, because silence
+# is what let eleven of these go missing for a release.
+FILTER_FIELD_TO_CONTROL: dict[str, str | None] = {
+    "playstate": "playstate",
+    "favorite": "favorite",
+    "duplicates": "duplicates",
+    "genres": "genre",
+    "official_ratings": "official_rating",
+    "studios": "studio",
+    "tags": "tag",
+    "years": "year",
+    "community_rating_min": "community_rating",
+    "critic_rating_min": "critic_rating",
+    "containers": "container",
+    "video_codecs": "video_codec",
+    "video_types": "video_type",
+    "resolutions": "resolution",
+    "is_3d": "is_3d",
+    "audio_codecs": "audio_codec",
+    "audio_layouts": "audio_layout",
     "subtitles": "subtitles",
+    "subtitle_codecs": "subtitle_codec",
     "trailers": "trailers",
     "extras": "extras",
     "theme_songs": "theme_songs",
@@ -31,7 +51,38 @@ CLOSED_VOCABULARIES = {
     "locked": "locked",
     "overview": "overview",
     "missing_provider_ids": "missing_provider_ids",
+    # Set by clicking a name in the details view, not from the filter rail.
+    "person_ids": None,
+    # No catalogue endpoint backs these, so there is nothing to populate a
+    # control with. The query side still accepts them for a caller that knows
+    # the tag it wants.
+    "audio_languages": None,
+    "subtitle_languages": None,
 }
+
+
+def _closed_vocabularies() -> dict[str, str]:
+    """Control id -> filter field, for every filter with a fixed set of tokens.
+
+    Derived rather than listed. A closed vocabulary is exactly a field whose
+    annotation is a Literal, so asking the schema is both the definition and
+    the answer; the previous hand-written copy could omit a filter and the
+    check would simply not run for it.
+
+    These are the ones that matter because a control offering a token the
+    query side does not accept produces a filter the viewer can select and the
+    server then rejects with a 422.
+    """
+    closed: dict[str, str] = {}
+    for field_name, control_id in FILTER_FIELD_TO_CONTROL.items():
+        if control_id is None:
+            continue
+        annotation = CatalogFiltersV2.model_fields[field_name].annotation
+        if get_origin(annotation) is list:
+            annotation = get_args(annotation)[0]
+        if get_origin(annotation) is Literal:
+            closed[control_id] = field_name
+    return closed
 
 
 def _accepted_tokens(field_name: str) -> set[str]:
@@ -158,6 +209,27 @@ def test_library_query_maps_viewer_filters_to_emby(live_watchparty) -> None:
     assert {"UserData", "MediaSourceCount"} <= set(fields.split(","))
 
 
+def test_every_query_filter_is_classified_as_reachable_or_deliberately_not() -> None:
+    """The guard that the eleven-filter regression needed and did not have.
+
+    The old check walked a hand-written list of expected controls, so a filter
+    added to CatalogFiltersV2 without a control was invisible to it: absent
+    from the schema list, absent from the rail, absent from the failure. This
+    walks the schema instead, so the test cannot be quietly outgrown.
+    """
+    declared = set(CatalogFiltersV2.model_fields)
+    classified = set(FILTER_FIELD_TO_CONTROL)
+
+    unclassified = sorted(declared - classified)
+    assert not unclassified, (
+        "CatalogFiltersV2 accepts filters that FILTER_FIELD_TO_CONTROL does not "
+        f"account for: {unclassified}. Give each one a control id, or None with "
+        "the reason it is not on the rail."
+    )
+    stale = sorted(classified - declared)
+    assert not stale, f"FILTER_FIELD_TO_CONTROL names filters the schema dropped: {stale}"
+
+
 def test_filter_options_offer_every_control_the_query_side_accepts(live_watchparty) -> None:
     """The rail is data-driven, so a control absent here is a filter nobody can reach.
 
@@ -259,7 +331,10 @@ def test_filter_options_offer_every_control_the_query_side_accepts(live_watchpar
             {"value": "tvdb", "label": "Tvdb Id"},
         ],
     }
-    missing = [control_id for control_id in statics if control_id not in controls]
+    # Derived from the schema, not from `statics`. A filter added to
+    # CatalogFiltersV2 and given a control id here has to actually appear.
+    reachable = {control_id for control_id in FILTER_FIELD_TO_CONTROL.values() if control_id}
+    missing = sorted(reachable - set(controls))
     assert not missing, f"filter controls the query side accepts but the rail cannot set: {missing}"
     for control_id, values in statics.items():
         assert controls[control_id]["values"] == values, control_id
@@ -313,10 +388,14 @@ def test_no_filter_control_offers_a_value_the_query_schema_rejects(live_watchpar
     assert response.status_code == 200
     controls = {control["id"]: control for control in response.json()["controls"]}
     rejected = []
-    for control_id, field_name in CLOSED_VOCABULARIES.items():
-        control = controls.get(control_id)
-        if control is None:
-            continue
+    closed = _closed_vocabularies()
+    absent = sorted(control_id for control_id in closed if control_id not in controls)
+    assert not absent, (
+        f"closed-vocabulary controls the rail never rendered: {absent}. "
+        "Skipping them silently is how eleven went missing for a release."
+    )
+    for control_id, field_name in closed.items():
+        control = controls[control_id]
         accepted = _accepted_tokens(field_name)
         rejected.extend(
             f"{control_id}: {value['value']!r} not in {sorted(accepted)}"
