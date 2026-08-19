@@ -344,6 +344,7 @@ async def item_details(
 
 @router.get(
     "/items/{item_id}/images/{image_type}",
+    response_class=Response,
     responses={
         # The guard spread goes FIRST so the route-specific entries below win.
         # Spread last, its generic 404 "Party no longer exists" silently
@@ -400,6 +401,7 @@ async def item_image(
 
 @router.get(
     "/items/{item_id}/subtitles/{media_source_id}/{subtitle_index}",
+    response_class=Response,
     responses={
         # Guard spread first; see the image route above.
         **PARTY_HOST_TOKEN_RESPONSES,

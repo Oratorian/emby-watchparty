@@ -179,6 +179,7 @@ def recover(
 
 @router.get(
     "/host/{party_id}",
+    response_class=Response,
     responses={
         200: {
             "content": {"image/jpeg": {}, "image/png": {}, "image/webp": {}},
@@ -240,6 +241,7 @@ async def host_avatar(
 
 @router.get(
     "/{avatar_uuid}",
+    response_class=Response,
     responses={
         200: {
             "content": {
