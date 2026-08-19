@@ -279,6 +279,7 @@ def _rewrite_playlist(
 
 @router.api_route(
     "/{item_id}/master.m3u8",
+    response_class=Response,
     methods=["GET", "HEAD"],
     responses={
         200: {
@@ -286,6 +287,10 @@ def _rewrite_playlist(
             "description": "HLS master playlist (rewritten to proxy URLs)",
         },
         **PARTY_HOST_TOKEN_RESPONSES,
+        400: {
+            "content": {"application/json": {}},
+            "description": "Unapproved HLS query parameter or unsafe subpath",
+        },
         500: {"description": "Internal proxy error"},
         502: {"description": "Upstream media-server request failed"},
     },
@@ -430,6 +435,7 @@ async def proxy_hls_master(
 
 @router.api_route(
     "/{stream_id}/resources/{resource_id}",
+    response_class=Response,
     methods=["GET", "HEAD"],
     responses={
         200: {
@@ -437,6 +443,12 @@ async def proxy_hls_master(
             "description": "Registered nested HLS playlist",
         },
         **PARTY_HOST_TOKEN_RESPONSES,
+        416: {
+            "description": (
+                "Range not satisfiable, relayed from upstream with the "
+                "`Content-Range: bytes */<length>` a client needs to retry"
+            ),
+        },
         502: {"description": "Upstream media-server request failed"},
     },
 )
@@ -569,6 +581,7 @@ async def proxy_hls_resource(
 
 @router.get(
     "/{item_id}/{subpath:path}",
+    response_class=Response,
     responses={
         200: {
             "content": {
@@ -579,6 +592,16 @@ async def proxy_hls_resource(
             "description": "HLS variant playlist or .ts segment",
         },
         **PARTY_HOST_TOKEN_RESPONSES,
+        400: {
+            "content": {"application/json": {}},
+            "description": "Unapproved HLS query parameter or unsafe subpath",
+        },
+        416: {
+            "description": (
+                "Range not satisfiable, relayed from upstream with the "
+                "`Content-Range: bytes */<length>` a client needs to retry"
+            ),
+        },
         500: {"description": "Internal proxy error"},
         502: {"description": "Upstream media-server request failed"},
     },
