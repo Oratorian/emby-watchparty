@@ -36,6 +36,11 @@ vi.mock('hls.js', () => ({
 
     on() {}
 
+    // The component registers its loadSource hook with once(), so the stub
+    // needs it or every mount throws before reaching what these tests are
+    // actually about.
+    once() {}
+
     destroy() {}
   },
 }))
