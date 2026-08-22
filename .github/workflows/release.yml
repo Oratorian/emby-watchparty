@@ -10,6 +10,10 @@ on:
         description: 'Docker image tag (e.g. 1.4.1-alpha1)'
         required: false
         default: 'dev'
+      docker_tags:
+        description: 'Extra tags, comma separated (e.g. devel,nightly). Empty publishes the version tag only.'
+        required: false
+        default: ''
       docker_only:
         description: 'Build Docker image only (no release)'
         required: false
@@ -147,20 +151,76 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Decide which tags this build publishes
+        id: tag_plan
+        env:
+          # Through env, never interpolated into the script body. On the
+          # dispatch path these are attacker-controlled by this workflow's
+          # own threat model, and the job holds packages:write.
+          RAW_TAGS: ${{ github.event.inputs.docker_tags }}
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+          IS_PRERELEASE: ${{ steps.get_version.outputs.IS_PRERELEASE }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          plan=()
+
+          if [[ "$EVENT" != "workflow_dispatch" ]]; then
+            plan+=('type=semver,pattern={{version}}')
+            if [[ "$IS_PRERELEASE" == "true" ]]; then
+              plan+=('type=raw,value=nightly' 'type=raw,value=devel')
+            else
+              plan+=('type=semver,pattern={{major}}.{{minor}}')
+              plan+=('type=semver,pattern={{major}}')
+              plan+=('type=raw,value=latest')
+            fi
+          else
+            plan+=("type=raw,value=${VERSION}")
+            IFS="," read -ra requested <<< "${RAW_TAGS:-}"
+            for tag in "${requested[@]:-}"; do
+              # Trim the ends only. Stripping internal whitespace would
+              # turn a comma the operator forgot, "devel nightly", into
+              # the valid-looking tag "develnightly" and publish it.
+              tag="${tag#"${tag%%[![:space:]]*}"}"
+              tag="${tag%"${tag##*[![:space:]]}"}"
+              [[ -z "$tag" ]] && continue
+              if [[ ! "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+                echo "::error::Refusing '$tag': not a valid Docker tag."
+                exit 1
+              fi
+              # The one combination worth refusing outright rather than
+              # leaving for the approver to catch.
+              if [[ "$tag" == "latest" && "$IS_PRERELEASE" == "true" ]]; then
+                echo "::error::Refusing to point latest at prerelease ${VERSION}."
+                exit 1
+              fi
+              plan+=("type=raw,value=${tag}")
+            done
+          fi
+
+          echo "Publishing these tags:"
+          printf "  %s\n" "${plan[@]}"
+          {
+            echo "TAGS<<TAGPLAN_EOF"
+            printf "%s\n" "${plan[@]}"
+            echo "TAGPLAN_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=semver,pattern={{version}},enable=${{ github.event_name != 'workflow_dispatch' }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name != 'workflow_dispatch' && steps.get_version.outputs.IS_PRERELEASE != 'true' }}
-            type=semver,pattern={{major}},enable=${{ github.event_name != 'workflow_dispatch' && steps.get_version.outputs.IS_PRERELEASE != 'true' }}
-            type=raw,value=latest,enable=${{ github.event_name != 'workflow_dispatch' && steps.get_version.outputs.IS_PRERELEASE != 'true' }}
-            type=raw,value=${{ steps.get_version.outputs.VERSION }},enable=${{ github.event_name == 'workflow_dispatch' }}
-            type=raw,value=${{ steps.get_version.outputs.VERSION }},enable=${{ steps.get_version.outputs.IS_PRERELEASE == 'true' }}
-            type=raw,value=nightly,enable=${{ steps.get_version.outputs.IS_PRERELEASE == 'true' }}
-            type=raw,value=devel,enable=${{ steps.get_version.outputs.IS_PRERELEASE == 'true' }}
+          # A tag push still derives its tags from semver: a release is the
+          # thing that should move the line markers. A manual dispatch states
+          # them instead, so what it republishes is visible in the form and at
+          # the approval rather than inferred from the version string.
+          #
+          # That inference is what made two beta lines unsafe. `devel` and
+          # `nightly` moved on any prerelease with no notion of which line it
+          # came from, so a 2.1.x beta would have taken the pointer the 3.0
+          # testers follow and handed them a 2.x image.
+          tags: ${{ steps.tag_plan.outputs.TAGS }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
