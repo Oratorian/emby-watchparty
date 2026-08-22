@@ -82,7 +82,22 @@ function attachStream(url: string) {
     // double-apply the offset.
     hls = new Hls(hlsConfig)
     hls.attachMedia(video)
-    hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+    // `once`, deliberately. MEDIA_ATTACHED fires on every attachMedia, and
+    // hls.js re-attaches during its own error recovery:
+    //
+    //   recoverMediaError() { detachMedia(); attachMedia(media); startLoad(time) }
+    //
+    // That startLoad(time) restores the playhead correctly. With a sticky
+    // listener the re-attach then called loadSource() again, and loadSource
+    // is the only thing that fires MANIFEST_LOADING, whose handler does
+    // `lastCurrentTime = startPosition = 0`. So the library recovered the
+    // position and we immediately threw it away, restarting from the top of
+    // the stream and broadcasting that as a seek to the whole party.
+    //
+    // Nothing is lost by firing once: attachStream() destroys the instance
+    // and builds a new one for every stream change, so a legitimate reload
+    // gets its own listener.
+    hls.once(Hls.Events.MEDIA_ATTACHED, () => {
       hls!.loadSource(url)
     })
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
