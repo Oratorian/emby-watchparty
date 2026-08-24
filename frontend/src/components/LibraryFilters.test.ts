@@ -51,7 +51,7 @@ describe('LibraryFilters', () => {
     expect(wrapper.find('button[aria-label="Open Studio filter"]').exists()).toBe(true)
   })
 
-  it('keeps large option catalogs compact and searchable', async () => {
+  it('shows every option in large catalogs and keeps them searchable', async () => {
     const genres = Array.from({ length: 30 }, (_, index) => ({
       value: index === 20 ? 'Drama' : `Genre ${index + 1}`,
       label: index === 20 ? 'Drama' : `Genre ${index + 1}`,
@@ -67,12 +67,35 @@ describe('LibraryFilters', () => {
     expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(0)
 
     await wrapper.get('button[aria-label="Open Genre filter"]').trigger('click')
-    expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(8)
-    expect(wrapper.text()).toContain('22 more options')
+    expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(30)
+    expect(wrapper.text()).not.toContain('more options')
 
     await wrapper.get('input[aria-label="Search Genre options"]').setValue('Drama')
     expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(1)
     expect(wrapper.text()).toContain('Drama')
+  })
+
+  it('closes an option popover when clicking outside its filter control', async () => {
+    const wrapper = mount(LibraryFilters, {
+      attachTo: document.body,
+      props: {
+        controls: [{
+          id: 'genre', label: 'Genre', kind: 'multi',
+          values: [{ value: 'Drama', label: 'Drama' }],
+        }],
+        modelValue: {},
+      },
+    })
+
+    await wrapper.get('button.filter-toggle').trigger('click')
+    await wrapper.get('button[aria-label="Open Genre filter"]').trigger('click')
+    expect(wrapper.find('.option-popover').exists()).toBe(true)
+
+    document.body.click()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.option-popover').exists()).toBe(false)
+    wrapper.unmount()
   })
 
   it('applies exact, range, and decade year modes only after confirmation', async () => {
