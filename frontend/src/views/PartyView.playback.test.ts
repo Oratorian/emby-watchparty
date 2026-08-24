@@ -260,3 +260,89 @@ describe('what the control strip is told about the current stream', () => {
     wrapper.unmount()
   })
 })
+
+describe('video selection lifecycle', () => {
+  beforeEach(() => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+    socket.emit.mockClear()
+    reloading.value = false
+    localStorage.setItem('emby-watchparty-username', 'Alice')
+    localStorage.setItem('emby-watchparty-client-id', CLIENT_ID)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })))
+  })
+
+  function pending(selectedBy = CLIENT_ID) {
+    return {
+      selection_id: 'selection-1', item_id: 'episode-1', title: 'The Test Episode',
+      selected_by: selectedBy, selected_by_username: 'Alice', overview: '',
+      status: 'preparing', production_year: 2024, run_time_seconds: 2700,
+      item_type: 'Episode', series_name: 'Test Series', season_number: 2,
+      episode_number: 4, started_at: new Date().toISOString(), error: null,
+    }
+  }
+
+  it('shows artwork and metadata instead of no-video copy while preparing', async () => {
+    const { wrapper, party } = await joinedParty(null)
+    party.pendingVideoSelection = pending() as never
+    await nextTick()
+
+    expect(wrapper.find('.video-selection-screen').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Preparing video…')
+    expect(wrapper.text()).toContain('The Test Episode')
+    expect(wrapper.text()).toContain('Test Series')
+    expect(wrapper.text()).toContain('S2 E4')
+    expect(wrapper.text()).toContain('2024')
+    expect(wrapper.text()).toContain('45 min')
+    expect(wrapper.text()).not.toContain('No video selected')
+    wrapper.unmount()
+  })
+
+  it('adds the slow warning after ten seconds', async () => {
+    vi.useFakeTimers()
+    const { wrapper, party } = await joinedParty(null)
+    party.pendingVideoSelection = pending() as never
+    await nextTick()
+    expect(wrapper.text()).not.toContain('Taking longer than expected')
+
+    vi.advanceTimersByTime(10_000)
+    await nextTick()
+    expect(wrapper.text()).toContain('Taking longer than expected')
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
+  it('lets the selector cancel preparation', async () => {
+    const { wrapper, party } = await joinedParty(null)
+    party.pendingVideoSelection = pending() as never
+    await nextTick()
+    await wrapper.get('[data-action="cancel-preparing-selection"]').trigger('click')
+    expect(emitsOf('cancel_video_selection')[0]![1]).toEqual({
+      party_id: 'B39AZ', selection_id: 'selection-1',
+    })
+    wrapper.unmount()
+  })
+
+  it('gives the selector retry and back actions after failure', async () => {
+    const { wrapper, party } = await joinedParty(null)
+    party.pendingVideoSelection = { ...pending(), status: 'failed', error: 'Could not prepare video.' } as never
+    await nextTick()
+    await wrapper.get('[data-action="retry-selection"]').trigger('click')
+    await wrapper.get('[data-action="cancel-selection"]').trigger('click')
+    expect(emitsOf('retry_video_selection')[0]![1]).toMatchObject({ selection_id: 'selection-1' })
+    expect(emitsOf('cancel_video_selection')[0]![1]).toMatchObject({ selection_id: 'selection-1' })
+    wrapper.unmount()
+  })
+
+  it('shows viewers a waiting message without selector actions', async () => {
+    const { wrapper, party } = await joinedParty(null)
+    party.pendingVideoSelection = { ...pending('another-client'), status: 'failed' } as never
+    await nextTick()
+    expect(wrapper.text()).toContain('Waiting for Alice')
+    expect(wrapper.find('[data-action="retry-selection"]').exists()).toBe(false)
+    expect(wrapper.find('[data-action="cancel-selection"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})

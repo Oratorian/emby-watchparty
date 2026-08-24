@@ -31,6 +31,48 @@ describe('party socket listeners', () => {
     expect(handlers.get('members_update')?.size).toBe(1)
   })
 
+  it('tracks selection start, failure, retry, and cancellation', () => {
+    const handlers = new Map<string, (data: never) => void>()
+    const socket = useSocketStore()
+    vi.spyOn(socket, 'on').mockImplementation(((event: string, handler: (data: never) => void) => {
+      handlers.set(event, handler)
+    }) as never)
+    vi.spyOn(socket, 'off').mockImplementation((() => undefined) as never)
+    const emit = vi.spyOn(socket, 'emit').mockImplementation(() => undefined)
+    const party = usePartyStore()
+    party.partyId = 'B39AZ'
+    party.setupListeners()
+    const selection = {
+      selection_id: 'selection-1', item_id: 'movie-1', title: 'Fake Movie', overview: '',
+      status: 'preparing', selected_by: 'client-1', selected_by_username: 'Alice',
+      production_year: 2024, run_time_seconds: 3600, item_type: 'Movie',
+      series_name: null, season_number: null, episode_number: null,
+      started_at: new Date().toISOString(), error: null,
+    }
+
+    handlers.get('video_selection_started')?.({ selection } as never)
+    expect(party.pendingVideoSelection?.selection_id).toBe('selection-1')
+    handlers.get('video_selection_failed')?.({
+      selection: { ...selection, status: 'failed', error: 'Could not start.' },
+      message: 'Could not start.', failed_users: ['Alice'], affected: true,
+    } as never)
+    expect(party.pendingVideoSelection?.status).toBe('failed')
+    expect(party.videoSelectionIssue?.failedUsers).toEqual(['Alice'])
+
+    party.retryVideoSelection()
+    expect(emit).toHaveBeenCalledWith('retry_video_selection', {
+      party_id: 'B39AZ', selection_id: 'selection-1',
+    })
+    party.cancelVideoSelection()
+    expect(emit).toHaveBeenCalledWith('cancel_video_selection', {
+      party_id: 'B39AZ', selection_id: 'selection-1',
+    })
+
+    handlers.get('video_selection_cancelled')?.({ selection_id: 'selection-1' } as never)
+    expect(party.pendingVideoSelection).toBeNull()
+    expect(party.videoSelectionIssue).toBeNull()
+  })
+
   it('surfaces a limited session bind without retrying the mutating request', async () => {
     vi.useFakeTimers()
     const socket = useSocketStore()

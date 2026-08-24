@@ -14,6 +14,24 @@
       "title": "PartyPayload",
       "type": "object"
     },
+    "cancel_video_selection": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "selection_id": {
+          "title": "Selection Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id",
+        "selection_id"
+      ],
+      "title": "VideoSelectionActionPayload",
+      "type": "object"
+    },
     "change_streams": {
       "properties": {
         "audio_index": {
@@ -256,6 +274,24 @@
       "title": "TimedPartyPayload",
       "type": "object"
     },
+    "retry_video_selection": {
+      "properties": {
+        "party_id": {
+          "title": "Party Id",
+          "type": "string"
+        },
+        "selection_id": {
+          "title": "Selection Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "party_id",
+        "selection_id"
+      ],
+      "title": "VideoSelectionActionPayload",
+      "type": "object"
+    },
     "seek": {
       "properties": {
         "party_id": {
@@ -306,6 +342,18 @@
           "default": null,
           "title": "Binge"
         },
+        "episode_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Episode Number"
+        },
         "item_id": {
           "title": "Item Id",
           "type": "string"
@@ -319,6 +367,18 @@
           "default": "",
           "title": "Item Overview",
           "type": "string"
+        },
+        "item_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Item Type"
         },
         "media_source_id": {
           "anyOf": [
@@ -335,6 +395,18 @@
         "party_id": {
           "title": "Party Id",
           "type": "string"
+        },
+        "production_year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Production Year"
         },
         "quality": {
           "anyOf": [
@@ -356,6 +428,47 @@
           ],
           "title": "Resume Mode",
           "type": "string"
+        },
+        "run_time_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Time Seconds"
+        },
+        "season_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Season Number"
+        },
+        "selection_id": {
+          "default": "",
+          "title": "Selection Id",
+          "type": "string"
+        },
+        "series_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Series Name"
         },
         "start_seconds": {
           "default": 0.0,
@@ -1943,6 +2056,143 @@
           "title": "PendingAutoAdvanceOutbound",
           "type": "object"
         },
+        "PendingVideoSelectionOutbound": {
+          "additionalProperties": false,
+          "properties": {
+            "episode_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Episode Number"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Error"
+            },
+            "item_id": {
+              "title": "Item Id",
+              "type": "string"
+            },
+            "item_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Item Type"
+            },
+            "overview": {
+              "default": "",
+              "title": "Overview",
+              "type": "string"
+            },
+            "production_year": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Production Year"
+            },
+            "run_time_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Run Time Seconds"
+            },
+            "season_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Season Number"
+            },
+            "selected_by": {
+              "title": "Selected By",
+              "type": "string"
+            },
+            "selected_by_username": {
+              "title": "Selected By Username",
+              "type": "string"
+            },
+            "selection_id": {
+              "title": "Selection Id",
+              "type": "string"
+            },
+            "series_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Series Name"
+            },
+            "started_at": {
+              "title": "Started At",
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "preparing",
+                "failed"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "selection_id",
+            "item_id",
+            "title",
+            "status",
+            "selected_by",
+            "selected_by_username",
+            "started_at"
+          ],
+          "title": "PendingVideoSelectionOutbound",
+          "type": "object"
+        },
         "PlaybackStateOutbound": {
           "additionalProperties": false,
           "properties": {
@@ -2193,6 +2443,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/PendingAutoAdvanceOutbound"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pending_video_selection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PendingVideoSelectionOutbound"
             },
             {
               "type": "null"
@@ -2606,6 +2867,342 @@
         "video"
       ],
       "title": "VideoOutbound",
+      "type": "object"
+    },
+    "video_selection_cancelled": {
+      "additionalProperties": false,
+      "properties": {
+        "selection_id": {
+          "title": "Selection Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "selection_id"
+      ],
+      "title": "VideoSelectionCancelledOutbound",
+      "type": "object"
+    },
+    "video_selection_failed": {
+      "$defs": {
+        "PendingVideoSelectionOutbound": {
+          "additionalProperties": false,
+          "properties": {
+            "episode_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Episode Number"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Error"
+            },
+            "item_id": {
+              "title": "Item Id",
+              "type": "string"
+            },
+            "item_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Item Type"
+            },
+            "overview": {
+              "default": "",
+              "title": "Overview",
+              "type": "string"
+            },
+            "production_year": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Production Year"
+            },
+            "run_time_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Run Time Seconds"
+            },
+            "season_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Season Number"
+            },
+            "selected_by": {
+              "title": "Selected By",
+              "type": "string"
+            },
+            "selected_by_username": {
+              "title": "Selected By Username",
+              "type": "string"
+            },
+            "selection_id": {
+              "title": "Selection Id",
+              "type": "string"
+            },
+            "series_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Series Name"
+            },
+            "started_at": {
+              "title": "Started At",
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "preparing",
+                "failed"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "selection_id",
+            "item_id",
+            "title",
+            "status",
+            "selected_by",
+            "selected_by_username",
+            "started_at"
+          ],
+          "title": "PendingVideoSelectionOutbound",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "affected": {
+          "default": true,
+          "title": "Affected",
+          "type": "boolean"
+        },
+        "failed_users": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Failed Users",
+          "type": "array"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "selection": {
+          "$ref": "#/$defs/PendingVideoSelectionOutbound"
+        }
+      },
+      "required": [
+        "selection",
+        "message"
+      ],
+      "title": "VideoSelectionFailedOutbound",
+      "type": "object"
+    },
+    "video_selection_started": {
+      "$defs": {
+        "PendingVideoSelectionOutbound": {
+          "additionalProperties": false,
+          "properties": {
+            "episode_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Episode Number"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Error"
+            },
+            "item_id": {
+              "title": "Item Id",
+              "type": "string"
+            },
+            "item_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Item Type"
+            },
+            "overview": {
+              "default": "",
+              "title": "Overview",
+              "type": "string"
+            },
+            "production_year": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Production Year"
+            },
+            "run_time_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Run Time Seconds"
+            },
+            "season_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Season Number"
+            },
+            "selected_by": {
+              "title": "Selected By",
+              "type": "string"
+            },
+            "selected_by_username": {
+              "title": "Selected By Username",
+              "type": "string"
+            },
+            "selection_id": {
+              "title": "Selection Id",
+              "type": "string"
+            },
+            "series_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Series Name"
+            },
+            "started_at": {
+              "title": "Started At",
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "preparing",
+                "failed"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "selection_id",
+            "item_id",
+            "title",
+            "status",
+            "selected_by",
+            "selected_by_username",
+            "started_at"
+          ],
+          "title": "PendingVideoSelectionOutbound",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "selection": {
+          "$ref": "#/$defs/PendingVideoSelectionOutbound"
+        }
+      },
+      "required": [
+        "selection"
+      ],
+      "title": "VideoSelectionStartedOutbound",
       "type": "object"
     },
     "video_stopped": {

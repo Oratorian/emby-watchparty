@@ -13,6 +13,7 @@ export interface MemberInfo {
 }
 
 type VideoInfo = ServerToClientPayloads['video_selected']['video']
+type PendingVideoSelection = NonNullable<ServerToClientPayloads['sync_state']['pending_video_selection']>
 
 const CLIENT_ID_STORAGE_KEY = 'emby-watchparty-client-id'
 const TAB_CLIENT_ID_STORAGE_KEY = 'emby-watchparty-tab-client-id'
@@ -56,6 +57,13 @@ export const usePartyStore = defineStore('party', () => {
   // party). Falls back to null when the backend hasn't bound an avatar.
   const members = ref<Record<string, string | null>>({})
   const currentVideo = ref<VideoInfo | null>(null)
+  const pendingVideoSelection = ref<PendingVideoSelection | null>(null)
+  const videoSelectionIssue = ref<{
+    message: string
+    failedUsers: string[]
+    affected: boolean
+    selectionId: string
+  } | null>(null)
   const playbackState = ref({ playing: false, time: 0, last_update: '' })
   const myStreamUrl = ref<string | null>(null)
   // Media time at which this user's stream begins. Backend sets
@@ -347,6 +355,8 @@ export const usePartyStore = defineStore('party', () => {
     partyId.value = null
     users.value = []
     currentVideo.value = null
+    pendingVideoSelection.value = null
+    videoSelectionIssue.value = null
     myStreamUrl.value = null
     streamOffset.value = 0
     playbackState.value = { playing: false, time: 0, last_update: '' }
@@ -383,6 +393,7 @@ export const usePartyStore = defineStore('party', () => {
     // repeating 5-6 times per real seek event after a few HMR cycles).
     const events = [
       'user_joined', 'user_left', 'sync_state', 'video_selected',
+      'video_selection_started', 'video_selection_failed', 'video_selection_cancelled',
       'video_stopped', 'video_ended', 'play', 'pause', 'seek',
       'streams_changed', 'members_update', 'ready_check_update', 'all_ready',
       'binge_watch_state_changed', 'party_visibility_changed', 'auto_advance_pending',
@@ -425,6 +436,8 @@ export const usePartyStore = defineStore('party', () => {
 
     socket.on('sync_state', (data: ServerToClientPayloads['sync_state']) => {
       currentVideo.value = data.current_video ?? null
+      pendingVideoSelection.value = data.pending_video_selection ?? null
+      videoSelectionIssue.value = null
       playbackState.value = data.playback_state
       // Per-user stream URL comes inside current_video for late joiners.
       // The backend offsets the transcode via StartTimeTicks to the current
@@ -463,6 +476,8 @@ export const usePartyStore = defineStore('party', () => {
 
     socket.on('video_selected', (data: ServerToClientPayloads['video_selected']) => {
       currentVideo.value = data.video
+      pendingVideoSelection.value = null
+      videoSelectionIssue.value = null
       // Initial video selection -- stream starts at 0
       streamOffset.value = 0
       // Each user gets their own stream URL
@@ -471,8 +486,34 @@ export const usePartyStore = defineStore('party', () => {
       }
     })
 
+    socket.on('video_selection_started', (data: ServerToClientPayloads['video_selection_started']) => {
+      pendingVideoSelection.value = data.selection
+      videoSelectionIssue.value = null
+    })
+
+    socket.on('video_selection_failed', (data: ServerToClientPayloads['video_selection_failed']) => {
+      videoSelectionIssue.value = {
+        message: data.message,
+        failedUsers: data.failed_users || [],
+        affected: data.affected !== false,
+        selectionId: data.selection.selection_id,
+      }
+      if (data.affected) pendingVideoSelection.value = data.selection
+    })
+
+    socket.on('video_selection_cancelled', () => {
+      pendingVideoSelection.value = null
+      videoSelectionIssue.value = null
+      currentVideo.value = null
+      myStreamUrl.value = null
+      playbackState.value = { playing: false, time: 0, last_update: '' }
+      readyCheckActive.value = false
+    })
+
     socket.on('video_stopped', () => {
       currentVideo.value = null
+      pendingVideoSelection.value = null
+      videoSelectionIssue.value = null
       myStreamUrl.value = null
       playbackState.value = { playing: false, time: 0, last_update: '' }
       readyCheckActive.value = false
@@ -632,13 +673,38 @@ export const usePartyStore = defineStore('party', () => {
     socket.emit('auto_advance_cancel', { party_id: partyId.value })
   }
 
+  function beginVideoSelection(selection: PendingVideoSelection) {
+    pendingVideoSelection.value = selection
+    videoSelectionIssue.value = null
+  }
+
+  function retryVideoSelection() {
+    const selectionId = pendingVideoSelection.value?.selection_id
+      || videoSelectionIssue.value?.selectionId
+    if (!partyId.value || !selectionId) return
+    useSocketStore().emit('retry_video_selection', {
+      party_id: partyId.value,
+      selection_id: selectionId,
+    })
+  }
+
+  function cancelVideoSelection() {
+    if (!partyId.value || !pendingVideoSelection.value) return
+    useSocketStore().emit('cancel_video_selection', {
+      party_id: partyId.value,
+      selection_id: pendingVideoSelection.value.selection_id,
+    })
+  }
+
   return {
-    partyId, username, users, members, currentVideo, playbackState, userCount,
+    partyId, username, users, members, currentVideo, pendingVideoSelection,
+    videoSelectionIssue, playbackState, userCount,
     myStreamUrl, streamOffset, readyCheckActive, readyUsers, waitingUsers,
     pendingVote,
     bingeWatch, pendingAutoAdvance, hidden, setHidden,
     sessionError, partyMissing, sessionRetrying, sessionRetryAfter, supersededBy,
     join, leave, setupListeners, submitVote, retrySession,
-    setBingeWatchActive, cancelAutoAdvance,
+    setBingeWatchActive, cancelAutoAdvance, beginVideoSelection,
+    retryVideoSelection, cancelVideoSelection,
   }
 })

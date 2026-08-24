@@ -94,6 +94,52 @@ class SelectedMedia:
 
 
 @dataclass
+class PendingVideoSelection:
+    """Room-visible selection lifecycle plus server-only retry inputs."""
+
+    selection_id: str
+    item_id: str
+    title: str
+    selected_by: str
+    selected_by_username: str
+    overview: str = ""
+    status: str = "preparing"
+    production_year: int | None = None
+    run_time_seconds: float | None = None
+    item_type: str | None = None
+    series_name: str | None = None
+    season_number: int | None = None
+    episode_number: int | None = None
+    started_at: str = field(default_factory=_now)
+    error: str | None = None
+    media_source_id: str | None = None
+    start_seconds: float = 0.0
+    audio_index: int | None = None
+    subtitle_index: int | None = None
+    quality: str | None = None
+    binge: bool | None = None
+
+    def to_wire(self) -> dict[str, MediaValue]:
+        return {
+            "selection_id": self.selection_id,
+            "item_id": self.item_id,
+            "title": self.title,
+            "overview": self.overview,
+            "status": self.status,
+            "selected_by": self.selected_by,
+            "selected_by_username": self.selected_by_username,
+            "production_year": self.production_year,
+            "run_time_seconds": self.run_time_seconds,
+            "item_type": self.item_type,
+            "series_name": self.series_name,
+            "season_number": self.season_number,
+            "episode_number": self.episode_number,
+            "started_at": self.started_at,
+            "error": self.error,
+        }
+
+
+@dataclass
 class JoinVote:
     sid: str
     username: str
@@ -189,6 +235,8 @@ class Party:
     # as h264-only.
     client_codecs: dict[str, set[str]] = field(default_factory=dict)
     current_video: SelectedMedia | None = None
+    pending_video_selection: PendingVideoSelection | None = None
+    retryable_video_selection: PendingVideoSelection | None = None
     user_streams: dict[str, UserStream] = field(default_factory=dict)
     playback_state: PlaybackState = field(default_factory=PlaybackState)
     ready_check: ReadyCheck | None = None

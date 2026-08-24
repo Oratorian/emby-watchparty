@@ -3,6 +3,10 @@ export interface ClientToServerPayloads {
   "auto_advance_cancel": {
     "party_id": string
   }
+  "cancel_video_selection": {
+    "party_id": string
+    "selection_id": string
+  }
   "change_streams": {
     "party_id": string
     "audio_index"?: number | null
@@ -45,6 +49,10 @@ export interface ClientToServerPayloads {
     "party_id": string
     "time": number
   }
+  "retry_video_selection": {
+    "party_id": string
+    "selection_id": string
+  }
   "seek": {
     "party_id": string
     "time": number
@@ -52,9 +60,16 @@ export interface ClientToServerPayloads {
   }
   "select_video": {
     "party_id": string
+    "selection_id"?: string
     "item_id": string
     "item_name"?: string
     "item_overview"?: string
+    "production_year"?: number | null
+    "run_time_seconds"?: number | null
+    "item_type"?: string | null
+    "series_name"?: string | null
+    "season_number"?: number | null
+    "episode_number"?: number | null
     "media_source_id"?: string | null
     "start_seconds"?: number
     "quality"?: string | null
@@ -253,6 +268,7 @@ export interface ServerToClientPayloads {
     "users"?: string[]
     "binge_watch"?: { "available": boolean; "active": boolean } | null
     "pending_auto_advance"?: { "next_item_id"?: string | null; "next_title"?: string | null; "next_index_number"?: number | null; "total_episodes"?: number | null; "deadline"?: string | null; "countdown_seconds"?: number | null } | null
+    "pending_video_selection"?: { "selection_id": string; "item_id": string; "title": string; "overview"?: string; "status": "preparing" | "failed"; "selected_by": string; "selected_by_username": string; "production_year"?: number | null; "run_time_seconds"?: number | null; "item_type"?: string | null; "series_name"?: string | null; "season_number"?: number | null; "episode_number"?: number | null; "started_at": string; "error"?: string | null } | null
     "hidden"?: boolean
   }
   "toggle_library": {
@@ -276,6 +292,18 @@ export interface ServerToClientPayloads {
   }
   "video_selected": {
     "video": { "item_id": string; "title": string; "overview"?: string; "stream_url"?: string | null; "audio_index"?: number | null; "subtitle_index"?: number | null; "media_source_id"?: string | null; "selected_by"?: string | null; "quality"?: string | null; "item_type"?: string | null; "series_id"?: string | null; "season_id"?: string | null; "episode_index"?: number | null; "episode_count"?: number | null; "next_item_id"?: string | null; "next_item_title"?: string | null; "run_time_seconds"?: number | null }
+  }
+  "video_selection_cancelled": {
+    "selection_id": string
+  }
+  "video_selection_failed": {
+    "selection": { "selection_id": string; "item_id": string; "title": string; "overview"?: string; "status": "preparing" | "failed"; "selected_by": string; "selected_by_username": string; "production_year"?: number | null; "run_time_seconds"?: number | null; "item_type"?: string | null; "series_name"?: string | null; "season_number"?: number | null; "episode_number"?: number | null; "started_at": string; "error"?: string | null }
+    "message": string
+    "failed_users"?: string[]
+    "affected"?: boolean
+  }
+  "video_selection_started": {
+    "selection": { "selection_id": string; "item_id": string; "title": string; "overview"?: string; "status": "preparing" | "failed"; "selected_by": string; "selected_by_username": string; "production_year"?: number | null; "run_time_seconds"?: number | null; "item_type"?: string | null; "series_name"?: string | null; "season_number"?: number | null; "episode_number"?: number | null; "started_at": string; "error"?: string | null }
   }
   "video_stopped": {
     "message": string

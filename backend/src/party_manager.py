@@ -15,6 +15,7 @@ from backend.src.domain import (
     JoinVote,
     Participant,
     Party,
+    PendingVideoSelection,
     PlaybackControlCommit,
     PlaybackReportSnapshot,
     PlaybackState,
@@ -116,6 +117,62 @@ class PartyManager:
             generation = int(party.generation)
             party.operation_reservations[kind] = token
             return generation, token
+
+    async def begin_video_selection(self, party_id: str, selection: PendingVideoSelection) -> bool:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing:
+                return False
+            party.pending_video_selection = selection
+            party.retryable_video_selection = None
+            return True
+
+    async def remember_video_selection_retry(
+        self, party_id: str, selection: PendingVideoSelection
+    ) -> None:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party:
+                party.retryable_video_selection = selection
+
+    async def fail_video_selection(
+        self, party_id: str, selection_id: str, message: str
+    ) -> PendingVideoSelection | None:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None:
+                return None
+            pending = party.pending_video_selection
+            if pending is None or pending.selection_id != selection_id:
+                return None
+            pending.status = "failed"
+            pending.error = message
+            return pending
+
+    async def clear_video_selection(
+        self, party_id: str, selection_id: str
+    ) -> PendingVideoSelection | None:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None:
+                return None
+            pending = party.pending_video_selection
+            if pending is None or pending.selection_id != selection_id:
+                return None
+            party.pending_video_selection = None
+            return pending
 
     async def reservation_is_current(
         self,
@@ -611,6 +668,7 @@ class PartyManager:
             if party is None or party.closing:
                 return False
             party.current_video = None
+            party.retryable_video_selection = None
             party.ready_check = None
             party.playback_state = PlaybackState()
             party.auto_play_after_ready = False

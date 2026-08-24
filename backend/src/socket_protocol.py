@@ -61,9 +61,16 @@ class ToggleLibraryPayload(PartyPayload):
 
 
 class SelectVideoPayload(PartyPayload):
+    selection_id: str = ""
     item_id: str
     item_name: str = "Unknown"
     item_overview: str = ""
+    production_year: int | None = None
+    run_time_seconds: float | None = None
+    item_type: str | None = None
+    series_name: str | None = None
+    season_number: int | None = None
+    episode_number: int | None = None
     media_source_id: str | None = None
     start_seconds: float = 0.0
     quality: str | None = None
@@ -71,6 +78,10 @@ class SelectVideoPayload(PartyPayload):
     subtitle_index: int | None = Field(default=None, ge=-1)
     resume_mode: Literal["resume", "start_over"] = "start_over"
     binge: bool | None = None
+
+
+class VideoSelectionActionPayload(PartyPayload):
+    selection_id: str
 
 
 class ChangeStreamsPayload(PartyPayload):
@@ -100,6 +111,8 @@ INBOUND_MODELS: dict[str, type[SocketPayload]] = {
     "chat_message": ChatPayload,
     "toggle_library": ToggleLibraryPayload,
     "select_video": SelectVideoPayload,
+    "retry_video_selection": VideoSelectionActionPayload,
+    "cancel_video_selection": VideoSelectionActionPayload,
     "stop_video": PartyPayload,
     "change_streams": ChangeStreamsPayload,
     "video_ended": PartyPayload,
@@ -180,6 +193,24 @@ class PendingAutoAdvanceOutbound(OutboundPayload):
     countdown_seconds: int | None = None
 
 
+class PendingVideoSelectionOutbound(OutboundPayload):
+    selection_id: str
+    item_id: str
+    title: str
+    overview: str = ""
+    status: Literal["preparing", "failed"]
+    selected_by: str
+    selected_by_username: str
+    production_year: int | None = None
+    run_time_seconds: float | None = None
+    item_type: str | None = None
+    series_name: str | None = None
+    season_number: int | None = None
+    episode_number: int | None = None
+    started_at: str
+    error: str | None = None
+
+
 class MembersOutbound(OutboundPayload):
     users: list[str] = []
     members: list[MemberOutbound] = []
@@ -193,6 +224,7 @@ class SyncStateOutbound(OutboundPayload):
     users: list[str] = []
     binge_watch: BingeWatchStateOutbound | None = None
     pending_auto_advance: PendingAutoAdvanceOutbound | None = None
+    pending_video_selection: PendingVideoSelectionOutbound | None = None
     hidden: bool = False
 
 
@@ -203,6 +235,21 @@ class VideoOutbound(OutboundPayload):
 class VideoStoppedOutbound(OutboundPayload):
     message: str
     stopped_by: str
+
+
+class VideoSelectionStartedOutbound(OutboundPayload):
+    selection: PendingVideoSelectionOutbound
+
+
+class VideoSelectionFailedOutbound(OutboundPayload):
+    selection: PendingVideoSelectionOutbound
+    message: str
+    failed_users: list[str] = []
+    affected: bool = True
+
+
+class VideoSelectionCancelledOutbound(OutboundPayload):
+    selection_id: str
 
 
 class VideoEndedOutbound(OutboundPayload):
@@ -323,6 +370,9 @@ OUTBOUND_MODELS: dict[str, type[OutboundPayload]] = {
     "members_update": MembersOutbound,
     "sync_state": SyncStateOutbound,
     "video_selected": VideoOutbound,
+    "video_selection_started": VideoSelectionStartedOutbound,
+    "video_selection_failed": VideoSelectionFailedOutbound,
+    "video_selection_cancelled": VideoSelectionCancelledOutbound,
     "video_stopped": VideoStoppedOutbound,
     "video_ended": VideoEndedOutbound,
     "play": TimedOutbound,
@@ -425,6 +475,7 @@ def install_inbound_validation(
                     to=sid,
                 )
                 return None
+            outcome = "cancelled"
             try:
                 result = await _handler(sid, data)
             except Exception:

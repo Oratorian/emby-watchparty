@@ -12,6 +12,8 @@ Identity model:
 """
 
 import asyncio
+import secrets
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 
@@ -20,6 +22,7 @@ import httpx
 from backend.src.domain import (
     AutoAdvance,
     EpisodeRef,
+    PendingVideoSelection,
     PlaybackState,
     SelectedMedia,
     UserStream,
@@ -85,6 +88,7 @@ def register(ctx):
     party_manager = ctx["party_manager"]
     token_manager = ctx["token_manager"]
     rate_limiter = ctx.get("rate_limiter")
+    selection_tasks: dict[str, tuple[str, asyncio.Task]] = {}
 
     def _client_id_for_sid(party, sid):
         """Look up the persistent client_id mapped to this socket sid."""
@@ -467,6 +471,9 @@ def register(ctx):
         subtitle_index=None,
         quality=None,
         reservation=None,
+        selection=None,
+        item_type_hint=None,
+        episode_number_hint=None,
     ):
         """Fetch fresh media info, stop existing streams, create per-user
         streams starting at `start_seconds`, broadcast video_selected +
@@ -500,6 +507,48 @@ def register(ctx):
             reservation = await party_manager.reserve_operation(party_id, "select_video")
             if reservation is None:
                 return False
+        if selection is None:
+            selection = PendingVideoSelection(
+                selection_id=secrets.token_urlsafe(12),
+                item_id=item_id,
+                title=item_name,
+                overview=item_overview,
+                selected_by=selector_client_id or "",
+                selected_by_username=(
+                    party.participants.get(selector_client_id).username
+                    if selector_client_id in party.participants
+                    else "Someone"
+                ),
+                item_type=item_type_hint,
+                episode_number=episode_number_hint,
+                media_source_id=media_source_id,
+                start_seconds=float(start_seconds or 0),
+                audio_index=audio_index,
+                subtitle_index=subtitle_index,
+                quality=quality,
+            )
+        if not await party_manager.begin_video_selection(party_id, selection):
+            return False
+        task = asyncio.current_task()
+        if task is not None:
+            selection_tasks[party_id] = (selection.selection_id, task)
+
+            def forget_selection_task(finished_task):
+                current = selection_tasks.get(party_id)
+                if current and current[1] is finished_task:
+                    selection_tasks.pop(party_id, None)
+
+            task.add_done_callback(forget_selection_task)
+        await sio.emit(
+            "video_selection_started",
+            {"selection": selection.to_wire()},
+            room=party_id,
+        )
+        # Selecting a replacement is definitive. Stop old playback after the
+        # loading state is visible, before potentially slow metadata work.
+        previous_time = party.playback_state.time
+        await _stop_all_user_streams(party, previous_time)
+        await party_manager.clear_video_state(party_id)
         access_token, user_id = _host_creds(party)
         playback_info = await emby_client.get_playback_info(
             item_id,
@@ -510,6 +559,21 @@ def register(ctx):
             user_id=user_id,
         )
         if not playback_info or "MediaSources" not in playback_info:
+            message = "Could not start this video."
+            failed = await party_manager.fail_video_selection(
+                party_id, selection.selection_id, message
+            )
+            if failed:
+                await sio.emit(
+                    "video_selection_failed",
+                    {
+                        "selection": failed.to_wire(),
+                        "message": message,
+                        "failed_users": party.usernames(),
+                        "affected": True,
+                    },
+                    room=party_id,
+                )
             return False
 
         if reservation is not None and not await party_manager.reservation_is_current(
@@ -612,6 +676,8 @@ def register(ctx):
         # 15s safety timeout that dismisses the overlay, but the party
         # is still in a broken state (ready_check dict never cleared,
         # auto_play_after_ready never consumed) unless we cleanup here.
+        successful_streams = 0
+        failed_sids = []
         for user_sid in party.sids():
             stream = await _create_user_stream(
                 party,
@@ -633,17 +699,10 @@ def register(ctx):
                 rc = party.ready_check
                 if rc:
                     await party_manager.drop_ready_member(party_id, user_sid)
-                # Notify the failed client so they don't stare at a
-                # blank player waiting for a video_selected that will
-                # never come.
-                await sio.emit(
-                    "error",
-                    {
-                        "message": "Could not start your stream. Ask the host to re-select the video.",
-                    },
-                    to=user_sid,
-                )
+                failed_sids.append(user_sid)
                 continue
+
+            successful_streams += 1
 
             stream_url = stream.stream_url_base
             if config.ENABLE_HLS_TOKEN_VALIDATION:
@@ -701,6 +760,66 @@ def register(ctx):
         if not live_expected:
             await _check_all_ready(party, party_id)
 
+        if successful_streams:
+            await party_manager.clear_video_selection(party_id, selection.selection_id)
+            if failed_sids:
+                selection.status = "failed"
+                selection.error = "Some viewers could not start this video."
+                await party_manager.remember_video_selection_retry(party_id, selection)
+                failed_users = [party.username_for_sid(s, "Viewer") for s in failed_sids]
+                failed_wire = {
+                    **selection.to_wire(),
+                    "status": "failed",
+                    "error": "Could not start your stream.",
+                }
+                for failed_sid in failed_sids:
+                    await sio.emit(
+                        "video_selection_failed",
+                        {
+                            "selection": failed_wire,
+                            "message": "Could not start your stream.",
+                            "failed_users": failed_users,
+                            "affected": True,
+                        },
+                        to=failed_sid,
+                    )
+                selector_sid = next(
+                    (
+                        member_sid
+                        for member_sid, client_id in party.sid_client_ids.items()
+                        if client_id == selector_client_id
+                    ),
+                    None,
+                )
+                if selector_sid and selector_sid not in failed_sids:
+                    await sio.emit(
+                        "video_selection_failed",
+                        {
+                            "selection": failed_wire,
+                            "message": "Some viewers could not start this video.",
+                            "failed_users": failed_users,
+                            "affected": False,
+                        },
+                        to=selector_sid,
+                    )
+        else:
+            message = "Could not start this video."
+            failed = await party_manager.fail_video_selection(
+                party_id, selection.selection_id, message
+            )
+            if failed:
+                await sio.emit(
+                    "video_selection_failed",
+                    {
+                        "selection": failed.to_wire(),
+                        "message": message,
+                        "failed_users": [party.username_for_sid(s, "Viewer") for s in failed_sids],
+                        "affected": True,
+                    },
+                    room=party_id,
+                )
+            return False
+
         return True
 
     # Expose the restart helper so party.py can reuse it for vote-pass restarts
@@ -723,6 +842,7 @@ def register(ctx):
         quality = data.get("quality")
         resume_mode = data.get("resume_mode", "start_over")
         binge = data.get("binge")
+        selection_id = data.get("selection_id") or secrets.token_urlsafe(12)
         # Optional resume position in seconds. The frontend reads
         # UserData.PlaybackPositionTicks from the library response and
         # offers the host a Resume / Start-over choice when it's > 0
@@ -772,6 +892,26 @@ def register(ctx):
         reservation = await party_manager.reserve_operation(party_id, "select_video")
         if reservation is None:
             return
+        selection = PendingVideoSelection(
+            selection_id=selection_id,
+            item_id=item_id,
+            title=item_name,
+            overview=item_overview,
+            selected_by=selector_client_id,
+            selected_by_username=party.username_for_sid(sid, "Someone"),
+            production_year=data.get("production_year"),
+            run_time_seconds=data.get("run_time_seconds"),
+            item_type=data.get("item_type"),
+            series_name=data.get("series_name"),
+            season_number=data.get("season_number"),
+            episode_number=data.get("episode_number"),
+            media_source_id=media_source_id,
+            start_seconds=start_seconds,
+            audio_index=audio_index,
+            subtitle_index=subtitle_index,
+            quality=quality,
+            binge=binge,
+        )
         try:
             success = await _restart_video_from_beginning(
                 party,
@@ -786,6 +926,7 @@ def register(ctx):
                 subtitle_index=subtitle_index,
                 quality=quality,
                 reservation=reservation,
+                selection=selection,
             )
         finally:
             await party_manager.release_operation(party_id, "select_video", reservation)
@@ -800,6 +941,97 @@ def register(ctx):
                 {"available": bool(config.BINGE_WATCH_ENABLED), "active": active},
                 room=party_id,
             )
+
+    @sio.on("retry_video_selection")
+    async def handle_retry_video_selection(sid, data):
+        party_id = data.get("party_id", "").strip().upper()
+        selection_id = data.get("selection_id", "")
+        party = party_manager.get(party_id)
+        pending = (
+            party.pending_video_selection or party.retryable_video_selection if party else None
+        )
+        caller_client_id = _client_id_for_sid(party, sid) if party else None
+        if (
+            pending is None
+            or pending.selection_id != selection_id
+            or pending.status != "failed"
+            or caller_client_id != pending.selected_by
+            or not party_manager.is_unlocked(party_id)
+        ):
+            await sio.emit("error", {"message": "Cannot retry this video selection"}, to=sid)
+            return
+
+        reservation = await party_manager.reserve_operation(party_id, "select_video")
+        if reservation is None:
+            return
+        pending.status = "preparing"
+        pending.error = None
+        pending.started_at = datetime.now(UTC).isoformat()
+        try:
+            success = await _restart_video_from_beginning(
+                party,
+                party_id,
+                pending.selected_by,
+                pending.item_id,
+                pending.title,
+                pending.overview,
+                media_source_id=pending.media_source_id,
+                start_seconds=pending.start_seconds,
+                audio_index=pending.audio_index,
+                subtitle_index=pending.subtitle_index,
+                quality=pending.quality,
+                reservation=reservation,
+                selection=pending,
+            )
+        finally:
+            await party_manager.release_operation(party_id, "select_video", reservation)
+        if not success:
+            return
+        if pending.binge is not None and party.host_client_id == pending.selected_by:
+            active = bool(pending.binge) and bool(config.BINGE_WATCH_ENABLED)
+            await party_manager.set_binge_watch(party_id, active)
+            await sio.emit(
+                "binge_watch_state_changed",
+                {"available": bool(config.BINGE_WATCH_ENABLED), "active": active},
+                room=party_id,
+            )
+
+    @sio.on("cancel_video_selection")
+    async def handle_cancel_video_selection(sid, data):
+        party_id = data.get("party_id", "").strip().upper()
+        selection_id = data.get("selection_id", "")
+        party = party_manager.get(party_id)
+        pending = party.pending_video_selection if party else None
+        caller_client_id = _client_id_for_sid(party, sid) if party else None
+        if (
+            pending is None
+            or pending.selection_id != selection_id
+            or caller_client_id != pending.selected_by
+        ):
+            await sio.emit("error", {"message": "Cannot cancel this video selection"}, to=sid)
+            return
+
+        # Invalidate commit token before cancelling network work. Even if an
+        # upstream client suppresses cancellation, stale work cannot install a
+        # video afterward.
+        cancellation = await party_manager.reserve_operation(party_id, "select_video")
+        active = selection_tasks.get(party_id)
+        if active and active[0] == selection_id and active[1] is not asyncio.current_task():
+            active[1].cancel()
+            with suppress(asyncio.CancelledError):
+                await active[1]
+        party = party_manager.get(party_id)
+        if party:
+            await _stop_all_user_streams(party, party.playback_state.time)
+        await party_manager.clear_video_state(party_id)
+        await party_manager.clear_video_selection(party_id, selection_id)
+        if cancellation is not None:
+            await party_manager.release_operation(party_id, "select_video", cancellation)
+        await sio.emit(
+            "video_selection_cancelled",
+            {"selection_id": selection_id},
+            room=party_id,
+        )
 
     @sio.on("stop_video")
     async def handle_stop_video(sid, data):
@@ -1253,6 +1485,8 @@ def register(ctx):
             next_item_id,
             next_title,
             "",
+            item_type_hint="Episode",
+            episode_number_hint=pending.next_index_number,
         )
         if not success:
             # Restart failed -- clear the flag we optimistically set
