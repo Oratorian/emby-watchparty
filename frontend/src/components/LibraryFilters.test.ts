@@ -75,6 +75,30 @@ describe('LibraryFilters', () => {
     expect(wrapper.text()).toContain('Drama')
   })
 
+  it('floats the options you already picked to the top of a long catalog', async () => {
+    // Uncapping the list is right, but the list scrolls inside a fixed box and
+    // Jellyfin's Year control alone runs from 1888 to now. Without this your
+    // own ticked boxes sit wherever the server happened to order them, which
+    // on a long catalog means off-screen.
+    const genres = Array.from({ length: 30 }, (_, index) => ({
+      value: `Genre ${index + 1}`,
+      label: `Genre ${index + 1}`,
+    }))
+    const wrapper = mount(LibraryFilters, {
+      props: {
+        controls: [{ id: 'genre', label: 'Genre', kind: 'multi', values: genres }],
+        modelValue: { genre: ['Genre 27'] },
+      },
+    })
+
+    await wrapper.get('button.filter-toggle').trigger('click')
+    await wrapper.get('button[aria-label="Open Genre filter"]').trigger('click')
+
+    const labels = wrapper.findAll('.option-list label').map((label) => label.text())
+    expect(labels).toHaveLength(30)
+    expect(labels[0]).toBe('Genre 27')
+  })
+
   it('closes an option popover when clicking outside its filter control', async () => {
     const wrapper = mount(LibraryFilters, {
       attachTo: document.body,

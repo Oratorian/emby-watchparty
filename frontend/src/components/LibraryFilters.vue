@@ -338,7 +338,19 @@ function displayedOptions(control: FilterControl) {
   if (query) {
     return control.values.filter((option) => option.label.toLocaleLowerCase().includes(query))
   }
-  return control.values
+  // Showing every option is the point, but the list scrolls inside a fixed
+  // 16rem box and some catalogs are long: Jellyfin generates a Year control
+  // covering 1888 to now, and Studio or Tag can run to hundreds on a large
+  // library. Without selected-first ordering your own ticked boxes end up
+  // somewhere off-screen, so the popover stops showing you what you picked.
+  // This is the half of the old preview behaviour worth keeping; the 8-item
+  // cap it came with is not.
+  const selectedValues = new Set(selectedList(control.id))
+  if (selectedValues.size === 0) return control.values
+  return [
+    ...control.values.filter((option) => selectedValues.has(option.value)),
+    ...control.values.filter((option) => !selectedValues.has(option.value)),
+  ]
 }
 
 function needsAnyOption(control: FilterControl): boolean {
