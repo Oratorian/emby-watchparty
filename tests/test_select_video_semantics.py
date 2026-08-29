@@ -1,8 +1,7 @@
-"""Two select_video rules that the suite could not see being broken.
+"""select_video decisions the server makes on behalf of the whole room.
 
-Both are decisions the server makes on behalf of the whole room, and both fail
-quietly: the video plays either way, so nothing on screen says the wrong thing
-happened.
+The first two fail quietly: the video plays either way, so nothing on screen
+says the wrong thing happened.
 
   - `resume_mode` is the answer to the Resume / Start over prompt. Honouring
     it backwards, or dropping it, restarts a film everyone wanted to continue
@@ -10,6 +9,13 @@ happened.
   - `binge` is host-only. Without the host check any joined member can flip
     the party-wide binge state, which arms the auto-advance countdown for
     everyone.
+
+The rest cover the selection lifecycle, where the room is shown a loading
+screen before the media server is called and is therefore committed to it:
+that the loading state precedes the video and survives a reconnect, that a
+failure becomes a retryable room error rather than silence, that a retry
+replays the exact start offset, and that a cancel actually aborts the
+preparation instead of letting a late video_selected land afterwards.
 """
 
 import asyncio

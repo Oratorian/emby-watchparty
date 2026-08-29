@@ -539,7 +539,7 @@ Mounted under `${APP_PREFIX}/socket.io`. Events group into these categories:
 - **Connection lifecycle** - `connect` / `disconnect` / `connected`, transparent reconnect via stable `client_id`.
 - **Party join / leave / vote** - `join_party`, `leave_party`, `user_joined` / `user_left`, plus the late-joiner vote (`join_vote`, `join_vote_started`, `join_vote_update`, `join_vote_resolved`, `join_rejected`).
 - **Host state** - `host_changed`, `host_left`, `host_reclaimed`, three-state lock (UNLOCKED / PLAYING-ONLY / LOCKED).
-- **Playback** - `select_video`, `stop_video`, `change_streams` (per-user), `play`, `pause`, `seek`, `video_selected`, `streams_changed`, `video_stopped`, `video_ended`.
+- **Playback** - `select_video`, `retry_video_selection`, `cancel_video_selection`, `stop_video`, `change_streams` (per-user), `play`, `pause`, `seek`, `video_selection_started`, `video_selection_failed`, `video_selection_cancelled`, `video_selected`, `streams_changed`, `video_stopped`, `video_ended`.
 - **Sync coordination** - `stream_ready`, `ready_check_update`, `all_ready`, `force_pause_before_seek`, `heartbeat` + `drift_correction`, `report_progress`.
 - **Chat / UI** - `chat_message`, `toggle_library`, `update_avatar` + `members_update`, `sync_state`.
 - **Binge-watch / auto-advance** - `set_binge_watch_active`, `binge_watch_state_changed`, `auto_advance_pending`, `auto_advance_cancel(led)`, `auto_advance_fired`, `binge_finished`.

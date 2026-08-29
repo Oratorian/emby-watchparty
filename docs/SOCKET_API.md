@@ -245,14 +245,33 @@ socket.emit('select_video', {
   item_overview: '...',
   quality: '1080p-10000',           // optional, defaults to DEFAULT_QUALITY_ID
   media_source_id: 'msid_99999',    // optional, alternate-version pick
+  selection_id: 'c3f1...',          // optional; server generates one if absent
+  production_year: 2017,            // optional, loading-screen metadata
+  run_time_seconds: 9840,           // optional, loading-screen metadata
+  item_type: 'Movie',               // optional, 'Episode' drives the S/E label
+  series_name: 'The Expanse',       // optional, episodes only
+  season_number: 2,                 // optional, episodes only
+  episode_number: 4,                // optional, episodes only
 })
 ```
+
+The metadata fields exist so the loading screen can show artwork and a
+title the moment the pick is made, before the server has fetched anything.
+They are echoed back to the room verbatim in `video_selection_started`, so
+they are trimmed to 512 characters server-side rather than trusted. This
+event, `retry_video_selection` and `cancel_video_selection` share one
+per-sid rate limit.
 
 **Auth:** Party must be `UNLOCKED`. `PLAYING-ONLY` refuses with
 `error: "Party has no host -- login to become host first"`.
 
 **Side effects:**
 
+- Publishes a pending selection and broadcasts `video_selection_started`
+  to the room **before** any media-server call, then tears the outgoing
+  video down. Everyone sees a loading screen from that moment on, so any
+  failure after it resolves to `video_selection_failed` rather than
+  silence. See "Selection lifecycle" below.
 - Stores `current_video` with `item_id`, `title`, `overview`,
   `run_time_seconds`, `media_source_id` (resolved version),
   `selected_by` (= sender's `client_id`).
@@ -265,6 +284,57 @@ socket.emit('select_video', {
   (own `PlaySessionId`) and emits `video_selected` privately
   with that user's stream URL.
 - Broadcasts `ready_check_update` to the room.
+
+### `retry_video_selection`
+
+Re-run a selection that ended in `failed`, with the same item, version,
+audio, subtitle and quality the original pick used.
+
+```js
+socket.emit('retry_video_selection', {
+  party_id: 'K7N2F',
+  selection_id: 'c3f1...',
+})
+```
+
+**Auth:** the selector, the host, or -- once the selector has no socket
+left in the party -- any member. The selector alone would not do: nothing
+expires a failed selection and `sync_state` replays it to everyone who
+joins, so a pick whose selector then left would strand the room with no
+way out, reload included.
+
+**Side effects:** identical to `select_video` from the loading screen
+onwards. When a video is already playing (a partial failure, where only
+some viewers failed) the restart resumes from the party's current
+position rather than the offset the original pick used, so the people who
+were watching are not thrown back to the start.
+
+### `cancel_video_selection`
+
+Give up on a selection. Two different things depending on what is stored:
+
+```js
+socket.emit('cancel_video_selection', {
+  party_id: 'K7N2F',
+  selection_id: 'c3f1...',
+})
+```
+
+**Auth:** same rule as `retry_video_selection`.
+
+**Side effects:**
+
+- Against a *pending* selection: cancels the in-flight preparation task,
+  stops any streams, clears the video state, and broadcasts
+  `video_selection_cancelled` with `cleared_video: true`.
+- Against the *retry offer* a partial failure left behind: drops only
+  that offer and broadcasts `video_selection_cancelled` with
+  `cleared_video: false`. Playback is untouched, because the video is
+  still running for every viewer whose stream did start.
+
+A viewer who merely wants the failure screen off their own display does
+not send this at all; there is nothing per-viewer stored server-side, so
+the client dismisses it locally.
 
 ### `stop_video`
 
@@ -488,7 +558,7 @@ no-op.
 | `user_joined` | `room` | After successful `join_party` | `{ username, users[], members[] }` |
 | `user_left` | `room`, `skip_sid` | After disconnect / leave | `{ username, users[], members[] }` |
 | `members_update` | `room` | After avatar / display-name change | `{ members[] }` |
-| `sync_state` | `to=sid` | New joiner needs current state | `{ current_video?, playback_state }` |
+| `sync_state` | `to=sid` | New joiner needs current state, including any selection still being prepared or sitting failed | `{ current_video?, playback_state, pending_video_selection? }` |
 
 ### Host state
 
@@ -504,6 +574,9 @@ no-op.
 |---|---|---|---|
 | `video_selected` | `to=sid` (per-user) | A video was picked; each user gets their own stream URL | `{ video: { item_id, title, overview, stream_url, audio_index, subtitle_index, media_source_id, selected_by, quality } }` |
 | `streams_changed` | `to=sid` | The caller's `change_streams` produced a new per-user stream | `{ video: {...}, current_time, was_playing }` |
+| `video_selection_started` | `room` | A pick was accepted; the room shows a loading screen while it is prepared | `{ selection: { selection_id, item_id, title, overview, status, selected_by, selected_by_username, production_year, run_time_seconds, item_type, series_name, season_number, episode_number, started_at, error } }` |
+| `video_selection_failed` | `room` (total failure) or `to=sid` (partial) | Preparation failed. `affected` is false for the selector being told about *other* viewers' failures | `{ selection: {...}, message, failed_users[], affected }` |
+| `video_selection_cancelled` | `room` | A selection was abandoned. `cleared_video` says whether the room's video went with it | `{ selection_id, cleared_video }` |
 | `video_stopped` | `room` | `stop_video` succeeded | `{ message, stopped_by }` |
 | `video_ended` | `room` | A member's player fired `ended` (or a vote-pass restart triggered it) | `{}` |
 | `play` | `room`, `skip_sid` | A member hit play | `{ time, username }` |
@@ -573,6 +646,10 @@ client                          server
 ```
 client (selector)               server                          all clients
   | --- select_video ----------->|
+  |                              | stores pending_video_selection
+  |                              | --- video_selection_started --->| (loading screen up)
+  |                              | stops outgoing streams
+  |                              | (media-server round trips)
   |                              | stores current_video
   |                              | starts ready check
   |                              | --- video_selected (to=sid) -->| (per user, own stream URL)
@@ -584,6 +661,43 @@ client (selector)               server                          all clients
   |                              |    (until all sids ready)
   |                              | --- all_ready ----------------->| (clients hit play)
 ```
+
+### Selection lifecycle
+
+A selection is published to the room *before* the media server is called,
+so the room is committed to a loading screen from that point on. Every way
+out of that state is an event; a selection left in `preparing` with nothing
+emitted would strand the party, because the video area renders off it, the
+library button is disabled while it is set, and `sync_state` replays it to
+anyone who joins or reloads.
+
+```
+                 select_video / retry_video_selection
+                              |
+                video_selection_started  (status: preparing)
+                              |
+        +---------------------+---------------------+
+        |                     |                     |
+   every stream OK     some streams OK        nothing started
+        |                     |                     |
+  video_selected        video_selected         video_selection_failed
+  (per user)            (per user who          (room, affected: true)
+        |                started)                    |
+  selection cleared     video_selection_failed   retry / cancel
+                        (to failed sids,
+                         affected: true)
+                        video_selection_failed
+                        (to selector,
+                         affected: false)
+                              |
+                        retry offer stored
+```
+
+- `cancel_video_selection` at any point emits `video_selection_cancelled`.
+- A crash, or losing the operation reservation to a newer pick, resolves to
+  `video_selection_failed` too, so there is no silent exit.
+- Only `cancel_video_selection` on a *pending* selection clears the room's
+  video; dismissing a stored retry offer sets `cleared_video: false`.
 
 ### Mid-playback seek (was_playing: true)
 
