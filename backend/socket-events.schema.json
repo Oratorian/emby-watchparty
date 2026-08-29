@@ -2872,6 +2872,11 @@
     "video_selection_cancelled": {
       "additionalProperties": false,
       "properties": {
+        "cleared_video": {
+          "default": true,
+          "title": "Cleared Video",
+          "type": "boolean"
+        },
         "selection_id": {
           "title": "Selection Id",
           "type": "string"

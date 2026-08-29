@@ -250,6 +250,11 @@ class VideoSelectionFailedOutbound(OutboundPayload):
 
 class VideoSelectionCancelledOutbound(OutboundPayload):
     selection_id: str
+    # Whether the room's video was torn down along with the selection. False
+    # when a partial failure's retry offer is merely dismissed: those viewers
+    # are still watching, and a client that blanked current_video on every
+    # cancel would stop the film for them.
+    cleared_video: bool = True
 
 
 class VideoEndedOutbound(OutboundPayload):

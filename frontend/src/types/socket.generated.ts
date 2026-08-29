@@ -295,6 +295,7 @@ export interface ServerToClientPayloads {
   }
   "video_selection_cancelled": {
     "selection_id": string
+    "cleared_video"?: boolean
   }
   "video_selection_failed": {
     "selection": { "selection_id": string; "item_id": string; "title": string; "overview"?: string; "status": "preparing" | "failed"; "selected_by": string; "selected_by_username": string; "production_year"?: number | null; "run_time_seconds"?: number | null; "item_type"?: string | null; "series_name"?: string | null; "season_number"?: number | null; "episode_number"?: number | null; "started_at": string; "error"?: string | null }

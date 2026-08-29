@@ -1021,10 +1021,11 @@ def register(ctx):
         )
         caller_client_id = _client_id_for_sid(party, sid) if party else None
         if (
-            pending is None
+            party is None
+            or pending is None
             or pending.selection_id != selection_id
             or pending.status != "failed"
-            or caller_client_id != pending.selected_by
+            or not _may_act_on_selection(party, caller_client_id, pending)
             or not party_manager.is_unlocked(party_id)
         ):
             await sio.emit("error", {"message": "Cannot retry this video selection"}, to=sid)
@@ -1033,6 +1034,15 @@ def register(ctx):
         reservation = await party_manager.reserve_operation(party_id, "select_video")
         if reservation is None:
             return
+        # A partial failure leaves the room playing while one viewer's stream
+        # never started. Retrying is a room-wide restart, so it has to resume
+        # where the party actually is; replaying the original offset would
+        # throw everyone who was watching happily back to the start of the
+        # film. With nothing playing there is no party clock to prefer, so the
+        # offset the pick was made with is still the right answer.
+        resume_from = pending.start_seconds
+        if party.current_video is not None:
+            resume_from = float(party.playback_state.time or 0)
         pending.status = "preparing"
         pending.error = None
         pending.started_at = datetime.now(UTC).isoformat()
@@ -1045,7 +1055,7 @@ def register(ctx):
                 pending.title,
                 pending.overview,
                 media_source_id=pending.media_source_id,
-                start_seconds=pending.start_seconds,
+                start_seconds=resume_from,
                 audio_index=pending.audio_index,
                 subtitle_index=pending.subtitle_index,
                 quality=pending.quality,
@@ -1070,14 +1080,39 @@ def register(ctx):
         party_id = data.get("party_id", "").strip().upper()
         selection_id = data.get("selection_id", "")
         party = party_manager.get(party_id)
-        pending = party.pending_video_selection if party else None
         caller_client_id = _client_id_for_sid(party, sid) if party else None
+        pending = party.pending_video_selection if party else None
+        retryable = party.retryable_video_selection if party else None
+
+        # Two different things are called "cancel" by the same button. A
+        # pending selection is one the room is still waiting on, and cancelling
+        # it means abandoning the pick. A retryable one is what a partial
+        # failure leaves behind: the video IS playing for everyone whose stream
+        # started, and only the viewers who failed are looking at the failure
+        # screen. Tearing playback down for that second case would let one
+        # viewer's failed stream stop the film for the whole room, so it just
+        # drops the retry offer.
+        target = pending if pending and pending.selection_id == selection_id else None
+        dismiss_only = False
+        if target is None and retryable and retryable.selection_id == selection_id:
+            target = retryable
+            dismiss_only = True
+
         if (
-            pending is None
-            or pending.selection_id != selection_id
-            or caller_client_id != pending.selected_by
+            party is None
+            or target is None
+            or not _may_act_on_selection(party, caller_client_id, target)
         ):
             await sio.emit("error", {"message": "Cannot cancel this video selection"}, to=sid)
+            return
+
+        if dismiss_only:
+            await party_manager.forget_video_selection_retry(party_id, selection_id)
+            await sio.emit(
+                "video_selection_cancelled",
+                {"selection_id": selection_id, "cleared_video": False},
+                room=party_id,
+            )
             return
 
         # Invalidate commit token before cancelling network work. Even if an
@@ -1098,7 +1133,7 @@ def register(ctx):
             await party_manager.release_operation(party_id, "select_video", cancellation)
         await sio.emit(
             "video_selection_cancelled",
-            {"selection_id": selection_id},
+            {"selection_id": selection_id, "cleared_video": True},
             room=party_id,
         )
 
@@ -1445,6 +1480,27 @@ def register(ctx):
         if not selector_client_id:
             return False
         return selector_client_id in (party.sid_client_ids or {}).values()
+
+    def _may_act_on_selection(party, caller_client_id, selection):
+        """Who is allowed to retry or cancel a pending / failed selection.
+
+        The selector, obviously. But the selector alone is not enough: nothing
+        expires a selection, sync_state replays it to everyone who joins, and
+        the video area disables the library while one is set. A pick that
+        failed and whose selector then closed their tab would leave the whole
+        room on the failure screen with no way out, reload included, and the
+        party would have to be abandoned.
+
+        So the host can act too, and once the selector has no socket left in
+        the party any member can, which keeps a hostless room recoverable.
+        """
+        if not caller_client_id:
+            return False
+        if caller_client_id == selection.selected_by:
+            return True
+        if caller_client_id == party.host_client_id:
+            return True
+        return not _selector_still_present(party, selection.selected_by)
 
     async def _queue_auto_advance(party_id, party, prev_video, next_episode):
         """Set the pending auto-advance state, emit auto_advance_pending,

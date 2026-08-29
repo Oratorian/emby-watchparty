@@ -26,6 +26,7 @@ import httpx
 
 from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
+from backend.src.domain import PendingVideoSelection
 from tests.support.asgi import asgi_client
 from tests.support.credentials import TEST_SESSION_SECRET
 from tests.support.fake_emby import FakeEmbyState, create_fake_emby_app
@@ -171,6 +172,157 @@ def test_only_the_replacement_path_preserves_auto_play() -> None:
     assert "_prepare_video_selection" in enclosing, (
         f"preserve_auto_play moved out of the selection path into {enclosing}"
     )
+
+
+def _capture_emits(app) -> list[tuple]:
+    """Record outbound socket emits instead of trying to deliver them."""
+    sio = app.state.socket_context["sio"]
+    sent: list[tuple] = []
+
+    async def record(event, data=None, **kwargs):
+        sent.append((event, data, kwargs))
+
+    sio.emit = record
+    return sent
+
+
+def _handler(app, event):
+    return app.state.socket_context["sio"].handlers["/"][event]
+
+
+def test_the_host_can_clear_a_failed_selection_its_selector_abandoned(tmp_path) -> None:
+    """The party-bricking case: a pick fails, the selector closes their tab.
+
+    Nothing expires pending_video_selection, sync_state replays it on every
+    join, and the video area disables the library while it is set, so before
+    this the room stayed on the failure screen for good, reload included.
+    """
+    app = _app(tmp_path)
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            party_id, party = await _hosted_party(client, app)
+            restart = app.state.socket_context["restart_video_from_beginning"]
+
+            async def no_sources(*_args, **_kwargs):
+                return {}
+
+            app.state.socket_context["emby_client"].get_playback_info = no_sources
+            # Bob picks the video, and it fails.
+            party.sid_client_ids["socket-bob"] = "client-bob"
+            await restart(party, party_id, "client-bob", "movie-1", "Fake Movie", "")
+            failed = party.pending_video_selection
+            assert failed is not None
+            assert failed.status == "failed"
+
+            # Bob leaves. Alice, the host, is all that is left.
+            party.sid_client_ids.pop("socket-bob")
+            assert party.host_client_id == "client-1"
+
+            sent = _capture_emits(app)
+            await _handler(app, "cancel_video_selection")(
+                "socket-1", {"party_id": party_id, "selection_id": failed.selection_id}
+            )
+
+            assert party.pending_video_selection is None, (
+                "the host could not clear an abandoned failed selection, "
+                "so the room is stuck on the failure screen"
+            )
+            assert any(event == "video_selection_cancelled" for event, _, _ in sent)
+            assert not any(event == "error" for event, _, _ in sent)
+
+    asyncio.run(exercise())
+
+
+def test_a_bystander_cannot_cancel_while_the_selector_is_still_there(tmp_path) -> None:
+    """Widening who may act must not become "anyone may cancel anyone's pick"."""
+    app = _app(tmp_path)
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            party_id, party = await _hosted_party(client, app)
+            restart = app.state.socket_context["restart_video_from_beginning"]
+
+            async def no_sources(*_args, **_kwargs):
+                return {}
+
+            app.state.socket_context["emby_client"].get_playback_info = no_sources
+            party.sid_client_ids["socket-bob"] = "client-bob"
+            await restart(party, party_id, "client-bob", "movie-1", "Fake Movie", "")
+            failed = party.pending_video_selection
+            assert failed is not None
+
+            # Carol is neither the selector nor the host, and Bob is still here.
+            party.sid_client_ids["socket-carol"] = "client-carol"
+            party.host_client_id = "client-bob"
+
+            sent = _capture_emits(app)
+            await _handler(app, "cancel_video_selection")(
+                "socket-carol", {"party_id": party_id, "selection_id": failed.selection_id}
+            )
+
+            assert party.pending_video_selection is not None
+            assert any(event == "error" for event, _, _ in sent)
+
+    asyncio.run(exercise())
+
+
+def test_dismissing_a_partial_failure_does_not_stop_the_film_for_everyone_else(
+    tmp_path,
+) -> None:
+    """A partial failure leaves the room playing and one viewer on an error.
+
+    Cancel used to look only at pending_video_selection, so giving up on the
+    stored retry offer answered "Cannot cancel this video selection" and the
+    offer stayed forever. Wiring it to the retry offer has to stop short of
+    the teardown the pending case does: the video is still playing for
+    everyone whose stream started, and dropping a retry offer must not stop
+    the film for them.
+
+    The stranded viewer's own way out is client-side and needs no server
+    authority, so it is not this event's job. See the frontend test for the
+    dismiss action they get.
+    """
+    app = _app(tmp_path)
+
+    async def exercise() -> None:
+        async with asgi_client(app) as client:
+            party_id, party = await _hosted_party(client, app)
+            restart = app.state.socket_context["restart_video_from_beginning"]
+
+            party.sid_client_ids["socket-bob"] = "client-bob"
+            assert await restart(party, party_id, "client-1", "movie-1", "Fake Movie", "")
+            assert party.current_video is not None
+
+            # Exactly what the partial-failure branch leaves behind.
+            stranded = PendingVideoSelection(
+                selection_id="selection-partial",
+                item_id="movie-1",
+                title="Fake Movie",
+                selected_by="client-1",
+                selected_by_username="Alice",
+                status="failed",
+                error="Some viewers could not start this video.",
+            )
+            await app.state.party_manager.remember_video_selection_retry(party_id, stranded)
+
+            sent = _capture_emits(app)
+            await _handler(app, "cancel_video_selection")(
+                "socket-1", {"party_id": party_id, "selection_id": "selection-partial"}
+            )
+
+            assert not any(event == "error" for event, _, _ in sent), (
+                "the selector could not give up on a partial failure's retry offer"
+            )
+            assert party.retryable_video_selection is None
+            assert party.current_video is not None, (
+                "dismissing one viewer's failure stopped the video for the whole room"
+            )
+            cancelled = [data for event, data, _ in sent if event == "video_selection_cancelled"]
+            assert cancelled
+            assert cancelled[0]["cleared_video"] is False
+
+    asyncio.run(exercise())
 
 
 def test_a_crash_mid_preparation_leaves_a_failed_selection_not_a_stuck_one(tmp_path) -> None:

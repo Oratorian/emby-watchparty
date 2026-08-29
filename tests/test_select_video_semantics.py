@@ -325,7 +325,11 @@ async def _exercise_cancel_race(base_url: str, fake_url: str) -> None:
             {"party_id": party_id, "selection_id": "selection-cancelled"},
         )
         await asyncio.sleep(1.1)
-        assert cancelled == [{"selection_id": "selection-cancelled"}]
+        # cleared_video says whether the room's video went with the selection.
+        # True here because this cancels a pick nobody was watching yet; a
+        # partial failure's retry offer is dismissed with False so viewers who
+        # did start keep playing.
+        assert cancelled == [{"selection_id": "selection-cancelled", "cleared_video": True}]
         assert selected == []
     finally:
         await realtime.disconnect()

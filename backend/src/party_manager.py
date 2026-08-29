@@ -141,6 +141,26 @@ class PartyManager:
             if party:
                 party.retryable_video_selection = selection
 
+    async def forget_video_selection_retry(self, party_id: str, selection_id: str) -> bool:
+        """Drop a stored retry offer without touching what is playing.
+
+        The counterpart to `remember_video_selection_retry`: a partial failure
+        keeps the room's video running for everyone whose stream started, so
+        dismissing the failure notice must not go anywhere near playback.
+        """
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None:
+                return False
+            retryable = party.retryable_video_selection
+            if retryable is None or retryable.selection_id != selection_id:
+                return False
+            party.retryable_video_selection = None
+            return True
+
     async def fail_video_selection(
         self, party_id: str, selection_id: str, message: str
     ) -> PendingVideoSelection | None:
