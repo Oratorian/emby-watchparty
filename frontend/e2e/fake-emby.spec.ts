@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test'
 async function startFakeMovie(page: Page): Promise<void> {
   await page.getByText('Fake Movie', { exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Fake Movie', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Play', exact: true }).click()
+  await page.getByRole('button', { name: 'Set up playback', exact: true }).click()
   await page.getByRole('button', { name: 'Start watch party', exact: true }).click()
   await expect(page.locator('video#videoElement')).toHaveAttribute('title', 'Fake Movie')
 }
@@ -110,7 +110,7 @@ test('host filters, opens details, configures playback, and restores library sta
   await page.getByRole('button', { name: 'Add', exact: true }).click()
   await expect(page.getByLabel('Playlist', { exact: true })).toBeHidden()
 
-  await page.getByRole('button', { name: 'Play', exact: true }).click()
+  await page.getByRole('button', { name: 'Set up playback', exact: true }).click()
   await expect(page.getByLabel('Quality', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Audio', { exact: true }).locator('option')).toHaveCount(2)
   await expect(page.getByLabel('Subtitles', { exact: true }).locator('option')).toHaveCount(2)

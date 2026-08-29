@@ -15,6 +15,7 @@ from backend.src.domain import (
     JoinVote,
     Participant,
     Party,
+    PendingVideoSelection,
     PlaybackControlCommit,
     PlaybackReportSnapshot,
     PlaybackState,
@@ -116,6 +117,82 @@ class PartyManager:
             generation = int(party.generation)
             party.operation_reservations[kind] = token
             return generation, token
+
+    async def begin_video_selection(self, party_id: str, selection: PendingVideoSelection) -> bool:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None or party.closing:
+                return False
+            party.pending_video_selection = selection
+            party.retryable_video_selection = None
+            return True
+
+    async def remember_video_selection_retry(
+        self, party_id: str, selection: PendingVideoSelection
+    ) -> None:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party:
+                party.retryable_video_selection = selection
+
+    async def forget_video_selection_retry(self, party_id: str, selection_id: str) -> bool:
+        """Drop a stored retry offer without touching what is playing.
+
+        The counterpart to `remember_video_selection_retry`: a partial failure
+        keeps the room's video running for everyone whose stream started, so
+        dismissing the failure notice must not go anywhere near playback.
+        """
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return False
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None:
+                return False
+            retryable = party.retryable_video_selection
+            if retryable is None or retryable.selection_id != selection_id:
+                return False
+            party.retryable_video_selection = None
+            return True
+
+    async def fail_video_selection(
+        self, party_id: str, selection_id: str, message: str
+    ) -> PendingVideoSelection | None:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None:
+                return None
+            pending = party.pending_video_selection
+            if pending is None or pending.selection_id != selection_id:
+                return None
+            pending.status = "failed"
+            pending.error = message
+            return pending
+
+    async def clear_video_selection(
+        self, party_id: str, selection_id: str
+    ) -> PendingVideoSelection | None:
+        lock = self._party_locks.get(party_id)
+        if lock is None:
+            return None
+        async with lock:
+            party = self.watch_parties.get(party_id)
+            if party is None:
+                return None
+            pending = party.pending_video_selection
+            if pending is None or pending.selection_id != selection_id:
+                return None
+            party.pending_video_selection = None
+            return pending
 
     async def reservation_is_current(
         self,
@@ -602,7 +679,17 @@ class PartyManager:
                 waiting_names=waiting_names,
             )
 
-    async def clear_video_state(self, party_id: str) -> bool:
+    async def clear_video_state(self, party_id: str, preserve_auto_play: bool = False) -> bool:
+        """Tear the party back down to "nothing is playing".
+
+        `preserve_auto_play` exists for the replacement path. Selecting a new
+        video clears this state *before* the slow provider work so the room
+        sees a loading screen instead of the outgoing video, but binge
+        auto-advance arms auto_play_after_ready immediately before that same
+        call. Clearing it there disarmed the flag the caller had just set, and
+        every episode landed paused. A stop / dissolve still clears it: only a
+        caller that is itself installing the next video passes True.
+        """
         lock = self._party_locks.get(party_id)
         if lock is None:
             return False
@@ -611,9 +698,11 @@ class PartyManager:
             if party is None or party.closing:
                 return False
             party.current_video = None
+            party.retryable_video_selection = None
             party.ready_check = None
             party.playback_state = PlaybackState()
-            party.auto_play_after_ready = False
+            if not preserve_auto_play:
+                party.auto_play_after_ready = False
             return True
 
     async def set_auto_play_after_ready(self, party_id: str, active: bool) -> bool:

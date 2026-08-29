@@ -2,6 +2,7 @@ import { nextTick, onUnmounted, ref, watch } from 'vue'
 import { api } from '@/api/client'
 import type { LibraryItem, PlaybackSelection, StreamsResponse } from '@/api/client'
 import type { usePartyStore } from '@/stores/party'
+import { getClientId } from '@/stores/party'
 import type { useSocketStore } from '@/stores/socket'
 
 type SocketStore = ReturnType<typeof useSocketStore>
@@ -74,18 +75,44 @@ export function usePartyStream(
     options?: Partial<PlaybackSelection>,
   ) {
     if (!party.partyId) return
+    const selectionId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const startMode = options?.resumeMode || (startSeconds > 0 ? 'resume' : 'start_over')
+    party.beginVideoSelection({
+      selection_id: selectionId,
+      item_id: item.Id,
+      title: item.Name,
+      overview: item.Overview || '',
+      status: 'preparing',
+      selected_by: getClientId(),
+      selected_by_username: party.username || 'Someone',
+      production_year: item.ProductionYear ?? null,
+      run_time_seconds: item.RunTimeTicks ? Number(item.RunTimeTicks) / 10_000_000 : null,
+      item_type: item.Type ?? null,
+      series_name: item.SeriesName ?? null,
+      season_number: item.ParentIndexNumber ?? null,
+      episode_number: item.IndexNumber ?? null,
+      started_at: new Date().toISOString(),
+      error: null,
+    })
     onSelectionEmitted()
     socket.emit('select_video', {
       party_id: party.partyId,
+      selection_id: selectionId,
       item_id: item.Id,
       item_name: item.Name,
       item_overview: item.Overview || '',
+      production_year: item.ProductionYear,
+      run_time_seconds: item.RunTimeTicks ? Number(item.RunTimeTicks) / 10_000_000 : undefined,
+      item_type: item.Type,
+      series_name: item.SeriesName,
+      season_number: item.ParentIndexNumber,
+      episode_number: item.IndexNumber,
       quality: options?.quality || '1080p-high',
       media_source_id: mediaSourceId,
       start_seconds: startSeconds,
       audio_index: options?.audioIndex,
       subtitle_index: options?.subtitleIndex,
-      resume_mode: options?.resumeMode || (startSeconds > 0 ? 'resume' : 'start_over'),
+      resume_mode: startMode,
       binge: options?.binge,
     })
   }

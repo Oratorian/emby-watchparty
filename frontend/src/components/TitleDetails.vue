@@ -160,13 +160,16 @@
           </p>
           <p v-if="details.Genres?.length">{{ details.Genres.join(' · ') }}</p>
           <div class="primary-actions">
+            <!-- Opens the version / audio / subtitle / quality / binge panel;
+                 "Start watch party" inside it is what actually plays. Calling
+                 this one Play promised playback it does not deliver. -->
             <button
               v-if="playable"
               class="play-title"
               type="button"
               @click="openPlaybackOptions"
             >
-              Play
+              Set up playback
             </button>
             <button v-if="browsable" type="button" @click="$emit('browse', details)">
               Browse {{ details.Type === 'Series' ? 'seasons' : 'titles' }}

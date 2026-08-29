@@ -1,5 +1,5 @@
 <template>
-  <section class="library-filters" aria-label="Library filters">
+  <section ref="filtersRoot" class="library-filters" aria-label="Library filters">
     <button
       class="filter-toggle"
       type="button"
@@ -26,7 +26,12 @@
         </button>
 
         <div v-if="section.id === 'quick' || advancedOpen" class="filter-grid">
-          <div v-for="control in section.controls" :key="control.id" class="filter-control">
+          <div
+            v-for="control in section.controls"
+            :key="control.id"
+            class="filter-control"
+            :data-filter-id="control.id"
+          >
             <div v-if="control.id === 'year'" class="filter-multi">
               <button
                 type="button"
@@ -128,7 +133,7 @@
               </button>
               <div v-if="activeGroup === control.id" class="option-popover">
                 <input
-                  v-if="control.values.length > OPTION_PREVIEW_LIMIT"
+                  v-if="control.values.length > OPTION_SEARCH_THRESHOLD"
                   v-model="optionQueries[control.id]"
                   type="search"
                   :aria-label="`Search ${control.label} options`"
@@ -145,9 +150,6 @@
                     />
                     <span>{{ option.label }}</span>
                   </label>
-                  <p v-if="hiddenOptionCount(control)" class="option-hint">
-                    {{ hiddenOptionCount(control) }} more options — search to narrow
-                  </p>
                   <p v-if="!displayedOptions(control).length" class="option-hint">No matching options.</p>
                 </div>
               </div>
@@ -165,7 +167,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { FilterControl, LibraryFilterState } from '@/api/client'
 
 const props = defineProps<{
@@ -175,11 +177,12 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [value: LibraryFilterState] }>()
 
 const open = ref(false)
+const filtersRoot = ref<HTMLElement | null>(null)
 const advancedOpen = ref(false)
 const selected = ref<LibraryFilterState>({ ...props.modelValue })
 const activeGroup = ref<string | null>(null)
 const optionQueries = ref<Record<string, string>>({})
-const OPTION_PREVIEW_LIMIT = 8
+const OPTION_SEARCH_THRESHOLD = 8
 const MIN_YEAR = 1888
 const MAX_YEAR = new Date().getFullYear()
 type YearMode = 'exact' | 'range' | 'decade'
@@ -244,6 +247,17 @@ function toggleGroup(id: string) {
   if (id === 'year' && activeGroup.value !== id) hydrateYearDraft()
   activeGroup.value = activeGroup.value === id ? null : id
 }
+
+function closeGroupOnOutsideClick(event: MouseEvent) {
+  if (!activeGroup.value || !(event.target instanceof Element)) return
+  const clickedControl = filtersRoot.value?.contains(event.target)
+    ? event.target.closest<HTMLElement>('.filter-control')
+    : null
+  if (clickedControl?.dataset.filterId !== activeGroup.value) activeGroup.value = null
+}
+
+onMounted(() => document.addEventListener('click', closeGroupOnOutsideClick))
+onBeforeUnmount(() => document.removeEventListener('click', closeGroupOnOutsideClick))
 
 function validYear(value: string): number | null {
   if (!/^\d{4}$/.test(value)) return null
@@ -324,16 +338,19 @@ function displayedOptions(control: FilterControl) {
   if (query) {
     return control.values.filter((option) => option.label.toLocaleLowerCase().includes(query))
   }
+  // Showing every option is the point, but the list scrolls inside a fixed
+  // 16rem box and some catalogs are long: Jellyfin generates a Year control
+  // covering 1888 to now, and Studio or Tag can run to hundreds on a large
+  // library. Without selected-first ordering your own ticked boxes end up
+  // somewhere off-screen, so the popover stops showing you what you picked.
+  // This is the half of the old preview behaviour worth keeping; the 8-item
+  // cap it came with is not.
   const selectedValues = new Set(selectedList(control.id))
+  if (selectedValues.size === 0) return control.values
   return [
     ...control.values.filter((option) => selectedValues.has(option.value)),
     ...control.values.filter((option) => !selectedValues.has(option.value)),
-  ].slice(0, OPTION_PREVIEW_LIMIT)
-}
-
-function hiddenOptionCount(control: FilterControl): number {
-  if ((optionQueries.value[control.id] ?? '').trim()) return 0
-  return Math.max(0, control.values.length - displayedOptions(control).length)
+  ]
 }
 
 function needsAnyOption(control: FilterControl): boolean {

@@ -252,6 +252,8 @@ def register(ctx):
             # vote-pass restart -- otherwise the post-vote re-pick
             # would silently drop back to Emby's default source.
             media_source_id=cv.media_source_id,
+            item_type_hint=cv.item_type,
+            episode_number_hint=cv.index_number,
         )
         if not success:
             logger.error(f"Failed to restart video after vote pass in party {party_id}")
@@ -835,6 +837,11 @@ def register(ctx):
                     "active": bool(party.binge_watch_active),
                 },
                 "pending_auto_advance": pending_advance_payload,
+                "pending_video_selection": (
+                    party.pending_video_selection.to_wire()
+                    if party.pending_video_selection
+                    else None
+                ),
                 # Sent on join so the host's switch renders in the right state
                 # from the first frame. Without it a hidden party shows an
                 # un-hidden switch until someone toggles it.

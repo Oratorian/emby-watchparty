@@ -13,6 +13,7 @@ export interface MemberInfo {
 }
 
 type VideoInfo = ServerToClientPayloads['video_selected']['video']
+type PendingVideoSelection = NonNullable<ServerToClientPayloads['sync_state']['pending_video_selection']>
 
 const CLIENT_ID_STORAGE_KEY = 'emby-watchparty-client-id'
 const TAB_CLIENT_ID_STORAGE_KEY = 'emby-watchparty-tab-client-id'
@@ -56,6 +57,23 @@ export const usePartyStore = defineStore('party', () => {
   // party). Falls back to null when the backend hasn't bound an avatar.
   const members = ref<Record<string, string | null>>({})
   const currentVideo = ref<VideoInfo | null>(null)
+  const pendingVideoSelection = ref<PendingVideoSelection | null>(null)
+  const videoSelectionIssue = ref<{
+    message: string
+    failedUsers: string[]
+    affected: boolean
+    selectionId: string
+  } | null>(null)
+  // Selection ids we painted a loading screen for before the server had
+  // accepted anything. select_video can be refused for several reasons -- no
+  // host, not a member, another pick already running, an invalid payload --
+  // and every one of those answers with an `error` or nothing at all, never
+  // with a selection event. Without this the optimistic screen was permanent:
+  // the library button is disabled behind it, and Cancel is refused because
+  // the server has no such selection to cancel. Only a reload got out.
+  const unconfirmedSelections = new Set<string>()
+  let unconfirmedTimer: ReturnType<typeof setTimeout> | null = null
+  const UNCONFIRMED_SELECTION_TIMEOUT_MS = 8000
   const playbackState = ref({ playing: false, time: 0, last_update: '' })
   const myStreamUrl = ref<string | null>(null)
   // Media time at which this user's stream begins. Backend sets
@@ -347,6 +365,11 @@ export const usePartyStore = defineStore('party', () => {
     partyId.value = null
     users.value = []
     currentVideo.value = null
+    pendingVideoSelection.value = null
+    videoSelectionIssue.value = null
+    unconfirmedSelections.clear()
+    if (unconfirmedTimer) clearTimeout(unconfirmedTimer)
+    unconfirmedTimer = null
     myStreamUrl.value = null
     streamOffset.value = 0
     playbackState.value = { playing: false, time: 0, last_update: '' }
@@ -383,6 +406,7 @@ export const usePartyStore = defineStore('party', () => {
     // repeating 5-6 times per real seek event after a few HMR cycles).
     const events = [
       'user_joined', 'user_left', 'sync_state', 'video_selected',
+      'video_selection_started', 'video_selection_failed', 'video_selection_cancelled',
       'video_stopped', 'video_ended', 'play', 'pause', 'seek',
       'streams_changed', 'members_update', 'ready_check_update', 'all_ready',
       'binge_watch_state_changed', 'party_visibility_changed', 'auto_advance_pending',
@@ -425,6 +449,8 @@ export const usePartyStore = defineStore('party', () => {
 
     socket.on('sync_state', (data: ServerToClientPayloads['sync_state']) => {
       currentVideo.value = data.current_video ?? null
+      pendingVideoSelection.value = data.pending_video_selection ?? null
+      videoSelectionIssue.value = null
       playbackState.value = data.playback_state
       // Per-user stream URL comes inside current_video for late joiners.
       // The backend offsets the transcode via StartTimeTicks to the current
@@ -463,6 +489,8 @@ export const usePartyStore = defineStore('party', () => {
 
     socket.on('video_selected', (data: ServerToClientPayloads['video_selected']) => {
       currentVideo.value = data.video
+      pendingVideoSelection.value = null
+      videoSelectionIssue.value = null
       // Initial video selection -- stream starts at 0
       streamOffset.value = 0
       // Each user gets their own stream URL
@@ -471,8 +499,47 @@ export const usePartyStore = defineStore('party', () => {
       }
     })
 
+    socket.on('video_selection_started', (data: ServerToClientPayloads['video_selection_started']) => {
+      pendingVideoSelection.value = data.selection
+      videoSelectionIssue.value = null
+      confirmSelection(data.selection.selection_id)
+    })
+
+    socket.on('video_selection_failed', (data: ServerToClientPayloads['video_selection_failed']) => {
+      // One reading of `affected`, used for both decisions. It was compared
+      // two different ways in adjacent lines, so a payload that omitted the
+      // field counted as affected for the banner and unaffected for the
+      // takeover, and the viewer got a warning about other people's streams
+      // with no idea their own had failed.
+      const affected = data.affected !== false
+      videoSelectionIssue.value = {
+        message: data.message,
+        failedUsers: data.failed_users || [],
+        affected,
+        selectionId: data.selection.selection_id,
+      }
+      if (affected) pendingVideoSelection.value = data.selection
+      confirmSelection(data.selection.selection_id)
+    })
+
+    socket.on('video_selection_cancelled', (data: ServerToClientPayloads['video_selection_cancelled']) => {
+      pendingVideoSelection.value = null
+      videoSelectionIssue.value = null
+      confirmSelection(data.selection_id)
+      // cleared_video false means a partial failure's retry offer was merely
+      // dismissed: the video is still playing for everyone whose stream
+      // started, and blanking it here would stop the film for them.
+      if (data.cleared_video === false) return
+      currentVideo.value = null
+      myStreamUrl.value = null
+      playbackState.value = { playing: false, time: 0, last_update: '' }
+      readyCheckActive.value = false
+    })
+
     socket.on('video_stopped', () => {
       currentVideo.value = null
+      pendingVideoSelection.value = null
+      videoSelectionIssue.value = null
       myStreamUrl.value = null
       playbackState.value = { playing: false, time: 0, last_update: '' }
       readyCheckActive.value = false
@@ -632,13 +699,79 @@ export const usePartyStore = defineStore('party', () => {
     socket.emit('auto_advance_cancel', { party_id: partyId.value })
   }
 
+  function confirmSelection(selectionId: string) {
+    unconfirmedSelections.delete(selectionId)
+    if (unconfirmedSelections.size === 0 && unconfirmedTimer) {
+      clearTimeout(unconfirmedTimer)
+      unconfirmedTimer = null
+    }
+  }
+
+  /** Drop a loading screen the server never acknowledged. */
+  function abandonUnconfirmedSelection() {
+    const id = pendingVideoSelection.value?.selection_id
+    if (!id || !unconfirmedSelections.has(id)) return false
+    confirmSelection(id)
+    pendingVideoSelection.value = null
+    videoSelectionIssue.value = null
+    return true
+  }
+
+  function beginVideoSelection(selection: PendingVideoSelection) {
+    pendingVideoSelection.value = selection
+    videoSelectionIssue.value = null
+    unconfirmedSelections.add(selection.selection_id)
+    if (unconfirmedTimer) clearTimeout(unconfirmedTimer)
+    // Backstop for the refusals that answer with nothing at all. Long enough
+    // that a slow but healthy server still wins the race and confirms first.
+    unconfirmedTimer = setTimeout(() => {
+      unconfirmedTimer = null
+      abandonUnconfirmedSelection()
+    }, UNCONFIRMED_SELECTION_TIMEOUT_MS)
+  }
+
+  function retryVideoSelection() {
+    const selectionId = pendingVideoSelection.value?.selection_id
+      || videoSelectionIssue.value?.selectionId
+    if (!partyId.value || !selectionId) return
+    useSocketStore().emit('retry_video_selection', {
+      party_id: partyId.value,
+      selection_id: selectionId,
+    })
+  }
+
+  /** Close the failure screen locally, for a viewer who cannot act on it.
+   *
+   * A partial failure shows the full takeover to every viewer whose own
+   * stream failed, but only the selector gets retry / back. Everyone else was
+   * left reading "waiting for X" over a room that is already watching, with
+   * no way to put it down. Nothing server-side is per-viewer here, so this
+   * needs no round trip. */
+  function dismissVideoSelection() {
+    const id = pendingVideoSelection.value?.selection_id
+    if (id) confirmSelection(id)
+    pendingVideoSelection.value = null
+    videoSelectionIssue.value = null
+  }
+
+  function cancelVideoSelection() {
+    if (!partyId.value || !pendingVideoSelection.value) return
+    useSocketStore().emit('cancel_video_selection', {
+      party_id: partyId.value,
+      selection_id: pendingVideoSelection.value.selection_id,
+    })
+  }
+
   return {
-    partyId, username, users, members, currentVideo, playbackState, userCount,
+    partyId, username, users, members, currentVideo, pendingVideoSelection,
+    videoSelectionIssue, playbackState, userCount,
     myStreamUrl, streamOffset, readyCheckActive, readyUsers, waitingUsers,
     pendingVote,
     bingeWatch, pendingAutoAdvance, hidden, setHidden,
     sessionError, partyMissing, sessionRetrying, sessionRetryAfter, supersededBy,
     join, leave, setupListeners, submitVote, retrySession,
-    setBingeWatchActive, cancelAutoAdvance,
+    setBingeWatchActive, cancelAutoAdvance, beginVideoSelection,
+    retryVideoSelection, cancelVideoSelection, dismissVideoSelection,
+    abandonUnconfirmedSelection,
   }
 })

@@ -93,7 +93,7 @@ test('@jellyfin-real login browse play seek reconnect stop', async ({ page }) =>
   await expect(page.getByText('Other Movie', { exact: true })).toBeVisible()
 
   await page.getByText('Synthetic HLS', { exact: true }).click()
-  await page.getByRole('button', { name: 'Play', exact: true }).click()
+  await page.getByRole('button', { name: 'Set up playback', exact: true }).click()
   await page.getByRole('button', { name: 'Start watch party', exact: true }).click()
   const video = page.locator('video#videoElement')
   await expect(video).toHaveAttribute('title', 'Synthetic HLS')
