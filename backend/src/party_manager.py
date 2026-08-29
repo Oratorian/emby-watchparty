@@ -659,7 +659,17 @@ class PartyManager:
                 waiting_names=waiting_names,
             )
 
-    async def clear_video_state(self, party_id: str) -> bool:
+    async def clear_video_state(self, party_id: str, preserve_auto_play: bool = False) -> bool:
+        """Tear the party back down to "nothing is playing".
+
+        `preserve_auto_play` exists for the replacement path. Selecting a new
+        video clears this state *before* the slow provider work so the room
+        sees a loading screen instead of the outgoing video, but binge
+        auto-advance arms auto_play_after_ready immediately before that same
+        call. Clearing it there disarmed the flag the caller had just set, and
+        every episode landed paused. A stop / dissolve still clears it: only a
+        caller that is itself installing the next video passes True.
+        """
         lock = self._party_locks.get(party_id)
         if lock is None:
             return False
@@ -671,7 +681,8 @@ class PartyManager:
             party.retryable_video_selection = None
             party.ready_check = None
             party.playback_state = PlaybackState()
-            party.auto_play_after_ready = False
+            if not preserve_auto_play:
+                party.auto_play_after_ready = False
             return True
 
     async def set_auto_play_after_ready(self, party_id: str, active: bool) -> bool:

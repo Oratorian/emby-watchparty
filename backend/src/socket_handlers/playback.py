@@ -458,6 +458,34 @@ def register(ctx):
                 room=party_id,
             )
 
+    async def _fail_selection(party, party_id, selection, message, failed_users=None):
+        """Move a pending selection to `failed` and tell the room.
+
+        Every exit from the preparation path that is not a success has to come
+        through here. The room's video area is driven by
+        `pending_video_selection`: a selection left in `preparing` with nobody
+        emitting anything leaves every member on the loading screen with the
+        library button disabled, and `sync_state` replays that state to
+        anyone who reloads, so the party cannot recover on its own.
+
+        `fail_video_selection` matches on selection id, so a selection a newer
+        pick already superseded is left alone and this is a no-op.
+        """
+        failed = await party_manager.fail_video_selection(party_id, selection.selection_id, message)
+        if not failed:
+            return False
+        await sio.emit(
+            "video_selection_failed",
+            {
+                "selection": failed.to_wire(),
+                "message": message,
+                "failed_users": party.usernames() if failed_users is None else failed_users,
+                "affected": True,
+            },
+            room=party_id,
+        )
+        return True
+
     async def _restart_video_from_beginning(
         party,
         party_id,
@@ -544,11 +572,67 @@ def register(ctx):
             {"selection": selection.to_wire()},
             room=party_id,
         )
+        # Everything past this point runs with the room already showing the
+        # loading screen and the outgoing video torn down, so an escaping
+        # exception is not just a failed pick -- it strands the whole party
+        # there. Convert it into the failed state the UI knows how to offer
+        # retry / back on, then report the failure to the caller as usual.
+        # CancelledError is deliberately re-raised untouched: that is
+        # cancel_video_selection doing its job, and it clears the state itself.
+        try:
+            return await _prepare_video_selection(
+                party,
+                party_id,
+                selector_client_id,
+                item_id,
+                item_name,
+                item_overview,
+                media_source_id,
+                start_seconds,
+                audio_index,
+                subtitle_index,
+                quality,
+                reservation,
+                selection,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "Video selection %s crashed in party %s", selection.selection_id, party_id
+            )
+            await _fail_selection(party, party_id, selection, "Could not start this video.")
+            return False
+
+    async def _prepare_video_selection(
+        party,
+        party_id,
+        selector_client_id,
+        item_id,
+        item_name,
+        item_overview,
+        media_source_id,
+        start_seconds,
+        audio_index,
+        subtitle_index,
+        quality,
+        reservation,
+        selection,
+    ):
+        """Second half of the selection: resolve the media and build streams.
+
+        Split out of `_restart_video_from_beginning` so the caller can wrap it
+        in one exception boundary. Every `return False` in here has already
+        moved the selection to `failed` and told the room.
+        """
         # Selecting a replacement is definitive. Stop old playback after the
         # loading state is visible, before potentially slow metadata work.
+        # preserve_auto_play: binge auto-advance arms auto_play_after_ready
+        # immediately before calling us, so clearing it here would disarm the
+        # flag the caller had just set and every episode would land paused.
         previous_time = party.playback_state.time
         await _stop_all_user_streams(party, previous_time)
-        await party_manager.clear_video_state(party_id)
+        await party_manager.clear_video_state(party_id, preserve_auto_play=True)
         access_token, user_id = _host_creds(party)
         playback_info = await emby_client.get_playback_info(
             item_id,
@@ -559,21 +643,7 @@ def register(ctx):
             user_id=user_id,
         )
         if not playback_info or "MediaSources" not in playback_info:
-            message = "Could not start this video."
-            failed = await party_manager.fail_video_selection(
-                party_id, selection.selection_id, message
-            )
-            if failed:
-                await sio.emit(
-                    "video_selection_failed",
-                    {
-                        "selection": failed.to_wire(),
-                        "message": message,
-                        "failed_users": party.usernames(),
-                        "affected": True,
-                    },
-                    room=party_id,
-                )
+            await _fail_selection(party, party_id, selection, "Could not start this video.")
             return False
 
         if reservation is not None and not await party_manager.reservation_is_current(
@@ -590,6 +660,11 @@ def register(ctx):
                 party_id,
                 bool(play_session_id),
             )
+            # Normally a newer pick took the reservation and has already
+            # published its own selection, in which case this is a no-op on
+            # selection id. In the window before it does, this is what stops
+            # our abandoned selection sitting in `preparing` forever.
+            await _fail_selection(party, party_id, selection, "Could not start this video.")
             return False
 
         media_source = playback_info["MediaSources"][0]
@@ -608,9 +683,11 @@ def register(ctx):
         run_time_ticks = media_source.get("RunTimeTicks", 0)
         run_time_seconds = run_time_ticks / 10_000_000 if run_time_ticks else None
 
-        # Stop all previous user streams
-        prev_time = party.playback_state.time
-        await _stop_all_user_streams(party, prev_time)
+        # Previous user streams are already stopped, at the position the party
+        # was actually at, before the metadata fetch above. The stop that used
+        # to live here would now run against an emptied user_streams and a
+        # playback_state that clear_video_state has reset to 0, so it reported
+        # position 0 for a video nobody is watching any more.
 
         # Resolve episode metadata (Type / SeriesId / SeasonId / IndexNumber)
         # for binge-watching. For Episode-typed items this also primes
@@ -803,21 +880,13 @@ def register(ctx):
                         to=selector_sid,
                     )
         else:
-            message = "Could not start this video."
-            failed = await party_manager.fail_video_selection(
-                party_id, selection.selection_id, message
+            await _fail_selection(
+                party,
+                party_id,
+                selection,
+                "Could not start this video.",
+                failed_users=[party.username_for_sid(s, "Viewer") for s in failed_sids],
             )
-            if failed:
-                await sio.emit(
-                    "video_selection_failed",
-                    {
-                        "selection": failed.to_wire(),
-                        "message": message,
-                        "failed_users": [party.username_for_sid(s, "Viewer") for s in failed_sids],
-                        "affected": True,
-                    },
-                    room=party_id,
-                )
             return False
 
         return True
