@@ -56,6 +56,29 @@ class EpisodeContext(TypedDict):
 # with a zero-length manifest, which the player reports as an immediate `ended`.
 END_OF_MEDIA_BUFFER_SECONDS = 5.0
 
+# Selection metadata comes off the client and is rebroadcast to the whole room
+# in video_selection_started before anything upstream has confirmed the item
+# exists. Bounded rather than rejected, the way chat is: an over-long title is
+# a weird library entry, not an attack, and refusing the pick outright would be
+# worse than trimming it. What this stops is one member pushing megabytes of
+# text at every other member, repeatedly.
+_SELECTION_TEXT_MAX = 512
+_SELECTION_ID_MAX = 64
+
+# Per-sid throttle on the selection events. Picking, retrying and cancelling
+# all reach the media server and all broadcast to the room, and none of them is
+# something a person does more than a handful of times a minute. No config key:
+# this is a floor against automation, not an operator-tunable policy.
+_SELECTION_RATE_LIMIT = 20
+_SELECTION_RATE_WINDOW_SECONDS = 60
+
+
+def _bounded_text(value, limit: int = _SELECTION_TEXT_MAX) -> str | None:
+    """Trim client-supplied selection text, preserving None."""
+    if value is None:
+        return None
+    return str(value)[:limit]
+
 
 def media_source_run_time(media_source: dict | None) -> float:
     """Runtime of an Emby media source in seconds, 0.0 when it does not say."""
@@ -898,10 +921,12 @@ def register(ctx):
 
     @sio.on("select_video")
     async def handle_select_video(sid, data):
+        if await _selection_throttled(sid, "select_video"):
+            return
         party_id = data.get("party_id", "").strip().upper()
         item_id = data.get("item_id")
-        item_name = data.get("item_name", "Unknown")
-        item_overview = data.get("item_overview", "")
+        item_name = _bounded_text(data.get("item_name")) or "Unknown"
+        item_overview = _bounded_text(data.get("item_overview")) or ""
         # Optional alternate-version picker output from the library
         # modal. None for single-version items (or when the selector
         # didn't pick); the helper falls back to Emby's default source.
@@ -911,7 +936,9 @@ def register(ctx):
         quality = data.get("quality")
         resume_mode = data.get("resume_mode", "start_over")
         binge = data.get("binge")
-        selection_id = data.get("selection_id") or secrets.token_urlsafe(12)
+        selection_id = _bounded_text(data.get("selection_id"), _SELECTION_ID_MAX) or (
+            secrets.token_urlsafe(12)
+        )
         # Optional resume position in seconds. The frontend reads
         # UserData.PlaybackPositionTicks from the library response and
         # offers the host a Resume / Start-over choice when it's > 0
@@ -970,8 +997,8 @@ def register(ctx):
             selected_by_username=party.username_for_sid(sid, "Someone"),
             production_year=data.get("production_year"),
             run_time_seconds=data.get("run_time_seconds"),
-            item_type=data.get("item_type"),
-            series_name=data.get("series_name"),
+            item_type=_bounded_text(data.get("item_type")),
+            series_name=_bounded_text(data.get("series_name")),
             season_number=data.get("season_number"),
             episode_number=data.get("episode_number"),
             media_source_id=media_source_id,
@@ -1013,6 +1040,8 @@ def register(ctx):
 
     @sio.on("retry_video_selection")
     async def handle_retry_video_selection(sid, data):
+        if await _selection_throttled(sid, "retry_video_selection"):
+            return
         party_id = data.get("party_id", "").strip().upper()
         selection_id = data.get("selection_id", "")
         party = party_manager.get(party_id)
@@ -1077,6 +1106,8 @@ def register(ctx):
 
     @sio.on("cancel_video_selection")
     async def handle_cancel_video_selection(sid, data):
+        if await _selection_throttled(sid, "cancel_video_selection"):
+            return
         party_id = data.get("party_id", "").strip().upper()
         selection_id = data.get("selection_id", "")
         party = party_manager.get(party_id)
@@ -1480,6 +1511,31 @@ def register(ctx):
         if not selector_client_id:
             return False
         return selector_client_id in (party.sid_client_ids or {}).values()
+
+    async def _selection_throttled(sid, event):
+        """True when this sid is picking / retrying / cancelling too fast.
+
+        Every one of these events reaches the media server and broadcasts to
+        the room, and select_video does both *before* anything upstream has
+        confirmed the item. Chat and socket connects were already throttled;
+        this closes the same door on the one event that starts transcodes.
+        """
+        if rate_limiter is None or not config.ENABLE_RATE_LIMITING:
+            return False
+        decision = rate_limiter.check(
+            f"selection:{sid}",
+            limit=_SELECTION_RATE_LIMIT,
+            window_seconds=_SELECTION_RATE_WINDOW_SECONDS,
+        )
+        if decision.allowed:
+            return False
+        logger.warning("Selection event %s rate-limited for sid %s", event, sid)
+        await sio.emit(
+            "error",
+            {"message": "Too many video changes; wait a moment and try again"},
+            to=sid,
+        )
+        return True
 
     def _may_act_on_selection(party, caller_client_id, selection):
         """Who is allowed to retry or cancel a pending / failed selection.
