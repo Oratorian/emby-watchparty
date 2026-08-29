@@ -55,7 +55,13 @@ describe('TitleDetails', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Related Movie'))
     expect(itemSection).toHaveBeenCalledWith('movie-1', 'related', expect.any(AbortSignal))
 
-    await wrapper.get('button.play-title').trigger('click')
+    // This button opens the options panel; the one inside it starts playback.
+    // Labelling it Play promised something it does not do, and people pressed
+    // it expecting the film to start.
+    const setUp = wrapper.get('button.play-title')
+    expect(setUp.text()).not.toBe('Play')
+    await setUp.trigger('click')
+    expect(wrapper.emitted('play')).toBeUndefined()
     await vi.waitFor(() => expect(wrapper.text()).toContain('Start watch party'))
     expect(wrapper.get('select[aria-label="Audio"]').text()).toContain('English AAC')
     expect(wrapper.get('select[aria-label="Subtitles"]').text()).toContain('English SRT')
