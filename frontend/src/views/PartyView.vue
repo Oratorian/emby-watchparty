@@ -186,12 +186,19 @@ const pendingSelection = computed(() => party.pendingVideoSelection)
 const isSelectionOwner = computed(
   () => pendingSelection.value?.selected_by === getClientId(),
 )
-const selectionBackdrop = computed(() => pendingSelection.value
+const selectionPreparing = computed(() => pendingSelection.value?.status === 'preparing')
+// Artwork is requested blind: nothing in the selection payload says whether
+// the item has a poster or a backdrop, so an item without either rendered a
+// broken image to the whole room. Both fall back to the plain shaded panel.
+const posterFailed = ref(false)
+const backdropFailed = ref(false)
+const selectionScreen = ref<HTMLElement | null>(null)
+const selectionBackdrop = computed(() => pendingSelection.value && !backdropFailed.value
   ? api.imageUrl(pendingSelection.value.item_id, 'Backdrop', {
     maxWidth: 1600, maxHeight: 900, quality: 85,
   })
   : '')
-const selectionPoster = computed(() => pendingSelection.value
+const selectionPoster = computed(() => pendingSelection.value && !posterFailed.value
   ? api.imageUrl(pendingSelection.value.item_id, 'Primary', {
     maxWidth: 480, maxHeight: 720, quality: 90,
   })
@@ -217,8 +224,17 @@ watch(() => party.pendingVideoSelection, (selection, previous) => {
   if (selectionSlowTimer) clearTimeout(selectionSlowTimer)
   selectionSlowTimer = null
   selectionIsSlow.value = false
+  if (selection?.item_id !== previous?.item_id) {
+    posterFailed.value = false
+    backdropFailed.value = false
+  }
   if (selection) {
     showLibrary.value = false
+    // The takeover replaces the whole video area, so move focus into it the
+    // way the repo's modals do. Without this a keyboard or screen-reader user
+    // is left on a control that is no longer on screen, and aria-live alone
+    // does not announce a region that simply appeared.
+    if (!previous) nextTick(() => selectionScreen.value?.focus())
     if (selection.status === 'preparing') {
       const elapsed = Math.max(0, Date.now() - Date.parse(selection.started_at))
       selectionSlowTimer = setTimeout(() => {
@@ -617,6 +633,12 @@ onMounted(async () => {
     // An error during auto-join means we should fall back to the manual
     // name prompt; otherwise the spinner sits forever.
     awaitingAutoJoin.value = false
+    // Same idea for a selection: emitSelection paints the loading screen
+    // before the server has accepted the pick, and every refusal of
+    // select_video arrives as one of these. Without taking the screen back
+    // down here it stays up for good, with the library button disabled
+    // behind it and Cancel refused because the server has no such selection.
+    if (party.abandonUnconfirmedSelection()) showLibrary.value = true
     addSystemMessage(`Error: ${msg}`)
   })
 
@@ -1336,8 +1358,13 @@ async function submitBecomeHost(payload: { username: string; password: string })
             <span v-if="party.userCount > 3" class="av av-more">+{{ party.userCount - 3 }}</span>
           </div>
         </div>
-        <button @click="libraryButtonAction" class="chip-btn" :disabled="!!pendingSelection">
-          <template v-if="pendingSelection">Preparing video…</template>
+        <!-- Disabled only while preparation is genuinely in flight. A failed
+             selection used to disable it too, and since a failed selection can
+             outlive the person who made it, that took the library away from
+             the whole room with no way to get it back. A fresh pick supersedes
+             a failed one server-side, so there is nothing to protect here. -->
+        <button @click="libraryButtonAction" class="chip-btn" :disabled="selectionPreparing">
+          <template v-if="selectionPreparing">Preparing video…</template>
           <template v-else-if="auth.partyUnlocked">
             {{ showLibrary ? 'Hide Library' : 'Browse Library' }}
           </template>
@@ -1414,18 +1441,31 @@ async function submitBecomeHost(payload: { username: string; password: string })
       <main class="video-area">
         <section
           v-if="pendingSelection"
+          ref="selectionScreen"
+          tabindex="-1"
           class="video-selection-screen"
           :class="{ 'video-selection-failed': pendingSelection.status === 'failed' }"
-          :style="{ '--selection-backdrop': `url(${selectionBackdrop})` }"
+          :style="{ '--selection-backdrop': selectionBackdrop ? `url(${selectionBackdrop})` : 'none' }"
           :aria-live="pendingSelection.status === 'failed' ? 'assertive' : 'polite'"
         >
+          <img
+            v-if="selectionBackdrop"
+            class="video-selection-backdrop-probe"
+            :src="selectionBackdrop"
+            alt=""
+            aria-hidden="true"
+            @error="backdropFailed = true"
+          />
           <div class="video-selection-shade" />
           <div class="video-selection-content">
             <img
+              v-if="selectionPoster"
               class="video-selection-poster"
               :src="selectionPoster"
               :alt="`${pendingSelection.title} poster`"
+              @error="posterFailed = true"
             />
+            <div v-else class="video-selection-poster video-selection-poster-empty" aria-hidden="true" />
             <div class="video-selection-copy">
               <p v-if="pendingSelection.series_name" class="video-selection-series">
                 {{ pendingSelection.series_name }}
@@ -1476,9 +1516,24 @@ async function submitBecomeHost(payload: { username: string; password: string })
                     Back to library
                   </button>
                 </div>
-                <p v-else class="video-selection-waiting">
-                  Waiting for {{ pendingSelection.selected_by_username }} to retry or choose another video.
-                </p>
+                <!-- Not the selector. A partial failure shows this takeover to
+                     every viewer whose own stream failed while the rest of the
+                     room is already watching, and without a way to put it down
+                     they were stuck reading it. Local only: there is nothing
+                     per-viewer on the server to clear. -->
+                <div v-else class="video-selection-actions">
+                  <p class="video-selection-waiting">
+                    Waiting for {{ pendingSelection.selected_by_username }} to retry or choose another video.
+                  </p>
+                  <button
+                    type="button"
+                    class="btn btn-ghost"
+                    data-action="dismiss-selection"
+                    @click="party.dismissVideoSelection()"
+                  >
+                    Dismiss
+                  </button>
+                </div>
               </template>
             </div>
           </div>
@@ -1502,9 +1557,23 @@ async function submitBecomeHost(payload: { username: string; password: string })
             role="alert"
           >
             <span>{{ party.videoSelectionIssue.failedUsers.join(', ') }} could not load this video.</span>
-            <button v-if="party.currentVideo.selected_by === getClientId()" type="button" @click="party.retryVideoSelection()">
-              Retry for everyone
-            </button>
+            <span class="video-selection-issue-actions">
+              <!-- Restarts the whole room, so say so. The server resumes it at
+                   the party's current position rather than the offset the
+                   original pick used, but everyone still gets a fresh
+                   transcode and a ready check. -->
+              <button
+                v-if="party.currentVideo.selected_by === getClientId()"
+                type="button"
+                data-action="retry-for-everyone"
+                @click="party.retryVideoSelection()"
+              >
+                Restart for everyone
+              </button>
+              <button type="button" data-action="dismiss-selection-issue" @click="party.dismissVideoSelection()">
+                Dismiss
+              </button>
+            </span>
           </div>
           <div v-if="party.readyCheckActive" class="ready-check-overlay">
             <div class="ready-check-box">
@@ -2376,6 +2445,11 @@ async function submitBecomeHost(payload: { username: string; password: string })
 .video-selection-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
 .video-selection-issue { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; color: #ffe3b0; background: rgba(114, 67, 0, .92); border-bottom: 1px solid rgba(255, 190, 90, .35); }
 .video-selection-issue button { color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 7px; padding: 5px 10px; cursor: pointer; }
+.video-selection-issue-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.video-selection-screen:focus { outline: none; }
+.video-selection-screen:focus-visible { outline: 2px solid var(--accent, #5ee7f7); outline-offset: -4px; }
+.video-selection-poster-empty { display: block; }
+.video-selection-backdrop-probe { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
 @media (max-width: 680px) {
   .video-selection-content { grid-template-columns: 108px minmax(0, 1fr); gap: 20px; padding: 24px 18px; }

@@ -64,6 +64,16 @@ export const usePartyStore = defineStore('party', () => {
     affected: boolean
     selectionId: string
   } | null>(null)
+  // Selection ids we painted a loading screen for before the server had
+  // accepted anything. select_video can be refused for several reasons -- no
+  // host, not a member, another pick already running, an invalid payload --
+  // and every one of those answers with an `error` or nothing at all, never
+  // with a selection event. Without this the optimistic screen was permanent:
+  // the library button is disabled behind it, and Cancel is refused because
+  // the server has no such selection to cancel. Only a reload got out.
+  const unconfirmedSelections = new Set<string>()
+  let unconfirmedTimer: ReturnType<typeof setTimeout> | null = null
+  const UNCONFIRMED_SELECTION_TIMEOUT_MS = 8000
   const playbackState = ref({ playing: false, time: 0, last_update: '' })
   const myStreamUrl = ref<string | null>(null)
   // Media time at which this user's stream begins. Backend sets
@@ -357,6 +367,9 @@ export const usePartyStore = defineStore('party', () => {
     currentVideo.value = null
     pendingVideoSelection.value = null
     videoSelectionIssue.value = null
+    unconfirmedSelections.clear()
+    if (unconfirmedTimer) clearTimeout(unconfirmedTimer)
+    unconfirmedTimer = null
     myStreamUrl.value = null
     streamOffset.value = 0
     playbackState.value = { playing: false, time: 0, last_update: '' }
@@ -489,21 +502,34 @@ export const usePartyStore = defineStore('party', () => {
     socket.on('video_selection_started', (data: ServerToClientPayloads['video_selection_started']) => {
       pendingVideoSelection.value = data.selection
       videoSelectionIssue.value = null
+      confirmSelection(data.selection.selection_id)
     })
 
     socket.on('video_selection_failed', (data: ServerToClientPayloads['video_selection_failed']) => {
+      // One reading of `affected`, used for both decisions. It was compared
+      // two different ways in adjacent lines, so a payload that omitted the
+      // field counted as affected for the banner and unaffected for the
+      // takeover, and the viewer got a warning about other people's streams
+      // with no idea their own had failed.
+      const affected = data.affected !== false
       videoSelectionIssue.value = {
         message: data.message,
         failedUsers: data.failed_users || [],
-        affected: data.affected !== false,
+        affected,
         selectionId: data.selection.selection_id,
       }
-      if (data.affected) pendingVideoSelection.value = data.selection
+      if (affected) pendingVideoSelection.value = data.selection
+      confirmSelection(data.selection.selection_id)
     })
 
-    socket.on('video_selection_cancelled', () => {
+    socket.on('video_selection_cancelled', (data: ServerToClientPayloads['video_selection_cancelled']) => {
       pendingVideoSelection.value = null
       videoSelectionIssue.value = null
+      confirmSelection(data.selection_id)
+      // cleared_video false means a partial failure's retry offer was merely
+      // dismissed: the video is still playing for everyone whose stream
+      // started, and blanking it here would stop the film for them.
+      if (data.cleared_video === false) return
       currentVideo.value = null
       myStreamUrl.value = null
       playbackState.value = { playing: false, time: 0, last_update: '' }
@@ -673,9 +699,35 @@ export const usePartyStore = defineStore('party', () => {
     socket.emit('auto_advance_cancel', { party_id: partyId.value })
   }
 
+  function confirmSelection(selectionId: string) {
+    unconfirmedSelections.delete(selectionId)
+    if (unconfirmedSelections.size === 0 && unconfirmedTimer) {
+      clearTimeout(unconfirmedTimer)
+      unconfirmedTimer = null
+    }
+  }
+
+  /** Drop a loading screen the server never acknowledged. */
+  function abandonUnconfirmedSelection() {
+    const id = pendingVideoSelection.value?.selection_id
+    if (!id || !unconfirmedSelections.has(id)) return false
+    confirmSelection(id)
+    pendingVideoSelection.value = null
+    videoSelectionIssue.value = null
+    return true
+  }
+
   function beginVideoSelection(selection: PendingVideoSelection) {
     pendingVideoSelection.value = selection
     videoSelectionIssue.value = null
+    unconfirmedSelections.add(selection.selection_id)
+    if (unconfirmedTimer) clearTimeout(unconfirmedTimer)
+    // Backstop for the refusals that answer with nothing at all. Long enough
+    // that a slow but healthy server still wins the race and confirms first.
+    unconfirmedTimer = setTimeout(() => {
+      unconfirmedTimer = null
+      abandonUnconfirmedSelection()
+    }, UNCONFIRMED_SELECTION_TIMEOUT_MS)
   }
 
   function retryVideoSelection() {
@@ -686,6 +738,20 @@ export const usePartyStore = defineStore('party', () => {
       party_id: partyId.value,
       selection_id: selectionId,
     })
+  }
+
+  /** Close the failure screen locally, for a viewer who cannot act on it.
+   *
+   * A partial failure shows the full takeover to every viewer whose own
+   * stream failed, but only the selector gets retry / back. Everyone else was
+   * left reading "waiting for X" over a room that is already watching, with
+   * no way to put it down. Nothing server-side is per-viewer here, so this
+   * needs no round trip. */
+  function dismissVideoSelection() {
+    const id = pendingVideoSelection.value?.selection_id
+    if (id) confirmSelection(id)
+    pendingVideoSelection.value = null
+    videoSelectionIssue.value = null
   }
 
   function cancelVideoSelection() {
@@ -705,6 +771,7 @@ export const usePartyStore = defineStore('party', () => {
     sessionError, partyMissing, sessionRetrying, sessionRetryAfter, supersededBy,
     join, leave, setupListeners, submitVote, retrySession,
     setBingeWatchActive, cancelAutoAdvance, beginVideoSelection,
-    retryVideoSelection, cancelVideoSelection,
+    retryVideoSelection, cancelVideoSelection, dismissVideoSelection,
+    abandonUnconfirmedSelection,
   }
 })

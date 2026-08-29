@@ -68,9 +68,40 @@ describe('party socket listeners', () => {
       party_id: 'B39AZ', selection_id: 'selection-1',
     })
 
-    handlers.get('video_selection_cancelled')?.({ selection_id: 'selection-1' } as never)
+    handlers.get('video_selection_cancelled')?.({
+      selection_id: 'selection-1', cleared_video: true,
+    } as never)
     expect(party.pendingVideoSelection).toBeNull()
     expect(party.videoSelectionIssue).toBeNull()
+  })
+
+  it('keeps the video playing when only a retry offer was dismissed', () => {
+    // A partial failure leaves the room watching while some viewers failed.
+    // Giving up on the retry offer must not blank the video for the people
+    // whose streams started fine, which is what clearing current_video on
+    // every cancel did.
+    const handlers = new Map<string, (data: never) => void>()
+    const socket = useSocketStore()
+    vi.spyOn(socket, 'on').mockImplementation(((event: string, handler: (data: never) => void) => {
+      handlers.set(event, handler)
+    }) as never)
+    vi.spyOn(socket, 'off').mockImplementation((() => undefined) as never)
+    vi.spyOn(socket, 'emit').mockImplementation(() => undefined)
+    const party = usePartyStore()
+    party.partyId = 'B39AZ'
+    party.setupListeners()
+    handlers.get('video_selected')?.({
+      video: { item_id: 'movie-1', title: 'Fake Movie', stream_url: 'http://stream/1' },
+    } as never)
+    expect(party.currentVideo).not.toBeNull()
+
+    handlers.get('video_selection_cancelled')?.({
+      selection_id: 'selection-partial', cleared_video: false,
+    } as never)
+
+    expect(party.currentVideo).not.toBeNull()
+    expect(party.myStreamUrl).toBe('http://stream/1')
+    expect(party.pendingVideoSelection).toBeNull()
   })
 
   it('surfaces a limited session bind without retrying the mutating request', async () => {

@@ -987,6 +987,15 @@ def register(ctx):
 
         reservation = await party_manager.reserve_operation(party_id, "select_video")
         if reservation is None:
+            # Someone else's pick holds the reservation. This used to return in
+            # total silence, which left the caller's client showing the loading
+            # screen it had already painted optimistically with nothing ever
+            # arriving to take it down.
+            await sio.emit(
+                "error",
+                {"message": "Another video is already being started"},
+                to=sid,
+            )
             return
         selection = PendingVideoSelection(
             selection_id=selection_id,
@@ -1027,7 +1036,13 @@ def register(ctx):
         finally:
             await party_manager.release_operation(party_id, "select_video", reservation)
         if not success:
-            await sio.emit("error", {"message": "Failed to load video"}, to=sid)
+            # The failure screen already says this, with retry and back on it.
+            # Fall back to the chat error only when the selection never got far
+            # enough to publish one, so the selector does not read the same
+            # failure twice in two different places.
+            failed = party.pending_video_selection
+            if not (failed and failed.selection_id == selection_id and failed.status == "failed"):
+                await sio.emit("error", {"message": "Failed to load video"}, to=sid)
             return
         if binge is not None and party.host_client_id == selector_client_id:
             active = bool(binge) and bool(config.BINGE_WATCH_ENABLED)

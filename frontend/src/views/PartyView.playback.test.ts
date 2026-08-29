@@ -346,3 +346,108 @@ describe('video selection lifecycle', () => {
     wrapper.unmount()
   })
 })
+
+/**
+ * What happens when the selection does NOT work out.
+ *
+ * The loading screen replaces the whole video area and disables the library
+ * behind it, so every one of these is the difference between a party that
+ * recovers on its own and one that has to be abandoned.
+ */
+describe('escaping a selection that failed', () => {
+  beforeEach(() => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+    socket.emit.mockClear()
+    // socket.on accumulates across the whole module, so without this a
+    // handler lookup below can find one belonging to an unmounted component.
+    socket.on.mockClear()
+    reloading.value = false
+    localStorage.setItem('emby-watchparty-username', 'Alice')
+    localStorage.setItem('emby-watchparty-client-id', CLIENT_ID)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })))
+  })
+
+  function errorHandler() {
+    const calls = socket.on.mock.calls.filter(([event]) => event === 'error')
+    expect(calls.length).toBeGreaterThan(0)
+    return calls[calls.length - 1]![1] as (data: { message: string }) => void
+  }
+
+  function failed(selectedBy = CLIENT_ID) {
+    return {
+      selection_id: 'selection-1', item_id: 'episode-1', title: 'The Test Episode',
+      selected_by: selectedBy, selected_by_username: 'Alice', overview: '',
+      status: 'failed', production_year: 2024, run_time_seconds: 2700,
+      item_type: 'Episode', series_name: 'Test Series', season_number: 2,
+      episode_number: 4, started_at: new Date().toISOString(),
+      error: 'Could not start this video.',
+    }
+  }
+
+  it('leaves the library reachable once a selection has failed', async () => {
+    const { wrapper, party } = await joinedParty(null)
+
+    party.pendingVideoSelection = { ...failed(), status: 'preparing', error: null } as never
+    await nextTick()
+    expect(wrapper.get('.chip-btn').text()).toContain('Preparing video')
+    expect(wrapper.get('.chip-btn').attributes('disabled')).toBeDefined()
+
+    // A failed selection can outlive whoever made it, so keeping the library
+    // locked here took the room's only way out away from everyone.
+    party.pendingVideoSelection = failed() as never
+    await nextTick()
+    expect(wrapper.get('.chip-btn').text()).not.toContain('Preparing video')
+    expect(wrapper.get('.chip-btn').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('lets a viewer who cannot act on the failure put it down', async () => {
+    const { wrapper, party } = await joinedParty(null)
+    party.pendingVideoSelection = failed('another-client') as never
+    await nextTick()
+    expect(wrapper.find('.video-selection-screen').exists()).toBe(true)
+
+    await wrapper.get('[data-action="dismiss-selection"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('.video-selection-screen').exists()).toBe(false)
+    // Purely local: nothing per-viewer exists server-side to clear, and a
+    // round trip would have been refused for a non-selector anyway.
+    expect(emitsOf('cancel_video_selection')).toHaveLength(0)
+    wrapper.unmount()
+  })
+
+  it('takes down a loading screen the server refused', async () => {
+    const { wrapper, party } = await joinedParty(null)
+    // What usePartyStream does optimistically, before the server has replied.
+    party.beginVideoSelection({ ...failed(), status: 'preparing', error: null } as never)
+    await nextTick()
+    expect(wrapper.find('.video-selection-screen').exists()).toBe(true)
+
+    // select_video refused: "Party has no host", "Not a party member",
+    // "Another video is already being started". All arrive as this.
+    errorHandler()({ message: 'Party has no host -- login to become host first' })
+    await nextTick()
+
+    expect(wrapper.find('.video-selection-screen').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps a confirmed selection up when an unrelated error arrives', async () => {
+    const { wrapper, party } = await joinedParty(null)
+    party.beginVideoSelection({ ...failed(), status: 'preparing', error: null } as never)
+    // The server acknowledged this one, so it is no longer ours to withdraw.
+    const started = socket.on.mock.calls.filter(([e]) => e === 'video_selection_started')
+    started[started.length - 1]![1]({ selection: { ...failed(), status: 'preparing', error: null } })
+    await nextTick()
+
+    errorHandler()({ message: 'Chat message too long' })
+    await nextTick()
+
+    expect(wrapper.find('.video-selection-screen').exists()).toBe(true)
+    wrapper.unmount()
+  })
+})
