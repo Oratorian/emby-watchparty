@@ -22,7 +22,18 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # curl is needed for HEALTHCHECK; everything else is pure Python.
+#
+# The upgrade keeps the image patched on its own schedule rather than
+# Docker Hub's. Without it the image carries whatever the base shipped, so
+# a published Debian security fix does not reach users until
+# python:3.12-slim happens to be rebuilt, which is days. CVE-2026-53615 in
+# util-linux was the case that surfaced it, reaching the image through nine
+# packages.
+#
+# It costs no reproducibility this build had: the base is a moving tag, not
+# a digest pin, so image content already depended on when it was built.
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 

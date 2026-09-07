@@ -16,6 +16,47 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [2.1.4-beta1] - 2026-08-22 - Midnight Premiere
+
+**Playback no longer restarts from the beginning after a buffering stall.**
+
+If your player stalled, the movie could jump back to the start of the stream,
+and because the restarted client reports its new position to the party,
+everyone else was dragged back with it. That is why it read as "the movie
+reset" rather than one person's player hiccuping. Seeking made it more likely,
+since a seek makes a stall more likely, but seeking was never the trigger.
+
+Beta image only. There is no git tag and no GitHub release for this, and it
+does not move `:latest`. Pull it explicitly if you want to test the fix.
+
+Reported with debug logs by [**Ged**](https://discord.com/users/324538455348609025) on discord, whose session showed one
+client requesting the master playlist four times where every other session in
+the file requested it once. That count is what made the fault findable.
+
+### Technical details
+
+hls.js recovers a fatal media error by re-attaching to the media element and
+restoring the playhead:
+
+    recoverMediaError() { detachMedia(); attachMedia(media); startLoad(time) }
+
+The `MEDIA_ATTACHED` listener in `VideoPlayer.vue` was registered with `on`
+rather than `once`, so that re-attach called `loadSource()` a second time.
+`loadSource` is the only thing in the library that fires `MANIFEST_LOADING`,
+and that handler sets `lastCurrentTime = startPosition = 0`. So the library
+restored the position and the app discarded it one event later.
+
+The restart lands at wherever that viewer's transcode began, not at `0:00`
+specifically. A viewer who joined mid-movie has their offset baked into the
+Emby transcode via `StartTimeTicks`, so they would jump to their join point
+instead, which may be why this went unreported for so long.
+
+No regression test on this line: the 2.1.x frontend has no test
+infrastructure, and adding one for a single fix is the wrong trade. The 3.0
+port carries the test.
+
+---
+
 ## [2.1.3] - 2026-08-16 - Midnight Premiere
 
 **Saving settings in `/admin` works when `config.json` is bind-mounted as a single file.**
@@ -237,6 +278,7 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
+- **v2.1.4-beta1** (2026-08-22): Playback no longer restarts from the beginning after a buffering stall, which used to take the whole party back with it. Beta image only, not on `latest`.
 - **v2.1.3**  (2026-08-16): Settings saved from `/admin` now persist when `config.json` is bind-mounted as a single file, the layout the README recommends.
 - **v2.1.2**  (2026-08-10): HEVC sources are no longer transcoded for viewers whose browser can decode them; the codec is negotiated per viewer, so a mixed party works.
 - **v2.1.1**  (2026-08-05): Security -- upstream advisories in `socket.io-parser` (high, browser-side) and `postcss` (medium, build-time).
