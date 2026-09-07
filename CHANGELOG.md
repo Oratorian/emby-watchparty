@@ -16,7 +16,7 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
-## [2.1.4-beta1] - 2026-08-22 - Midnight Premiere
+## [2.1.4] - 2026-09-07 - Midnight Premiere
 
 **Playback no longer restarts from the beginning after a buffering stall.**
 
