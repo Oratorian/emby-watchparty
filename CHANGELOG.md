@@ -26,8 +26,7 @@ everyone else was dragged back with it. That is why it read as "the movie
 reset" rather than one person's player hiccuping. Seeking made it more likely,
 since a seek makes a stall more likely, but seeking was never the trigger.
 
-Beta image only. There is no git tag and no GitHub release for this, and it
-does not move `:latest`. Pull it explicitly if you want to test the fix.
+Nothing to reconfigure and no migration. Pull the new image and restart.
 
 Reported with debug logs by [**Ged**](https://discord.com/users/324538455348609025) on discord, whose session showed one
 client requesting the master playlist four times where every other session in
@@ -278,7 +277,7 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
-- **v2.1.4-beta1** (2026-08-22): Playback no longer restarts from the beginning after a buffering stall, which used to take the whole party back with it. Beta image only, not on `latest`.
+- **v2.1.4**  (2026-09-07): Playback no longer restarts from the beginning after a buffering stall, which used to take the whole party back with it. Shipped as `2.1.4-beta1` on 2026-08-22 for testing first.
 - **v2.1.3**  (2026-08-16): Settings saved from `/admin` now persist when `config.json` is bind-mounted as a single file, the layout the README recommends.
 - **v2.1.2**  (2026-08-10): HEVC sources are no longer transcoded for viewers whose browser can decode them; the codec is negotiated per viewer, so a mixed party works.
 - **v2.1.1**  (2026-08-05): Security -- upstream advisories in `socket.io-parser` (high, browser-side) and `postcss` (medium, build-time).
