@@ -16,7 +16,7 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
-## [3.0.0-beta3] - 2026-09-11 - Director's Cut
+## [3.0.0-beta4] - 2026-09-11 - Director's Cut
 
 ### Breaking Changes
 
