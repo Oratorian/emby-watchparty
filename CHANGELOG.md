@@ -16,6 +16,33 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [2.1.5] - 2026-10-08 - Midnight Premiere
+
+**Frontend dependencies updated with upstream security and reliability fixes.**
+
+This release collects five merged Dependabot PRs since 2.1.4, updating Vue and the frontend build tooling alongside the declared Axios dependency. No application code changed, no configuration changes, and no migration. Pull the new image and restart.
+
+If you build from source, run `npm ci` in `frontend/` to install the versions recorded in the updated lockfile.
+
+### Security
+
+- **`source-map-js` 1.2.1 to 1.2.2** fixes [CVE-2026-93749](https://github.com/7rulnik/source-map-js/releases/tag/v1.2.2), a denial of service caused by crafted indexed source maps. It reaches this project through the Vue compilers and PostCSS, so the relevant exposure is during frontend builds. The same upstream release also fixes a crash under browser Content Security Policies that disallow `unsafe-eval`. Covered by [#71](https://github.com/Oratorian/emby-watchparty/pull/71) and the Vue update in [#72](https://github.com/Oratorian/emby-watchparty/pull/72).
+- **`axios` 1.18.1 to 1.20.0** includes [upstream hardening](https://github.com/axios/axios/releases/tag/v1.20.0) of configuration reads against prototype pollution, plus request, cancellation, and interceptor fixes. Merged in [#70](https://github.com/Oratorian/emby-watchparty/pull/70). Axios is declared in `package.json`, but the current frontend does not import it; API requests use native `fetch`, so these fixes do not change Watch Party's request handling.
+
+### Changed
+
+- **`vue` and `@vue/server-renderer` 3.5.39 to 3.5.43**, with the compiler, reactivity, runtime, and shared Vue packages updated together. Includes upstream rendering, reactivity, and compiler fixes. Watch Party uses client-side rendering; the server-renderer dependency update adds no server-rendering feature. Merged in [#72](https://github.com/Oratorian/emby-watchparty/pull/72).
+- **`browserslist` 4.28.6 to 4.28.9**, including query parsing improvements, fixes for unbounded memory growth and prototype writes, and refreshed browser compatibility data in its transitive dependencies. Used by the build toolchain. Merged in [#69](https://github.com/Oratorian/emby-watchparty/pull/69).
+- **`shell-quote` 1.10.0 to 1.12.0**, including shell quoting and parsing fixes and support for additional shell syntax. Used by `npm-run-all2` when running frontend build scripts. Merged in [#73](https://github.com/Oratorian/emby-watchparty/pull/73).
+
+### Technical details
+
+The version pairs above are the resolved lockfile versions. The direct dependency ranges also moved from `axios` `^1.13.6` to `^1.20.0` and `vue` `^3.5.30` to `^3.5.43`. Only `frontend/package.json` and `frontend/package-lock.json` changed in these dependency merges.
+
+The Vue update also refreshes transitive dependencies, including `postcss` 8.5.25 to 8.5.29, `nanoid` 3.3.18 to 3.3.20, and Babel parser/types. It already resolves `source-map-js` to 1.2.2, so the later merge of #71 has no additional file changes; both PRs cover the same source-map update.
+
+---
+
 ## [2.1.4] - 2026-09-07 - Midnight Premiere
 
 **Playback no longer restarts from the beginning after a buffering stall.**
@@ -277,6 +304,7 @@ The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, 
 
 ## Version History Summary
 
+- **v2.1.5**  (2026-10-08): Frontend dependency updates, including the `source-map-js` denial-of-service fix, Axios hardening, and Vue and build-tool maintenance from five Dependabot PRs.
 - **v2.1.4**  (2026-09-07): Playback no longer restarts from the beginning after a buffering stall, which used to take the whole party back with it. Shipped as `2.1.4-beta1` on 2026-08-22 for testing first.
 - **v2.1.3**  (2026-08-16): Settings saved from `/admin` now persist when `config.json` is bind-mounted as a single file, the layout the README recommends.
 - **v2.1.2**  (2026-08-10): HEVC sources are no longer transcoded for viewers whose browser can decode them; the codec is negotiated per viewer, so a mixed party works.
