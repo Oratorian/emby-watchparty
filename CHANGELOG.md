@@ -111,7 +111,7 @@ Admin Login, Avatar Recovery, Chat and Socket Connections were free-text fields 
 
 ### Technical details
 
-See [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md) for the test-suite audit behind most of this section: what it found, the two real bugs that came out of it, and why 64 deliberate mutations were applied to the source to check the tests could see them.
+See [SUMMARY-OF-CHANGES.md](https://github.com/Oratorian/emby-watchparty/blob/609b26c1c5e882448c996233494f77c4f33e27c7/SUMMARY-OF-CHANGES.md) for the test-suite audit behind most of this section: what it found, the two real bugs that came out of it, and why 64 deliberate mutations were applied to the source to check the tests could see them.
 
 ---
 
@@ -131,7 +131,7 @@ Party creation, joining, admin login, avatar recovery, background requests, sock
 
 Chat text refused by a limit is handed back rather than discarded, and if you had already started typing something else it is kept beside the composer instead of being pasted in front of it.
 
-Every 429 carries the same `{detail, code, retry_after}` shape, and each one names the limit that actually refused the request. That last part is not decoration. Diagnostics that describe a limit the request never hit send you looking for a setting that does not exist, and this cycle found several of those, described in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+Every 429 carries the same `{detail, code, retry_after}` shape, and each one names the limit that actually refused the request. That last part is not decoration. Diagnostics that describe a limit the request never hit send you looking for a setting that does not exist, and this cycle found several of those, described in [SUMMARY-OF-CHANGES.md](https://github.com/Oratorian/emby-watchparty/blob/609b26c1c5e882448c996233494f77c4f33e27c7/SUMMARY-OF-CHANGES.md).
 
 ### Find out before you upgrade, not after
 
@@ -213,15 +213,15 @@ The library browser gains filters driven by what your server actually reports, a
 
 Everything it sends to Emby is pinned against a corpus of real 4.9.5.0 responses, so a change that would have altered a request is caught by a test rather than by a viewer.
 
-Two things to know if you are watching for them: filtering or sorting a TV library, and jumping to a letter in a large one, were both broken in the first cut of this work and are fixed. The details are in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+Two things to know if you are watching for them: filtering or sorting a TV library, and jumping to a letter in a large one, were both broken in the first cut of this work and are fixed. The details are in [SUMMARY-OF-CHANGES.md](https://github.com/Oratorian/emby-watchparty/blob/609b26c1c5e882448c996233494f77c4f33e27c7/SUMMARY-OF-CHANGES.md).
 
-The rest of the rate-limit surfacing was written and corrected inside this cycle, so no published image ever carried these; they are listed because the code is on `3.0-dev` and reviewable, not because you are running them. A viewer's first join could be refused as "too many join attempts", the chat "message not sent" warning outlived its countdown, two refused chat messages merged into one reversed line, ordinary socket reconnects painted a red `xhr poll error` alert, and a stale party-list warning blamed rate limiting for the rest of a server outage. All are described with their causes in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+The rest of the rate-limit surfacing was written and corrected inside this cycle, so no published image ever carried these; they are listed because the code is on `3.0-dev` and reviewable, not because you are running them. A viewer's first join could be refused as "too many join attempts", the chat "message not sent" warning outlived its countdown, two refused chat messages merged into one reversed line, ordinary socket reconnects painted a red `xhr poll error` alert, and a stale party-list warning blamed rate limiting for the rest of a server outage. All are described with their causes in [SUMMARY-OF-CHANGES.md](https://github.com/Oratorian/emby-watchparty/blob/609b26c1c5e882448c996233494f77c4f33e27c7/SUMMARY-OF-CHANGES.md).
 
 ### Technical details
 
 Three of the four bodies of work here are **[dnordel](https://github.com/dnordel)**'s: the rate-limit surfacing and the preflight as [#57](https://github.com/Oratorian/emby-watchparty/pull/57), 25 commits over 45 files, the deployment schema as [#58](https://github.com/Oratorian/emby-watchparty/pull/58), 16 commits over 20 files, and the library parity work as [#59](https://github.com/Oratorian/emby-watchparty/pull/59) and [#60](https://github.com/Oratorian/emby-watchparty/pull/60), 39 commits over 89 files. All landed on `3.0-dev` via their branches after an audit rather than through a PR merge.
 
-Those audits found 20 defects in the first, 13 in the second and 64 in the third, all fixed before any of them landed. Their methodology, the defect classes, and the two failure patterns now recurring across cycles are in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+Those audits found 20 defects in the first, 13 in the second and 64 in the third, all fixed before any of them landed. Their methodology, the defect classes, and the two failure patterns now recurring across cycles are in [SUMMARY-OF-CHANGES.md](https://github.com/Oratorian/emby-watchparty/blob/609b26c1c5e882448c996233494f77c4f33e27c7/SUMMARY-OF-CHANGES.md).
 
 The codec negotiation is the third, built on the stable line for 2.1.2 and forward-ported here rather than written twice. `TranscodeReasons` was not the cause, despite being the obvious suspect: Emby treats it as informational, so removing `VideoCodecNotSupported` alone changes nothing. The forcing was the hardcoded `VideoCodec=h264`.
 
@@ -295,7 +295,7 @@ A misconfigured container now reports `setup_required` from `/api/health`, retur
 
 The two rough edges previously listed here are both closed. `EMBY_SERVER_URL` values like `http://emby_server:8096` now validate, because Docker Compose service names may legally contain underscores and Docker's own DNS resolves them; browser-facing CORS origins keep the strict form. The `data/` volume chmod went with the setup flow.
 
-The full breakdown, breaking changes with their blast radius, the security analysis and the complete change log, lives in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+The full breakdown, breaking changes with their blast radius, the security analysis and the complete change log, lives in [SUMMARY-OF-CHANGES.md](https://github.com/Oratorian/emby-watchparty/blob/609b26c1c5e882448c996233494f77c4f33e27c7/SUMMARY-OF-CHANGES.md).
 
 ---
 
@@ -393,7 +393,7 @@ Codename: **Midnight Premiere**. Branch: `2.0-Rework` (becoming `main` on cutove
 - **Silent socket disconnects no longer strand users in the party.** Reported by [@xyxxyxxy](https://github.com/xyxxyxxy) on Discord: a mid-session network blip caused pause / play / seek events to stop reaching the affected user in both directions, with no indication anything had gone wrong -- only a page reload restored sync. Traced end-to-end: the server hard-evicts the user from the party room on `disconnect`, `socket.io-client` auto-reconnects with a fresh sid, and nothing on the client re-issued `join_party`. So the reconnected socket belonged to no party room, and every `sio.emit(..., room=party_id)` silently skipped it. The socket store now tracks a `hasEverConnected` flag; the party store re-emits `join_party` on every subsequent connect (client_id is stable, so the server takes the known-participant fast path via `_replace_sid` -- no late-joiner vote, no lost transcode). An amber "Reconnecting to party…" banner renders during the outage so the drop is visible instead of invisible.
 - **Library rescan no longer traps users in a fake-empty grid.** Reported by [@xyxxyxxy](https://github.com/xyxxyxxy) on Discord: mid-scan Emby responses came back empty, the frontend pinned that empty state to `localStorage` as the restore target, and every subsequent mount rendered "no items" until the container was restarted. Three separate bugs stacked: `emby_client.get_items` swallowed `requests.RequestException` into `{}` so a genuine upstream error looked identical to an empty folder; `/api/items` returned no `Cache-Control` header so intermediate proxies could cache the empty page; and `LibraryBrowser.saveLibraryState` unconditionally pinned the current location on load, including when the response was empty. Now `get_items` re-raises and the router returns a proper `502 Bad Gateway`, `/api/items` responses carry `Cache-Control: no-store`, and the localStorage restore target is only pinned when the response actually contained items -- so a mid-rescan empty response is treated as ambiguous instead of authoritative.
 
-The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, every Added / Changed / Fixed bullet, breaking changes, and technical deep-dives) is preserved at the [v2.1.0 tag](https://github.com/Oratorian/emby-watchparty/blob/v2.1.0/SUMMARY-OF-CHANGES.md); `SUMMARY-OF-CHANGES.md` on this branch tracks the 3.0 cycle instead.
+The full per-beta breakdown of the 2.0 development cycle (beta1 through beta18, every Added / Changed / Fixed bullet, breaking changes, and technical deep-dives) is preserved at the [v2.1.0 tag](https://github.com/Oratorian/emby-watchparty/blob/v2.1.0/SUMMARY-OF-CHANGES.md); the [archived 3.0 development log](https://github.com/Oratorian/emby-watchparty/blob/609b26c1c5e882448c996233494f77c4f33e27c7/SUMMARY-OF-CHANGES.md) preserves the Director's Cut development history.
 
 
 
