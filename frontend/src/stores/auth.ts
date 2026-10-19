@@ -39,13 +39,25 @@ export const useAuthStore = defineStore('auth', () => {
   // True only when this caller is the current host.
   const authenticated = ref(false)
 
+  // HTTP status requests can finish out of order during session binding.
+  // Socket presence events are newer than the room snapshot of an in-flight
+  // request, but that request may still carry the first valid host/admin roles.
+  let statusRequest = 0
+  let roomRevision = 0
+  let authAction = 0
+
   async function refresh() {
+    const request = ++statusRequest
+    const roomAtRequest = roomRevision
     const data = await api.authStatus()
+    if (request !== statusRequest) return
     requireLogin.value = !!data.require_login
     isHost.value = !!data.is_host
     isAdmin.value = !!data.is_admin
-    hostUsername.value = data.host_username || null
-    partyUnlocked.value = !!data.party_unlocked
+    if (roomAtRequest === roomRevision) {
+      hostUsername.value = data.host_username || null
+      partyUnlocked.value = !!data.party_unlocked
+    }
     partyId.value = data.party_id || null
     username.value = data.username || null
     authenticated.value = isHost.value
@@ -54,8 +66,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   /** Promote this party-bound caller to host of their current party. */
   async function becomeHost(emby_username: string, password: string) {
+    const action = ++authAction
+    ++statusRequest
     const data = await api.login(emby_username, password)
+    if (action !== authAction) return data
     if (data.success) {
+      ++statusRequest
+      ++roomRevision
       mediaServerType.value = data.media_server_type || mediaServerType.value
       isHost.value = true
       isAdmin.value = !!data.is_admin
@@ -69,7 +86,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   /** Step down as host (party stays joined). */
   async function dropHost() {
+    const action = ++authAction
+    ++statusRequest
     await api.logout()
+    if (action !== authAction) return
+    ++statusRequest
+    ++roomRevision
     isHost.value = false
     isAdmin.value = false
     hostUsername.value = null
@@ -85,16 +107,20 @@ export const useAuthStore = defineStore('auth', () => {
     socket.off('host_reclaimed')
 
     socket.on('host_changed', (data: ServerToClientPayloads['host_changed']) => {
+      ++roomRevision
       hostUsername.value = data.host_username || null
       partyUnlocked.value = !!data.unlocked
-      // is_host stays whatever it was -- the caller knows from /auth/status
-      // whether they themselves were the one becoming host.
+      // A public room event cannot prove our own host/admin role. Recheck the
+      // cookie and supersede any status request made before the host changed.
+      void refresh().catch(() => { /* keep the last verified roles on an outage */ })
     })
 
     socket.on('host_left', (data: ServerToClientPayloads['host_left']) => {
+      ++roomRevision
       const wasPlayingOnly = !!data.playing_only
       partyUnlocked.value = false
       if (!wasPlayingOnly) {
+        ++statusRequest
         // Full lock; clear all host context for everyone.
         hostUsername.value = null
         isHost.value = false
@@ -104,6 +130,7 @@ export const useAuthStore = defineStore('auth', () => {
     })
 
     socket.on('host_reclaimed', (data: ServerToClientPayloads['host_reclaimed']) => {
+      ++roomRevision
       hostUsername.value = data.host_username || hostUsername.value
       partyUnlocked.value = true
     })

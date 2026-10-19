@@ -1363,8 +1363,13 @@ async function submitBecomeHost(payload: { username: string; password: string })
              outlive the person who made it, that took the library away from
              the whole room with no way to get it back. A fresh pick supersedes
              a failed one server-side, so there is nothing to protect here. -->
-        <button @click="libraryButtonAction" class="chip-btn" :disabled="selectionPreparing">
+        <button
+          @click="libraryButtonAction"
+          class="chip-btn"
+          :disabled="selectionPreparing || (auth.isHost && !auth.partyUnlocked)"
+        >
           <template v-if="selectionPreparing">Preparing video…</template>
+          <template v-else-if="auth.isHost && !auth.partyUnlocked">Restoring host…</template>
           <template v-else-if="auth.partyUnlocked">
             {{ showLibrary ? 'Hide Library' : 'Browse Library' }}
           </template>
@@ -1543,6 +1548,10 @@ async function submitBecomeHost(payload: { username: string; password: string })
             <h2>No video selected</h2>
             <p>Browse the library and select a video to start watching together</p>
             <button @click="toggleLibrary" class="btn btn-primary">Browse Library</button>
+          </template>
+          <template v-else-if="auth.isHost">
+            <h2>Restoring host session</h2>
+            <p>Your host session is being restored. The library will reopen when you reconnect.</p>
           </template>
           <template v-else>
             <h2>Party is locked</h2>

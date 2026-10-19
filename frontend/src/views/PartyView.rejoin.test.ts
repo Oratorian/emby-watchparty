@@ -3,6 +3,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useAvatarStore } from '@/stores/avatar'
+import { useAuthStore } from '@/stores/auth'
+import { api } from '@/api/client'
 import { usePartyStore } from '@/stores/party'
 import PartyView from './PartyView.vue'
 
@@ -74,6 +76,31 @@ describe('returning to a party after in-app navigation', () => {
   afterEach(() => {
     localStorage.clear()
     vi.unstubAllGlobals()
+  })
+
+  it('shows host recovery instead of a login prompt while socket presence is restored', async () => {
+    vi.spyOn(usePartyStore(), 'join').mockResolvedValue(undefined as never)
+    vi.spyOn(api, 'authStatus').mockResolvedValue({
+      is_host: true, is_admin: true, party_unlocked: false,
+      host_username: 'Alice', party_id: 'ABC12',
+    })
+    const wrapper = mountParty()
+    await flushPromises()
+    usePartyStore().users = ['Alice']
+    await flushPromises()
+    expect(wrapper.get('button.chip-btn').text()).toBe('Restoring host…')
+    expect(wrapper.get('button.chip-btn').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).not.toContain('Login to Become Host')
+
+    useAuthStore().partyUnlocked = true
+    await flushPromises()
+    expect(wrapper.get('button.chip-btn').text()).toBe('Browse Library')
+    expect(wrapper.get('button.chip-btn').attributes('disabled')).toBeUndefined()
+    useAuthStore().isHost = false
+    useAuthStore().partyUnlocked = false
+    await flushPromises()
+    expect(wrapper.get('button.chip-btn').text()).toBe('Login to Become Host')
+    wrapper.unmount()
   })
 
   it('joins again when the store already knows the party', async () => {
