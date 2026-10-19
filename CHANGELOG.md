@@ -25,6 +25,11 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 Reported by **[miakkia](https://github.com/miakkia)** in [#74](https://github.com/Oratorian/emby-watchparty/issues/74). The recovery paths are covered by regression tests and browser checks in Chromium and Firefox.
 
+### Changed
+
+- **The Socket.IO reference now covers the 3.0 protocol.** [`docs/SOCKET_API.md`](docs/SOCKET_API.md) documents all 21 inbound and 38 outbound events, with current payloads, host recovery, session binding, playback timing, visibility and rate limits. The examples are validated against the backend contracts.
+- **Swagger and ReDoc now describe the responses the API returns.** Response schemas include serialized defaults, JSON errors, readiness failures, rate limits with `Retry-After`, image and subtitle bytes, and HLS range responses. HLS token and Range inputs are documented, and GET/HEAD operations have distinct IDs. Generated REST types follow the same contract, including optional validation-error fields and the literal rate-limit code. OpenAPI 3.1 validation covers all 44 paths and 48 operations, with runtime response regression tests.
+
 ---
 
 ## [3.0.0-beta4] - 2026-09-11 - Director's Cut
