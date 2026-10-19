@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref } from 'vue'
 import { api } from '@/api/client'
 import AdminPanel from '@/components/AdminPanel.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -15,7 +15,9 @@ const backToWatchPartyTarget = computed(() => {
   return auth.partyId ? `/party/${auth.partyId}` : '/'
 })
 
-const authenticated = ref(false)
+// The panel owns the initial settings request and shows loading/retry states.
+// Only a confirmed authentication refusal should switch this page to login.
+const authenticated = ref(true)
 const loginUser = ref('')
 const loginPass = ref('')
 const loginError = ref('')
@@ -43,14 +45,6 @@ function onPanelUnauthorized() {
   authenticated.value = false
 }
 
-onMounted(async () => {
-  try {
-    const cfg = await api.adminGetConfig()
-    if (cfg && !cfg.error) {
-      authenticated.value = true
-    }
-  } catch { /* not authenticated */ }
-})
 </script>
 
 <template>

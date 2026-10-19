@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from 'vue'
-import { api } from '@/api/client'
+import { ApiError, api } from '@/api/client'
 import type { AdminConfig } from '@/api/client'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -12,8 +12,63 @@ const emit = defineEmits<{
 const auth = useAuthStore()
 
 const config = ref<AdminConfig>({} as AdminConfig)
+const loadingConfig = ref(false)
+const configLoaded = ref(false)
+const loadError = ref('')
+const saving = ref(false)
 const saveStatus = ref('')
 const saveClass = ref('')
+
+// The API can receive a successful HTML proxy response or incomplete JSON.
+// Verify the editable fields before showing controls that save the whole config.
+const CONFIG_FIELD_TYPES = {
+  BINGE_WATCH_COUNTDOWN_SECONDS: 'number',
+  BINGE_WATCH_ENABLED: 'boolean',
+  CONSOLE_LOG_LEVEL: 'string',
+  ENABLE_RATE_LIMITING: 'boolean',
+  FORCE_TRANSCODE: 'boolean',
+  HLS_TOKEN_EXPIRY: 'number',
+  LATE_JOIN_VOTE_COOLDOWN_SECONDS: 'number',
+  LATE_JOIN_VOTE_ENABLED: 'boolean',
+  LATE_JOIN_VOTE_TIMEOUT_SECONDS: 'number',
+  LOG_FILE: 'string',
+  LOG_FORMAT: 'string',
+  LOG_LEVEL: 'string',
+  LOG_MAX_SIZE: 'number',
+  LOG_TO_FILE: 'boolean',
+  MAX_USERS_PER_PARTY: 'number',
+  RATE_LIMIT_API_CALLS: 'string',
+  RATE_LIMIT_AVATAR_RECOVERY: 'string',
+  RATE_LIMIT_CHAT: 'string',
+  RATE_LIMIT_LOGIN: 'string',
+  RATE_LIMIT_PARTY_CREATION: 'string',
+  RATE_LIMIT_SOCKET_CONNECTIONS: 'string',
+  REQUIRE_LOGIN: 'boolean',
+  STATIC_SESSION_ENABLED: 'boolean',
+  STATIC_SESSION_ID: 'string',
+} satisfies Record<Exclude<keyof AdminConfig, 'error' | 'ENABLED_QUALITY_OPTIONS'>, string>
+
+function isAdminConfig(value: unknown): value is AdminConfig {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const fields = value as Record<string, unknown>
+  if (!Object.entries(CONFIG_FIELD_TYPES).every(([key, type]) =>
+    typeof fields[key] === type && (type !== 'number' || Number.isFinite(fields[key])),
+  )) return false
+  const quality = fields.ENABLED_QUALITY_OPTIONS
+  return !!quality && typeof quality === 'object' && !Array.isArray(quality)
+    && Object.values(quality).every((bitrates) => Array.isArray(bitrates)
+      && bitrates.every((bitrate) => typeof bitrate === 'number' && Number.isFinite(bitrate)))
+}
+
+function isUnauthorizedResponse(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const error = (value as { error?: unknown }).error
+  return error === 'Not authenticated' || error === 'Unauthorized'
+}
+
+function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403)
+}
 
 const resolutionTiers: Array<{ resolution: string; bitrates: number[] }> = [
   {
@@ -110,15 +165,6 @@ function syncRateLimitsToConfig() {
   }
 }
 
-function ensureQualityDict(cfg: AdminConfig) {
-  const cur = cfg.ENABLED_QUALITY_OPTIONS
-  if (!cur || typeof cur !== 'object' || Array.isArray(cur)) {
-    const defaults: Record<string, number[]> = {}
-    for (const tier of resolutionTiers) defaults[tier.resolution] = [...tier.bitrates]
-    cfg.ENABLED_QUALITY_OPTIONS = defaults
-  }
-}
-
 function isResolutionEnabled(res: string): boolean {
   const dict = config.value.ENABLED_QUALITY_OPTIONS
   return !!dict && Object.prototype.hasOwnProperty.call(dict, res)
@@ -163,24 +209,39 @@ function setBitrateEnabled(res: string, kbps: number, enabled: boolean) {
 // Unmount guard: an in-flight save/load must not touch refs after the
 // panel closes (the modal path can unmount mid-request).
 let unmounted = false
-onBeforeUnmount(() => { unmounted = true })
+const requestController = new AbortController()
+onBeforeUnmount(() => {
+  unmounted = true
+  requestController.abort()
+})
 
 async function loadConfig() {
+  if (unmounted || loadingConfig.value) return
+  loadingConfig.value = true
+  loadError.value = ''
   try {
-    const cfg = await api.adminGetConfig()
+    const cfg = await api.adminGetConfig(requestController.signal)
     if (unmounted) return
-    if (cfg && cfg.error) {
+    if (isUnauthorizedResponse(cfg)) {
       emit('unauthorized')
       return
     }
-    if (cfg && typeof cfg === 'object' && 'error' in cfg) {
-      delete cfg.error
+    if (!isAdminConfig(cfg) || cfg.error) {
+      throw new Error('Could not read the server settings. Please try again.')
     }
-    ensureQualityDict(cfg)
-    config.value = cfg
+    config.value = { ...cfg }
+    delete config.value.error
     syncRateLimitsFromConfig()
-  } catch {
-    if (!unmounted) emit('unauthorized')
+    configLoaded.value = true
+  } catch (error: unknown) {
+    if (unmounted) return
+    if (isUnauthorizedError(error)) {
+      emit('unauthorized')
+    } else {
+      loadError.value = error instanceof Error ? error.message : 'Could not load settings. Please try again.'
+    }
+  } finally {
+    if (!unmounted) loadingConfig.value = false
   }
 }
 
@@ -204,6 +265,7 @@ function validate(): string | null {
 }
 
 async function saveConfig() {
+  if (!configLoaded.value || loadingConfig.value || saving.value || unmounted) return
   const err = validate()
   if (err) {
     saveStatus.value = err
@@ -212,39 +274,56 @@ async function saveConfig() {
   }
   saveStatus.value = 'Saving...'
   saveClass.value = ''
+  saving.value = true
   syncRateLimitsToConfig()
-  const result = await api.adminUpdateConfig(config.value)
-  if (unmounted) return
-  if (result.success) {
-    const changed = result.changed || []
-    const rejected = result.rejected || []
-    const restart = result.restart_required || []
-    const parts: string[] = []
-    if (changed.length) {
-      parts.push(`Saved: ${changed.join(', ')}`)
+  try {
+    const result = await api.adminUpdateConfig(config.value, requestController.signal)
+    if (unmounted) return
+    if (isUnauthorizedResponse(result)) {
+      emit('unauthorized')
+      return
+    }
+    if (result.success) {
+      const changed = result.changed || []
+      const rejected = result.rejected || []
+      const restart = result.restart_required || []
+      const parts: string[] = []
+      if (changed.length) {
+        parts.push(`Saved: ${changed.join(', ')}`)
+      } else {
+        parts.push('No changes')
+      }
+      if (restart.length) {
+        parts.push(`Restart required for: ${restart.join(', ')}`)
+      }
+      if (rejected.length) {
+        parts.push(
+          `Not applied: ${rejected.map((r) => `${r.key} (${r.reason})`).join('; ')}`,
+        )
+      }
+      saveStatus.value = parts.join(' | ')
+      saveClass.value = rejected.length ? 'warning' : 'success'
+      if (isAdminConfig(result.config)) {
+        config.value = { ...result.config }
+        delete config.value.error
+      }
+      if (changed.includes('REQUIRE_LOGIN')) {
+        auth.refresh().catch(() => { /* ignore */ })
+      }
     } else {
-      parts.push('No changes')
+      saveStatus.value = result.error || 'Save failed. Please try again.'
+      saveClass.value = 'error'
     }
-    if (restart.length) {
-      parts.push(`Restart required for: ${restart.join(', ')}`)
+  } catch (error: unknown) {
+    if (unmounted) return
+    if (isUnauthorizedError(error)) {
+      emit('unauthorized')
+      return
     }
-    if (rejected.length) {
-      parts.push(
-        `Not applied: ${rejected.map((r) => `${r.key} (${r.reason})`).join('; ')}`,
-      )
-    }
-    saveStatus.value = parts.join(' | ')
-    saveClass.value = rejected.length ? 'warning' : 'success'
-    if (result.config) {
-      ensureQualityDict(result.config)
-      config.value = result.config
-    }
-    if (changed.includes('REQUIRE_LOGIN')) {
-      auth.refresh().catch(() => { /* ignore */ })
-    }
-  } else {
-    saveStatus.value = result.error || 'Save failed'
+    saveStatus.value = error instanceof Error ? error.message : 'Could not save settings. Please try again.'
     saveClass.value = 'error'
+  } finally {
+    if (!unmounted) saving.value = false
   }
 }
 
@@ -253,7 +332,12 @@ loadConfig()
 
 <template>
   <div class="admin-panel-body">
-    <div class="admin-grid">
+    <div v-if="loadingConfig" class="admin-config-state" role="status">Loading settings...</div>
+    <div v-else-if="loadError" class="admin-config-state admin-config-error" role="alert">
+      <span>{{ loadError }}</span>
+      <button type="button" class="btn btn-small" @click="loadConfig">Retry</button>
+    </div>
+    <div v-if="configLoaded" class="admin-grid">
       <!-- Auth -->
       <div class="admin-card card">
         <h2 class="card-title">Auth</h2>
@@ -564,7 +648,9 @@ loadConfig()
 
     <div class="admin-panel-footer">
       <span :class="['save-status', saveClass]">{{ saveStatus }}</span>
-      <button @click="saveConfig" class="btn btn-primary">Save Settings</button>
+      <button @click="saveConfig" :disabled="!configLoaded || loadingConfig || saving" class="btn btn-primary">
+        {{ saving ? 'Saving...' : 'Save Settings' }}
+      </button>
     </div>
   </div>
 </template>
@@ -574,6 +660,18 @@ loadConfig()
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
+}
+
+.admin-config-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md);
+}
+
+.admin-config-error {
+  color: var(--color-danger);
 }
 
 .admin-grid {
