@@ -16,6 +16,17 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [Unreleased] - Director's Cut
+
+### Fixed
+
+- **Host state survives refresh and reconnect races.** A delayed authentication response no longer overwrites a newer session binding or host-reclaim event. Returning hosts see a recovery state while their presence is restored, and a delayed login response cannot restore privileges after another member has taken over.
+- **Admin settings stay open after recoverable failures.** Temporary network/server errors and invalid HTTP 200 responses show an inline error with Retry. Only confirmed authentication failures return to login. Editing and saving wait for valid settings, failed saves preserve the draft, and late responses are ignored after the panel closes.
+
+Reported by **[miakkia](https://github.com/miakkia)** in [#74](https://github.com/Oratorian/emby-watchparty/issues/74). The recovery paths are covered by regression tests and browser checks in Chromium and Firefox.
+
+---
+
 ## [3.0.0-beta4] - 2026-09-11 - Director's Cut
 
 ### Breaking Changes
