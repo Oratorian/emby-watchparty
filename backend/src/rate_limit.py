@@ -13,6 +13,20 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import JSONResponse, Response
 
 from backend.src.client_ip import request_client_ip
+from backend.src.schemas import RateLimitResponse
+
+RATE_LIMIT_RESPONSES: dict = {
+    429: {
+        "model": RateLimitResponse,
+        "description": "Request rate limit exceeded; retry after the indicated number of seconds",
+        "headers": {
+            "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {"type": "integer", "minimum": 0},
+            },
+        },
+    },
+}
 
 _PERIOD_SECONDS = {
     "second": 1,

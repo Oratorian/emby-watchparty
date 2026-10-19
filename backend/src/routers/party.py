@@ -22,6 +22,7 @@ from backend.src.dependencies import (
     scrub_legacy_admin_session,
 )
 from backend.src.providers.models import MediaServerUnavailableError, ProviderCredentials
+from backend.src.rate_limit import RATE_LIMIT_RESPONSES
 
 # Shared dev-host gate -- single source of truth lives in auth.py so the
 # env var name and value-parsing rules can never drift between modules.
@@ -29,6 +30,7 @@ from backend.src.routers.auth import _env_dev_host_creds
 from backend.src.schemas import (
     CreatePartyRequest,
     CreatePartyResponse,
+    HTTPErrorResponse,
     JoinPartyRequest,
     JoinPartyResponse,
     PartyExistsResponse,
@@ -39,7 +41,7 @@ from backend.src.schemas import (
     SuccessResponse,
 )
 
-router = APIRouter(prefix="/api/party", tags=["party"])
+router = APIRouter(prefix="/api/party", tags=["party"], responses=RATE_LIMIT_RESPONSES)
 
 
 @router.get("/static-session", response_model=StaticSessionResponse)
@@ -106,7 +108,11 @@ def list_parties(
     return PartyListResponse(require_login=False, parties=items)
 
 
-@router.post("/create", response_model=CreatePartyResponse)
+@router.post(
+    "/create",
+    response_model=CreatePartyResponse,
+    response_description="Created party, or empty party_id and url with an explanatory message",
+)
 async def create_party(
     request: Request,
     body: CreatePartyRequest | None = None,
@@ -262,7 +268,11 @@ async def create_party(
     )
 
 
-@router.post("/{party_id}/join", response_model=JoinPartyResponse)
+@router.post(
+    "/{party_id}/join",
+    response_model=JoinPartyResponse,
+    response_description="Session binding outcome; a missing party or refused identity uses success=false",
+)
 async def join_party(
     party_id: str,
     body: JoinPartyRequest,
@@ -429,7 +439,7 @@ def party_exists(party_id: str, party_manager=Depends(get_party_manager)):
 @router.get(
     "/{party_id}/info",
     response_model=PartyInfoResponse,
-    responses={404: {"description": "Party not found"}},
+    responses={404: {"model": HTTPErrorResponse, "description": "Party not found"}},
 )
 def party_info(party_id: str, party_manager=Depends(get_party_manager)):
     party = party_manager.get(party_id.upper())

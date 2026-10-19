@@ -7,6 +7,34 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+
+class APIResponseModel(BaseModel):
+    """Response defaults are always serialized, including nulls and empty lists."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+
+# ============== Shared HTTP responses ==============
+
+
+class HTTPErrorResponse(APIResponseModel):
+    """JSON body produced by HTTPException and the upstream exception handler."""
+
+    detail: str
+
+
+class ProxyErrorResponse(APIResponseModel):
+    """JSON body produced by the HLS proxy's explicit error responses."""
+
+    error: str
+
+
+class RateLimitResponse(APIResponseModel):
+    detail: str
+    code: Literal["rate_limited"]
+    retry_after: int = Field(ge=0)
+
+
 # ============== Auth ==============
 
 
@@ -15,7 +43,7 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class LoginResponse(BaseModel):
+class LoginResponse(APIResponseModel):
     """Result of /api/v2/auth/login (become host) and /api/v2/auth/logout.
 
     On a successful become-host, host_username carries the Emby account
@@ -30,7 +58,7 @@ class LoginResponse(BaseModel):
     is_admin: bool = False
 
 
-class AuthStatusResponse(BaseModel):
+class AuthStatusResponse(APIResponseModel):
     """Reflects the caller's relationship to their current party.
 
     `authenticated` is true iff this caller has a party-bound session
@@ -67,7 +95,7 @@ class CreatePartyRequest(BaseModel):
     password: str | None = None
 
 
-class CreatePartyResponse(BaseModel):
+class CreatePartyResponse(APIResponseModel):
     party_id: str
     url: str
     is_host: bool = False
@@ -92,7 +120,7 @@ class JoinPartyRequest(BaseModel):
     avatar_uuid: str | None = None
 
 
-class JoinPartyResponse(BaseModel):
+class JoinPartyResponse(APIResponseModel):
     success: bool
     message: str | None = None
     party_id: str | None = None
@@ -100,13 +128,13 @@ class JoinPartyResponse(BaseModel):
     party_unlocked: bool = False
 
 
-class PlaybackStateSchema(BaseModel):
+class PlaybackStateSchema(APIResponseModel):
     playing: bool = False
     time: float = 0.0
     last_update: str = ""
 
 
-class VideoInfoSchema(BaseModel):
+class VideoInfoSchema(APIResponseModel):
     item_id: str
     title: str
     overview: str = ""
@@ -120,7 +148,7 @@ class VideoInfoSchema(BaseModel):
     quality: str = "1080p-10000"
 
 
-class PartyInfoResponse(BaseModel):
+class PartyInfoResponse(APIResponseModel):
     id: str
     users: list[str]
     current_video: VideoInfoSchema | None = None
@@ -134,7 +162,7 @@ class PartyInfoResponse(BaseModel):
 # surface is modelled in v2_schemas.py.
 
 
-class StrictApiModel(BaseModel):
+class StrictApiModel(APIResponseModel):
     model_config = ConfigDict(extra="forbid")
 
 
@@ -157,7 +185,7 @@ class FilterOptionsResponse(StrictApiModel):
 # ============== Version ==============
 
 
-class VersionResponse(BaseModel):
+class VersionResponse(APIResponseModel):
     current_version: str
     codename: str
     latest_version: str | None = None
@@ -165,7 +193,7 @@ class VersionResponse(BaseModel):
     release_url: str | None = None
 
 
-class HealthResponse(BaseModel):
+class HealthResponse(APIResponseModel):
     """Liveness probe payload.
 
     Intentionally minimal: returns 200 as long as the process is up and
@@ -179,7 +207,7 @@ class HealthResponse(BaseModel):
     codename: str
 
 
-class ReadinessResponse(BaseModel):
+class ReadinessResponse(APIResponseModel):
     """Readiness probe payload, returned with 200 when ready and 503 when not.
 
     The 503 is the whole point of the endpoint and was previously undeclared,
@@ -201,12 +229,12 @@ class AdminLoginRequest(BaseModel):
     password: str
 
 
-class AdminLoginResponse(BaseModel):
+class AdminLoginResponse(APIResponseModel):
     success: bool
     message: str | None = None
 
 
-class SuccessResponse(BaseModel):
+class SuccessResponse(APIResponseModel):
     """Generic success response used by logout endpoints."""
 
     success: bool
@@ -231,7 +259,7 @@ class ConfigUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class ConfigUpdateResponse(BaseModel):
+class ConfigUpdateResponse(APIResponseModel):
     success: bool
     changed: list[str] = []
     config: dict | None = None
@@ -247,34 +275,43 @@ class ConfigUpdateResponse(BaseModel):
     restart_required: list[str] = []
 
 
-class RuntimeConfigResponse(BaseModel):
+class RuntimeConfigResponse(APIResponseModel):
     """Runtime config values returned by GET /api/admin/config.
-    Extra fields are allowed because the set of runtime keys is driven
-    by the config module rather than a fixed schema."""
+
+    Authenticated responses contain uppercase settings from RuntimeConfig,
+    plus error=null. Unauthenticated requests return HTTP 200 with an error
+    message and no settings. Runtime keys are allowed as extra fields so
+    this response follows the current config module's settings.
+    """
 
     error: str | None = None
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "examples": [{"error": "Not authenticated"}],
+        },
+    )
 
 
 # ============== Party (extras) ==============
 
 
-class StaticSessionResponse(BaseModel):
+class StaticSessionResponse(APIResponseModel):
     """Returned by GET /api/party/static-session.
     party_id is null when static session mode is disabled."""
 
     party_id: str | None = None
 
 
-class PartyExistsResponse(BaseModel):
+class PartyExistsResponse(APIResponseModel):
     """Returned by GET /api/party/<id>/exists. Boolean probe used by
     the join screen to validate a party code before issuing the cookie."""
 
     exists: bool
 
 
-class PartyListItem(BaseModel):
+class PartyListItem(APIResponseModel):
     """One party in the public index listing (GET /api/party/list)."""
 
     code: str
@@ -284,7 +321,7 @@ class PartyListItem(BaseModel):
     locked: bool  # True when the party has no host (library locked)
 
 
-class PartyListResponse(BaseModel):
+class PartyListResponse(APIResponseModel):
     """Returned by GET /api/party/list. `parties` is empty when
     REQUIRE_LOGIN is on -- open parties and what they are watching are
     not advertised in that mode."""
@@ -293,7 +330,7 @@ class PartyListResponse(BaseModel):
     parties: list[PartyListItem]
 
 
-class QualityOption(BaseModel):
+class QualityOption(APIResponseModel):
     """One entry in the per-user quality dropdown.
 
     `resolution` is the tier label (e.g. `"1080p"`), `width` / `height`
@@ -309,7 +346,7 @@ class QualityOption(BaseModel):
     bitrate_kbps: int | None = None
 
 
-class QualityOptionsResponse(BaseModel):
+class QualityOptionsResponse(APIResponseModel):
     """Returned by GET /api/quality-options. Filtered by the admin's
     `ENABLED_QUALITY_OPTIONS` setting (resolution -> list of enabled
     bitrates); `Auto` is omitted when `FORCE_TRANSCODE` is on (it would

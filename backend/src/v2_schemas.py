@@ -10,7 +10,7 @@ from backend.src.schemas import LoginRequest
 
 
 class V2Model(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
 
 class UserMediaStateV2(V2Model):

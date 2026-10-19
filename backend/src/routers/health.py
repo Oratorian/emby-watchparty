@@ -38,7 +38,7 @@ def health():
         # probe written from a document showing only 200 accepts any JSON and
         # never goes unready, which is the failure the endpoint was added to
         # prevent.
-        503: {"description": "At least one check failed; see `checks`"},
+        503: {"model": ReadinessResponse, "description": "At least one check failed; see `checks`"},
     },
 )
 async def ready(

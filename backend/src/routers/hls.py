@@ -12,7 +12,7 @@ import re
 from urllib.parse import unquote, urlsplit
 
 import httpx
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import Response, StreamingResponse
 
 from backend.src.dependencies import (
@@ -28,8 +28,49 @@ from backend.src.dependencies import (
     get_token_manager,
     require_host_token,
 )
+from backend.src.schemas import HTTPErrorResponse, ProxyErrorResponse
 
 router = APIRouter(prefix="/hls", tags=["hls"])
+
+_PLAYLIST_CONTENT = {"application/vnd.apple.mpegurl": {"schema": {"type": "string"}}}
+_SEGMENT_CONTENT = {
+    media_type: {"schema": {"type": "string", "format": "binary"}}
+    for media_type in ("video/MP2T", "application/octet-stream")
+}
+_HLS_ACCESS_RESPONSES: dict = {
+    **PARTY_HOST_TOKEN_RESPONSES,
+    401: {
+        "model": HTTPErrorResponse | ProxyErrorResponse,
+        "description": "Missing party session, or invalid, expired or mismatched HLS token",
+    },
+}
+_RANGE_HEADERS = {
+    "Content-Range": {"schema": {"type": "string"}, "description": "Upstream byte range"},
+    "Accept-Ranges": {"schema": {"type": "string"}, "description": "Upstream range support"},
+    "Content-Length": {"schema": {"type": "integer"}, "description": "Upstream response length"},
+}
+_RANGE_RESPONSES: dict = {
+    206: {
+        "content": _SEGMENT_CONTENT,
+        "headers": _RANGE_HEADERS,
+        "description": "Partial segment bytes, relayed from upstream",
+    },
+    416: {
+        "headers": _RANGE_HEADERS,
+        "description": "Range not satisfiable; empty body with upstream Content-Range when supplied",
+    },
+}
+
+
+def _head_responses(responses: dict) -> dict:
+    """HEAD has the same status and headers as GET, with no response body."""
+    return {
+        422: {"description": "Invalid request parameters; HEAD returns no response body"},
+        **{
+            code: {key: value for key, value in body.items() if key not in {"model", "content"}}
+            for code, body in responses.items()
+        },
+    }
 
 
 # Upstream Emby HTTP timeout. Without an explicit bound, a slow or
@@ -277,27 +318,39 @@ def _rewrite_playlist(
     return content
 
 
-@router.api_route(
+_MASTER_RESPONSES: dict = {
+    200: {
+        "content": _PLAYLIST_CONTENT,
+        "description": "HLS master playlist rewritten to proxy URLs; HEAD returns headers only",
+    },
+    **_HLS_ACCESS_RESPONSES,
+    400: {
+        "model": ProxyErrorResponse,
+        "description": "Unapproved HLS query parameter or unsafe subpath",
+    },
+    500: {"model": ProxyErrorResponse, "description": "Internal proxy error"},
+    502: {"model": ProxyErrorResponse, "description": "Upstream media-server request failed"},
+}
+
+
+@router.head(
     "/{item_id}/master.m3u8",
     response_class=Response,
-    methods=["GET", "HEAD"],
-    responses={
-        200: {
-            "content": {"application/vnd.apple.mpegurl": {}},
-            "description": "HLS master playlist (rewritten to proxy URLs)",
-        },
-        **PARTY_HOST_TOKEN_RESPONSES,
-        400: {
-            "content": {"application/json": {}},
-            "description": "Unapproved HLS query parameter or unsafe subpath",
-        },
-        500: {"description": "Internal proxy error"},
-        502: {"description": "Upstream media-server request failed"},
-    },
+    responses=_head_responses(_MASTER_RESPONSES),
+)
+@router.get(
+    "/{item_id}/master.m3u8",
+    response_class=Response,
+    responses=_MASTER_RESPONSES,
 )
 async def proxy_hls_master(
     item_id: str,
     request: Request,
+    _token: str | None = Query(
+        default=None,
+        alias="token",
+        description="Per-viewer HLS token; required when HLS token validation is enabled",
+    ),
     party_session: PartySession = Depends(require_host_token),
     config=Depends(get_config),
     emby_client=Depends(get_emby_client),
@@ -433,29 +486,41 @@ async def proxy_hls_master(
         )
 
 
-@router.api_route(
+_RESOURCE_RESPONSES: dict = {
+    200: {
+        "content": {**_PLAYLIST_CONTENT, **_SEGMENT_CONTENT},
+        "description": "Registered nested HLS playlist or segment; HEAD returns headers only",
+    },
+    **_HLS_ACCESS_RESPONSES,
+    **_RANGE_RESPONSES,
+    502: {"model": ProxyErrorResponse, "description": "Upstream media-server request failed"},
+}
+
+
+@router.head(
     "/{stream_id}/resources/{resource_id}",
     response_class=Response,
-    methods=["GET", "HEAD"],
-    responses={
-        200: {
-            "content": {"application/vnd.apple.mpegurl": {}},
-            "description": "Registered nested HLS playlist",
-        },
-        **PARTY_HOST_TOKEN_RESPONSES,
-        416: {
-            "description": (
-                "Range not satisfiable, relayed from upstream with the "
-                "`Content-Range: bytes */<length>` a client needs to retry"
-            ),
-        },
-        502: {"description": "Upstream media-server request failed"},
-    },
+    responses=_head_responses(_RESOURCE_RESPONSES),
+)
+@router.get(
+    "/{stream_id}/resources/{resource_id}",
+    response_class=Response,
+    responses=_RESOURCE_RESPONSES,
 )
 async def proxy_hls_resource(
     stream_id: str,
     resource_id: str,
     request: Request,
+    _token: str | None = Query(
+        default=None,
+        alias="token",
+        description="Per-viewer HLS token; required when HLS token validation is enabled",
+    ),
+    _range: str | None = Header(
+        default=None,
+        alias="Range",
+        description="Optional byte range forwarded to the upstream segment",
+    ),
     party_session: PartySession = Depends(require_host_token),
     config=Depends(get_config),
     media_server=Depends(get_media_server),
@@ -584,32 +649,33 @@ async def proxy_hls_resource(
     response_class=Response,
     responses={
         200: {
-            "content": {
-                "application/vnd.apple.mpegurl": {},
-                "video/MP2T": {},
-                "application/octet-stream": {},
-            },
+            "content": {**_PLAYLIST_CONTENT, **_SEGMENT_CONTENT},
             "description": "HLS variant playlist or .ts segment",
         },
-        **PARTY_HOST_TOKEN_RESPONSES,
+        **_HLS_ACCESS_RESPONSES,
+        **_RANGE_RESPONSES,
         400: {
-            "content": {"application/json": {}},
+            "model": ProxyErrorResponse,
             "description": "Unapproved HLS query parameter or unsafe subpath",
         },
-        416: {
-            "description": (
-                "Range not satisfiable, relayed from upstream with the "
-                "`Content-Range: bytes */<length>` a client needs to retry"
-            ),
-        },
-        500: {"description": "Internal proxy error"},
-        502: {"description": "Upstream media-server request failed"},
+        500: {"model": ProxyErrorResponse, "description": "Internal proxy error"},
+        502: {"model": ProxyErrorResponse, "description": "Upstream media-server request failed"},
     },
 )
 async def proxy_hls_segment(
     item_id: str,
     subpath: str,
     request: Request,
+    _token: str | None = Query(
+        default=None,
+        alias="token",
+        description="Per-viewer HLS token; required when HLS token validation is enabled",
+    ),
+    _range: str | None = Header(
+        default=None,
+        alias="Range",
+        description="Optional byte range forwarded to the upstream segment",
+    ),
     party_session: PartySession = Depends(require_host_token),
     config=Depends(get_config),
     emby_client=Depends(get_emby_client),

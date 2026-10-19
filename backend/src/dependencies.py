@@ -23,6 +23,7 @@ from backend.src.hls_registry import HLSResourceRegistry
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.party_manager import PartyManager
 from backend.src.providers.base import MediaServerProvider
+from backend.src.schemas import HTTPErrorResponse
 from backend.src.stream_builder import StreamBuilder
 
 LEGACY_ADMIN_SESSION_KEYS = (
@@ -311,16 +312,15 @@ def admin_display_name(
 # Routes gated by `require_party_session` alone -- must have a cookie
 # and the party must still exist. No host requirement.
 PARTY_SESSION_RESPONSES: dict = {
-    401: {"description": "No party-bound session cookie"},
-    404: {"description": "Party no longer exists"},
+    401: {"model": HTTPErrorResponse, "description": "No party-bound session cookie"},
+    404: {"model": HTTPErrorResponse, "description": "Party no longer exists"},
 }
 
 # Routes gated by `require_party_unlocked` -- must have a cookie AND
 # the party must currently have a host whose Emby ACL is active.
 PARTY_UNLOCKED_RESPONSES: dict = {
-    401: {"description": "No party-bound session cookie"},
-    404: {"description": "Party no longer exists"},
-    423: {"description": "Party has no host (LOCKED)"},
+    **PARTY_SESSION_RESPONSES,
+    423: {"model": HTTPErrorResponse, "description": "Party has no host (LOCKED)"},
 }
 
 # Routes gated by `require_party_host` -- everything require_party_unlocked
@@ -328,20 +328,18 @@ PARTY_UNLOCKED_RESPONSES: dict = {
 # that mutate the host's Emby account are on this gate.
 PARTY_HOST_RESPONSES: dict = {
     **PARTY_UNLOCKED_RESPONSES,
-    403: {"description": "Host only"},
+    403: {"model": HTTPErrorResponse, "description": "Host only"},
 }
 
 # Routes gated by `require_host_token` -- must have a cookie AND the
 # party must still have a usable host token (UNLOCKED *or* PLAYING-ONLY).
 PARTY_HOST_TOKEN_RESPONSES: dict = {
-    401: {"description": "No party-bound session cookie"},
-    404: {"description": "Party no longer exists"},
-    423: {"description": "Party token has expired"},
+    **PARTY_SESSION_RESPONSES,
+    423: {"model": HTTPErrorResponse, "description": "Party token has expired"},
 }
 
 # Admin gate -- host+admin, or standalone-admin session.
 PARTY_ADMIN_RESPONSES: dict = {
-    401: {"description": "No party-bound session cookie"},
-    403: {"description": "Not the host or host is not an Emby admin"},
-    404: {"description": "Party no longer exists"},
+    **PARTY_SESSION_RESPONSES,
+    403: {"model": HTTPErrorResponse, "description": "Not the host or host is not an Emby admin"},
 }

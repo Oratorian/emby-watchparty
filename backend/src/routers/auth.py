@@ -24,6 +24,7 @@ from backend.src.dependencies import (
     party_host_session_matches,
 )
 from backend.src.providers.models import MediaServerUnavailableError
+from backend.src.rate_limit import RATE_LIMIT_RESPONSES
 from backend.src.schemas import (
     AuthStatusResponse,
     LoginRequest,
@@ -31,7 +32,7 @@ from backend.src.schemas import (
     VersionResponse,
 )
 
-router = APIRouter(prefix="/api", tags=["version"])
+router = APIRouter(prefix="/api", tags=["version"], responses=RATE_LIMIT_RESPONSES)
 
 
 # Undocumented dev gate. When set in the process environment, the

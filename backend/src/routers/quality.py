@@ -16,9 +16,10 @@ from backend.src.quality import (
     DEFAULT_QUALITY_ID,
     build_quality_options,
 )
+from backend.src.rate_limit import RATE_LIMIT_RESPONSES
 from backend.src.schemas import QualityOption, QualityOptionsResponse
 
-router = APIRouter(prefix="/api", tags=["quality"])
+router = APIRouter(prefix="/api", tags=["quality"], responses=RATE_LIMIT_RESPONSES)
 
 
 @router.get("/quality-options", response_model=QualityOptionsResponse)

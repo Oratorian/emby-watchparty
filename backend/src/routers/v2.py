@@ -33,8 +33,9 @@ from backend.src.providers.models import (
     PlaybackPlanError,
     ProviderCredentials,
 )
+from backend.src.rate_limit import RATE_LIMIT_RESPONSES
 from backend.src.routers.auth import api_auth_status, api_login, api_logout
-from backend.src.schemas import FilterOptionsResponse
+from backend.src.schemas import FilterOptionsResponse, HTTPErrorResponse
 from backend.src.v2_schemas import (
     ActionResultV2,
     AuthStatusV2,
@@ -61,7 +62,11 @@ from backend.src.v2_schemas import (
     StreamCatalogV2,
 )
 
-router = APIRouter(prefix="/api/v2", tags=["v2"])
+router = APIRouter(prefix="/api/v2", tags=["v2"], responses=RATE_LIMIT_RESPONSES)
+
+_UPSTREAM_FAILURE_RESPONSES: dict = {
+    502: {"model": HTTPErrorResponse, "description": "Media server unavailable"},
+}
 
 
 def _catalog_query(body: CatalogQueryV2) -> CatalogQuery:
@@ -153,7 +158,7 @@ def auth_status(
 @router.get(
     "/libraries",
     response_model=MediaPageV2,
-    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+    responses={**PARTY_UNLOCKED_RESPONSES, **_UPSTREAM_FAILURE_RESPONSES},
 )
 async def libraries(
     party_session: PartySession = Depends(require_party_unlocked),
@@ -171,7 +176,7 @@ async def libraries(
 @router.post(
     "/items/query",
     response_model=MediaPageV2,
-    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+    responses={**PARTY_UNLOCKED_RESPONSES, **_UPSTREAM_FAILURE_RESPONSES},
 )
 async def query_items(
     body: CatalogQueryV2,
@@ -190,7 +195,7 @@ async def query_items(
 @router.post(
     "/items/prefixes",
     response_model=PrefixesV2,
-    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+    responses={**PARTY_UNLOCKED_RESPONSES, **_UPSTREAM_FAILURE_RESPONSES},
 )
 async def item_prefixes(
     body: CatalogQueryV2,
@@ -209,7 +214,7 @@ async def item_prefixes(
 @router.get(
     "/items/filter-options",
     response_model=FilterOptionsResponse,
-    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+    responses={**PARTY_UNLOCKED_RESPONSES, **_UPSTREAM_FAILURE_RESPONSES},
 )
 async def filter_options(
     parent_id: str | None = None,
@@ -235,7 +240,7 @@ async def filter_options(
 @router.get(
     "/items/search",
     response_model=MediaPageV2,
-    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+    responses={**PARTY_UNLOCKED_RESPONSES, **_UPSTREAM_FAILURE_RESPONSES},
 )
 async def search_items(
     q: str = Query(min_length=1, max_length=200),
@@ -261,7 +266,7 @@ async def search_items(
 @router.get(
     "/items/search/groups",
     response_model=GroupedSearchV2,
-    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+    responses={**PARTY_UNLOCKED_RESPONSES, **_UPSTREAM_FAILURE_RESPONSES},
 )
 async def grouped_search(
     q: str = Query(min_length=2, max_length=200),
@@ -297,7 +302,10 @@ async def grouped_search(
 @router.get(
     "/items/{item_id}/sections/{section}",
     response_model=MediaSectionV2,
-    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Section unavailable"}},
+    responses={
+        **PARTY_UNLOCKED_RESPONSES,
+        502: {"model": HTTPErrorResponse, "description": "Section unavailable"},
+    },
 )
 async def item_section(
     item_id: str,
@@ -322,8 +330,8 @@ async def item_section(
     response_model=MediaItemDetailsV2,
     responses={
         **PARTY_UNLOCKED_RESPONSES,
-        404: {"description": "Item not found"},
-        502: {"description": "Media server unavailable"},
+        404: {"model": HTTPErrorResponse, "description": "Item or party no longer exists"},
+        **_UPSTREAM_FAILURE_RESPONSES,
     },
 )
 async def item_details(
@@ -352,14 +360,22 @@ async def item_details(
         # missing poster as a dead party and evict a viewer mid-session.
         **PARTY_HOST_TOKEN_RESPONSES,
         200: {
-            "content": {"image/jpeg": {}, "image/png": {}, "image/webp": {}},
+            "content": {
+                media_type: {"schema": {"type": "string", "format": "binary"}}
+                for media_type in ("image/jpeg", "image/png", "image/webp", "image/*")
+            },
             "description": "Item poster / image bytes proxied from media server",
         },
-        404: {"description": "Image unavailable, or party no longer exists"},
+        404: {
+            "model": HTTPErrorResponse,
+            "description": (
+                "Image unavailable (empty body), or party no longer exists (JSON detail)"
+            ),
+        },
         # Unlike its v1 predecessor this route does not swallow transport
         # failures, so a down media server reaches the application-level
         # httpx.HTTPError handler and the caller gets a 502, not a 404.
-        502: {"description": "Media server unavailable"},
+        **_UPSTREAM_FAILURE_RESPONSES,
     },
 )
 async def item_image(
@@ -406,11 +422,16 @@ async def item_image(
         # Guard spread first; see the image route above.
         **PARTY_HOST_TOKEN_RESPONSES,
         200: {
-            "content": {"text/vtt": {}},
+            "content": {"text/vtt": {"schema": {"type": "string", "format": "binary"}}},
             "description": "WebVTT subtitle stream",
         },
-        404: {"description": "Subtitle unavailable, or party no longer exists"},
-        502: {"description": "Media server unavailable"},
+        404: {
+            "model": HTTPErrorResponse,
+            "description": (
+                "Subtitle unavailable (empty body), or party no longer exists (JSON detail)"
+            ),
+        },
+        **_UPSTREAM_FAILURE_RESPONSES,
     },
 )
 async def item_subtitle(
@@ -488,7 +509,10 @@ async def item_intro(
     response_model=StreamCatalogV2,
     responses={
         **PARTY_UNLOCKED_RESPONSES,
-        502: {"description": "Could not fetch stream information from the media server"},
+        502: {
+            "model": HTTPErrorResponse,
+            "description": "Could not fetch stream information from the media server",
+        },
     },
 )
 async def item_streams(
@@ -523,7 +547,7 @@ async def item_streams(
 @router.get(
     "/items/{series_id}/seasons",
     response_model=MediaPageV2,
-    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+    responses={**PARTY_UNLOCKED_RESPONSES, **_UPSTREAM_FAILURE_RESPONSES},
 )
 async def series_seasons(
     series_id: str,
@@ -542,7 +566,7 @@ async def series_seasons(
 @router.get(
     "/items/{series_id}/episodes",
     response_model=MediaPageV2,
-    responses={**PARTY_UNLOCKED_RESPONSES, 502: {"description": "Media server unavailable"}},
+    responses={**PARTY_UNLOCKED_RESPONSES, **_UPSTREAM_FAILURE_RESPONSES},
 )
 async def series_episodes(
     series_id: str,
@@ -562,7 +586,7 @@ async def series_episodes(
 @router.put(
     "/items/{item_id}/favorite",
     response_model=FavoriteResultV2,
-    responses={**PARTY_HOST_RESPONSES, 502: {"description": "Media server unavailable"}},
+    responses={**PARTY_HOST_RESPONSES, **_UPSTREAM_FAILURE_RESPONSES},
 )
 async def set_favorite(
     item_id: str,
@@ -582,7 +606,7 @@ async def set_favorite(
 @router.put(
     "/items/{item_id}/played",
     response_model=PlayedResultV2,
-    responses={**PARTY_HOST_RESPONSES, 502: {"description": "Media server unavailable"}},
+    responses={**PARTY_HOST_RESPONSES, **_UPSTREAM_FAILURE_RESPONSES},
 )
 async def set_played(
     item_id: str,
@@ -602,7 +626,7 @@ async def set_played(
 @router.get(
     "/playlists",
     response_model=MediaPageV2,
-    responses={**PARTY_HOST_RESPONSES, 502: {"description": "Media server unavailable"}},
+    responses={**PARTY_HOST_RESPONSES, **_UPSTREAM_FAILURE_RESPONSES},
 )
 async def playlists(
     party_session: PartySession = Depends(require_party_host),
@@ -620,7 +644,7 @@ async def playlists(
 @router.post(
     "/playlists",
     response_model=PlaylistCreatedV2,
-    responses={**PARTY_HOST_RESPONSES, 502: {"description": "Media server unavailable"}},
+    responses={**PARTY_HOST_RESPONSES, **_UPSTREAM_FAILURE_RESPONSES},
     status_code=201,
 )
 async def create_playlist(
@@ -640,7 +664,7 @@ async def create_playlist(
 @router.post(
     "/playlists/{playlist_id}/items",
     response_model=ActionResultV2,
-    responses={**PARTY_HOST_RESPONSES, 502: {"description": "Media server unavailable"}},
+    responses={**PARTY_HOST_RESPONSES, **_UPSTREAM_FAILURE_RESPONSES},
 )
 async def add_playlist_item(
     playlist_id: str,

@@ -28,7 +28,7 @@ from backend.src.dependencies import (
 )
 from backend.src.log_levels import apply_log_levels
 from backend.src.providers.models import MediaServerUnavailableError
-from backend.src.rate_limit import parse_rate, rate_limit_response
+from backend.src.rate_limit import RATE_LIMIT_RESPONSES, parse_rate, rate_limit_response
 from backend.src.schemas import (
     AdminLoginRequest,
     AdminLoginResponse,
@@ -44,10 +44,14 @@ def _client_ip(request: Request) -> str:
     return request_client_ip(request, config.TRUSTED_PROXY_CIDRS)
 
 
-router = APIRouter(prefix="/api/admin", tags=["admin"])
+router = APIRouter(prefix="/api/admin", tags=["admin"], responses=RATE_LIMIT_RESPONSES)
 
 
-@router.post("/login", response_model=AdminLoginResponse)
+@router.post(
+    "/login",
+    response_model=AdminLoginResponse,
+    response_description="Authentication outcome; invalid credentials and upstream failures use success=false",
+)
 async def admin_login(
     body: AdminLoginRequest,
     request: Request,
@@ -131,7 +135,11 @@ def admin_logout(
     return {"success": True}
 
 
-@router.get("/config", response_model=RuntimeConfigResponse)
+@router.get(
+    "/config",
+    response_model=RuntimeConfigResponse,
+    response_description="Runtime settings, or an error field when the caller is not authenticated",
+)
 def get_config_values(
     request: Request,
     config=Depends(get_config),

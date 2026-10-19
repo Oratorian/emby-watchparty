@@ -29,9 +29,10 @@ from backend.src.dependencies import (
     get_party_manager,
 )
 from backend.src.providers.models import AssetRequest, ProviderCredentials
-from backend.src.rate_limit import parse_rate, rate_limit_response
+from backend.src.rate_limit import RATE_LIMIT_RESPONSES, parse_rate, rate_limit_response
+from backend.src.schemas import APIResponseModel
 
-router = APIRouter(prefix="/api/avatar", tags=["avatar"])
+router = APIRouter(prefix="/api/avatar", tags=["avatar"], responses=RATE_LIMIT_RESPONSES)
 
 
 # =============================================================================
@@ -47,7 +48,7 @@ class RecoverRequest(BaseModel):
     code: str
 
 
-class AvatarCreatedResponse(BaseModel):
+class AvatarCreatedResponse(APIResponseModel):
     """Returned from upload / gravatar.
 
     `code` is the plaintext recovery code -- shown to the user once
@@ -60,7 +61,7 @@ class AvatarCreatedResponse(BaseModel):
     message: str | None = None
 
 
-class RecoverResponse(BaseModel):
+class RecoverResponse(APIResponseModel):
     success: bool
     uuid: str | None = None
     message: str | None = None
@@ -147,9 +148,7 @@ def create_gravatar(
 @router.post(
     "/recover",
     response_model=RecoverResponse,
-    responses={
-        429: {"description": "Rate-limited (10 attempts per IP per hour)"},
-    },
+    responses=RATE_LIMIT_RESPONSES,
 )
 def recover(
     body: RecoverRequest,
@@ -182,7 +181,10 @@ def recover(
     response_class=Response,
     responses={
         200: {
-            "content": {"image/jpeg": {}, "image/png": {}, "image/webp": {}},
+            "content": {
+                media_type: {"schema": {"type": "string", "format": "binary"}}
+                for media_type in ("image/jpeg", "image/png", "image/webp", "image/gif", "image/*")
+            },
             "description": "The current host's media-server Primary image",
         },
         404: {"description": "Party has no host, host has no Primary image, or party is unknown"},
@@ -245,10 +247,14 @@ async def host_avatar(
     responses={
         200: {
             "content": {
-                "image/jpeg": {},
-                "image/png": {},
-                "image/webp": {},
-                "image/gif": {},
+                media_type: {"schema": {"type": "string", "format": "binary"}}
+                for media_type in (
+                    "image/jpeg",
+                    "image/png",
+                    "image/webp",
+                    "image/gif",
+                    "application/octet-stream",
+                )
             },
             "description": "Avatar image bytes (local file or Gravatar proxy)",
         },

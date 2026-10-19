@@ -107,7 +107,7 @@ API_TAGS = [
         ),
     },
     {
-        "name": "auth",
+        "name": "version",
         "description": (
             "Version and build identity. The login, logout and status routes that once "
             "shared this tag now live under `v2`."
