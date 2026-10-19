@@ -143,11 +143,34 @@ describe('host authentication while binding and reconnecting', () => {
     expect(auth.isAdmin).toBe(false)
   })
 
+  it('does not let a delayed login response overwrite a verified host takeover', async () => {
+    const login = deferred<AuthResponse>()
+    vi.spyOn(api, 'login').mockReturnValue(login.promise)
+    vi.spyOn(api, 'authStatus')
+      .mockResolvedValueOnce({ ...GUEST, host_username: 'Alice', party_unlocked: true })
+      .mockResolvedValue({ ...GUEST, host_username: 'Bob', party_unlocked: true })
+    const auth = useAuthStore()
+    auth.attachSocketListeners()
+    const authenticating = auth.becomeHost('Alice', 'password')
+    listeners.get('host_changed')!({ host_username: 'Alice', unlocked: true })
+    await flushPromises()
+    listeners.get('host_changed')!({ host_username: 'Bob', unlocked: true })
+    await flushPromises()
+    expect(auth.hostUsername).toBe('Bob')
+
+    login.resolve({ ...HOST, success: true })
+    await authenticating
+
+    expect(auth.isHost).toBe(false)
+    expect(auth.isAdmin).toBe(false)
+    expect(auth.hostUsername).toBe('Bob')
+  })
+
   it('does not let a status request started during login undo that login', async () => {
     const login = deferred<AuthResponse>()
     const status = deferred<AuthResponse>()
     vi.spyOn(api, 'login').mockReturnValue(login.promise)
-    vi.spyOn(api, 'authStatus').mockReturnValue(status.promise)
+    vi.spyOn(api, 'authStatus').mockReturnValueOnce(status.promise).mockResolvedValue(HOST)
     const auth = useAuthStore()
     const authenticating = auth.becomeHost('Alice', 'password')
     const pending = auth.refresh()

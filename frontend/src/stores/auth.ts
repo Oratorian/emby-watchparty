@@ -73,13 +73,10 @@ export const useAuthStore = defineStore('auth', () => {
     if (data.success) {
       ++statusRequest
       ++roomRevision
-      mediaServerType.value = data.media_server_type || mediaServerType.value
-      isHost.value = true
-      isAdmin.value = !!data.is_admin
-      hostUsername.value = data.host_username ?? null
-      partyUnlocked.value = true
-      username.value = data.host_username ?? null
-      authenticated.value = true
+      // The login response can arrive after a newer host takeover. Once its
+      // cookie has landed, verify the current role instead of restoring the
+      // older role snapshot carried by that response.
+      await refresh()
     }
     return data
   }
