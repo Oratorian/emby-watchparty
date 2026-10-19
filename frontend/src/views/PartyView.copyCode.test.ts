@@ -36,6 +36,12 @@ vi.mock('@/stores/socket', () => ({
 
 vi.mock('@/utils/clipboard', () => ({ copyToClipboard: vi.fn() }))
 
+// Stub the async module as well as its rendered tag, so its CSS import cannot
+// finish after this fast header-only test has torn down the environment.
+vi.mock('@/components/EmojiPicker.vue', () => ({
+  default: { template: '<div />' },
+}))
+
 const copyMock = vi.mocked(copyToClipboard)
 let pinia: ReturnType<typeof createPinia>
 

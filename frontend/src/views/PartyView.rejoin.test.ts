@@ -43,6 +43,10 @@ vi.mock('@/components/JoinWaitingRoom.vue', () => ({
   default: { template: '<div />' },
 }))
 
+vi.mock('@/components/EmojiPicker.vue', () => ({
+  default: { template: '<div />' },
+}))
+
 let pinia: ReturnType<typeof createPinia>
 
 function mountParty() {

@@ -24,9 +24,9 @@ export default defineConfig({
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
-      // Cross-engine smoke owns lifecycle, reconnect, and accessibility.
+      // Cross-engine smoke owns lifecycle, reconnect, admin recovery, and accessibility.
       // Chromium owns full fake-Emby/hls.js; macOS WebKit owns native HLS.
-      testMatch: /index\.spec\.ts/,
+      testMatch: /(?:index|host-admin-recovery)\.spec\.ts/,
     },
     {
       name: 'webkit',
