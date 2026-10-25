@@ -30,6 +30,11 @@ Reported by **[miakkia](https://github.com/miakkia)** in [#74](https://github.co
 - **The Socket.IO reference now covers the 3.0 protocol.** [`docs/SOCKET_API.md`](docs/SOCKET_API.md) documents all 21 inbound and 38 outbound events, with current payloads, host recovery, session binding, playback timing, visibility and rate limits. The examples are validated against the backend contracts.
 - **Swagger and ReDoc now describe the responses the API returns.** Response schemas include serialized defaults, JSON errors, readiness failures, rate limits with `Retry-After`, image and subtitle bytes, and HLS range responses. HLS token and Range inputs are documented, and GET/HEAD operations have distinct IDs. Generated REST types follow the same contract, including optional validation-error fields and the literal rate-limit code. OpenAPI 3.1 validation covers all 44 paths and 48 operations, with runtime response regression tests.
 
+### Security
+
+- **`follow-redirects` 1.16.0 to 1.16.2** carries the sensitive-header filtering fixes across redirects, including the [cross-realm array bypass](https://github.com/follow-redirects/follow-redirects/security/advisories/GHSA-mrwp-f3q8-3g9p) that also affects 1.16.1. Carried over from [#75](https://github.com/Oratorian/emby-watchparty/pull/75).
+- **`vite` 7.3.6 to 7.3.7** fixes [development-server file access](https://github.com/vitejs/vite/security/advisories/GHSA-rq7h-c2jc-7f22), [script execution in custom HTML middleware](https://github.com/vitejs/vite/security/advisories/GHSA-9jrq-w75r-8gcw), and [bundled editor-launching vulnerabilities](https://github.com/vitejs/vite/pull/23654). The Vite dependency range now starts at `^7.3.7`. Carried over from [#76](https://github.com/Oratorian/emby-watchparty/pull/76).
+
 ---
 
 ## [3.0.0-beta4] - 2026-09-11 - Director's Cut
