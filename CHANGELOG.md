@@ -16,6 +16,27 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 
 ---
 
+## [2.1.6] - 2026-10-25 - Midnight Premiere
+
+**Frontend dependencies refreshed with upstream security fixes.**
+
+This update refreshes the frontend dependency tree and development tooling. No application code changed, no configuration changes, and no migration.
+
+If you build from source, run `npm ci` in `frontend/` to install the updated lockfile versions.
+
+### Security
+
+- **`follow-redirects` 1.16.0 to 1.16.2** fixes sensitive-header leaks across redirects involving [regular-expression metacharacters](https://github.com/follow-redirects/follow-redirects/security/advisories/GHSA-8r9p-f939-6h3c), [array-form request headers](https://github.com/follow-redirects/follow-redirects/security/advisories/GHSA-q3jh-wrc6-jgq8), and [arrays created in another JavaScript realm](https://github.com/follow-redirects/follow-redirects/security/advisories/GHSA-mrwp-f3q8-3g9p). The last issue also affects 1.16.1, so this update uses 1.16.2. Merged in [#75](https://github.com/Oratorian/emby-watchparty/pull/75).
+- **`vite` 7.3.6 to 7.3.7** fixes [development-server file-access bypasses](https://github.com/vitejs/vite/security/advisories/GHSA-rq7h-c2jc-7f22) and [script execution in custom HTML middleware](https://github.com/vitejs/vite/security/advisories/GHSA-9jrq-w75r-8gcw). It also updates bundled `launch-editor` to 2.14.2, addressing [editor-launching vulnerabilities](https://github.com/vitejs/vite/pull/23654) affecting particular Windows and WSL configurations. Merged in [#76](https://github.com/Oratorian/emby-watchparty/pull/76).
+
+### Technical details
+
+`follow-redirects` reaches the dependency tree through Axios's Node adapter. The current frontend does not import Axios; its API requests use native `fetch`. Vite runs during frontend development and builds; production serves the compiled assets from Python.
+
+The Vite dependency range moves from `^7.3.1` to `^7.3.7`. The dependency updates change only `frontend/package.json` and `frontend/package-lock.json`. A clean dependency installation, Vue type checking, and the production frontend build passed on Node 24.
+
+---
+
 ## [2.1.5] - 2026-10-08 - Midnight Premiere
 
 **Frontend dependencies updated with upstream security and reliability fixes.**
