@@ -515,7 +515,7 @@ Runtime settings are editable at `/admin`. Most apply immediately. Changing file
 
 - **Vue 3** SPA authored in **TypeScript**, bundled with **Vite** (base `./` for prefix-agnostic asset resolution).
 - **Pinia** stores for auth, party, playback, and socket state; **Vue Router** for `/party/:code`, `/admin`, and landing routes.
-- **socket.io-client** for the sync channel, **axios** for REST, **hls.js** for adaptive playback.
+- **socket.io-client** for the sync channel, native **fetch** for REST, **hls.js** for adaptive playback.
 
 ### Per-user transcode model
 
