@@ -9,7 +9,7 @@ This policy describes security support, private vulnerability reporting, and the
 | Latest stable 3.x release, once published | Active release line, including security fixes. |
 | Latest stable 2.x release | Security maintenance. Upgrade older 2.x patches to the latest supported patch. |
 | Latest 3.0 prerelease | Testing support and fixes on the current prerelease; not a stable production release. |
-| 1.6.7 legacy | Severe security vulnerabilities only, through 2026-12-31. |
+| 1.6.7 legacy | Unsupported; upgrade to a supported release |
 | Older patches and other retired releases | Unsupported; upgrade to a supported release. |
 
 Legacy fixes are limited to severe issues such as remote code execution, authentication bypass, or unauthenticated data exposure. Removing a legacy deployment template does not change the stated support deadline.
