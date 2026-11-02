@@ -60,6 +60,7 @@ Reported by **[miakkia](https://github.com/miakkia)** in [#74](https://github.co
 
 ### Security
 
+- **`undici` 7.29.0 to 7.30.1** fixes TLS validation, cache isolation and denial-of-service advisories in frontend development/test tooling, through jsdom. The browser bundle's runtime dependencies are unchanged. Addresses [#80](https://github.com/Oratorian/emby-watchparty/pull/80); see the [upstream security fixes](https://github.com/nodejs/undici/releases/tag/v7.30.1).
 - **Development HTTP clients updated to `httpx2` / `httpcore2` 2.12.0.** Fixes bounded response decompression, secure WebSocket proxying, request-header handling and event-stream buffering advisories. The separate runtime `httpx` dependency is unchanged. Addresses [#79](https://github.com/Oratorian/emby-watchparty/pull/79); see the [upstream fixes](https://github.com/pydantic/httpx2/releases/tag/v2.12.0).
 - **`pytest` 8.4.2 to 9.0.3** fixes the Unix temporary-directory vulnerability [CVE-2025-71176](https://github.com/advisories/GHSA-6w46-j5rx-g56g). The development dependency floor is now 9.0.3, and universal lock generation preserves Windows dependencies and unsupported-platform exclusions. Addresses [#81](https://github.com/Oratorian/emby-watchparty/pull/81).
 - **`multidict` 6.7.1 to 6.9.1** fixes the items-view set-operation reference leaks in [CVE-2026-104874](https://github.com/advisories/GHSA-54p9-h82j-f925), carried by the development aiohttp/yarl dependencies. Addresses [#82](https://github.com/Oratorian/emby-watchparty/pull/82).
