@@ -15,7 +15,7 @@ Thanks to **[wlowen](https://github.com/wlowen)** and **[JeslynMcKenzie](https:/
 
 Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refined Cyber" design language that the 2.0 visual refresh is built on -- the cyan/magenta/violet palette, glass surface treatment, chip/pill control language, animated LIVE badge, and centred system-message pill in chat all come from his mockup.
 
-Thanks to **[StealthyDruid](https://discord.com/users/458152893103603722)** and **[xyxxyxxy](https://discord.com/users/144553679058370560)** for the bug reports and feature requests on the [Discord support server](https://discord.gg/RWUpxq9xsA) that shaped the late-stage 2.0 betas: APP_PREFIX healthcheck, A-Z library jump bar, image thumbnail sizing, resume from last position, jump-to-timestamp input, and the seek-bar tooltip thinking that got us there.
+Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722)** and **[xyxxyxxy](https://discord.com/users/144553679058370560)** for their absolute dedication to testing every beta release of 2.x and 3.x. Their relentless testing, detailed bug reports and feedback helped eradicate nearly every bug along the way.
 
 ---
 
