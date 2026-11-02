@@ -16,7 +16,7 @@
     "test:playback-gate": "playwright test --grep @playback-gate"
   },
   "dependencies": {
-    "axios": "^1.13.6",
+    "axios": "^1.20.0",
     "browserslist": "^4.28.9",
     "hls.js": "^1.6.15",
     "pinia": "^3.0.4",
