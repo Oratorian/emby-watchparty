@@ -76,8 +76,8 @@ https://discord.gg/RWUpxq9xsA
 - **[Appliance deployment](docs/deployment/appliance-migration.md)** - Compose, CasaOS, Portainer, and TrueNAS setup, diagnosis, update, and rollback; the maintainer's separate Unraid templates repository is indexed by Community Apps through `TemplateURL`
 - **[Socket.IO API](docs/SOCKET_API.md)** - developer reference for the Socket.IO event protocol
 - **OpenAPI reference** - `GET /docs` (Swagger UI) or `GET /redoc` on a running instance
-- **[CHANGELOG.md](CHANGELOG.md)** - per-release details including every fix and the reasoning behind it
-- **[Archived 3.0 development log](https://github.com/Oratorian/emby-watchparty/blob/609b26c1c5e882448c996233494f77c4f33e27c7/SUMMARY-OF-CHANGES.md)** - development history, breaking changes, and security analysis retained from before the summary was retired. The 2.0 beta log is preserved at the [v2.1.0 tag](https://github.com/Oratorian/emby-watchparty/blob/v2.1.0/SUMMARY-OF-CHANGES.md)
+- **[CHANGELOG.md](CHANGELOG.md)** - consolidated 3.0.0 release notes, upgrade requirements and version history summary
+- **[SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md)** - full 3.0 beta changelogs and earlier stable release notes, with links to the older 2.0 beta log and 3.0 technical analysis
 - **[Emby quirks we learned the hard way](docs/Emby%20quirks%20we%20learned%20the%20hard%20way.md)** - Why 2.0 came to be.
 
 ## Features
