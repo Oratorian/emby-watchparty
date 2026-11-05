@@ -14,7 +14,7 @@ This policy describes security support, private vulnerability reporting, and the
 
 Legacy fixes are limited to severe issues such as remote code execution, authentication bypass, or unauthenticated data exposure. Removing a legacy deployment template does not change the stated support deadline.
 
-Pin the major line you intend to run: `:2` for stable 2.x and `:3` for stable 3.x after that image is published. `:latest` can cross a major-version boundary. Read the [migration guide](docs/Migration-HowTo.md) before upgrading from 2.x to 3.x, and retain a complete rollback backup until playback has been validated.
+Pin the major line you intend to run: `:2` for stable 2.x and `:3` for stable 3.x after that image is published. `:latest` can cross a major-version boundary. Read the [migration guide](documentations/Migration-HowTo.md) before upgrading from 2.x to 3.x, and retain a complete rollback backup until playback has been validated.
 
 ## Reporting a Vulnerability
 
@@ -67,7 +67,7 @@ Production requires an HTTPS browser URL, secure cookies, explicit Socket.IO ori
 
 Retired `EMBY_SERVER_URL`, `EMBY_API_KEY`, `JELLYFIN_SERVER_URL`, and `JELLYFIN_API_KEY` declarations cause a startup error, even when empty. Rename and remove them rather than keeping both old and new names.
 
-See the [environment reference](docs/deployment/environment.md), [Compose guide](docs/deployment/compose.md), and [reverse-proxy guide](https://github.com/Oratorian/emby-watchparty/wiki/Reverse-Proxy).
+See the [environment reference](documentations/deployment/environment.md), [Compose guide](documentations/deployment/compose.md), and [reverse-proxy guide](https://github.com/Oratorian/emby-watchparty/wiki/Reverse-Proxy).
 
 ### Proxy trust and network exposure
 

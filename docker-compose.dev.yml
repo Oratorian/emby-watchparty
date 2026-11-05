@@ -6,7 +6,7 @@
 #
 # Named .dev.yml on purpose. As docker-compose.yml it was Compose's default
 # file, so `docker compose up` in the repo ran this instead of the operator's
-# own, and it occupied the exact filename docs/deployment/compose.md tells
+# own, and it occupied the exact filename documentations/deployment/compose.md tells
 # people to create.
 #
 #   docker compose -f docker-compose.dev.yml up --build

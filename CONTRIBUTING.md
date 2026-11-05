@@ -207,7 +207,7 @@ sources and do not regenerate, the build fails.
 - **Deployment artifacts.** After editing `deploy/schema.json` or the deployment
   generator, run `python scripts/generate_deployment_artifacts.py` and commit
   `.env.example`, `docker-compose.yml.example`,
-  `docs/deployment/environment.md`, `deploy/casaos/docker-compose.yml`, and
+  `documentations/deployment/environment.md`, `deploy/casaos/docker-compose.yml`, and
   `deploy/truenas/custom-app.yml`. To check changed, missing, or obsolete output
   without writing, use
   `python scripts/generate_deployment_artifacts.py --check`.

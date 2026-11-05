@@ -29,7 +29,7 @@ remain available in their historical snapshots.
 
   **Existing deployments must rename these before upgrading**, in `.env`, in the compose `environment:` block, or in the TrueNAS/CasaOS app settings, wherever you set them. There is no alias and no fallback read: a retired name left in place is a boot error naming its replacement, and the container comes up serving 503 with the fields listed on stderr until it is fixed. Blanking the value is not enough, since a declared but empty `EMBY_API_KEY=` still counts as declared; remove the line.
 
-  `python -m backend.migration_preflight` reports the rename as a REQUIRED ACTION before you upgrade, and [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) carries the full mapping. Failing loudly is deliberate: reading the old value as a fallback would have let a half-renamed deployment boot against the default `http://localhost:8096` and show an empty library with nothing to explain it.
+  `python -m backend.migration_preflight` reports the rename as a REQUIRED ACTION before you upgrade, and [`documentations/Migration-HowTo.md`](documentations/Migration-HowTo.md) carries the full mapping. Failing loudly is deliberate: reading the old value as a fallback would have let a half-renamed deployment boot against the default `http://localhost:8096` and show an empty library with nothing to explain it.
 
 - **The v1 library, media and auth REST routes are gone.** Twenty-four endpoints that `/api/v2` had already replaced were removed; the web client migrated to v2 before this release and calls none of them. Each has a direct successor:
 
@@ -148,7 +148,7 @@ A read-only command that reads your existing configuration, whether it reaches 3
 
 It resolves values with the same loader the application boots with and takes its verdict from the same startup validation, so **it cannot clear a configuration that 3.0 would then refuse**. It reports the settings that decide a 2.1.x migration, the proxy, HLS, session-expiry and rate-limit values, saying which are in effect and where each came from; the rest of your configuration is deliberately kept out of the report so a secret cannot reach it. It also gives the one-worker rule, the paths to preserve, the health and readiness URLs to check afterwards, and the backup and rollback steps that stay manual.
 
-Run it **after** pointing your Compose file at a 3.0 image carrying this work and pulling it. The command ships inside `:3.0.0-beta3`, `:devel` and `:nightly`; `:3.0.0-beta1` predates it and a 2.1.x image has no such module either. [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) carries the step order along with Compose, appliance, plain Docker, source and Windows invocations.
+Run it **after** pointing your Compose file at a 3.0 image carrying this work and pulling it. The command ships inside `:3.0.0-beta3`, `:devel` and `:nightly`; `:3.0.0-beta1` predates it and a 2.1.x image has no such module either. [`documentations/Migration-HowTo.md`](documentations/Migration-HowTo.md) carries the step order along with Compose, appliance, plain Docker, source and Windows invocations.
 
 ### One command that says whether playback works
 
@@ -174,7 +174,7 @@ topology, and a Secure cookie is silently discarded over plain HTTP. Both are ex
 inline, along with the `config.json` mount, the `APP_PREFIX` subpath trap and what each image
 tag tracks.
 
-New platform guides under [`docs/deployment/`](docs/deployment/) cover Compose, CasaOS,
+New platform guides under [`documentations/deployment/`](documentations/deployment/) cover Compose, CasaOS,
 TrueNAS and Portainer, each with the read-only preflight, fail-closed health and readiness
 diagnosis, updates, playback acceptance and full rollback, without ever deleting legacy data.
 
@@ -246,7 +246,7 @@ Betas are image-only, as the whole 2.0 beta cycle was: no git tag and no GitHub 
 
 Treat it as a beta. It has been exercised by an automated suite that drives real HLS through a fake Emby, and by a security pass that reopened and closed two blockers, but it has not been run in anger by a real household on a real Emby server. That is what this beta is for. Keep your 2.1.x image and configuration for rollback until you have completed a playback test.
 
-**Read [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) before upgrading.** Its first section tells you whether you need to change anything at all; for most production deployments coming from 2.1.x the only addition is `BEHIND_PROXY`. The exception is anyone who turned HLS token validation off in **Admin -> Security**: that value is carried forward, production refuses to boot with the gate disabled, and the toggle that would have re-enabled it has moved out of the panel, so `ENABLE_HLS_TOKEN_VALIDATION=true` must be set in the environment.
+**Read [`documentations/Migration-HowTo.md`](documentations/Migration-HowTo.md) before upgrading.** Its first section tells you whether you need to change anything at all; for most production deployments coming from 2.1.x the only addition is `BEHIND_PROXY`. The exception is anyone who turned HLS token validation off in **Admin -> Security**: that value is carried forward, production refuses to boot with the gate disabled, and the toggle that would have re-enabled it has moved out of the panel, so `ENABLE_HLS_TOKEN_VALIDATION=true` must be set in the environment.
 
 2.0 rebuilt the product. 3.0 rebuilds the foundation underneath it. Nothing about what a watch party *does* changes: same parties, same per-user transcodes, same late-joiner vote, same admin panel, same look. What changes is how much of it the server can prove before it runs.
 
@@ -288,7 +288,7 @@ Two lessons from that pass are worth stating, because they shaped how the rest w
 
 ### Expect a migration, not a drop-in
 
-Unlike every 2.x release, this one needs reading before you upgrade, and [`docs/Migration-HowTo.md`](docs/Migration-HowTo.md) now covers the 2.1.x → 3.0 path.
+Unlike every 2.x release, this one needs reading before you upgrade, and [`documentations/Migration-HowTo.md`](documentations/Migration-HowTo.md) now covers the 2.1.x → 3.0 path.
 
 Rate limiting becomes **enforced**, using the values already sitting in your `config.json`, values nobody has tuned because they previously did nothing. This is the change most likely to be noticed, and it is silent when it bites: a third person tries to join movie night and simply cannot, with nothing in the interface naming a limit.
 

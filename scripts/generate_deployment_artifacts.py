@@ -572,7 +572,7 @@ def generate_artifacts(schema: dict[str, Any]) -> dict[Path, str]:
     return {
         Path(".env.example"): _env_example(schema),
         Path("docker-compose.yml.example"): _compose(schema),
-        Path("docs/deployment/environment.md"): _environment_reference(schema),
+        Path("documentations/deployment/environment.md"): _environment_reference(schema),
         Path("deploy/casaos/docker-compose.yml"): _casaos(schema),
         Path("deploy/truenas/custom-app.yml"): _truenas(schema),
     }
@@ -605,7 +605,7 @@ def _marked_artifact_paths(output_dir: Path, artifacts: dict[Path, str]) -> set[
         candidates.update(
             path for path in output_dir.iterdir() if path.is_file() and path.name in owned_top_level
         )
-    for owned_root in (output_dir / "deploy", output_dir / "docs" / "deployment"):
+    for owned_root in (output_dir / "deploy", output_dir / "documentations" / "deployment"):
         if owned_root.is_dir():
             candidates.update(path for path in owned_root.rglob("*") if path.is_file())
 

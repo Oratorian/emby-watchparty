@@ -11,7 +11,7 @@
 
 A synchronized watch-party frontend for Emby and Jellyfin: watch together while your media server stays on your internal network. Any member with an account on the configured server can become the room's host; other viewers join as spectators without a media-server account.
 
-This branch contains 3.x. The [watchparty2 branch](https://github.com/Oratorian/emby-watchparty/tree/watchparty2) preserves the 2.x source and documentation. Read the [migration guide](docs/Migration-HowTo.md) before moving an existing 2.x deployment to 3.0.
+This branch contains 3.x. The [watchparty2 branch](https://github.com/Oratorian/emby-watchparty/tree/watchparty2) preserves the 2.x source and documentation. Read the [migration guide](documentations/Migration-HowTo.md) before moving an existing 2.x deployment to 3.0.
 
 ---
 
@@ -73,14 +73,15 @@ https://discord.gg/RWUpxq9xsA
 
 ## Documentation
 
+- **[Language-pack creator](https://oratorian.github.io/emby-watchparty/)** - translate messages in your browser and download an installable community language ZIP
 - **[Project wiki](https://github.com/Oratorian/emby-watchparty/wiki)** - hardware, deployment, troubleshooting, and FAQ
-- **[Migration guide](docs/Migration-HowTo.md)** - upgrade path from 2.1.x to 3.0
-- **[Appliance deployment](docs/deployment/appliance-migration.md)** - Compose, CasaOS, Portainer, and TrueNAS setup, diagnosis, update, and rollback; the maintainer's separate Unraid templates repository is indexed by Community Apps through `TemplateURL`
-- **[Socket.IO API](docs/SOCKET_API.md)** - developer reference for the Socket.IO event protocol
+- **[Migration guide](documentations/Migration-HowTo.md)** - upgrade path from 2.1.x to 3.0
+- **[Appliance deployment](documentations/deployment/appliance-migration.md)** - Compose, CasaOS, Portainer, and TrueNAS setup, diagnosis, update, and rollback; the maintainer's separate Unraid templates repository is indexed by Community Apps through `TemplateURL`
+- **[Socket.IO API](documentations/SOCKET_API.md)** - developer reference for the Socket.IO event protocol
 - **OpenAPI reference** - `GET /docs` (Swagger UI) or `GET /redoc` on a running instance
 - **[CHANGELOG.md](CHANGELOG.md)** - consolidated 3.0.0 release notes, upgrade requirements and version history summary
 - **[SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md)** - full 3.0 beta changelogs and earlier stable release notes, with links to the older 2.0 beta log and 3.0 technical analysis
-- **[Emby quirks we learned the hard way](docs/Emby%20quirks%20we%20learned%20the%20hard%20way.md)** - Why 2.0 came to be.
+- **[Emby quirks we learned the hard way](documentations/Emby%20quirks%20we%20learned%20the%20hard%20way.md)** - Why 2.0 came to be.
 
 ## Features
 
@@ -120,7 +121,7 @@ CI exercises Chromium, Firefox and desktop WebKit. Chromium covers the full fake
 
 ### Manual installation
 
-Use a fresh checkout and Python 3.12. Existing 2.x installations need the [migration steps](docs/Migration-HowTo.md), including a fresh virtual environment while preserving their configuration and data.
+Use a fresh checkout and Python 3.12. Existing 2.x installations need the [migration steps](documentations/Migration-HowTo.md), including a fresh virtual environment while preserving their configuration and data.
 
 1. **Create and activate the virtual environment.**
 
@@ -187,7 +188,7 @@ Use a fresh checkout and Python 3.12. Existing 2.x installations need the [migra
 
 ### Docker installation
 
-Upgrading from 2.1.x requires the [3.0 migration guide](docs/Migration-HowTo.md).
+Upgrading from 2.1.x requires the [3.0 migration guide](documentations/Migration-HowTo.md).
 Back up `.env`, the effective Compose/container configuration, `config.json`,
 `data/`, `images/avatars/`, and every volume mapping. Keep the old image and
 complete backup until login, playback, seeking, subtitles and reconnects pass a real test.
@@ -290,7 +291,7 @@ HLS tokens are process-local.
 Boot settings come from the environment or `.env` and require restart.
 Runtime settings live in `config.json` and the admin panel; most apply immediately,
 while file-logging changes require restart. Platform guides and validation steps
-are indexed in the [appliance deployment guide](docs/deployment/appliance-migration.md).
+are indexed in the [appliance deployment guide](documentations/deployment/appliance-migration.md).
 
 ## Usage
 
@@ -394,7 +395,7 @@ Watch Party.
 `JELLYFIN_SERVER_URL` are now `MEDIA_SERVER_URL`; `EMBY_API_KEY` and
 `JELLYFIN_API_KEY` are now `MEDIA_SERVER_API_KEY`. The old names are not read
 at all, so leaving one in place is a boot error naming its replacement rather
-than a silently ignored line. See [the migration guide](docs/Migration-HowTo.md).
+than a silently ignored line. See [the migration guide](documentations/Migration-HowTo.md).
 
 Jellyfin playback is HLS-only: HLS stream copy/remux/transcode are supported.
 Progressive/direct-file playback, Live TV, Jellyfin SyncPlay, and reuse of GPL
@@ -549,11 +550,11 @@ Party state, standalone admin sessions, and rate-limit buckets are process-local
 Emby Watch Party 3.0 exposes a FastAPI REST API and a Socket.IO event protocol. The canonical references are:
 
 - **REST / OpenAPI:** `/docs` (Swagger UI), `/redoc` and `/openapi.json` on the running backend. These stay at the hostname root even when `APP_PREFIX` is set.
-- **Socket.IO:** [`docs/SOCKET_API.md`](docs/SOCKET_API.md) - every inbound / outbound event, payload shapes, and the multi-step flows.
+- **Socket.IO:** [`documentations/SOCKET_API.md`](documentations/SOCKET_API.md) - every inbound / outbound event, payload shapes, and the multi-step flows.
 
 ### REST API (representative endpoints)
 
-Library, media metadata and host-authentication routes live under **`/api/v2`**, the surface used by the bundled web client. The legacy routes were removed in 3.0; the [migration guide](docs/Migration-HowTo.md) maps them to their replacements. Party, HLS, avatar and admin routes have their own prefixes. Examples:
+Library, media metadata and host-authentication routes live under **`/api/v2`**, the surface used by the bundled web client. The legacy routes were removed in 3.0; the [migration guide](documentations/Migration-HowTo.md) maps them to their replacements. Party, HLS, avatar and admin routes have their own prefixes. Examples:
 
 - **`v2`** - `POST /api/v2/auth/login` (media-server login, host-claim), `GET /api/v2/libraries`, `POST /api/v2/items/query`, `GET /api/v2/items/{item_id}/streams`
 - **`party`** - `POST /api/party/create`, `POST /api/party/{id}/join`, `GET /api/party/{id}/info`
@@ -578,7 +579,7 @@ Mounted under `${APP_PREFIX}/socket.io`. Events group into these categories:
 - **Binge-watch / auto-advance** - `set_binge_watch_active`, `binge_watch_state_changed`, `auto_advance_pending`, `auto_advance_cancel(led)`, `auto_advance_fired`, `binge_finished`.
 - **Admin / errors** - `party_dissolved`, `rate_limited` and `error`.
 
-Full payloads, auth requirements, and flow diagrams live in [`docs/SOCKET_API.md`](docs/SOCKET_API.md).
+Full payloads, auth requirements, and flow diagrams live in [`documentations/SOCKET_API.md`](documentations/SOCKET_API.md).
 
 ## Troubleshooting
 

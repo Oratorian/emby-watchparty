@@ -22,7 +22,7 @@ def _prose(*paths: str) -> str:
 
 
 def test_operator_docs_cover_jellyfin_selection_and_hls_limits() -> None:
-    combined = _prose("README.md", "docs/deployment/compose.md")
+    combined = _prose("README.md", "documentations/deployment/compose.md")
 
     # The type is the whole of the provider selection now: one address and one
     # key serve both, and nothing auto-detects which server answers them. An
@@ -54,7 +54,7 @@ def test_the_migration_doc_maps_every_retired_name_to_its_replacement() -> None:
     table row cannot wrap, so that holds through a reflow, which is the
     property `_prose` exists to protect elsewhere.
     """
-    lines = (ROOT / "docs/Migration-HowTo.md").read_text(encoding="utf-8").splitlines()
+    lines = (ROOT / "documentations/Migration-HowTo.md").read_text(encoding="utf-8").splitlines()
 
     for retired, replacement in _RETIRED_PROVIDER_FIELDS.items():
         assert any(retired in line and replacement in line for line in lines), (

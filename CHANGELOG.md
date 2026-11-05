@@ -34,13 +34,13 @@ Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722
 
 Director's Cut brings the 3.0 beta cycle into one release: a typed backend, fuller library browsing, browser-aware playback, visible recovery paths and stricter deployment checks. It also includes the host/admin recovery fixes, current API documentation and dependency security updates below.
 
-**Read the [2.x to 3.0 migration guide](docs/Migration-HowTo.md) before upgrading.** Back up the 2.x configuration and keep its image available until a real playback test succeeds. The [beta archive](SUMMARY-OF-CHANGES.md) preserves the detailed development history.
+**Read the [2.x to 3.0 migration guide](documentations/Migration-HowTo.md) before upgrading.** Back up the 2.x configuration and keep its image available until a real playback test succeeds. The [beta archive](SUMMARY-OF-CHANGES.md) preserves the detailed development history.
 
 ### Breaking Changes
 
 - **Provider settings were renamed.** Replace `EMBY_SERVER_URL` or `JELLYFIN_SERVER_URL` with `MEDIA_SERVER_URL`, and `EMBY_API_KEY` or `JELLYFIN_API_KEY` with `MEDIA_SERVER_API_KEY`. Remove the old names, including empty declarations; there is no fallback, and keeping them prevents startup. `MEDIA_SERVER_TYPE` stays explicit as `emby` or `jellyfin`.
 - **Production configuration is validated before serving the application.** Declare `BEHIND_PROXY` explicitly, with `TRUSTED_PROXY_CIDRS` when it is `true`. Production also requires a stable `SESSION_SECRET` of at least 32 characters, secure session cookies, explicit CORS origins, a media-server API key and HLS token validation. Invalid configuration leaves the container available for diagnosis with `setup_required` health and 503 readiness responses.
-- **Legacy library, media and authentication REST routes were removed.** Third-party clients and scripts must use their `/api/v2` replacements. The web client already uses v2; the [migration guide](docs/Migration-HowTo.md) lists the removed routes and their replacements.
+- **Legacy library, media and authentication REST routes were removed.** Third-party clients and scripts must use their `/api/v2` replacements. The web client already uses v2; the [migration guide](documentations/Migration-HowTo.md) lists the removed routes and their replacements.
 - **Source installations require Python 3.12 and a fresh virtual environment.** Recreate the environment and install the hash-locked requirements. Windows remains supported, with unsupported `uvloop` builds excluded by platform markers.
 - **`SESSION_EXPIRY` now controls the actual idle session lifetime.** The default `86400` asks viewers to rejoin after 24 hours idle, replacing the previous hardcoded fourteen days. Rate limits are also enforced, so review the values carried forward from `config.json`.
 
@@ -66,7 +66,7 @@ Reported by **[miakkia](https://github.com/miakkia)** in [#74](https://github.co
 
 - **The backend uses typed, validated contracts and an application factory.** Inbound and outbound Socket.IO payloads are validated, REST and socket types are generated, and each test can construct an isolated application. Browser and fake-media-server tests cover playback, synchronization, reconnects and native HLS.
 - **The detail view and admin controls are easier to use.** Compact season, episode and related-content controls stay close to the title, artwork no longer hides text, and rate-limit settings share consistent number and time-window controls.
-- **The Socket.IO reference now covers the 3.0 protocol.** [`docs/SOCKET_API.md`](docs/SOCKET_API.md) documents all 21 inbound and 38 outbound events, with current payloads, host recovery, session binding, playback timing, visibility and rate limits. The examples are validated against the backend contracts.
+- **The Socket.IO reference now covers the 3.0 protocol.** [`documentations/SOCKET_API.md`](documentations/SOCKET_API.md) documents all 21 inbound and 38 outbound events, with current payloads, host recovery, session binding, playback timing, visibility and rate limits. The examples are validated against the backend contracts.
 - **Swagger and ReDoc now describe the responses the API returns.** Response schemas include serialized defaults, JSON errors, readiness failures, rate limits with `Retry-After`, image and subtitle bytes, and HLS range responses. HLS token and Range inputs are documented, and GET/HEAD operations have distinct IDs. Generated REST types follow the same contract, including optional validation-error fields and the literal rate-limit code. OpenAPI 3.1 validation covers all 44 paths and 48 operations, with runtime response regression tests.
 
 ### Security

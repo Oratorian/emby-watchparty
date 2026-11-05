@@ -123,7 +123,7 @@ def test_generation_is_byte_deterministic() -> None:
 
 
 def test_environment_reference_carries_schema_metadata() -> None:
-    reference = generate_artifacts(SCHEMA)[Path("docs/deployment/environment.md")]
+    reference = generate_artifacts(SCHEMA)[Path("documentations/deployment/environment.md")]
 
     assert "Generated from `deploy/schema.json`" in reference
     assert (

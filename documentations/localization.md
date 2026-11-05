@@ -12,6 +12,8 @@ Packs are stored under `data/languages/pack-<locale>.json`, inside the existing 
 
 ## Creating a pack
 
+Use the [online language-pack creator](https://oratorian.github.io/emby-watchparty/) to edit translations, check placeholders and download an installable ZIP. Drafts are saved in your browser; you can also download a draft or open an existing ZIP to continue translating. The creator uses the same English catalog and validation rules as EWP. Blank messages are omitted and fall back to English.
+
 The downloaded ZIP contains `manifest.json` and the current English namespace files. Keep the files at the ZIP root. A manifest looks like this:
 
 ```json
