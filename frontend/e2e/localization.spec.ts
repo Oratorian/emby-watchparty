@@ -9,6 +9,8 @@ test.beforeEach(async ({ page }) => {
       await route.fulfill({ json: { success: true, require_login: false, media_server_type: 'emby' } })
     } else if (path.endsWith('/static-session')) {
       await route.fulfill({ json: { party_id: null } })
+    } else if (path.endsWith('/languages')) {
+      await route.fulfill({ json: { languages: [] } })
     } else {
       await route.fulfill({ json: { parties: [] } })
     }
