@@ -5,6 +5,7 @@
   "hide": "Sprachpakete ausblenden",
   "builtins": "Englisch und Deutsch sind enthalten. Wenn du ein hochgeladenes deutsches Paket entfernst, wird die enthaltene Übersetzung wiederhergestellt.",
   "template": "Übersetzungsvorlage herunterladen",
+  "online_creator": "Sprachpaket-Editor öffnen",
   "downloading": "Download wird vorbereitet...",
   "refresh": "Installierte Sprachen aktualisieren",
   "format_hint": "Beginne mit der ZIP-Vorlage. Bearbeite den Sprachnamen und Sprachcode in manifest.json, übersetze die JSON-Dateien und lade die ZIP-Datei hoch. Fehlende Übersetzungen verwenden Englisch.",

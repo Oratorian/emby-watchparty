@@ -201,6 +201,9 @@ onBeforeUnmount(() => {
     <div v-if="open" class="pack-management">
       <p class="pack-hint">{{ t('languagePacks.builtins') }}</p>
       <div class="pack-actions">
+        <a class="btn btn-ghost btn-small" href="https://oratorian.github.io/emby-watchparty/" target="_blank" rel="noopener noreferrer">
+          {{ t('languagePacks.online_creator') }}
+        </a>
         <button type="button" class="btn btn-ghost btn-small" :disabled="downloading" @click="downloadTemplate">
           {{ t(downloading ? 'languagePacks.downloading' : 'languagePacks.template') }}
         </button>

@@ -172,7 +172,7 @@
   "year_decade_mode_label": "Decade mode",
   "runtime_hours": "{hours}h {minutes}m",
   "runtime_minutes": "{minutes}m",
-  "runtime_under_minute": "<1m",
+  "runtime_under_minute": "Under 1m",
   "played_progress": "Played: {played} ({percent}%) of {total}",
   "kind_movies": "Movie library",
   "kind_tvshows": "Series library",

@@ -23,6 +23,7 @@ Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722
 
 ### Added
 
+- **A browser language-pack creator is available through GitHub Pages.** Translators can edit the English messages, check placeholders, save or recover drafts, open existing packs, and export a validated ZIP. The site lives in `docs/`; project documentation moved to `documentations/`.
 - **Community language packs can be installed at runtime.** Admins can download a translation template, upload or replace a language ZIP, and remove installed packs. Validated packs persist in the data volume and appear in viewers' language selectors without a rebuild or restart. Partial translations fall back to English; removing a German override restores the bundled translation. Archive bounds, known message keys and placeholders are checked before atomic installation. Extends [#87](https://github.com/Oratorian/emby-watchparty/issues/87).
 - **English and German UI localization with vue-i18n.** Watch Party detects the browser language and lets each viewer save a language preference. Party controls, library browsing, title details, admin settings and recovery dialogs use complete translated messages with placeholders and plurals. Known Emby and Jellyfin filter labels are translated while request values and media metadata stay unchanged. Longer filter labels wrap on narrow screens. Initial German translations contributed by [timokohlbrecher-collab](https://github.com/timokohlbrecher-collab) in [#87](https://github.com/Oratorian/emby-watchparty/issues/87).
 

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Create and edit community language packs for Emby Watch Party. Translate messages in your browser and download a ready-to-install ZIP.">
+    <meta name="color-scheme" content="dark">
+    <title>Create a language pack | Emby Watch Party</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#translations-heading">Skip to translations</a>
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="brand" href="https://github.com/Oratorian/emby-watchparty" aria-label="Emby Watch Party on GitHub">
+          <span class="brand-tile"><img src="./brand-mark.webp" width="44" height="44" alt=""></span>
+          <span><strong>Emby Watch Party</strong><span class="brand-caption">Community translations</span></span>
+        </a>
+        <a class="repository-link" href="https://github.com/Oratorian/emby-watchparty/issues/87" target="_blank" rel="noopener noreferrer">Translation discussion <span aria-hidden="true">↗</span></a>
+      </header>
+
+      <section class="intro" aria-labelledby="page-title">
+        <p class="eyebrow">A shared screen. More languages.</p>
+        <h1 id="page-title">Create a language pack</h1>
+        <p>Translate Watch Party into your language, then download a ZIP ready to install. Start small: messages you leave blank will use English.</p>
+      </section>
+
+      <div id="load-state" class="load-state" role="status">
+        <span id="load-message">Loading the English messages...</span>
+        <button id="retry-load" class="button secondary" type="button" hidden>Try again</button>
+      </div>
+
+      <div id="creator" class="creator-layout" hidden>
+        <aside class="pack-sidebar" aria-labelledby="details-heading">
+          <section class="panel details-panel">
+            <div class="section-kicker">01 / Your language</div>
+            <h2 id="details-heading">Pack details</h2>
+            <p class="muted section-description">This name will appear in EWP's language selector.</p>
+            <div class="field">
+              <label for="locale">Language code <span class="required">required</span></label>
+              <input id="locale" name="locale" placeholder="fr, pt-BR, zh-Hant" maxlength="50" autocomplete="off" spellcheck="false" aria-describedby="locale-hint locale-error" required>
+              <span class="field-hint" id="locale-hint">Use your language's code. English is the fallback and cannot be replaced.</span>
+              <span class="field-error" id="locale-error" hidden></span>
+            </div>
+            <div class="field">
+              <label for="name">Language name <span class="required">required</span></label>
+              <input id="name" name="name" placeholder="Français" maxlength="160" autocomplete="off" aria-describedby="name-error" required>
+              <span class="field-error" id="name-error" hidden></span>
+            </div>
+            <div class="field">
+              <label for="author">Translator <span class="optional">optional</span></label>
+              <input id="author" name="author" placeholder="Your name or community handle" maxlength="200" autocomplete="off" aria-describedby="author-error">
+              <span class="field-error" id="author-error" hidden></span>
+            </div>
+            <div class="field">
+              <label for="version">Pack version <span class="optional">optional</span></label>
+              <input id="version" name="version" placeholder="1.0" maxlength="80" autocomplete="off" spellcheck="false" aria-describedby="version-error">
+              <span class="field-error" id="version-error" hidden></span>
+            </div>
+
+            <div class="export-section">
+              <button id="download-zip" class="button primary" type="button" disabled>Download ZIP <span aria-hidden="true">↓</span></button>
+              <p id="export-hint" class="field-hint">Enter a language code and name, then translate at least one message.</p>
+            </div>
+            <div class="draft-actions">
+              <button id="open-pack" class="button secondary" type="button">Open pack or draft</button>
+              <input id="import-file" class="visually-hidden" type="file" accept=".zip,.json,application/zip,application/json" tabindex="-1" aria-label="Open a language pack ZIP or saved draft">
+              <button id="download-draft" class="text-button" type="button">Download draft</button>
+              <button id="reset-draft" class="text-button muted" type="button" aria-expanded="false" aria-controls="reset-confirmation">Start over</button>
+            </div>
+            <div id="reset-confirmation" class="reset-confirmation" hidden>
+              <p>Clear the details and translations in this draft? Download a copy first if you want to keep them.</p>
+              <div class="inline-actions">
+                <button id="confirm-reset" class="button danger" type="button">Clear draft</button>
+                <button id="cancel-reset" class="button secondary" type="button">Keep editing</button>
+              </div>
+            </div>
+            <p id="save-status" class="save-status" role="status">Drafts stay in this browser. No account needed.</p>
+          </section>
+
+          <details class="panel translation-help">
+            <summary>How to translate</summary>
+            <ol>
+              <li>Translate the English text in the message fields.</li>
+              <li>Keep placeholders such as <code>{provider}</code>. Use the buttons beside a message to insert them.</li>
+              <li>For plural forms, keep the <code>|</code> separators. Example: <code>{count} personne | {count} personnes</code>.</li>
+              <li>Leave a message blank to use English. You can download a partial pack.</li>
+              <li>In EWP, open <strong>Admin Panel → Manage language packs</strong> and install the downloaded ZIP.</li>
+            </ol>
+            <p>Use a version of EWP that supports community language packs. The creator works locally in your browser; it does not upload your draft to EWP.</p>
+          </details>
+        </aside>
+
+        <main class="translation-workspace" aria-labelledby="translations-heading">
+          <section class="panel workspace-overview">
+            <div class="overview-heading">
+              <div><div class="section-kicker">02 / Make it yours</div><h2 id="translations-heading" tabindex="-1">Translations</h2></div>
+              <span id="catalog-count" class="catalog-count"></span>
+            </div>
+            <div class="progress-copy"><span><strong id="translated-count">0</strong> translated</span><span id="remaining-count"></span></div>
+            <progress id="translation-progress" value="0" max="1" aria-label="Translation progress"></progress>
+            <div class="progress-footer"><span>Blank messages use English.</span><span id="error-count" class="error-count">No errors</span></div>
+          </section>
+
+          <div id="operation-notice" class="notice" role="status" hidden></div>
+          <div id="recovery-notice" class="notice warning" hidden>
+            <p id="recovery-message"></p>
+            <button id="download-recovery" class="text-button" type="button">Download previous draft</button>
+          </div>
+
+          <section class="editor-toolbar" aria-label="Filter messages">
+            <div class="search-field"><label for="search">Search messages</label><input id="search" type="search" placeholder="Search English text, keys or translations" autocomplete="off"></div>
+            <div><label for="namespace">Section</label><select id="namespace"><option value="all">All sections</option></select></div>
+            <div><label for="status-filter">Show</label><select id="status-filter"><option value="all">All messages</option><option value="missing">Missing translations</option><option value="translated">Translated</option><option value="errors">Needs attention</option></select></div>
+          </section>
+
+          <div id="results-summary" class="results-summary" role="status"></div>
+          <div id="translation-list" class="translation-list"></div>
+          <div id="empty-results" class="panel empty-results" hidden><h3>No messages match</h3><p>Try another search or choose a different section.</p><button id="clear-filters" class="button secondary" type="button">Clear filters</button></div>
+          <nav class="pagination" aria-label="Message pages">
+            <button id="previous-page" class="button secondary" type="button" aria-controls="translation-list">Previous</button>
+            <span id="page-count"></span>
+            <button id="next-page" class="button secondary" type="button" aria-controls="translation-list">Next</button>
+          </nav>
+        </main>
+      </div>
+
+      <footer class="site-footer"><span>Made for the Watch Party community.</span><a href="https://github.com/Oratorian/emby-watchparty" target="_blank" rel="noopener noreferrer">Project on GitHub</a></footer>
+    </div>
+  </body>
+</html>

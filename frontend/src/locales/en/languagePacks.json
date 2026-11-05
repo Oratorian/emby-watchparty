@@ -5,6 +5,7 @@
   "hide": "Hide language packs",
   "builtins": "English and German are included. Removing an uploaded German pack restores the included translation.",
   "template": "Download translation template",
+  "online_creator": "Open language-pack creator",
   "downloading": "Preparing download...",
   "refresh": "Refresh installed languages",
   "format_hint": "Start with the template ZIP. Edit its language name and code in manifest.json, translate the JSON files, then upload the ZIP. Missing translations use English.",

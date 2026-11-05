@@ -1,0 +1,60 @@
+name: Language pack creator
+
+on:
+  push:
+    branches: [main, feat/ui-localization]
+    paths:
+      - 'language-pack-builder/**'
+      - 'scripts/build_language_pack_builder.mjs'
+      - 'backend/language-catalog.json'
+      - 'frontend/src/locales/en/**'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - 'docs/**'
+      - '.github/workflows/language-pack-builder.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'language-pack-builder/**'
+      - 'scripts/build_language_pack_builder.mjs'
+      - 'backend/language-catalog.json'
+      - 'frontend/src/locales/en/**'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - 'docs/**'
+      - '.github/workflows/language-pack-builder.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: language-pack-creator-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate static creator
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install build dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Check generated Pages files
+        run: |
+          python scripts/generate_language_catalog.py --check
+          node scripts/build_language_pack_builder.mjs --check
+      - name: Test language pack format and ZIP handling
+        run: node --test language-pack-builder/*.test.mjs

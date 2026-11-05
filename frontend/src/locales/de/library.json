@@ -172,7 +172,7 @@
   "year_decade_mode_label": "Modus für Jahrzehnt",
   "runtime_hours": "{hours} Std. {minutes} Min.",
   "runtime_minutes": "{minutes} Min.",
-  "runtime_under_minute": "<1 Min.",
+  "runtime_under_minute": "Unter 1 Min.",
   "played_progress": "Gesehen: {played} ({percent}%) von {total}",
   "kind_movies": "Film-Mediathek",
   "kind_tvshows": "Serien-Mediathek",
