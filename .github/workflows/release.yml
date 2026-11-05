@@ -26,6 +26,8 @@ env:
 
 jobs:
   validate:
+    permissions:
+      contents: read
     uses: ./.github/workflows/ci.yml
 
   build-and-release:
