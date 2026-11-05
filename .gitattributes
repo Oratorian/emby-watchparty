@@ -7,3 +7,7 @@
 # -text disables that conversion for these paths only. Deliberately narrow:
 # a repo-wide `text=auto` would renormalise every tracked file at once.
 tests/artifacts/** -text
+
+# Generated Pages files must have the same bytes on Windows and Linux.
+docs/** text=auto eol=lf
+language-pack-builder/** text=auto eol=lf

@@ -15,6 +15,7 @@ if (args.some(argument => argument !== '--check')) {
   throw new Error('Usage: node scripts/build_language_pack_builder.mjs [--check]')
 }
 const check = args.includes('--check')
+const textFile = async filename => Buffer.from((await readFile(filename, 'utf8')).replace(/\r\n/g, '\n'))
 const bundle = await build({
   entryPoints: [path.join(source, 'app.js')],
   bundle: true,
@@ -28,12 +29,12 @@ const bundle = await build({
   define: { 'process.env.NODE_ENV': '"production"' },
   logLevel: 'silent',
 })
-const compilerLicense = await readFile(path.join(root, 'frontend/node_modules/@intlify/message-compiler/LICENSE'))
+const compilerLicense = await textFile(path.join(root, 'frontend/node_modules/@intlify/message-compiler/LICENSE'))
 const files = new Map([
-  ['index.html', await readFile(path.join(source, 'index.html'))],
-  ['styles.css', await readFile(path.join(source, 'styles.css'))],
+  ['index.html', await textFile(path.join(source, 'index.html'))],
+  ['styles.css', await textFile(path.join(source, 'styles.css'))],
   ['app.js', Buffer.from(bundle.outputFiles[0].contents)],
-  ['catalog.json', await readFile(path.join(root, 'backend/language-catalog.json'))],
+  ['catalog.json', await textFile(path.join(root, 'backend/language-catalog.json'))],
   ['brand-mark.webp', await readFile(path.join(root, 'frontend/src/assets/brand-mark.webp'))],
   ['THIRD-PARTY-NOTICES.txt', compilerLicense],
   ['.nojekyll', Buffer.alloc(0)],
