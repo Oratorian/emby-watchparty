@@ -101,7 +101,7 @@ The socket generator also updates `backend/socket-events.schema.json`. Use `--ch
 
 ## UI translations
 
-The interface supports English and German through vue-i18n. Browser language is used initially; each viewer can choose a language and save it in their browser. English is the fallback. See [the localization guide](../docs/localization.md) for catalogs, placeholders, plurals and backend labels.
+The interface includes English and German through vue-i18n. Admins can install community language ZIPs without rebuilding; each viewer can choose a language and save it in their browser. English is the fallback. See [the localization guide](../docs/localization.md) for importing packs, creating translations, placeholders, plurals and backend labels.
 
 ## Source layout
 

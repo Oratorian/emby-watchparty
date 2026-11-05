@@ -222,6 +222,10 @@ sources and do not regenerate, the build fails.
   `python scripts/generate_openapi_types.py` and commit
   `frontend/src/types/api.generated.ts`. To check without writing, use
   `python scripts/generate_openapi_types.py --check`.
+- **Language pack catalog.** After changing bundled English messages, run
+  `python scripts/generate_language_catalog.py` and commit
+  `backend/language-catalog.json`. Check for drift with
+  `python scripts/generate_language_catalog.py --check`.
 - **Dependency locks.** See step 3 of Development Setup.
 
 ## Testing
@@ -245,6 +249,7 @@ python -m mypy
 python -m pytest
 python scripts/generate_socket_types.py --check
 python scripts/generate_openapi_types.py --check
+python scripts/generate_language_catalog.py --check
 python scripts/generate_deployment_artifacts.py --check
 ```
 

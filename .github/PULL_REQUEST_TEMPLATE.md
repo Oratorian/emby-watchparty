@@ -46,6 +46,7 @@ run. From the repository root with `.venv` active (Python 3.12):
 - [ ] `python -m pytest`
 - [ ] `python scripts/generate_socket_types.py --check`
 - [ ] `python scripts/generate_openapi_types.py --check`
+- [ ] `python scripts/generate_language_catalog.py --check`
 - [ ] `python scripts/generate_deployment_artifacts.py --check`
 
 From `frontend/`:
