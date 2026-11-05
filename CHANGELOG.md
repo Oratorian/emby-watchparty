@@ -5,7 +5,7 @@ All notable changes to Emby Watch Party will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-This file contains the consolidated 3.0.0 release notes and a version history summary. The full beta changelogs and earlier stable release notes are preserved in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
+This file contains unreleased changes, the consolidated 3.0.0 release notes and a version history summary. The full beta changelogs and earlier stable release notes are preserved in [SUMMARY-OF-CHANGES.md](SUMMARY-OF-CHANGES.md).
 
 ### Special Thanks
 
@@ -18,6 +18,16 @@ Thanks to **[Christian Gillinger](https://github.com/cgillinger)** for the "Refi
 Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722)** and **[xyxxyxxy](https://discord.com/users/144553679058370560)** for their absolute dedication to testing every beta release of 2.x and 3.x. Their relentless testing, detailed bug reports and feedback helped eradicate nearly every bug along the way.
 
 ---
+
+## [Unreleased]
+
+### Added
+
+- **English and German UI localization with vue-i18n.** Watch Party detects the browser language and lets each viewer save a language preference. Party controls, library browsing, title details, admin settings and recovery dialogs use complete translated messages with placeholders and plurals. Known Emby and Jellyfin filter labels are translated while request values and media metadata stay unchanged. Longer filter labels wrap on narrow screens. Initial German translations contributed by [timokohlbrecher-collab](https://github.com/timokohlbrecher-collab) in [#87](https://github.com/Oratorian/emby-watchparty/issues/87).
+
+### Changed
+
+- **Building the frontend from source now requires Node 22.12 or newer**, as required by the patched vue-i18n dependency. Docker and CI continue to use Node 24.
 
 ## [3.0.0] - 2026-11-02 - Director's Cut
 

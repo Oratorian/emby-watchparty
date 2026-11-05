@@ -1,6 +1,6 @@
 # UI localization
 
-Watch Party uses vue-i18n for English (`en`) and German (`de`). The first supported language in the browser's preference list is selected automatically, with English as the fallback. The language control offers browser detection or an explicit choice. Explicit choices are saved locally under `watchparty-language`, independently for each viewer, and switching updates the UI without reloading or interrupting playback. Browser storage is optional; switching still works if it is blocked.
+Watch Party uses [vue-i18n](https://vue-i18n.intlify.dev/guide/advanced/composition) for English (`en`) and German (`de`). The first supported language in the browser's preference list is selected automatically, with English as the fallback. The language control offers browser detection or an explicit choice. Explicit choices are saved locally under `watchparty-language`, independently for each viewer, and switching updates the UI without reloading or interrupting playback. Browser storage is optional; switching still works if it is blocked.
 
 ## Catalogs
 
