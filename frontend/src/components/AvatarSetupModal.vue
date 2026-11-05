@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { t } from '@/i18n'
+import { computed, ref } from 'vue'
 import { useAvatarStore } from '@/stores/avatar'
 import { copyToClipboard } from '@/utils/clipboard'
 
@@ -12,15 +13,16 @@ const avatar = useAvatarStore()
 // "upload" | "gravatar" | "recover"
 const tab = ref<'upload' | 'gravatar' | 'recover'>('upload')
 const busy = ref(false)
-const error = ref<string | null>(null)
+const error = ref<string | (() => string) | null>(null)
+const displayedError = computed(() => typeof error.value === 'function' ? error.value() : error.value)
 
 const file = ref<File | null>(null)
 const filePreview = ref<string | null>(null)
 const email = ref('')
 const recoverCode = ref('')
-const copyLabel = ref('Copy')
+const copyLabel = ref('interface.avatar_setup.copy')
 
-function readableError(value: unknown, fallback: string): string {
+function readableError(value: unknown, fallback: () => string): string | (() => string) {
   return value instanceof Error ? value.message : fallback
 }
 
@@ -33,7 +35,7 @@ function pickFile(ev: Event) {
 
 async function submitUpload() {
   if (!file.value) {
-    error.value = 'Pick an image first'
+    error.value = () => t('interface.avatar_setup.pick_an_image_first')
     return
   }
   busy.value = true
@@ -41,10 +43,10 @@ async function submitUpload() {
   try {
     const res = await avatar.uploadImage(file.value)
     if (!res.success) {
-      error.value = res.message || 'Upload failed'
+      error.value = res.message || (() => t('interface.avatar_setup.upload_failed'))
     }
   } catch (reason: unknown) {
-    error.value = readableError(reason, 'Upload failed')
+    error.value = readableError(reason, () => t('interface.avatar_setup.upload_failed'))
   } finally {
     busy.value = false
   }
@@ -52,7 +54,7 @@ async function submitUpload() {
 
 async function submitGravatar() {
   if (!email.value.trim()) {
-    error.value = 'Enter your email address'
+    error.value = () => t('interface.avatar_setup.enter_your_email_address')
     return
   }
   busy.value = true
@@ -60,10 +62,10 @@ async function submitGravatar() {
   try {
     const res = await avatar.setGravatar(email.value.trim())
     if (!res.success) {
-      error.value = res.message || 'Could not register Gravatar'
+      error.value = res.message || (() => t('interface.avatar_setup.could_not_register_gravatar'))
     }
   } catch (reason: unknown) {
-    error.value = readableError(reason, 'Could not register Gravatar')
+    error.value = readableError(reason, () => t('interface.avatar_setup.could_not_register_gravatar'))
   } finally {
     busy.value = false
   }
@@ -71,7 +73,7 @@ async function submitGravatar() {
 
 async function submitRecover() {
   if (!recoverCode.value.trim()) {
-    error.value = 'Enter your recovery code'
+    error.value = () => t('interface.avatar_setup.enter_your_recovery_code')
     return
   }
   busy.value = true
@@ -81,10 +83,10 @@ async function submitRecover() {
     if (res.success) {
       emit('close')
     } else {
-      error.value = res.message || 'Code not recognised'
+      error.value = res.message || (() => t('interface.avatar_setup.code_not_recognised'))
     }
   } catch (reason: unknown) {
-    error.value = readableError(reason, 'Code not recognised')
+    error.value = readableError(reason, () => t('interface.avatar_setup.code_not_recognised'))
   } finally {
     busy.value = false
   }
@@ -93,8 +95,8 @@ async function submitRecover() {
 async function copyCode() {
   if (!avatar.pendingCode) return
   const ok = await copyToClipboard(avatar.pendingCode)
-  copyLabel.value = ok ? 'Copied!' : 'Failed'
-  setTimeout(() => { copyLabel.value = 'Copy' }, 2000)
+  copyLabel.value = ok ? 'interface.avatar_setup.copied' : 'interface.avatar_setup.failed'
+  setTimeout(() => { copyLabel.value = 'interface.avatar_setup.copy' }, 2000)
 }
 
 function acknowledge() {
@@ -108,60 +110,53 @@ function acknowledge() {
     <div class="modal-card">
       <!-- Confirmation screen after a successful create -->
       <template v-if="avatar.pendingCode">
-        <h2>Save your recovery code</h2>
-        <p>
-          This code is the only way to restore this avatar on a different
-          browser or after clearing site data. We don't store it anywhere
-          you can read.
-        </p>
+        <h2>{{ t('interface.avatar_setup.save_your_recovery_code') }}</h2>
+        <p> {{ t('interface.avatar_setup.this_code_is_the_only_way_to_restore_this_avatar_on_a_different_browser_or_after') }} </p>
         <div class="code-display">{{ avatar.pendingCode }}</div>
         <div class="actions">
-          <button class="btn btn-secondary" @click="copyCode">{{ copyLabel }}</button>
-          <button class="btn btn-primary" @click="acknowledge">I saved it</button>
+          <button class="btn btn-secondary" @click="copyCode">{{ t(copyLabel) }}</button>
+          <button class="btn btn-primary" @click="acknowledge">{{ t('interface.avatar_setup.i_saved_it') }}</button>
         </div>
       </template>
 
       <!-- Setup tabs -->
       <template v-else>
-        <h2>Profile avatar</h2>
-        <p class="hint">Pick an image, link a Gravatar, or restore an avatar you set up previously.</p>
+        <h2>{{ t('interface.avatar_setup.profile_avatar') }}</h2>
+        <p class="hint">{{ t('interface.avatar_setup.pick_an_image_link_a_gravatar_or_restore_an_avatar_you_set_up_previously') }}</p>
 
         <div class="tabs">
-          <button :class="{ active: tab === 'upload' }" @click="tab = 'upload'">Upload</button>
+          <button :class="{ active: tab === 'upload' }" @click="tab = 'upload'">{{ t('interface.avatar_setup.upload') }}</button>
           <button :class="{ active: tab === 'gravatar' }" @click="tab = 'gravatar'">Gravatar</button>
-          <button :class="{ active: tab === 'recover' }" @click="tab = 'recover'">I have a code</button>
+          <button :class="{ active: tab === 'recover' }" @click="tab = 'recover'">{{ t('interface.avatar_setup.i_have_a_code') }}</button>
         </div>
 
         <div v-if="tab === 'upload'" class="tab-body">
           <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" @change="pickFile" />
-          <img v-if="filePreview" :src="filePreview" class="preview" alt="preview" />
+          <img v-if="filePreview" :src="filePreview" class="preview" :alt="t('interface.avatar_setup.preview')" />
           <button class="btn btn-primary" :disabled="busy || !file" @click="submitUpload">
-            {{ busy ? 'Uploading...' : 'Upload' }}
+            {{ busy ? t('interface.avatar_setup.uploading') : t('interface.avatar_setup.upload') }}
           </button>
         </div>
 
         <div v-else-if="tab === 'gravatar'" class="tab-body">
-          <input v-model="email" type="email" placeholder="you@example.com" />
-          <p class="hint">
-            Your address is hashed before upload. If you don't have a Gravatar account,
-            a placeholder identicon is used.
-          </p>
+          <input v-model="email" type="email" :placeholder="t('interface.avatar_setup.you_example_com')" />
+          <p class="hint"> {{ t('interface.avatar_setup.your_address_is_hashed_before_upload_if_you_don_t_have_a_gravatar_account_a_plac') }} </p>
           <button class="btn btn-primary" :disabled="busy" @click="submitGravatar">
-            {{ busy ? 'Working...' : 'Use Gravatar' }}
+            {{ busy ? t('interface.avatar_setup.working') : t('interface.avatar_setup.use_gravatar') }}
           </button>
         </div>
 
         <div v-else class="tab-body">
-          <input v-model="recoverCode" type="text" placeholder="word-word-word" />
+          <input v-model="recoverCode" type="text" :placeholder="t('interface.avatar_setup.word_word_word')" />
           <button class="btn btn-primary" :disabled="busy" @click="submitRecover">
-            {{ busy ? 'Checking...' : 'Restore avatar' }}
+            {{ busy ? t('interface.avatar_setup.checking') : t('interface.avatar_setup.restore_avatar') }}
           </button>
         </div>
 
-        <p v-if="error" class="error">{{ error }}</p>
+        <p v-if="displayedError" class="error">{{ displayedError }}</p>
 
         <div class="footer-actions">
-          <button class="btn btn-ghost btn-small" @click="emit('close')">Close</button>
+          <button class="btn btn-ghost btn-small" @click="emit('close')">{{ t('interface.avatar_setup.close') }}</button>
         </div>
       </template>
     </div>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t, translationComposer } from '@/i18n'
+import { I18nT } from 'vue-i18n'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { usePartyStore } from '@/stores/party'
 
@@ -36,7 +38,7 @@ const progressText = computed(() => {
   if (!party.pendingVote) return ''
   const total = party.pendingVote.eligibleVoters.length
   const voted = Object.keys(party.pendingVote.votes).length
-  return `${voted} of ${total} have voted`
+  return t('interface.join_waiting_room.progress', { voted, total })
 })
 </script>
 
@@ -44,15 +46,12 @@ const progressText = computed(() => {
   <div v-if="party.pendingVote && party.pendingVote.isPending" class="waiting-room">
     <div class="waiting-content">
       <div class="spinner"></div>
-      <h2>Waiting for party approval</h2>
-      <p class="explain">
-        Your request to join is being reviewed. The party will decide
-        whether to restart the video so you can join in sync.
-      </p>
+      <h2>{{ t('interface.join_waiting_room.waiting_for_party_approval') }}</h2>
+      <p class="explain"> {{ t('interface.join_waiting_room.your_request_to_join_is_being_reviewed_the_party_will_decide_whether_to_restart_') }} </p>
 
-      <div class="timer">
-        Vote ends in <strong>{{ timerLabel }}</strong>
-      </div>
+      <I18nT keypath="interface.join_waiting_room.timer" :i18n="translationComposer" tag="div" class="timer">
+        <template #time><strong>{{ timerLabel }}</strong></template>
+      </I18nT>
 
       <div class="progress">{{ progressText }}</div>
     </div>

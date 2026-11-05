@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t, translationComposer } from '@/i18n'
+import { I18nT } from 'vue-i18n'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { usePartyStore } from '@/stores/party'
 
@@ -43,22 +45,19 @@ function cancel() {
 <template>
   <div v-if="party.pendingAutoAdvance" class="autoadvance-backdrop">
     <div class="autoadvance-modal">
-      <div class="label">Up next</div>
+      <div class="label">{{ t('interface.auto_advance.up_next') }}</div>
       <h2 class="title">{{ party.pendingAutoAdvance.nextTitle }}</h2>
-      <div v-if="party.pendingAutoAdvance.nextIndexNumber !== null" class="meta">
-        Episode {{ party.pendingAutoAdvance.nextIndexNumber }}
-        of {{ party.pendingAutoAdvance.totalEpisodes }}
-      </div>
+      <div v-if="party.pendingAutoAdvance.nextIndexNumber !== null" class="meta">{{ t('interface.auto_advance.episode_of', { episode: party.pendingAutoAdvance.nextIndexNumber, total: party.pendingAutoAdvance.totalEpisodes ?? 0 }) }}</div>
 
-      <div class="countdown">
-        Playing in <strong>{{ secondsRemaining }}s</strong>
-      </div>
+      <I18nT keypath="interface.auto_advance.playing_seconds" :i18n="translationComposer" tag="div" class="countdown">
+        <template #time><strong>{{ secondsRemaining }}s</strong></template>
+      </I18nT>
       <div class="progress" :aria-valuenow="progressPercent" aria-valuemin="0" aria-valuemax="100" role="progressbar">
         <div class="progress-fill" :style="{ width: progressPercent + '%' }" />
       </div>
 
       <div class="actions">
-        <button class="cancel" @click="cancel">Cancel</button>
+        <button class="cancel" @click="cancel">{{ t('interface.auto_advance.cancel') }}</button>
       </div>
     </div>
   </div>

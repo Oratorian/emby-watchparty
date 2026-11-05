@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { t } from '@/i18n'
+import LanguageSelector from '@/components/LanguageSelector.vue'
+import { computed, ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError, api } from '@/api/client'
 import { withPrefix } from '@/utils/appPrefix'
@@ -16,7 +18,8 @@ const EmbyLoginModal = defineAsyncComponent(
 const router = useRouter()
 const auth = useAuthStore()
 const partyCode = ref('')
-const status = ref('')
+const status = ref<string | (() => string)>('')
+const displayedStatus = computed(() => typeof status.value === 'function' ? status.value() : status.value)
 
 // Active-party listing (only shown when REQUIRE_LOGIN is off). Polled so
 // parties appear / disappear and the "now watching" title stays current.
@@ -62,7 +65,8 @@ function joinListedParty(code: string) {
 // becomes host atomically.
 const showCreateModal = ref(false)
 const createBusy = ref(false)
-const createError = ref<string | null>(null)
+const createError = ref<string | (() => string) | null>(null)
+const displayedCreateError = computed(() => typeof createError.value === 'function' ? createError.value() : createError.value)
 
 onMounted(async () => {
   await auth.refresh().catch(() => { /* public index remains usable */ })
@@ -91,16 +95,16 @@ async function createParty() {
     showCreateModal.value = true
     return
   }
-  status.value = 'Creating party...'
+  status.value = () => t('interface.index.creating_party')
   try {
     const data = await api.createParty({ client_id: getClientId() })
     if (data.party_id) {
       router.push(`/party/${data.party_id}`)
     } else {
-      status.value = data.message || 'Error creating party'
+      status.value = data.message || (() => t('interface.index.error_creating_party'))
     }
   } catch (error: unknown) {
-    status.value = error instanceof Error ? error.message : 'Error creating party'
+    status.value = error instanceof Error ? error.message : (() => t('interface.index.error_creating_party'))
   }
 }
 
@@ -119,10 +123,10 @@ async function submitCreateLogin(payload: { username: string; password: string }
         showCreateModal.value = false
         router.push(`/party/${data.party_id}`)
       } else {
-        createError.value = data.message || 'Could not create the party'
+        createError.value = data.message || (() => t('interface.index.could_not_create_the_party'))
       }
     } catch (error: unknown) {
-      createError.value = error instanceof Error ? error.message : 'Could not create the party'
+      createError.value = error instanceof Error ? error.message : (() => t('interface.index.could_not_create_the_party'))
     }
   } finally {
     createBusy.value = false
@@ -132,7 +136,7 @@ async function submitCreateLogin(payload: { username: string; password: string }
 function joinParty() {
   const code = partyCode.value.trim().replace(/[^a-zA-Z0-9]/g, '')
   if (!code) {
-    status.value = 'Please enter a valid party code'
+    status.value = () => t('interface.index.please_enter_a_valid_party_code')
     return
   }
   router.push(`/party/${code}`)
@@ -142,32 +146,33 @@ function joinParty() {
 <template>
   <div class="index-page">
     <div class="hero">
+      <LanguageSelector />
       <div class="hero-badge badge badge-primary">Watch Party 2.0</div>
       <h1>Emby Watch Party</h1>
-      <p class="hero-tagline">Watch together, wherever you are</p>
+      <p class="hero-tagline">{{ t('interface.index.watch_together_wherever_you_are') }}</p>
     </div>
 
     <main class="action-cards">
       <div class="action-card card card-interactive" @click="createParty">
         <div class="card-icon">+</div>
-        <h2>Create Party</h2>
-        <p>Start a new watch party and invite friends to join</p>
-        <button class="btn btn-primary">Create Party</button>
+        <h2>{{ t('interface.index.create_party') }}</h2>
+        <p>{{ t('interface.index.start_a_new_watch_party_and_invite_friends_to_join') }}</p>
+        <button class="btn btn-primary">{{ t('interface.index.create_party') }}</button>
       </div>
 
       <div class="action-card card">
         <div class="card-icon">#</div>
-        <h2>Join Party</h2>
-        <p>Enter a party code to join an existing watch party</p>
+        <h2>{{ t('interface.index.join_party') }}</h2>
+        <p>{{ t('interface.index.enter_a_party_code_to_join_an_existing_watch_party') }}</p>
         <div class="join-form">
           <input
             v-model="partyCode"
             @keypress.enter="joinParty"
-            placeholder="Party code"
+            :placeholder="t('interface.index.party_code')"
             type="text"
             maxlength="6"
           />
-          <button @click="joinParty" class="btn btn-secondary">Join</button>
+          <button @click="joinParty" class="btn btn-secondary">{{ t('interface.index.join') }}</button>
         </div>
       </div>
     </main>
@@ -182,7 +187,7 @@ function joinParty() {
     </div>
 
     <section v-if="!auth.requireLogin && parties.length" class="active-parties">
-      <h2 class="ap-heading">Active parties</h2>
+      <h2 class="ap-heading">{{ t('interface.index.active_parties') }}</h2>
       <ul class="ap-list">
         <li
           v-for="p in parties"
@@ -191,37 +196,37 @@ function joinParty() {
           @click="joinListedParty(p.code)"
         >
           <div class="ap-now">
-            <span class="ap-label">{{ p.playing ? 'Now watching' : 'In lobby' }}</span>
-            <span class="ap-title">{{ p.playing ? p.title : 'No video selected yet' }}</span>
+            <span class="ap-label">{{ p.playing ? t('interface.index.now_watching') : t('interface.index.in_lobby') }}</span>
+            <span class="ap-title">{{ p.playing ? p.title : t('interface.index.no_video_selected_yet') }}</span>
           </div>
           <div class="ap-meta">
-            <span class="ap-count">{{ p.user_count }} {{ p.user_count === 1 ? 'person' : 'people' }}</span>
-            <span v-if="p.locked" class="ap-badge">locked</span>
+            <span class="ap-count">{{ t('interface.index.people', { count: p.user_count }) }}</span>
+            <span v-if="p.locked" class="ap-badge">{{ t('interface.index.locked') }}</span>
             <span class="ap-code">{{ p.code }}</span>
           </div>
         </li>
       </ul>
-      <p class="ap-hint">Joining a party that is mid-playback asks the current watchers to let you in.</p>
+      <p class="ap-hint">{{ t('interface.index.joining_a_party_that_is_mid_playback_asks_the_current_watchers_to_let_you_in') }}</p>
     </section>
 
-    <div v-if="status" class="status-msg">{{ status }}</div>
+    <div v-if="displayedStatus" class="status-msg">{{ displayedStatus }}</div>
 
     <EmbyLoginModal
       v-if="showCreateModal"
-      title="Login to Create a Party"
-      :description="`${auth.mediaServerName} login is required to start a new watch party. Spectators will only need the party code.`"
+      :title="t('interface.index.login_to_create_a_party')"
+      :description="t('interface.index.create_login_description', { provider: auth.mediaServerName })"
       :provider-name="auth.mediaServerName"
-      submit-label="Create Party"
+      :submit-label="t('interface.index.create_party')"
       :busy="createBusy"
-      :error-message="createError"
+      :error-message="displayedCreateError"
       @submit="submitCreateLogin"
       @cancel="showCreateModal = false"
     />
 
     <footer class="index-footer">
-      <router-link to="/version">Version Info</router-link>
+      <router-link to="/version">{{ t('interface.index.version_info') }}</router-link>
       <span class="dot">&middot;</span>
-      <a href="https://ko-fi.com/jedziah" target="_blank" rel="noopener">Support on Ko-fi</a>
+      <a href="https://ko-fi.com/jedziah" target="_blank" rel="noopener">{{ t('interface.index.support_on_ko_fi') }}</a>
     </footer>
   </div>
 </template>

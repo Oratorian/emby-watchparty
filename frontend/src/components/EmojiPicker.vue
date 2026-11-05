@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, nextTick, onUnmounted } from 'vue'
+import { t } from '@/i18n'
+import { computed, ref, nextTick, onUnmounted } from 'vue'
 
 const emit = defineEmits<{
   select: [emoji: string]
@@ -9,20 +10,20 @@ const open = ref(false)
 const triggerEl = ref<HTMLButtonElement | null>(null)
 const panelStyle = ref<Record<string, string>>({})
 
-const categories = [
+const categories = computed(() => [
   {
-    name: 'Smileys',
+    name: t('interface.emoji_picker.smileys'),
     emojis: ['😀', '😂', '🤣', '😊', '😍', '🥰', '😘', '😜', '🤪', '😎', '🤓', '🥳', '😱', '😭', '😤', '🤯', '🥺', '😴', '🤔', '🙄'],
   },
   {
-    name: 'Reactions',
+    name: t('interface.emoji_picker.reactions'),
     emojis: ['👍', '👎', '👏', '🙌', '🤝', '✌️', '🤞', '💪', '🫡', '🫶', '❤️', '🔥', '⭐', '💯', '🎉', '🎊', '💀', '👀', '🤡', '💩'],
   },
   {
-    name: 'Food & Fun',
+    name: t('interface.emoji_picker.food_fun'),
     emojis: ['🍿', '🍕', '🍔', '🌮', '🍩', '🍪', '🎬', '🎥', '📺', '🎮', '🎵', '🎶', '🍺', '🍻', '🥂', '☕', '🧃', '🥤', '🍫', '🎂'],
   },
-]
+])
 
 function positionPanel() {
   if (!triggerEl.value) return
@@ -90,7 +91,7 @@ onUnmounted(cleanup)
 
 <template>
   <div class="emoji-picker-wrapper">
-    <button ref="triggerEl" @click="toggleOpen" class="emoji-trigger" title="Emoji">
+    <button ref="triggerEl" @click="toggleOpen" class="emoji-trigger" :title="t('interface.emoji_picker.emoji')">
       😀
     </button>
     <Teleport to="body">

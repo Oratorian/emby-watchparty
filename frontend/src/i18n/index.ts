@@ -1,5 +1,6 @@
 import { readonly, ref, watch } from 'vue'
 import { createI18n } from 'vue-i18n'
+import type { Composer } from 'vue-i18n'
 
 export type Locale = 'en' | 'de'
 export type LanguagePreference = Locale | 'auto'
@@ -51,6 +52,10 @@ export const i18n = createI18n({
   fallbackLocale: 'en',
   messages,
 })
+
+// Translation's component prop expects the general Composer type rather than
+// our inferred en/de locale union. Both references use this same instance.
+export const translationComposer = i18n.global as unknown as Composer
 
 // The same reactive composer works in components, stores and API error handlers.
 // Display messages are translated; protocol IDs and media metadata stay intact.

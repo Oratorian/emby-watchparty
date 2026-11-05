@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t, translationComposer } from '@/i18n'
+import { I18nT } from 'vue-i18n'
 import { computed } from 'vue'
 
 const props = defineProps<{
@@ -33,11 +35,12 @@ const progressPercent = computed(() => {
 
 <template>
   <div class="resume-backdrop" @click.self="emit('cancel')">
-    <div class="resume-modal" role="dialog" aria-label="Resume playback">
-      <div class="label">Continue watching?</div>
+    <div class="resume-modal" role="dialog" :aria-label="t('interface.resume_prompt.resume_playback')">
+      <div class="label">{{ t('interface.resume_prompt.continue_watching') }}</div>
       <h2 class="title">{{ title }}</h2>
-      <div class="meta">
-        You stopped at <strong>{{ resumeLabel }}</strong>
+      <div class="meta"> <I18nT keypath="interface.resume_prompt.stopped_at" :i18n="translationComposer">
+          <template #time><strong>{{ resumeLabel }}</strong></template>
+        </I18nT>
         <span v-if="progressPercent > 0" class="meta-pct">({{ Math.round(progressPercent) }}%)</span>
       </div>
 
@@ -46,10 +49,10 @@ const progressPercent = computed(() => {
       </div>
 
       <div class="actions">
-        <button class="resume" @click="emit('resume')">Resume from {{ resumeLabel }}</button>
-        <button class="start-over" @click="emit('startOver')">Start over</button>
+        <button class="resume" @click="emit('resume')">{{ t('interface.resume_prompt.resume_at', { time: resumeLabel }) }}</button>
+        <button class="start-over" @click="emit('startOver')">{{ t('interface.resume_prompt.start_over') }}</button>
       </div>
-      <button class="cancel" @click="emit('cancel')">Cancel</button>
+      <button class="cancel" @click="emit('cancel')">{{ t('interface.resume_prompt.cancel') }}</button>
     </div>
   </div>
 </template>

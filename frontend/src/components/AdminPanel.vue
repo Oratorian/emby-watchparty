@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
+import { t } from '@/i18n'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { ApiError, api } from '@/api/client'
 import type { AdminConfig } from '@/api/client'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
@@ -14,9 +15,11 @@ const auth = useAuthStore()
 const config = ref<AdminConfig>({} as AdminConfig)
 const loadingConfig = ref(false)
 const configLoaded = ref(false)
-const loadError = ref('')
+const loadError = ref<string | (() => string)>('')
+const displayedLoadError = computed(() => typeof loadError.value === 'function' ? loadError.value() : loadError.value)
 const saving = ref(false)
-const saveStatus = ref('')
+const saveStatus = ref<string | (() => string)>('')
+const displayedSaveStatus = computed(() => typeof saveStatus.value === 'function' ? saveStatus.value() : saveStatus.value)
 const saveClass = ref('')
 
 // The API can receive a successful HTML proxy response or incomplete JSON.
@@ -111,10 +114,10 @@ const RATE_WINDOWS = [
 ] as const
 
 const TEXT_RATE_FIELDS = [
-  ['Admin Login Limit', 'RATE_LIMIT_LOGIN'],
-  ['Avatar Recovery Limit', 'RATE_LIMIT_AVATAR_RECOVERY'],
-  ['Chat Limit', 'RATE_LIMIT_CHAT'],
-  ['Socket Connection Limit', 'RATE_LIMIT_SOCKET_CONNECTIONS'],
+  ['interface.admin_panel.admin_login_limit', 'RATE_LIMIT_LOGIN'],
+  ['interface.admin_panel.avatar_recovery_limit', 'RATE_LIMIT_AVATAR_RECOVERY'],
+  ['interface.admin_panel.chat_limit', 'RATE_LIMIT_CHAT'],
+  ['interface.admin_panel.socket_connection_limit', 'RATE_LIMIT_SOCKET_CONNECTIONS'],
 ] as const
 
 type RateFieldKey = (typeof TEXT_RATE_FIELDS)[number][1]
@@ -132,6 +135,17 @@ function windowsFor(current: string): string[] {
   return RATE_WINDOWS.includes(current as (typeof RATE_WINDOWS)[number])
     ? [...RATE_WINDOWS]
     : [current, ...RATE_WINDOWS]
+}
+
+function rateWindowLabel(window: string): string {
+  const match = window.match(/^per(?: (\d+))? (second|minute|hour|day)s?$/)
+  if (!match) return window
+  const count = Number(match[1] || 1)
+  if (!match[1]) {
+    const singles: Record<string, string> = { minute: 'per_minute', hour: 'per_hour', day: 'per_day' }
+    if (singles[match[2]!]) return t(`interface.admin_panel.${singles[match[2]!]}`)
+  }
+  return t(`interface.admin_panel.per_${match[2]}s`, { count })
 }
 
 function parseRateLimit(str: string): { value: number; unit: string } {
@@ -227,7 +241,8 @@ async function loadConfig() {
       return
     }
     if (!isAdminConfig(cfg) || cfg.error) {
-      throw new Error('Could not read the server settings. Please try again.')
+      loadError.value = () => t('interface.admin_panel.could_not_read_the_server_settings_please_try_again')
+      return
     }
     config.value = { ...cfg }
     delete config.value.error
@@ -238,29 +253,29 @@ async function loadConfig() {
     if (isUnauthorizedError(error)) {
       emit('unauthorized')
     } else {
-      loadError.value = error instanceof Error ? error.message : 'Could not load settings. Please try again.'
+      loadError.value = error instanceof Error ? error.message : (() => t('interface.admin_panel.could_not_load_settings_please_try_again'))
     }
   } finally {
     if (!unmounted) loadingConfig.value = false
   }
 }
 
-function validate(): string | null {
+function validate(): (() => string) | null {
   const c = config.value
   const ratePattern = /^\s*[1-9]\d*\s+per(?:\s+[1-9]\d*)?\s+(second|minute|hour|day)s?\s*$/i
-  if (c.MAX_USERS_PER_PARTY < 0 || !Number.isInteger(c.MAX_USERS_PER_PARTY)) return 'Max Users must be a positive integer'
-  if (c.HLS_TOKEN_EXPIRY < 300) return 'HLS Token Expiry must be at least 300 seconds'
-  if (c.LOG_MAX_SIZE < 1) return 'Max Log Size must be at least 1 MB'
-  if (partyLimitValue.value < 1) return 'Party Creation Limit must be at least 1'
-  if (apiLimitValue.value < 1) return 'API Rate Limit must be at least 1'
+  if (c.MAX_USERS_PER_PARTY < 0 || !Number.isInteger(c.MAX_USERS_PER_PARTY)) return () => t('interface.admin_panel.max_users_must_be_a_positive_integer')
+  if (c.HLS_TOKEN_EXPIRY < 300) return () => t('interface.admin_panel.hls_token_expiry_must_be_at_least_300_seconds')
+  if (c.LOG_MAX_SIZE < 1) return () => t('interface.admin_panel.max_log_size_must_be_at_least_1_mb')
+  if (partyLimitValue.value < 1) return () => t('interface.admin_panel.party_creation_limit_must_be_at_least_1')
+  if (apiLimitValue.value < 1) return () => t('interface.admin_panel.api_rate_limit_must_be_at_least_1')
   for (const [label, key] of TEXT_RATE_FIELDS) {
     const count = rateValues.value[key]
-    if (!count || count < 1) return `${label} must be at least 1`
+    if (!count || count < 1) return () => t('interface.admin_panel.minimum_rate', { label: t(label) })
     if (!ratePattern.test(`${count} ${rateUnits.value[key]}`)) {
-      return `${label} is invalid`
+      return () => t('interface.admin_panel.invalid_rate', { label: t(label) })
     }
   }
-  if (!c.LOG_FILE || !c.LOG_FILE.trim()) return 'Log File path cannot be empty'
+  if (!c.LOG_FILE || !c.LOG_FILE.trim()) return () => t('interface.admin_panel.log_file_path_cannot_be_empty')
   return null
 }
 
@@ -272,7 +287,7 @@ async function saveConfig() {
     saveClass.value = 'error'
     return
   }
-  saveStatus.value = 'Saving...'
+  saveStatus.value = () => t('interface.admin_panel.saving')
   saveClass.value = ''
   saving.value = true
   syncRateLimitsToConfig()
@@ -287,21 +302,21 @@ async function saveConfig() {
       const changed = result.changed || []
       const rejected = result.rejected || []
       const restart = result.restart_required || []
-      const parts: string[] = []
+      const parts: (() => string)[] = []
       if (changed.length) {
-        parts.push(`Saved: ${changed.join(', ')}`)
+        parts.push(() => t('interface.admin_panel.saved_fields', { fields: changed.join(', ') }))
       } else {
-        parts.push('No changes')
+        parts.push(() => t('interface.admin_panel.no_changes'))
       }
       if (restart.length) {
-        parts.push(`Restart required for: ${restart.join(', ')}`)
+        parts.push(() => t('interface.admin_panel.restart_fields', { fields: restart.join(', ') }))
       }
       if (rejected.length) {
         parts.push(
-          `Not applied: ${rejected.map((r) => `${r.key} (${r.reason})`).join('; ')}`,
+          () => t('interface.admin_panel.rejected_fields', { fields: rejected.map((r) => `${r.key} (${r.reason})`).join('; ') }),
         )
       }
-      saveStatus.value = parts.join(' | ')
+      saveStatus.value = () => parts.map((part) => part()).join(' | ')
       saveClass.value = rejected.length ? 'warning' : 'success'
       if (isAdminConfig(result.config)) {
         config.value = { ...result.config }
@@ -311,7 +326,7 @@ async function saveConfig() {
         auth.refresh().catch(() => { /* ignore */ })
       }
     } else {
-      saveStatus.value = result.error || 'Save failed. Please try again.'
+      saveStatus.value = result.error || (() => t('interface.admin_panel.save_failed_please_try_again'))
       saveClass.value = 'error'
     }
   } catch (error: unknown) {
@@ -320,7 +335,7 @@ async function saveConfig() {
       emit('unauthorized')
       return
     }
-    saveStatus.value = error instanceof Error ? error.message : 'Could not save settings. Please try again.'
+    saveStatus.value = error instanceof Error ? error.message : (() => t('interface.admin_panel.could_not_save_settings_please_try_again'))
     saveClass.value = 'error'
   } finally {
     if (!unmounted) saving.value = false
@@ -332,80 +347,51 @@ loadConfig()
 
 <template>
   <div class="admin-panel-body">
-    <div v-if="loadingConfig" class="admin-config-state" role="status">Loading settings...</div>
-    <div v-else-if="loadError" class="admin-config-state admin-config-error" role="alert">
-      <span>{{ loadError }}</span>
-      <button type="button" class="btn btn-small" @click="loadConfig">Retry</button>
+    <div v-if="loadingConfig" class="admin-config-state" role="status">{{ t('interface.admin_panel.loading_settings') }}</div>
+    <div v-else-if="displayedLoadError" class="admin-config-state admin-config-error" role="alert">
+      <span>{{ displayedLoadError }}</span>
+      <button type="button" class="btn btn-small" @click="loadConfig">{{ t('interface.admin_panel.retry') }}</button>
     </div>
     <div v-if="configLoaded" class="admin-grid">
       <!-- Auth -->
       <div class="admin-card card">
-        <h2 class="card-title">Auth</h2>
+        <h2 class="card-title">{{ t('interface.admin_panel.auth') }}</h2>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Require Login to Create Party</span>
-            <span class="setting-hint">
-              When on, creating a party requires {{ auth.mediaServerName }} credentials and the creator
-              becomes host. When off, anyone can create; any member can later log
-              in to host. Browsing always needs a host with a valid session.
-            </span>
+            <span>{{ t('interface.admin_panel.require_login_to_create_party') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.login_hint', { provider: auth.mediaServerName }) }}</span>
           </div>
-          <ToggleSwitch v-model="config.REQUIRE_LOGIN" label="Require Login to Create Party" />
+          <ToggleSwitch v-model="config.REQUIRE_LOGIN" :label="t('interface.admin_panel.require_login_to_create_party')" />
         </div>
       </div>
 
       <!-- Playback -->
       <div class="admin-card card">
-        <h2 class="card-title">Playback</h2>
+        <h2 class="card-title">{{ t('interface.admin_panel.playback') }}</h2>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Force Transcode</span>
+            <span>{{ t('interface.admin_panel.force_transcode') }}</span>
             <span class="setting-hint">
-              Off (default): {{ auth.mediaServerName }} decides per-source. h264 sources within the
-              quality bitrate cap get stream-copied (no re-encode, low CPU/GPU
-              on the {{ auth.mediaServerName }} host).
+              {{ t('interface.admin_panel.transcode_off_hint', { provider: auth.mediaServerName }) }}
               <br /><br />
-              On: every HLS request carries <code>EnableAutoStreamCopy=false</code>,
-              so {{ auth.mediaServerName }} always re-encodes. This produces uniform 6-second segments
-              that HLS.js can seek into cleanly at any position.
+              {{ t('interface.admin_panel.transcode_on_hint', { provider: auth.mediaServerName, flag: 'EnableAutoStreamCopy=false' }) }}
               <br /><br />
-              Turn this on if you see large seeks (Skip Intro, dragging the
-              progress bar a long distance) restart the video from the beginning,
-              or if stream-copied content stalls during seeking. Cost: extra
-              CPU/GPU load on the {{ auth.mediaServerName }} server.
+              {{ t('interface.admin_panel.transcode_seek_hint', { provider: auth.mediaServerName }) }}
             </span>
           </div>
-          <ToggleSwitch v-model="config.FORCE_TRANSCODE" label="Force Transcode" />
+          <ToggleSwitch v-model="config.FORCE_TRANSCODE" :label="t('interface.admin_panel.force_transcode')" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Binge-Watch</span>
-            <span class="setting-hint">
-              Off (default): the binge-watch button is hidden from the host's
-              control strip entirely; episodes never auto-advance.
-              <br /><br />
-              On: the host gets a "Binge ON/OFF" pill in the control strip
-              while an Episode is playing. When the host turns it on, the
-              next episode in the same season auto-plays after the current
-              one ends (with a countdown that any user can cancel). Movies
-              and standalone items never auto-advance, regardless of this
-              setting.
-              <br /><br />
-              Turning this off mid-session hides the button in every active
-              party and cancels any countdown that's already running.
-            </span>
+            <span>{{ t('interface.admin_panel.binge_watch') }}</span>
+            <span class="setting-hint"> {{ t('interface.admin_panel.off_default_the_binge_watch_button_is_hidden_from_the_host_s_control_strip_entir') }} <br /><br /> {{ t('interface.admin_panel.on_the_host_gets_a_binge_on_off_pill_in_the_control_strip_while_an_episode_is_pl') }} <br /><br /> {{ t('interface.admin_panel.turning_this_off_mid_session_hides_the_button_in_every_active_party_and_cancels_') }} </span>
           </div>
-          <ToggleSwitch v-model="config.BINGE_WATCH_ENABLED" label="Binge-Watch" />
+          <ToggleSwitch v-model="config.BINGE_WATCH_ENABLED" :label="t('interface.admin_panel.binge_watch')" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Binge Countdown (s)</span>
-            <span class="setting-hint">
-              Seconds shown to the room before the next episode auto-plays.
-              Any user can hit Cancel during this window. 4 seconds is the
-              1.x default; shorter feels snappier, longer gives more time
-              to grab the remote.
-            </span>
+            <span>{{ t('interface.admin_panel.binge_countdown_s') }}</span>
+            <span class="setting-hint"> {{ t('interface.admin_panel.seconds_shown_to_the_room_before_the_next_episode_auto_plays_any_user_can_hit_ca') }} </span>
           </div>
           <input type="number" v-model.number="config.BINGE_WATCH_COUNTDOWN_SECONDS" min="1" max="30" step="1" class="setting-input setting-input-sm" />
         </div>
@@ -413,24 +399,12 @@ loadConfig()
 
       <!-- Quality -->
       <div class="admin-card card">
-        <h2 class="card-title">Quality</h2>
+        <h2 class="card-title">{{ t('interface.admin_panel.quality') }}</h2>
         <div class="setting-row quality-row">
           <div class="setting-label">
-            <span>Enabled Resolutions &amp; Bitrates</span>
-            <span class="setting-hint">
-              Tick a resolution to expose it in the per-user quality
-              dropdown; the bitrate checkboxes only appear once the
-              resolution is enabled and let you trim the list further.
-              360p / 240p / 144p are resolution-only (no bitrate
-              choices).
-              <br /><br />
-              <code>Auto</code> is always available unless
-              <strong>Force Transcode</strong> is on; in that mode it
-              would conflict with always-transcode and is replaced by
-              the 1080p / 10 Mbps preset as the safe default. Bitrate
-              buckets mirror {{ auth.mediaServerName }}'s own table (tuned for software-encode
-              safety on the low end).
-            </span>
+            <span>{{ t('interface.admin_panel.enabled_resolutions_bitrates') }}</span>
+            <span class="setting-hint"> {{ t('interface.admin_panel.tick_a_resolution_to_expose_it_in_the_per_user_quality_dropdown_the_bitrate_chec') }} <br /><br />
+              {{ t('interface.admin_panel.quality_auto_hint', { provider: auth.mediaServerName }) }} </span>
           </div>
           <div class="quality-tier-list">
             <div
@@ -440,7 +414,7 @@ loadConfig()
             >
               <div class="quality-master">
                 <ToggleSwitch
-                  :label="`${tier.resolution} quality`"
+                  :label="t('interface.admin_panel.quality_label', { resolution: tier.resolution })"
                   :model-value="isResolutionEnabled(tier.resolution)"
                   @update:model-value="(v: boolean) => setResolutionEnabled(tier.resolution, v)"
                 />
@@ -456,7 +430,7 @@ loadConfig()
                   class="bitrate-row"
                 >
                   <ToggleSwitch
-                    :label="`${tier.resolution} at ${formatBitrate(kbps)}`"
+                    :label="t('interface.admin_panel.bitrate_label', { resolution: tier.resolution, bitrate: formatBitrate(kbps) })"
                     :model-value="isBitrateEnabled(tier.resolution, kbps)"
                     @update:model-value="(v: boolean) => setBitrateEnabled(tier.resolution, kbps, v)"
                   />
@@ -470,11 +444,11 @@ loadConfig()
 
       <!-- Logging -->
       <div class="admin-card card">
-        <h2 class="card-title">Logging</h2>
+        <h2 class="card-title">{{ t('interface.admin_panel.logging') }}</h2>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Log Level</span>
-            <span class="setting-hint">Application log verbosity</span>
+            <span>{{ t('interface.admin_panel.log_level') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.application_log_verbosity') }}</span>
           </div>
           <select v-model="config.LOG_LEVEL">
             <option>DEBUG</option><option>INFO</option><option>WARNING</option><option>ERROR</option>
@@ -482,8 +456,8 @@ loadConfig()
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Console Log Level</span>
-            <span class="setting-hint">Terminal output verbosity</span>
+            <span>{{ t('interface.admin_panel.console_log_level') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.terminal_output_verbosity') }}</span>
           </div>
           <select v-model="config.CONSOLE_LOG_LEVEL">
             <option>DEBUG</option><option>INFO</option><option>WARNING</option><option>ERROR</option>
@@ -491,22 +465,22 @@ loadConfig()
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Log to File</span>
-            <span class="setting-hint">Write logs to disk</span>
+            <span>{{ t('interface.admin_panel.log_to_file') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.write_logs_to_disk') }}</span>
           </div>
-          <ToggleSwitch v-model="config.LOG_TO_FILE" label="Log to File" />
+          <ToggleSwitch v-model="config.LOG_TO_FILE" :label="t('interface.admin_panel.log_to_file')" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Log File</span>
-            <span class="setting-hint">Path to log file</span>
+            <span>{{ t('interface.admin_panel.log_file') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.path_to_log_file') }}</span>
           </div>
           <input v-model="config.LOG_FILE" type="text" class="setting-input" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Log Format</span>
-            <span class="setting-hint">rsyslog or standard</span>
+            <span>{{ t('interface.admin_panel.log_format') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.rsyslog_or_standard') }}</span>
           </div>
           <select v-model="config.LOG_FORMAT">
             <option value="rsyslog">rsyslog</option>
@@ -515,8 +489,8 @@ loadConfig()
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Max Log Size (MB)</span>
-            <span class="setting-hint">Log file rotation size</span>
+            <span>{{ t('interface.admin_panel.max_log_size_mb') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.log_file_rotation_size') }}</span>
           </div>
           <input type="number" v-model.number="config.LOG_MAX_SIZE" min="1" max="100" step="1" class="setting-input setting-input-sm" />
         </div>
@@ -524,53 +498,53 @@ loadConfig()
 
       <!-- Security -->
       <div class="admin-card card">
-        <h2 class="card-title">Security</h2>
+        <h2 class="card-title">{{ t('interface.admin_panel.security') }}</h2>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Max Users per Party</span>
-            <span class="setting-hint">0 = unlimited</span>
+            <span>{{ t('interface.admin_panel.max_users_per_party') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.0_unlimited') }}</span>
           </div>
           <input type="number" v-model.number="config.MAX_USERS_PER_PARTY" min="0" max="100" step="1" class="setting-input setting-input-sm" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>HLS Token Expiry (s)</span>
-            <span class="setting-hint">Token lifetime (default: 86400 = 24h)</span>
+            <span>{{ t('interface.admin_panel.hls_token_expiry_s') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.token_lifetime_default_86400_24h') }}</span>
           </div>
           <input type="number" v-model.number="config.HLS_TOKEN_EXPIRY" min="300" max="604800" step="1" class="setting-input setting-input-sm" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Rate Limiting</span>
-            <span class="setting-hint">Master switch for HTTP and Socket.IO limits</span>
+            <span>{{ t('interface.admin_panel.rate_limiting') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.master_switch_for_http_and_socket_io_limits') }}</span>
           </div>
-          <ToggleSwitch v-model="config.ENABLE_RATE_LIMITING" label="Rate Limiting" />
+          <ToggleSwitch v-model="config.ENABLE_RATE_LIMITING" :label="t('interface.admin_panel.rate_limiting')" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Party Creation Limit</span>
-            <span class="setting-hint">Max per IP</span>
+            <span>{{ t('interface.admin_panel.party_creation_limit') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.max_per_ip') }}</span>
           </div>
           <div class="rate-limit-group">
             <input type="number" v-model.number="partyLimitValue" min="1" class="setting-input setting-input-xs" />
             <select v-model="partyLimitUnit">
-              <option value="per minute">per minute</option>
-              <option value="per hour">per hour</option>
-              <option value="per day">per day</option>
+              <option value="per minute">{{ t('interface.admin_panel.per_minute') }}</option>
+              <option value="per hour">{{ t('interface.admin_panel.per_hour') }}</option>
+              <option value="per day">{{ t('interface.admin_panel.per_day') }}</option>
             </select>
           </div>
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>API Rate Limit</span>
-            <span class="setting-hint">Max per IP</span>
+            <span>{{ t('interface.admin_panel.api_rate_limit') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.max_per_ip') }}</span>
           </div>
           <div class="rate-limit-group">
             <input type="number" v-model.number="apiLimitValue" min="1" class="setting-input setting-input-xs" />
             <select v-model="apiLimitUnit">
-              <option value="per minute">per minute</option>
-              <option value="per hour">per hour</option>
-              <option value="per day">per day</option>
+              <option value="per minute">{{ t('interface.admin_panel.per_minute') }}</option>
+              <option value="per hour">{{ t('interface.admin_panel.per_hour') }}</option>
+              <option value="per day">{{ t('interface.admin_panel.per_day') }}</option>
             </select>
           </div>
         </div>
@@ -580,8 +554,8 @@ loadConfig()
           class="setting-row"
         >
           <div class="setting-label">
-            <span>{{ field[0] }}</span>
-            <span class="setting-hint">Max per IP</span>
+            <span>{{ t(field[0]) }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.max_per_ip') }}</span>
           </div>
           <div class="rate-limit-group">
             <input
@@ -589,11 +563,11 @@ loadConfig()
               type="number"
               min="1"
               class="setting-input setting-input-xs"
-              :aria-label="field[0]"
+              :aria-label="t(field[0])"
             />
-            <select v-model="rateUnits[field[1]]" :aria-label="`${field[0]} window`">
+            <select v-model="rateUnits[field[1]]" :aria-label="t('interface.admin_panel.rate_window_label', { label: t(field[0]) })">
               <option v-for="window in windowsFor(rateUnits[field[1]] || '')" :key="window" :value="window">
-                {{ window }}
+                {{ rateWindowLabel(window) }}
               </option>
             </select>
           </div>
@@ -602,18 +576,18 @@ loadConfig()
 
       <!-- Session -->
       <div class="admin-card card">
-        <h2 class="card-title">Session</h2>
+        <h2 class="card-title">{{ t('interface.admin_panel.session') }}</h2>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Static Session Mode</span>
-            <span class="setting-hint">Single persistent party that auto-creates on startup</span>
+            <span>{{ t('interface.admin_panel.static_session_mode') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.single_persistent_party_that_auto_creates_on_startup') }}</span>
           </div>
-          <ToggleSwitch v-model="config.STATIC_SESSION_ENABLED" label="Static Session Mode" />
+          <ToggleSwitch v-model="config.STATIC_SESSION_ENABLED" :label="t('interface.admin_panel.static_session_mode')" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Static Session ID</span>
-            <span class="setting-hint">Party code for static session</span>
+            <span>{{ t('interface.admin_panel.static_session_id') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.party_code_for_static_session') }}</span>
           </div>
           <input v-model="config.STATIC_SESSION_ID" type="text" class="setting-input setting-input-sm" style="text-transform:uppercase;" />
         </div>
@@ -621,25 +595,25 @@ loadConfig()
 
       <!-- Late Join Vote -->
       <div class="admin-card card">
-        <h2 class="card-title">Late Join Vote</h2>
+        <h2 class="card-title">{{ t('interface.admin_panel.late_join_vote') }}</h2>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Enable Late Join Vote</span>
-            <span class="setting-hint">Require a majority vote to admit users who join mid-playback</span>
+            <span>{{ t('interface.admin_panel.enable_late_join_vote') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.require_a_majority_vote_to_admit_users_who_join_mid_playback') }}</span>
           </div>
-          <ToggleSwitch v-model="config.LATE_JOIN_VOTE_ENABLED" label="Enable Late Join Vote" />
+          <ToggleSwitch v-model="config.LATE_JOIN_VOTE_ENABLED" :label="t('interface.admin_panel.enable_late_join_vote')" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Vote Timeout (s)</span>
-            <span class="setting-hint">Seconds before selector tiebreak kicks in</span>
+            <span>{{ t('interface.admin_panel.vote_timeout_s') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.seconds_before_selector_tiebreak_kicks_in') }}</span>
           </div>
           <input type="number" v-model.number="config.LATE_JOIN_VOTE_TIMEOUT_SECONDS" min="5" max="300" step="1" class="setting-input setting-input-sm" />
         </div>
         <div class="setting-row">
           <div class="setting-label">
-            <span>Post-Vote Cooldown (s)</span>
-            <span class="setting-hint">Delay after a failed vote before another join attempt is allowed (0 disables)</span>
+            <span>{{ t('interface.admin_panel.post_vote_cooldown_s') }}</span>
+            <span class="setting-hint">{{ t('interface.admin_panel.delay_after_a_failed_vote_before_another_join_attempt_is_allowed_0_disables') }}</span>
           </div>
           <input type="number" v-model.number="config.LATE_JOIN_VOTE_COOLDOWN_SECONDS" min="0" max="600" step="1" class="setting-input setting-input-sm" />
         </div>
@@ -647,9 +621,9 @@ loadConfig()
     </div>
 
     <div class="admin-panel-footer">
-      <span :class="['save-status', saveClass]">{{ saveStatus }}</span>
+      <span :class="['save-status', saveClass]">{{ displayedSaveStatus }}</span>
       <button @click="saveConfig" :disabled="!configLoaded || loadingConfig || saving" class="btn btn-primary">
-        {{ saving ? 'Saving...' : 'Save Settings' }}
+        {{ saving ? t('interface.admin_panel.saving') : t('interface.admin_panel.save_settings') }}
       </button>
     </div>
   </div>

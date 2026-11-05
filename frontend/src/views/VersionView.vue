@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
+import LanguageSelector from '@/components/LanguageSelector.vue'
 import { computed, ref, onMounted } from 'vue'
 import { api } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
@@ -18,7 +20,7 @@ const checkStatus = ref<'loading' | 'done' | 'error'>('loading')
 // fall back to the index. Without this the "Back to Home" link drops
 // the user out of their active party.
 const backTarget = computed(() => (auth.partyId ? `/party/${auth.partyId}` : '/'))
-const backLabel = computed(() => (auth.partyId ? '← Back to Party' : '← Back to Home'))
+const backLabel = computed(() => (auth.partyId ? t('interface.version.back_to_party') : t('interface.version.back_to_home')))
 
 onMounted(async () => {
   try { await auth.refresh() } catch { /* ignore */ }
@@ -44,56 +46,55 @@ const dependencies = [
   { name: 'Socket.IO Client', url: 'https://socket.io/', license: 'MIT' },
 ]
 
-const thanks = [
-  { name: 'QuackMasterDan', url: 'https://emby.media/community/index.php?/profile/1658172-quackmasterdan/', desc: 'Dedicated testing and valuable feedback throughout development' },
-  { name: 'wlowen', url: 'https://github.com/wlowen', desc: 'Testing, detailed bug reports, and mediainfo for HEVC transcoding issues' },
-  { name: 'JeslynMcKenzie', url: 'https://github.com/JeslynMcKenzie', desc: 'Testing, bug reports, feature requests, and mediainfo contributions' },
-  { name: 'daniilkopylov', url: 'https://github.com/daniilkopylov', desc: 'Feature requests and testing (static sessions, user count fix)' },
-]
+const thanks = computed(() => [
+  { name: 'QuackMasterDan', url: 'https://emby.media/community/index.php?/profile/1658172-quackmasterdan/', desc: t('interface.version.dedicated_testing_and_valuable_feedback_throughout_development') },
+  { name: 'wlowen', url: 'https://github.com/wlowen', desc: t('interface.version.testing_detailed_bug_reports_and_mediainfo_for_hevc_transcoding_issues') },
+  { name: 'JeslynMcKenzie', url: 'https://github.com/JeslynMcKenzie', desc: t('interface.version.testing_bug_reports_feature_requests_and_mediainfo_contributions') },
+  { name: 'daniilkopylov', url: 'https://github.com/daniilkopylov', desc: t('interface.version.feature_requests_and_testing_static_sessions_user_count_fix') },
+])
 
-const links = [
-  { icon: '\uD83D\uDC1E', label: 'GitHub Issues', desc: 'Report bugs & request features', url: 'https://github.com/Oratorian/emby-watchparty/issues' },
-  { icon: '\uD83D\uDCAC', label: 'Discord', desc: 'Chat with the community', url: 'https://discord.gg/RWUpxq9xsA' },
-  { icon: '\uD83C\uDFA4', label: 'Emby Forums', desc: 'Discussion on Emby Community', url: 'https://emby.media/community/index.php?/topic/143565-emby-watch-party-synchronized-viewing-for-friends-family/' },
-  { icon: '\uD83D\uDCBB', label: 'Source Code', desc: 'GitHub repository', url: 'https://github.com/Oratorian/emby-watchparty' },
-  { icon: '\u2615', label: 'Ko-fi', desc: 'Support the project', url: 'https://ko-fi.com/jedziah' },
-]
+const links = computed(() => [
+  { icon: '\uD83D\uDC1E', label: 'GitHub Issues', desc: t('interface.version.report_bugs_request_features'), url: 'https://github.com/Oratorian/emby-watchparty/issues' },
+  { icon: '\uD83D\uDCAC', label: 'Discord', desc: t('interface.version.chat_with_the_community'), url: 'https://discord.gg/RWUpxq9xsA' },
+  { icon: '\uD83C\uDFA4', label: 'Emby Forums', desc: t('interface.version.discussion_on_emby_community'), url: 'https://emby.media/community/index.php?/topic/143565-emby-watch-party-synchronized-viewing-for-friends-family/' },
+  { icon: '\uD83D\uDCBB', label: t('interface.version.source_code'), desc: t('interface.version.github_repository'), url: 'https://github.com/Oratorian/emby-watchparty' },
+  { icon: '\u2615', label: 'Ko-fi', desc: t('interface.version.support_the_project'), url: 'https://ko-fi.com/jedziah' },
+])
 </script>
 
 <template>
   <div class="version-page">
     <header class="version-header">
       <h1>Emby Watch Party</h1>
-      <p>Version Information</p>
+      <p>{{ t('interface.version.version_information') }}</p>
+      <LanguageSelector />
     </header>
 
     <div class="version-grid">
       <!-- Version Info -->
       <div class="version-card card">
-        <h2 class="card-title">Current Version</h2>
+        <h2 class="card-title">{{ t('interface.version.current_version') }}</h2>
         <div class="version-number">v{{ version.current_version }}</div>
         <div class="version-codename">"{{ version.codename }}"</div>
         <div class="update-status">
-          <span v-if="checkStatus === 'loading'" class="update-badge badge-checking">Checking for updates...</span>
-          <span v-else-if="version.update_available" class="update-badge badge-update">
-            Update available: <a :href="version.release_url || '#'" target="_blank" rel="noopener">v{{ version.latest_version }}</a>
+          <span v-if="checkStatus === 'loading'" class="update-badge badge-checking">{{ t('interface.version.checking_for_updates') }}</span>
+          <span v-else-if="version.update_available" class="update-badge badge-update"> {{ t('interface.version.update_available') }} <a :href="version.release_url || '#'" target="_blank" rel="noopener">v{{ version.latest_version }}</a>
           </span>
-          <span v-else-if="version.latest_version" class="update-badge badge-ok">Up to date</span>
-          <span v-else class="update-badge badge-error">Could not check for updates</span>
+          <span v-else-if="version.latest_version" class="update-badge badge-ok">{{ t('interface.version.up_to_date') }}</span>
+          <span v-else class="update-badge badge-error">{{ t('interface.version.could_not_check_for_updates') }}</span>
         </div>
       </div>
 
       <!-- Software & Licenses -->
       <div class="version-card card">
-        <h2 class="card-title">Software & Licenses</h2>
-        <p class="license-intro">
-          Emby Watch Party is open source under the <strong>MIT License</strong>
+        <h2 class="card-title">{{ t('interface.version.software_licenses') }}</h2>
+        <p class="license-intro"> {{ t('interface.version.emby_watch_party_is_open_source_under_the') }} <strong>{{ t('interface.version.mit_license') }}</strong>
         </p>
         <table class="deps-table">
           <thead>
             <tr>
-              <th>Package</th>
-              <th>License</th>
+              <th>{{ t('interface.version.package') }}</th>
+              <th>{{ t('interface.version.license') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -107,7 +108,7 @@ const links = [
 
       <!-- Special Thanks -->
       <div class="version-card card">
-        <h2 class="card-title">Special Thanks</h2>
+        <h2 class="card-title">{{ t('interface.version.special_thanks') }}</h2>
         <ul class="thanks-list">
           <li v-for="person in thanks" :key="person.name">
             <a :href="person.url" target="_blank" rel="noopener">{{ person.name }}</a>
@@ -118,7 +119,7 @@ const links = [
 
       <!-- Support & Community -->
       <div class="version-card card">
-        <h2 class="card-title">Support & Community</h2>
+        <h2 class="card-title">{{ t('interface.version.support_community') }}</h2>
         <div class="support-links">
           <a
             v-for="link in links"

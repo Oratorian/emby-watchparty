@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
+import LanguageSelector from '@/components/LanguageSelector.vue'
 import { computed, ref } from 'vue'
 import { api } from '@/api/client'
 import AdminPanel from '@/components/AdminPanel.vue'
@@ -29,10 +31,10 @@ async function adminLogin() {
     if (result.success) {
       authenticated.value = true
     } else {
-      loginError.value = result.message || 'Login failed'
+      loginError.value = result.message || t('interface.admin.login_failed')
     }
   } catch (error: unknown) {
-    loginError.value = error instanceof Error ? error.message : 'Login failed'
+    loginError.value = error instanceof Error ? error.message : t('interface.admin.login_failed')
   }
 }
 
@@ -51,31 +53,33 @@ function onPanelUnauthorized() {
   <!-- Admin login -->
   <div v-if="!authenticated" class="login-page">
     <div class="login-card glass">
-      <h1>Admin Panel</h1>
-      <p class="login-subtitle">Sign in with your {{ auth.mediaServerName }} administrator account</p>
+      <h1>{{ t('interface.admin.admin_panel') }}</h1>
+      <LanguageSelector />
+      <p class="login-subtitle">{{ t('interface.admin.login_description', { provider: auth.mediaServerName }) }}</p>
       <div v-if="loginError" class="error-msg">{{ loginError }}</div>
       <form @submit.prevent="adminLogin">
         <div class="form-group">
-          <label>Username</label>
+          <label>{{ t('interface.admin.username') }}</label>
           <input v-model="loginUser" type="text" required autofocus />
         </div>
         <div class="form-group">
-          <label>Password</label>
+          <label>{{ t('interface.admin.password') }}</label>
           <input v-model="loginPass" type="password" required />
         </div>
-        <button type="submit" class="btn btn-primary btn-full">Sign In</button>
+        <button type="submit" class="btn btn-primary btn-full">{{ t('interface.admin.sign_in') }}</button>
       </form>
-      <router-link :to="backToWatchPartyTarget" class="back-link">Back to Watch Party</router-link>
+      <router-link :to="backToWatchPartyTarget" class="back-link">{{ t('interface.admin.back_to_watch_party') }}</router-link>
     </div>
   </div>
 
   <!-- Admin panel -->
   <div v-else class="admin-page">
     <div class="admin-header">
-      <h1>Admin Panel</h1>
+      <h1>{{ t('interface.admin.admin_panel') }}</h1>
+      <LanguageSelector />
       <div class="admin-header-actions">
-        <router-link :to="backToWatchPartyTarget" class="btn btn-ghost btn-small">Back to WatchParty</router-link>
-        <button @click="logout" class="btn btn-small btn-danger">Logout</button>
+        <router-link :to="backToWatchPartyTarget" class="btn btn-ghost btn-small">{{ t('interface.admin.back_to_watchparty') }}</router-link>
+        <button @click="logout" class="btn btn-small btn-danger">{{ t('interface.admin.logout') }}</button>
       </div>
     </div>
     <AdminPanel @unauthorized="onPanelUnauthorized" />

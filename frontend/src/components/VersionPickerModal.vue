@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref } from 'vue'
 
 import { useAuthStore } from '@/stores/auth'
@@ -42,8 +43,8 @@ function formatRuntime(ticks: number | null): string {
   const seconds = Math.floor(ticks / 10_000_000)
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
+  if (h > 0) return t('interface.version_picker.runtime_hours', { hours: h, minutes: m })
+  return t('interface.version_picker.runtime_minutes', { minutes: m })
 }
 
 function pick(id: string) {
@@ -58,11 +59,8 @@ function confirm() {
 <template>
   <div class="version-modal-backdrop" @click.self="emit('cancel')">
     <div class="version-modal">
-      <h2>Pick a version</h2>
-      <p class="subtitle">
-        <strong>{{ itemName }}</strong> has multiple versions on your {{ auth.mediaServerName }}
-        server. Whatever you pick is what everyone in the party will watch.
-      </p>
+      <h2>{{ t('interface.version_picker.pick_a_version') }}</h2>
+      <p class="subtitle">{{ t('interface.version_picker.description', { title: itemName, provider: auth.mediaServerName }) }}</p>
 
       <ul class="versions">
         <li
@@ -84,14 +82,12 @@ function confirm() {
       </ul>
 
       <div class="actions">
-        <button class="btn btn-ghost" @click="emit('cancel')">Cancel</button>
+        <button class="btn btn-ghost" @click="emit('cancel')">{{ t('interface.version_picker.cancel') }}</button>
         <button
           class="btn btn-primary"
           :disabled="!selectedId"
           @click="confirm"
-        >
-          Play this version
-        </button>
+        > {{ t('interface.version_picker.play_this_version') }} </button>
       </div>
     </div>
   </div>

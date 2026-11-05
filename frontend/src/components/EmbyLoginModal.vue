@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { t } from '@/i18n'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const props = defineProps<{
   title?: string
@@ -10,7 +11,7 @@ const props = defineProps<{
   providerName?: string
 }>()
 
-const providerName = props.providerName || 'Emby'
+const providerName = computed(() => props.providerName || 'Emby')
 
 const emit = defineEmits<{
   submit: [{ username: string; password: string }]
@@ -73,7 +74,7 @@ onBeforeUnmount(() => {
       aria-modal="true"
       aria-labelledby="emby-login-title"
     >
-      <h2 id="emby-login-title">{{ props.title || `${providerName} Login` }}</h2>
+      <h2 id="emby-login-title">{{ props.title || t('interface.emby_login.provider_login', { provider: providerName }) }}</h2>
       <p v-if="props.description">{{ props.description }}</p>
 
       <form @submit.prevent="submit">
@@ -81,7 +82,7 @@ onBeforeUnmount(() => {
           ref="usernameInput"
           v-model="username"
           type="text"
-          :placeholder="`${providerName} username`"
+          :placeholder="t('interface.emby_login.username', { provider: providerName })"
           autocomplete="username"
           autofocus
           :disabled="props.busy"
@@ -89,7 +90,7 @@ onBeforeUnmount(() => {
         <input
           v-model="password"
           type="password"
-          :placeholder="`${providerName} password`"
+          :placeholder="t('interface.emby_login.password', { provider: providerName })"
           autocomplete="current-password"
           :disabled="props.busy"
         />
@@ -102,16 +103,14 @@ onBeforeUnmount(() => {
             class="btn btn-secondary"
             @click="emit('cancel')"
             :disabled="props.busy"
-          >
-            Cancel
-          </button>
+          > {{ t('interface.emby_login.cancel') }} </button>
           <button
             ref="submitButton"
             type="submit"
             class="btn btn-primary"
             :disabled="props.busy"
           >
-            {{ props.busy ? 'Working...' : (props.submitLabel || 'Sign in') }}
+            {{ props.busy ? t('interface.emby_login.working') : (props.submitLabel || t('interface.emby_login.sign_in')) }}
           </button>
         </div>
       </form>

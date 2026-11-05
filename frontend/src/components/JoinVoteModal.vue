@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t, translationComposer } from '@/i18n'
+import { I18nT } from 'vue-i18n'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { usePartyStore } from '@/stores/party'
 
@@ -35,7 +37,7 @@ const tallyText = computed(() => {
   if (!party.pendingVote) return ''
   const total = party.pendingVote.eligibleVoters.length
   const voted = Object.keys(party.pendingVote.votes).length
-  return `${voted} of ${total} voted`
+  return t('interface.join_vote.tally', { voted, total })
 })
 
 function vote(choice: 'yes' | 'no') {
@@ -46,20 +48,18 @@ function vote(choice: 'yes' | 'no') {
 <template>
   <div v-if="party.pendingVote && !party.pendingVote.isPending" class="vote-modal-backdrop">
     <div class="vote-modal">
-      <h2>{{ party.pendingVote.lateJoinerUsername }} wants to join</h2>
-      <p class="explain">
-        Accepting will restart the video from the beginning so everyone stays in sync.
-      </p>
+      <h2>{{ t('interface.join_vote.title', { username: party.pendingVote.lateJoinerUsername ?? '' }) }}</h2>
+      <p class="explain"> {{ t('interface.join_vote.accepting_will_restart_the_video_from_the_beginning_so_everyone_stays_in_sync') }} </p>
 
-      <div class="timer">Vote ends in <strong>{{ timerLabel }}</strong></div>
+      <I18nT keypath="interface.join_vote.timer" :i18n="translationComposer" tag="div" class="timer">
+        <template #time><strong>{{ timerLabel }}</strong></template>
+      </I18nT>
 
       <div v-if="!hasVoted" class="actions">
-        <button class="accept" @click="vote('yes')">Accept</button>
-        <button class="decline" @click="vote('no')">Decline</button>
+        <button class="accept" @click="vote('yes')">{{ t('interface.join_vote.accept') }}</button>
+        <button class="decline" @click="vote('no')">{{ t('interface.join_vote.decline') }}</button>
       </div>
-      <div v-else class="waiting">
-        Your vote was recorded. Waiting for others...
-      </div>
+      <div v-else class="waiting"> {{ t('interface.join_vote.your_vote_was_recorded_waiting_for_others') }} </div>
 
       <div class="tally">{{ tallyText }}</div>
       <ul class="voters">
@@ -73,9 +73,9 @@ function vote(choice: 'yes' | 'no') {
           }"
         >
           {{ voter }}
-          <span v-if="party.pendingVote.votes[voter] === 'yes'" class="mark yes">yes</span>
-          <span v-else-if="party.pendingVote.votes[voter] === 'no'" class="mark no">no</span>
-          <span v-else class="mark pending">waiting...</span>
+          <span v-if="party.pendingVote.votes[voter] === 'yes'" class="mark yes">{{ t('interface.join_vote.yes') }}</span>
+          <span v-else-if="party.pendingVote.votes[voter] === 'no'" class="mark no">{{ t('interface.join_vote.no') }}</span>
+          <span v-else class="mark pending">{{ t('interface.join_vote.waiting') }}</span>
         </li>
       </ul>
     </div>
