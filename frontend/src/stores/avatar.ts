@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api/client'
@@ -154,7 +155,7 @@ export const useAvatarStore = defineStore('avatar', () => {
       await persistUuid(data.uuid)
       return { success: true }
     }
-    return { success: false, message: data.message || 'Code not recognised' }
+    return { success: false, message: data.message || t('party.code_not_recognised') }
   }
 
   function acknowledgeCode() {

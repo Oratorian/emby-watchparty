@@ -1,3 +1,4 @@
+import { i18n, t } from '@/i18n'
 import { nextTick, onUnmounted, ref, watch } from 'vue'
 import { api } from '@/api/client'
 import type { LibraryItem, PlaybackSelection, StreamsResponse } from '@/api/client'
@@ -40,6 +41,15 @@ export function usePartyStream(
   let selectionController: AbortController | null = null
   let lastSubtitlePreloadKey: string | null = null
   const selectedTextSubIndex = ref<number | null>(null)
+  // Relabel native subtitle tracks without reloading their resources or
+  // disturbing the viewer's current subtitle selection.
+  const trackLabels = new WeakMap<HTMLTrackElement, () => string>()
+  const stopTrackLabelWatch = watch(i18n.global.locale, () => {
+    for (const track of videoElement()?.querySelectorAll('track') ?? []) {
+      const label = trackLabels.get(track)
+      if (label) track.label = label()
+    }
+  })
   const stopStreamWatch = watch(() => party.myStreamUrl, (url, previousUrl) => {
     if (url && url !== previousUrl) reloading.value = true
   })
@@ -84,7 +94,7 @@ export function usePartyStream(
       overview: item.Overview || '',
       status: 'preparing',
       selected_by: getClientId(),
-      selected_by_username: party.username || 'Someone',
+      selected_by_username: party.username || t('party.someone'),
       production_year: item.ProductionYear ?? null,
       run_time_seconds: item.RunTimeTicks ? Number(item.RunTimeTicks) / 10_000_000 : null,
       item_type: item.Type ?? null,
@@ -237,11 +247,15 @@ export function usePartyStream(
         for (const subtitle of textSubtitles) {
           const track = document.createElement('track')
           track.kind = 'subtitles'
-          let label = subtitle.displayLanguage || subtitle.language || 'Unknown'
-          if (subtitle.title) label += ` (${subtitle.title})`
-          if (subtitle.isForced) label += ' [Forced]'
-          if (subtitle.isExternal) label += ' [External]'
-          track.label = label
+          const label = () => {
+            let value = subtitle.displayLanguage || subtitle.language || t('party.unknown')
+            if (subtitle.title) value += ` (${subtitle.title})`
+            if (subtitle.isForced) value += ` ${t('party.forced')}`
+            if (subtitle.isExternal) value += ` ${t('party.external')}`
+            return value
+          }
+          trackLabels.set(track, label)
+          track.label = label()
           track.srclang = subtitle.language || 'und'
           track.src = api.subtitleUrl(itemId, mediaSourceId, subtitle.index)
           video.appendChild(track)
@@ -282,7 +296,8 @@ export function usePartyStream(
     }
     const track = document.createElement('track')
     track.kind = 'subtitles'
-    track.label = 'Subtitles'
+    trackLabels.set(track, () => t('party.subtitles'))
+    track.label = t('party.subtitles')
     track.srclang = 'und'
     track.src = payload.url
     track.default = true
@@ -299,6 +314,7 @@ export function usePartyStream(
   onUnmounted(() => {
     stopStreamWatch()
     stopSubtitleWatch()
+    stopTrackLabelWatch()
     subtitleController?.abort()
     selectionController?.abort()
   })

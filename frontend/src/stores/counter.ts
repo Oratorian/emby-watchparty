@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { useAuthStore } from './auth'
@@ -17,7 +18,7 @@ export const useStartupStore = defineStore('startup', () => {
       await useAuthStore().refresh()
       state.value = 'ready'
     } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : 'Backend unavailable'
+      error.value = cause instanceof Error ? cause.message : t('party.backend_unavailable')
       state.value = 'failed'
     }
   }

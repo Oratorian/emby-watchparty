@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSocketStore } from '@/stores/socket'
 import { usePartyStore, getClientId } from '@/stores/party'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 import VideoControls from '@/components/VideoControls.vue'
+import LanguageSelector from '@/components/LanguageSelector.vue'
 
 // Async-loaded so they don't ship in the initial PartyView bundle.
 // LibraryBrowser pulls in the full library tree + thumbnail helpers,
@@ -209,14 +211,16 @@ const selectionRuntime = computed(() => {
   const minutes = Math.round(seconds / 60)
   const hours = Math.floor(minutes / 60)
   const remainder = minutes % 60
-  return hours ? `${hours}h${remainder ? ` ${remainder}m` : ''}` : `${minutes} min`
+  return hours
+    ? remainder ? t('party.runtime_hours_minutes', { hours, minutes: remainder }) : t('party.runtime_hours', { hours })
+    : t('party.runtime_minutes', { minutes })
 })
 const selectionEpisode = computed(() => {
   const selection = pendingSelection.value
   if (!selection || selection.item_type !== 'Episode') return ''
   const parts: string[] = []
-  if (selection.season_number != null) parts.push(`S${selection.season_number}`)
-  if (selection.episode_number != null) parts.push(`E${selection.episode_number}`)
+  if (selection.season_number != null) parts.push(t('party.season_short', { number: selection.season_number }))
+  if (selection.episode_number != null) parts.push(t('party.episode_short', { number: selection.episode_number }))
   return parts.join(' ')
 })
 
@@ -245,18 +249,18 @@ watch(() => party.pendingVideoSelection, (selection, previous) => {
     showLibrary.value = true
   }
 })
-const libraryLocation = ref('Libraries')
+const libraryLocation = ref('')
 const libraryBrowser = ref<{ goToRoot: () => Promise<void> } | null>(null)
 // Drives both the tooltip and the pill's own icon/tint, so the result of a
 // click is visible without hovering. The design refresh moved the old
 // "Copied!" button text into a title attribute, which never shows after a
 // click -- the pointer is already stationary, so no new tooltip is raised.
 const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
-const COPY_MESSAGES = {
-  idle: 'Copy party code',
-  copied: 'Copied!',
-  failed: 'Copy failed',
-} as const
+const COPY_MESSAGES = computed(() => ({
+  idle: t('party.copy_party_code'),
+  copied: t('party.copied'),
+  failed: t('party.copy_failed'),
+} as const))
 let copyResetTimer: ReturnType<typeof setTimeout> | null = null
 const showVersionModal = ref(false)
 const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
@@ -340,7 +344,7 @@ onMounted(async () => {
           }
         }
         ve.play().catch(() => {
-          addSystemMessage('Autoplay blocked by browser - click the video to resume')
+          addSystemMessage(t('party.autoplay_blocked_by_browser_click_the_video_to_resume'))
         })
 
         // Stall-recovery: some race conditions leave the video element
@@ -381,10 +385,10 @@ onMounted(async () => {
       // across all clients without server-side state because the
       // broadcast lands in roughly the same order everywhere.
       if (!hasStarted) {
-        addSystemMessage(`${data.username} started playback`)
+        addSystemMessage(t('party.playback_started', { name: data.username }))
         hasStarted = true
       } else {
-        addSystemMessage(`${data.username} resumed playback`)
+        addSystemMessage(t('party.playback_resumed', { name: data.username }))
       }
     }
   })
@@ -400,7 +404,7 @@ onMounted(async () => {
       if (Math.abs(ve.currentTime - streamTime) > 0.3) ve.currentTime = streamTime
     }
     schedulePlayback(() => { if (vp) vp.isSyncing = false }, 500)
-    if (data.username) addSystemMessage(`${data.username} paused playback`)
+    if (data.username) addSystemMessage(t('party.playback_paused', { name: data.username }))
   })
 
   onPlaybackEvent('seek', (data: ServerToClientPayloads['seek']) => {
@@ -442,7 +446,7 @@ onMounted(async () => {
             if (vp) vp.isSyncing = false
           }).catch(() => {
             if (vp) vp.isSyncing = false
-            addSystemMessage('Autoplay blocked by browser - click the video to resume')
+            addSystemMessage(t('party.autoplay_blocked_by_browser_click_the_video_to_resume'))
           })
         }, 500)
       } else {
@@ -450,7 +454,7 @@ onMounted(async () => {
         schedulePlayback(() => { if (vp) vp.isSyncing = false }, 300)
       }
     }
-    if (data.username) addSystemMessage(`${data.username} seeked to ${formatTime(data.time)}`)
+    if (data.username) addSystemMessage(t('party.playback_seeked', { name: data.username, time: formatTime(data.time) }))
   })
 
   onPlaybackEvent('force_pause_before_seek', () => {
@@ -594,7 +598,7 @@ onMounted(async () => {
         if (vp) vp.isSyncing = false
       }).catch(() => {
         if (vp) vp.isSyncing = false
-        addSystemMessage('Autoplay blocked by browser - click the video to resume')
+        addSystemMessage(t('party.autoplay_blocked_by_browser_click_the_video_to_resume'))
       })
     } else if (vp) {
       vp.isSyncing = false
@@ -624,9 +628,9 @@ onMounted(async () => {
 
   // Error handler -- redirect on invalid party
   onLifecycleEvent('error', (data: ServerToClientPayloads['error']) => {
-    const msg = data?.message || 'Unknown error'
+    const msg = data?.message || t('party.unknown_error')
     if (msg.includes('not found')) {
-      alert(`Party not found: ${route.params.id}`)
+      alert(t('party.party_not_found', { code: String(route.params.id) }))
       router.push('/')
       return
     }
@@ -639,7 +643,7 @@ onMounted(async () => {
     // down here it stays up for good, with the library button disabled
     // behind it and Cancel refused because the server has no such selection.
     if (party.abandonUnconfirmedSelection()) showLibrary.value = true
-    addSystemMessage(`Error: ${msg}`)
+    addSystemMessage(t('party.error_message', { message: msg }))
   })
 
   // Binge-watching: end of season. Backend sent this after video_ended
@@ -648,7 +652,7 @@ onMounted(async () => {
   // gets the system message so they understand why the player went
   // back to the lobby state.
   onLifecycleEvent('binge_finished', () => {
-    addSystemMessage('Season finished -- pick another from the library.')
+    addSystemMessage(t('party.season_finished_pick_another_from_the_library'))
     if (auth.isHost) showLibrary.value = true
   })
 
@@ -657,13 +661,13 @@ onMounted(async () => {
   onLifecycleEvent('auto_advance_cancelled', (data: ServerToClientPayloads['auto_advance_cancelled']) => {
     const by = data?.by_username
     if (by) {
-      addSystemMessage(`${by} cancelled auto-advance`)
+      addSystemMessage(t('party.auto_advance_cancelled', { name: by }))
     }
   })
 
   // Late-joiner rejection: redirect home with a message
   onLifecycleEvent('join_rejected', (data: ServerToClientPayloads['join_rejected']) => {
-    const msg = data?.message || 'The party declined your request to join.'
+    const msg = data?.message || t('party.the_party_declined_your_request_to_join')
     alert(msg)
     router.push('/')
   })
@@ -671,7 +675,7 @@ onMounted(async () => {
   // Party was dissolved server-side (e.g. an admin disabled static
   // sessions while we were inside one). Clean up and redirect home.
   onLifecycleEvent('party_dissolved', async () => {
-    alert('This party has been closed by an administrator.')
+    alert(t('party.this_party_has_been_closed_by_an_administrator'))
     await party.leave()
     router.push('/')
   })
@@ -1158,12 +1162,12 @@ async function submitBecomeHost(payload: { username: string; password: string })
       // Caller is now host. Pop the library open so they can pick.
       showLibrary.value = true
     } else {
-      becomeHostError.value = data.message || 'Login failed'
+      becomeHostError.value = data.message || t('party.login_failed')
     }
   } catch (error: unknown) {
     becomeHostError.value = error instanceof Error && error.message
       ? error.message
-      : 'Login failed'
+      : t('party.login_failed')
   } finally {
     becomeHostBusy.value = false
   }
@@ -1179,33 +1183,33 @@ async function submitBecomeHost(payload: { username: string; password: string })
   >
     <span>{{ socket.connectionError }}</span>
     <span v-if="socket.connectionRetryAfter > 0">
-      Reconnecting in {{ socket.connectionRetryAfter }}s.
+      {{ t('party.reconnect_in', { count: socket.connectionRetryAfter }) }}
     </span>
   </div>
   <!-- Auto-join spinner: shown when we have a saved username and are
        waiting on the socket to confirm the join. Suppresses the name
        modal flash-of-stale-UI on every mount / refresh. -->
   <div v-if="!joined && awaitingAutoJoin" class="modal-overlay">
+    <LanguageSelector class="join-language-selector" />
     <!-- A party that no longer exists is not a retryable failure. Retrying it
          can never succeed, so the old card left the viewer pressing a button
          that was guaranteed to do nothing, with no route out of the page. This
          says what happened and takes them back on its own. Reached by a stale
          link, and by every link after the server restarts. -->
     <div v-if="party.partyMissing" class="modal-card party-gone">
-      <h2>This party no longer exists</h2>
+      <h2>{{ t('party.this_party_no_longer_exists') }}</h2>
       <p>
-        It has ended, or the server restarted since the link was made.
-        Party codes are not kept once a party closes.
+        {{ t('party.gone_detail') }}
       </p>
       <p class="party-gone-countdown" role="status">
-        Taking you back in {{ partyGoneCountdown }}s
+        {{ t('party.return_in', { count: partyGoneCountdown }) }}
       </p>
       <button class="btn btn-primary" type="button" @click="leaveForIndex">
-        Go now
+        {{ t('party.go_now') }}
       </button>
     </div>
     <div v-else-if="party.sessionError" class="modal-card">
-      <h2>Could not join party</h2>
+      <h2>{{ t('party.could_not_join_party') }}</h2>
       <p role="alert">{{ party.sessionError }}</p>
       <button
         class="btn btn-primary"
@@ -1213,25 +1217,26 @@ async function submitBecomeHost(payload: { username: string; password: string })
         @click="party.retrySession()"
       >
         {{ party.sessionRetrying
-          ? 'Retrying…'
+          ? t('party.retrying')
           : party.sessionRetryAfter > 0
-            ? `Retry in ${party.sessionRetryAfter}s`
-            : 'Retry' }}
+            ? t('party.retry_in', { count: party.sessionRetryAfter })
+            : t('party.retry') }}
       </button>
     </div>
     <div v-else class="modal-card join-spinner">
       <span class="spinner" />
-      <p>Joining party…</p>
+      <p>{{ t('party.joining_party') }}</p>
     </div>
   </div>
 
   <!-- Username modal -->
   <div v-else-if="!joined" class="modal-overlay">
+    <LanguageSelector class="join-language-selector" />
     <div class="modal-card">
-      <h2>Join Watch Party</h2>
-      <p>Enter your name (or leave blank for random name):</p>
-      <input v-model="usernameInput" @keypress.enter="submitJoin" placeholder="Your name (optional)" type="text" autofocus />
-      <button @click="submitJoin" class="btn btn-primary">Join</button>
+      <h2>{{ t('party.join_watch_party') }}</h2>
+      <p>{{ t('party.enter_your_name_or_leave_blank_for_random_name') }}</p>
+      <input v-model="usernameInput" @keypress.enter="submitJoin" :placeholder="t('party.your_name_optional')" type="text" autofocus />
+      <button @click="submitJoin" class="btn btn-primary">{{ t('party.join') }}</button>
     </div>
   </div>
 
@@ -1250,7 +1255,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
       aria-live="polite"
     >
       <span class="spinner spinner-inline" />
-      Reconnecting to party…
+      {{ t('party.reconnecting_to_party') }}
     </div>
     <!-- Superseded banner: another tab in this browser joined a
          different party and took over the shared session cookie, so
@@ -1265,12 +1270,10 @@ async function submitBecomeHost(payload: { username: string; password: string })
       aria-live="assertive"
     >
       <span>
-        Another tab joined party <strong>{{ party.supersededBy }}</strong>.
-        Only one party can play per browser, so playback stopped in this tab.
-        Switch to that tab to keep watching there, or resume this one instead.
+        {{ t('party.superseded', { code: party.supersededBy }) }}
       </span>
       <button class="session-retry" @click="reloadForParty">
-        Resume here (stops {{ party.supersededBy }})
+        {{ t('party.resume_here', { code: party.supersededBy }) }}
       </button>
     </div>
     <!-- Session banner: the party-bound cookie could not be minted, so
@@ -1288,8 +1291,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
            upstream returned, and a proxy's 502 is an entire HTML page, which
            previously replaced this guidance rather than accompanying it. -->
       <span>
-        Could not authenticate with the server, so video will not load.
-        Chat and the participant list still work.
+        {{ t('party.authentication_failed_detail') }}
         <span v-if="party.sessionError" class="session-detail">
           ({{ party.sessionError }})
         </span>
@@ -1300,10 +1302,10 @@ async function submitBecomeHost(payload: { username: string; password: string })
         @click="party.retrySession()"
       >
         {{ party.sessionRetrying
-          ? 'Retrying…'
+          ? t('party.retrying')
           : party.sessionRetryAfter > 0
-            ? `Retry in ${party.sessionRetryAfter}s`
-            : 'Retry' }}
+            ? t('party.retry_in', { count: party.sessionRetryAfter })
+            : t('party.retry') }}
       </button>
     </div>
     <header class="party-header">
@@ -1317,16 +1319,16 @@ async function submitBecomeHost(payload: { username: string; password: string })
           <span class="brand-mark" aria-hidden="true">
             <img :src="brandMarkUrl" alt="" class="brand-mark-img" />
           </span>
-          <span class="brand-name">Watch Party<span class="brand-subtle">by <a href="https://github.com/oratorian" target="_blank" rel="noopener noreferrer">Oratorian</a></span></span>
+          <span class="brand-name">Watch Party<span class="brand-subtle">{{ t('party.by') }} <a href="https://github.com/oratorian" target="_blank" rel="noopener noreferrer">Oratorian</a></span></span>
         </button>
         <button
           class="party-pill"
           :class="{ 'is-copied': copyState === 'copied', 'is-failed': copyState === 'failed' }"
           @click="copyPartyId"
           :title="COPY_MESSAGES[copyState]"
-          aria-label="Copy party code"
+          :aria-label="t('party.copy_party_code')"
         >
-          <span class="party-pill-label">Code</span>
+          <span class="party-pill-label">{{ t('party.code') }}</span>
           <code class="party-pill-code">{{ route.params.id }}</code>
           <!-- Same 22px box in every state so confirming a copy never reflows
                the header. -->
@@ -1339,14 +1341,15 @@ async function submitBecomeHost(payload: { username: string; password: string })
             {{ copyState === 'idle' ? '' : COPY_MESSAGES[copyState] }}
           </span>
         </button>
-        <span v-if="auth.hostUsername" class="host-badge" :title="`Host: ${auth.hostUsername}`">
-          Host: {{ auth.hostUsername }}
+        <span v-if="auth.hostUsername" class="host-badge" :title="t('party.host', { name: auth.hostUsername })">
+          {{ t('party.host', { name: auth.hostUsername }) }}
         </span>
       </div>
       <div class="header-actions">
-        <div class="viewer-chip" :title="`${party.userCount} ${party.userCount === 1 ? 'person' : 'people'} watching`">
+        <LanguageSelector />
+        <div class="viewer-chip" :title="t('party.watching', { count: party.userCount })">
           <span class="viewer-dot" aria-hidden="true"></span>
-          <span>{{ party.userCount }} watching</span>
+          <span>{{ t('party.watching_short', { count: party.userCount }) }}</span>
           <div class="viewer-avatars">
             <img
               v-for="user in party.users.slice(0, 3)"
@@ -1368,21 +1371,21 @@ async function submitBecomeHost(payload: { username: string; password: string })
           class="chip-btn"
           :disabled="selectionPreparing || (auth.isHost && !auth.partyUnlocked)"
         >
-          <template v-if="selectionPreparing">Preparing video…</template>
-          <template v-else-if="auth.isHost && !auth.partyUnlocked">Restoring host…</template>
+          <template v-if="selectionPreparing">{{ t('party.preparing_video') }}</template>
+          <template v-else-if="auth.isHost && !auth.partyUnlocked">{{ t('party.restoring_host') }}</template>
           <template v-else-if="auth.partyUnlocked">
-            {{ showLibrary ? 'Hide Library' : 'Browse Library' }}
+            {{ showLibrary ? t('party.hide_library') : t('party.browse_library') }}
           </template>
-          <template v-else>Login to Become Host</template>
+          <template v-else>{{ t('party.login_to_become_host') }}</template>
         </button>
-        <button v-if="party.currentVideo && !pendingSelection" @click="stopVideo" class="chip-btn chip-btn-warn">Stop Video</button>
+        <button v-if="party.currentVideo && !pendingSelection" @click="stopVideo" class="chip-btn chip-btn-warn">{{ t('party.stop_video') }}</button>
         <button
           v-if="auth.isAdmin"
           ref="adminTriggerBtn"
           type="button"
           class="ico-btn"
-          :title="`Open the admin panel (${auth.mediaServerName} admin policy required)`"
-          aria-label="Admin"
+          :title="t('party.open_admin', { provider: auth.mediaServerName })"
+          :aria-label="t('party.admin')"
           @click="showAdminModal = true"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -1401,34 +1404,34 @@ async function submitBecomeHost(payload: { username: string; password: string })
           :aria-pressed="party.hidden"
           :title="!auth.isHost
             ? (party.hidden
-              ? 'Hidden from Active Parties. Only the host can change this.'
-              : 'Listed in Active Parties. Only the host can change this.')
+              ? t('party.hidden_from_active_parties_only_the_host_can_change')
+              : t('party.listed_in_active_parties_only_the_host_can_change'))
             : (party.hidden
-              ? 'Hidden from Active Parties. Anyone with the code can still join. Click to list it.'
-              : 'Listed in Active Parties. Click to hide it.')"
-          :aria-label="party.hidden ? 'Party is hidden from Active Parties' : 'Party is listed in Active Parties'"
+              ? t('party.hidden_from_active_parties_anyone_with_the_code_can')
+              : t('party.listed_in_active_parties_click_to_hide_it'))"
+          :aria-label="party.hidden ? t('party.party_is_hidden_from_active_parties') : t('party.party_is_listed_in_active_parties')"
           @click="party.setHidden(!party.hidden)"
         >
           <svg v-if="party.hidden" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><path d="M1 1l22 22"/></svg>
           <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
-        <button @click="showMobileChat = true" class="chip-btn mobile-chat-toggle">Chat</button>
-        <button @click="leaveParty" class="btn-leave" title="Leave party">
+        <button @click="showMobileChat = true" class="chip-btn mobile-chat-toggle">{{ t('party.chat') }}</button>
+        <button @click="leaveParty" class="btn-leave" :title="t('party.leave_party')">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-          Leave
+          {{ t('party.leave') }}
         </button>
       </div>
     </header>
 
     <header v-if="showLibrary" class="mobile-library-header">
       <button type="button" class="mobile-library-btn" @click="goToAllLibraries">
-        All Libraries
+        {{ t('party.all_libraries') }}
       </button>
-      <span class="mobile-library-location" :title="libraryLocation">
-        {{ libraryLocation }}
+      <span class="mobile-library-location" :title="libraryLocation || t('party.libraries')">
+        {{ libraryLocation || t('party.libraries') }}
       </span>
       <button type="button" class="mobile-library-btn" @click="toggleLibrary">
-        Hide Library
+        {{ t('party.hide_library') }}
       </button>
     </header>
 
@@ -1467,7 +1470,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
               v-if="selectionPoster"
               class="video-selection-poster"
               :src="selectionPoster"
-              :alt="`${pendingSelection.title} poster`"
+              :alt="t('party.poster', { title: pendingSelection.title })"
               @error="posterFailed = true"
             />
             <div v-else class="video-selection-poster video-selection-poster-empty" aria-hidden="true" />
@@ -1484,10 +1487,10 @@ async function submitBecomeHost(payload: { username: string; password: string })
               <template v-if="pendingSelection.status === 'preparing'">
                 <div class="video-selection-status" role="status">
                   <span class="spinner" aria-hidden="true" />
-                  <span>Preparing video…</span>
+                  <span>{{ t('party.preparing_video') }}</span>
                 </div>
                 <p v-if="selectionIsSlow" class="video-selection-slow">
-                  Taking longer than expected. Media server is still working…
+                  {{ t('party.taking_longer_than_expected_media_server_is_still_working') }}
                 </p>
                 <button
                   v-if="isSelectionOwner"
@@ -1496,12 +1499,12 @@ async function submitBecomeHost(payload: { username: string; password: string })
                   data-action="cancel-preparing-selection"
                   @click="party.cancelVideoSelection()"
                 >
-                  Cancel and return to library
+                  {{ t('party.cancel_and_return_to_library') }}
                 </button>
               </template>
               <template v-else>
                 <p class="video-selection-error" role="alert">
-                  {{ pendingSelection.error || 'Could not start this video.' }}
+                  {{ pendingSelection.error || t('party.could_not_start_this_video') }}
                 </p>
                 <div v-if="isSelectionOwner" class="video-selection-actions">
                   <button
@@ -1510,7 +1513,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
                     data-action="retry-selection"
                     @click="party.retryVideoSelection()"
                   >
-                    Retry
+                    {{ t('party.retry') }}
                   </button>
                   <button
                     type="button"
@@ -1518,7 +1521,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
                     data-action="cancel-selection"
                     @click="party.cancelVideoSelection()"
                   >
-                    Back to library
+                    {{ t('party.back_to_library') }}
                   </button>
                 </div>
                 <!-- Not the selector. A partial failure shows this takeover to
@@ -1528,7 +1531,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
                      per-viewer on the server to clear. -->
                 <div v-else class="video-selection-actions">
                   <p class="video-selection-waiting">
-                    Waiting for {{ pendingSelection.selected_by_username }} to retry or choose another video.
+                    {{ t('party.waiting_for_selection', { name: pendingSelection.selected_by_username }) }}
                   </p>
                   <button
                     type="button"
@@ -1536,7 +1539,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
                     data-action="dismiss-selection"
                     @click="party.dismissVideoSelection()"
                   >
-                    Dismiss
+                    {{ t('party.dismiss') }}
                   </button>
                 </div>
               </template>
@@ -1545,18 +1548,18 @@ async function submitBecomeHost(payload: { username: string; password: string })
         </section>
         <div v-else-if="!party.currentVideo" class="no-video">
           <template v-if="auth.partyUnlocked">
-            <h2>No video selected</h2>
-            <p>Browse the library and select a video to start watching together</p>
-            <button @click="toggleLibrary" class="btn btn-primary">Browse Library</button>
+            <h2>{{ t('party.no_video_selected') }}</h2>
+            <p>{{ t('party.browse_the_library_and_select_a_video_to_start') }}</p>
+            <button @click="toggleLibrary" class="btn btn-primary">{{ t('party.browse_library') }}</button>
           </template>
           <template v-else-if="auth.isHost">
-            <h2>Restoring host session</h2>
-            <p>Your host session is being restored. The library will reopen when you reconnect.</p>
+            <h2>{{ t('party.restoring_host_session') }}</h2>
+            <p>{{ t('party.your_host_session_is_being_restored_the_library_will') }}</p>
           </template>
           <template v-else>
-            <h2>Party is locked</h2>
-            <p>{{ auth.mediaServerName === 'Emby' ? 'An' : 'A' }} {{ auth.mediaServerName }} login is needed before anyone can browse the library. Any party member can do it.</p>
-            <button @click="libraryButtonAction" class="btn btn-primary">Login to Become Host</button>
+            <h2>{{ t('party.party_is_locked') }}</h2>
+            <p>{{ t(auth.mediaServerName === 'Emby' ? 'party.locked_login_emby' : 'party.locked_login', { provider: auth.mediaServerName }) }}</p>
+            <button @click="libraryButtonAction" class="btn btn-primary">{{ t('party.login_to_become_host') }}</button>
           </template>
         </div>
         <div v-else class="video-wrapper">
@@ -1565,7 +1568,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
             class="video-selection-issue"
             role="alert"
           >
-            <span>{{ party.videoSelectionIssue.failedUsers.join(', ') }} could not load this video.</span>
+            <span>{{ t('party.failed_users', { names: party.videoSelectionIssue.failedUsers.join(', '), count: party.videoSelectionIssue.failedUsers.length }) }}</span>
             <span class="video-selection-issue-actions">
               <!-- Restarts the whole room, so say so. The server resumes it at
                    the party's current position rather than the offset the
@@ -1577,17 +1580,17 @@ async function submitBecomeHost(payload: { username: string; password: string })
                 data-action="retry-for-everyone"
                 @click="party.retryVideoSelection()"
               >
-                Restart for everyone
+                {{ t('party.restart_for_everyone') }}
               </button>
               <button type="button" data-action="dismiss-selection-issue" @click="party.dismissVideoSelection()">
-                Dismiss
+                {{ t('party.dismiss') }}
               </button>
             </span>
           </div>
           <div v-if="party.readyCheckActive" class="ready-check-overlay">
             <div class="ready-check-box">
               <span class="spinner" />
-              <p>Waiting for everyone to load...</p>
+              <p>{{ t('party.waiting_for_everyone_to_load') }}</p>
               <ul>
                 <li v-for="u in party.waitingUsers" :key="u" class="waiting">{{ u }}</li>
                 <li v-for="u in party.readyUsers" :key="u" class="ready">{{ u }}</li>
@@ -1643,19 +1646,19 @@ async function submitBecomeHost(payload: { username: string; password: string })
       <!-- Chat -->
       <aside class="chat-panel" :class="{ 'chat-mobile-open': showMobileChat }">
         <div class="chat-header" @click="showParticipants = !showParticipants">
-          <h3>Chat</h3>
+          <h3>{{ t('party.chat') }}</h3>
           <div class="chat-header-actions">
-            <span class="participant-toggle" :title="showParticipants ? 'Hide participants' : 'Show participants'">
+            <span class="participant-toggle" :title="showParticipants ? t('party.hide_participants') : t('party.show_participants')">
               <span class="participant-count-badge">{{ party.userCount }}</span>
               <span class="participant-arrow" :class="{ open: showParticipants }">&#9662;</span>
             </span>
-            <button class="chat-close-btn" @click.stop="showMobileChat = false" title="Close chat">Close</button>
+            <button class="chat-close-btn" @click.stop="showMobileChat = false" :title="t('party.close_chat')">{{ t('party.close') }}</button>
           </div>
         </div>
         <div v-if="showParticipants" class="participant-list">
           <div class="participant-actions">
             <button class="btn btn-ghost btn-small" @click.stop="showAvatarModal = true">
-              My avatar
+              {{ t('party.my_avatar') }}
             </button>
           </div>
           <div
@@ -1666,7 +1669,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
           >
             <img :src="avatarSrc(user)" class="avatar avatar-sm" :alt="user" />
             <span>{{ user }}</span>
-            <span v-if="user === party.username" class="you-label">(you)</span>
+            <span v-if="user === party.username" class="you-label">{{ t('party.you') }}</span>
           </div>
         </div>
         <div
@@ -1704,14 +1707,14 @@ async function submitBecomeHost(payload: { username: string; password: string })
             <input
               v-model="chatInput"
               @keypress.enter="sendChat"
-              placeholder="Type a message..."
+              :placeholder="t('party.type_a_message')"
               class="chat-composer-input"
             />
             <button
               @click="sendChat"
               class="chat-composer-send"
-              title="Send"
-              aria-label="Send message"
+              :title="t('party.send')"
+              :aria-label="t('party.send_message')"
               :disabled="chatRateLimitRetryAfter > 0"
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -1720,11 +1723,11 @@ async function submitBecomeHost(payload: { username: string; password: string })
           <p v-if="chatRateLimitError" class="form-error" role="alert">
             {{ chatRateLimitError }}
             <span v-if="chatRateLimitRetryAfter > 0">
-              Retry in {{ chatRateLimitRetryAfter }}s.
+              {{ t('party.retry_in_sentence', { count: chatRateLimitRetryAfter }) }}
             </span>
           </p>
           <div v-if="chatUnsentDrafts.length" class="chat-unsent">
-            <span class="chat-unsent-label">Not sent, tap to restore:</span>
+            <span class="chat-unsent-label">{{ t('party.not_sent_tap_to_restore') }}</span>
             <button
               v-for="(draft, index) in chatUnsentDrafts"
               :key="`${index}-${draft}`"
@@ -1742,7 +1745,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
       <button
         v-if="showMobileChat"
         class="chat-backdrop"
-        aria-label="Close chat"
+        :aria-label="t('party.close_chat')"
         @click="showMobileChat = false"
       />
     </div>
@@ -1753,7 +1756,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
     <div class="version-modal glass">
       <div class="version-modal-header">
         <h2>Emby Watch Party</h2>
-        <button @click="showVersionModal = false" class="btn btn-ghost btn-small">Close</button>
+        <button @click="showVersionModal = false" class="btn btn-ghost btn-small">{{ t('party.close') }}</button>
       </div>
       <div class="version-modal-body">
         <div class="version-number">v{{ versionInfo.version }}</div>
@@ -1766,7 +1769,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
         <span class="dot">&middot;</span>
         <a href="https://ko-fi.com/jedziah" target="_blank" rel="noopener">Ko-fi</a>
         <span class="dot">&middot;</span>
-        <router-link to="/version" @click="showVersionModal = false">Full Version Info</router-link>
+        <router-link to="/version" @click="showVersionModal = false">{{ t('party.full_version_info') }}</router-link>
       </div>
     </div>
   </div>
@@ -1811,10 +1814,10 @@ async function submitBecomeHost(payload: { username: string; password: string })
   <!-- Become host (any party member can promote themselves) -->
   <EmbyLoginModal
     v-if="showBecomeHostModal"
-    title="Login to Become Host"
-    :description="`Any party member can log in with valid ${auth.mediaServerName} credentials. The host's library becomes browsable for everyone in the room.`"
+    :title="t('party.login_to_become_host')"
+    :description="t('party.host_description', { provider: auth.mediaServerName })"
     :provider-name="auth.mediaServerName"
-    submit-label="Become Host"
+    :submit-label="t('party.become_host')"
     :busy="becomeHostBusy"
     :error-message="becomeHostError"
     @submit="submitBecomeHost"
@@ -1835,18 +1838,18 @@ async function submitBecomeHost(payload: { username: string; password: string })
       class="admin-modal-shell glass"
       role="dialog"
       aria-modal="true"
-      aria-label="Admin Panel"
+      :aria-label="t('party.admin_panel')"
       tabindex="-1"
       @keydown.capture="handleAdminModalKeydown"
     >
       <div class="admin-modal-header">
-        <h2>Admin Panel</h2>
+        <h2>{{ t('party.admin_panel') }}</h2>
         <button
           type="button"
           class="btn btn-small btn-ghost"
-          aria-label="Close admin panel"
+          :aria-label="t('party.close_admin_panel')"
           @click="showAdminModal = false"
-        >Close</button>
+        >{{ t('party.close') }}</button>
       </div>
       <div class="admin-modal-body">
         <AdminPanel @unauthorized="showAdminModal = false" />
@@ -1856,6 +1859,12 @@ async function submitBecomeHost(payload: { username: string; password: string })
 </template>
 
 <style scoped>
+.join-language-selector {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+}
+
 /* ─── Join Modal ─── */
 .modal-overlay {
   position: fixed;

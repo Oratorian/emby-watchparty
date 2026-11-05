@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { io, Socket } from 'socket.io-client'
@@ -92,11 +93,11 @@ export const useSocketStore = defineStore('socket', () => {
         // polite `reconnecting` banner, already gated on hasEverConnected,
         // owns the rest.
         if (hasEverConnected.value) {
-          connectionError.value = 'Lost connection to the party. Reconnecting…'
+          connectionError.value = t('party.lost_connection')
         }
         return
       }
-      connectionError.value = err.message || 'Could not connect to the party.'
+      connectionError.value = err.message || t('party.could_not_connect')
 
       const retryAfter = Math.max(1, Math.ceil(err.data.retry_after || 1))
       clearConnectionRetry()

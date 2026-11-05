@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useSocketStore } from './socket'
@@ -285,7 +286,7 @@ export const usePartyStore = defineStore('party', () => {
       try {
         const result = await api.joinParty(partyId.value!, clientId, name || 'Guest', avatarUuid)
         if (!result.success) {
-          sessionError.value = result.message || 'Could not join the party.'
+          sessionError.value = result.message || t('party.could_not_join_the_party')
           // Asked rather than inferred from the message text, which is prose
           // the server may reword at any time. This endpoint exists to answer
           // exactly this question.
@@ -315,7 +316,7 @@ export const usePartyStore = defineStore('party', () => {
         // Only an ApiError carries a message the server wrote for a human.
         // A fetch-layer failure gives "Failed to fetch", which explains
         // nothing to a viewer and displaces the banner's own guidance.
-        sessionError.value = e instanceof ApiError ? e.message : 'Could not reach the server.'
+        sessionError.value = e instanceof ApiError ? e.message : t('party.could_not_reach_server')
         await checkPartyMissing()
       }
     }
@@ -478,7 +479,7 @@ export const usePartyStore = defineStore('party', () => {
       if (pa && pa.deadline) {
         pendingAutoAdvance.value = {
           nextItemId: pa.next_item_id ?? '',
-          nextTitle: pa.next_title ?? 'Next episode',
+          nextTitle: pa.next_title ?? t('party.next_episode'),
           nextIndexNumber: pa.next_index_number ?? null,
           totalEpisodes: pa.total_episodes ?? 0,
           timeoutAt: new Date(pa.deadline).getTime(),
