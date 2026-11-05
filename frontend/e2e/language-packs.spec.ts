@@ -21,10 +21,11 @@ sys.stdout.buffer.write(buffer.getvalue())
 test('an admin installs, replaces and removes a pack for an already-open viewer', async ({ page, context }, testInfo) => {
   const region = { chromium: 'XA', firefox: 'XB', webkit: 'XC' }[testInfo.project.name] || 'XD'
   const locale = `fr-${region}`
-  const name = `Français ${testInfo.project.name}`
+  const name = `Français ${testInfo.project.name} `.padEnd(80, 'x')
   const first = 'Créer une fête'
   const updated = 'Créer une soirée'
 
+  await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
   await expect(page.getByRole('button', { name: 'Create Party', exact: true })).toBeVisible()
   const login = await context.request.post('/api/admin/login', {
@@ -64,6 +65,7 @@ test('an admin installs, replaces and removes a pack for an already-open viewer'
     await expect(page.locator(`.language-selector option[value="${locale}"]`)).toHaveCount(1)
     await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(locale)
     await expect(page.getByRole('button', { name: first, exact: true })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await expect(page.getByRole('button', { name: 'Join', exact: true })).toBeVisible()
 
     await upload(archive(locale, name, first, true))
