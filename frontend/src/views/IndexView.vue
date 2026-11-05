@@ -148,9 +148,6 @@ function joinParty() {
 
 <template>
   <div class="index-page">
-    <div class="index-language">
-      <LanguageSelector />
-    </div>
     <div class="hero">
       <div class="hero-badge badge badge-primary">Watch Party {{ releaseLine }}</div>
       <h1>Emby Watch Party</h1>
@@ -181,6 +178,10 @@ function joinParty() {
         </div>
       </div>
     </main>
+
+    <div class="index-language">
+      <LanguageSelector />
+    </div>
 
     <div
       v-if="partyListStatus"
@@ -253,7 +254,7 @@ function joinParty() {
 .index-language {
   display: flex;
   justify-content: center;
-  margin-bottom: var(--space-xl);
+  margin-top: var(--space-xl);
 }
 
 .hero {
