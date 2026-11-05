@@ -81,6 +81,34 @@ function accepted(duplicate = false) {
   return { status: 'sent', receipt, locale: 'fr', message_count: 2, duplicate }
 }
 
+test('keeps sharing beside the editor while scrolling and stacks it on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await prepare(page)
+  await page.route(endpoint, route => route.fulfill({ status: 201, headers: cors, json: accepted() }))
+  await complete(page)
+  await page.locator('#submit-discord').click()
+  await expect(page.locator('#submission-status')).toContainText(receipt)
+  const editor = page.locator('.translation-workspace')
+  const sharing = page.locator('#discord-submission')
+  for (const width of [1440, 1000]) {
+    await page.setViewportSize({ width, height: 900 })
+    await editor.evaluate(element => element.scrollIntoView({ block: 'start' }))
+    const editorBox = (await editor.boundingBox())!
+    const sharingBox = (await sharing.boundingBox())!
+    expect(sharingBox.x).toBeGreaterThanOrEqual(editorBox.x + editorBox.width)
+    expect(sharingBox.y).toBeGreaterThanOrEqual(0)
+    expect(sharingBox.y).toBeLessThanOrEqual(21)
+    await expect(page.locator('#submit-discord')).toBeInViewport()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  }
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await sharing.evaluate(element => getComputedStyle(element).position)).toBe('static')
+  const editorBox = (await editor.boundingBox())!
+  const sharingBox = (await sharing.boundingBox())!
+  expect(sharingBox.y).toBeGreaterThanOrEqual(editorBox.y + editorBox.height)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
 test('requires full valid coverage and remembers a successful receipt', async ({ page }) => {
   const requests: Awaited<ReturnType<typeof submission>>[] = []
   const challengeRequests: string[] = []

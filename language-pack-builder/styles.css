@@ -91,7 +91,7 @@ code {
   overflow-wrap:anywhere
 }
 .page-shell {
-  max-width:1360px;
+  max-width:1640px;
   padding:0 32px;
   margin:auto
 }
@@ -167,6 +167,25 @@ h1 {
   grid-template-columns:300px minmax(0,1fr);
   gap:26px;
   align-items:start
+}
+.translation-area {
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:24px;
+  align-items:start;
+  min-width:0
+}
+.translation-area:has(> .submission-panel:not([hidden])) {
+  grid-template-columns:minmax(0,1fr) 280px
+}
+.submission-panel {
+  position:sticky;
+  top:20px;
+  align-self:start;
+  max-height:calc(100vh - 40px);
+  overflow-y:auto;
+  min-width:0;
+  scrollbar-width:thin
 }
 .pack-sidebar {
   position:sticky;
@@ -666,13 +685,44 @@ progress::-moz-progress-bar {
 [hidden] {
   display:none!important
 }
+@media(max-width:1300px) {
+  .editor-toolbar {
+    grid-template-columns:1fr 1fr
+  }
+  .editor-toolbar .search-field {
+    grid-column:1/-1
+  }
+}
+@media(max-width:1180px) {
+  .creator-layout {
+    grid-template-columns:minmax(0,1fr)
+  }
+  .pack-sidebar {
+    position:static;
+    max-height:none;
+    overflow:visible
+  }
+  .details-panel {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:0 16px
+  }
+  .details-panel>.section-kicker,.details-panel>h2,.section-description,.export-section,.draft-actions,.save-status,.reset-confirmation {
+    grid-column:1/-1
+  }
+}
 @media(max-width:1000px) {
   .page-shell {
     padding:0 24px
   }
   .creator-layout {
-    grid-template-columns:270px minmax(0,1fr);
     gap:20px
+  }
+  .translation-area {
+    gap:20px
+  }
+  .translation-area:has(> .submission-panel:not([hidden])) {
+    grid-template-columns:minmax(0,1fr) 250px
   }
   .panel {
     padding:18px
@@ -691,6 +741,14 @@ progress::-moz-progress-bar {
 @media(max-width:760px) {
   .creator-layout {
     grid-template-columns:minmax(0,1fr)
+  }
+  .translation-area:has(> .submission-panel:not([hidden])) {
+    grid-template-columns:minmax(0,1fr)
+  }
+  .submission-panel {
+    position:static;
+    max-height:none;
+    overflow:visible
   }
   .pack-sidebar {
     position:static;
