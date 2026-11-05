@@ -66,6 +66,28 @@ describe('localized library filters', () => {
     wrapper.unmount()
   })
 
+  it('translates Jellyfin Unrated and submits its original parental-rating value', async () => {
+    i18n.global.locale.value = 'de'
+    const wrapper = mount(LibraryFilters, {
+      props: {
+        controls: [
+          { id: 'official_rating', label: 'Parental rating', kind: 'multi', values: [{ value: 'Unrated', label: 'Unrated' }] },
+          { id: 'genre', label: 'Genre', kind: 'multi', values: [{ value: 'Unrated', label: 'Unrated' }] },
+        ],
+        modelValue: {},
+      },
+    })
+    await wrapper.get('.filter-toggle').trigger('click')
+    await wrapper.get('[data-filter-id="official_rating"] button').trigger('click')
+    expect(wrapper.get('[data-filter-id="official_rating"] .option-list').text()).toBe('Nicht bewertet')
+    await wrapper.get('input[value="Unrated"]').setValue(true)
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([{ official_rating: ['Unrated'] }])
+
+    await wrapper.get('[data-filter-id="genre"] button').trigger('click')
+    expect(wrapper.get('[data-filter-id="genre"] .option-list').text()).toBe('Unrated')
+    wrapper.unmount()
+  })
+
   it('updates year-mode choices when the language changes with the year picker open', async () => {
     i18n.global.locale.value = 'en'
     const wrapper = mount(LibraryFilters, {

@@ -23,6 +23,9 @@ export function filterOptionLabel(control: FilterControl, option: FilterOption):
   if (control.id === 'locked' && ['yes', 'no'].includes(option.value)) {
     return t(option.value === 'yes' ? 'library.option_with' : 'library.option_without')
   }
+  if (control.id === 'official_rating' && option.value === 'Unrated') {
+    return t('library.option_unrated')
+  }
   if (control.id === 'video_type' && ['VideoFile', 'Bluray', 'Dvd', 'Iso'].includes(option.value)) {
     return t(`library.option_${option.value}`)
   }
