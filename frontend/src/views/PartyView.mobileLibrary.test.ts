@@ -32,6 +32,26 @@ vi.mock('@/stores/socket', () => ({
   }),
 }))
 
+// These tests exercise the party shell. Vue Test Utils may resolve an async
+// child even when its rendered tag is stubbed, so mock the unrelated modules
+// too. Their CSS must not load after this test environment has been destroyed.
+vi.mock('@/components/LibraryBrowser.vue', () => ({
+  __esModule: true,
+  default: { name: 'LibraryBrowser', template: '<div />' },
+}))
+vi.mock('@/components/EmojiPicker.vue', () => ({
+  __esModule: true,
+  default: { name: 'EmojiPicker', template: '<div />' },
+}))
+vi.mock('@/components/JoinVoteModal.vue', () => ({
+  __esModule: true,
+  default: { name: 'JoinVoteModal', template: '<div />' },
+}))
+vi.mock('@/components/JoinWaitingRoom.vue', () => ({
+  __esModule: true,
+  default: { name: 'JoinWaitingRoom', template: '<div />' },
+}))
+
 let pinia: ReturnType<typeof createPinia>
 let goToRoot: ReturnType<typeof vi.fn>
 

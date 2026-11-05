@@ -40,11 +40,21 @@ vi.mock('@/stores/socket', () => ({
 // PartyView renders this async component on every mount. Mock its module, not
 // only its rendered tag, so no CSS import can outlive a fast test teardown.
 vi.mock('@/components/JoinWaitingRoom.vue', () => ({
+  __esModule: true,
   default: { template: '<div />' },
 }))
 
 vi.mock('@/components/EmojiPicker.vue', () => ({
+  __esModule: true,
   default: { template: '<div />' },
+}))
+
+// These tests exercise the party shell. Vue Test Utils may resolve an async
+// child even when its rendered tag is stubbed, so mock the unrelated modules
+// too. Their CSS must not load after this test environment has been destroyed.
+vi.mock('@/components/JoinVoteModal.vue', () => ({
+  __esModule: true,
+  default: { name: 'JoinVoteModal', template: '<div />' },
 }))
 
 let pinia: ReturnType<typeof createPinia>
