@@ -23,6 +23,7 @@ from backend.src.config import Config
 from backend.src.emby_gateway import MediaServerGateway
 from backend.src.hls_registry import HLSResourceRegistry
 from backend.src.hls_token_manager import HLSTokenManager
+from backend.src.language_packs import LanguagePackStore
 from backend.src.log_levels import apply_log_levels
 from backend.src.observability import RequestLogMiddleware
 from backend.src.party_manager import PartyManager
@@ -53,6 +54,10 @@ API_DESCRIPTION = (
 # the reader gets eight bare words and has to open operations to find out
 # which surface is current. Every tag a router declares appears here.
 API_TAGS = [
+    {
+        "name": "languages",
+        "description": "Installed community language catalogs. Administrators can upload translation ZIPs without rebuilding the frontend.",
+    },
     {
         "name": "v2",
         "description": (
@@ -509,6 +514,7 @@ def create_app(
     application = build_api_app(prefix=prefix, lifespan=lifespan)
     application.state.bootstrap_config = resolved_config
     application.state.project_root = resolved_root
+    application.state.language_packs = LanguagePackStore(resolved_root / "data" / "languages")
     application.state.http_transport = http_transport
     application.state.enable_update_check = enable_update_check
     application.state.session_secret = session_secret

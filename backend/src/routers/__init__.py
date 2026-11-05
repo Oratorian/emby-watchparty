@@ -1,6 +1,6 @@
 """Canonical FastAPI route surface used by runtime and schema generation."""
 
-from backend.src.routers import admin, auth, avatar, health, hls, party, quality, v2
+from backend.src.routers import admin, auth, avatar, health, hls, languages, party, quality, v2
 
 API_ROUTERS = (
     v2.router,
@@ -11,6 +11,8 @@ API_ROUTERS = (
     avatar.router,
     health.router,
     quality.router,
+    languages.router,
+    languages.admin_router,
 )
 
 __all__ = ["API_ROUTERS"]
