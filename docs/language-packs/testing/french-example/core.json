@@ -1,0 +1,7 @@
+{
+  "language": "Langue",
+  "browser_language": "Langue du navigateur",
+  "page_title": "Emby Watch Party - La séance de ce soir",
+  "request_failed": "Échec de la requête ({status})",
+  "rate_limited": "Trop de requêtes. Réessayez dans {count} seconde. | Trop de requêtes. Réessayez dans {count} secondes."
+}
