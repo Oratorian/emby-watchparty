@@ -33,7 +33,7 @@ const unknownPreference = computed(() => languagePreference.value !== 'auto'
 </template>
 
 <style scoped>
-.language-control { display: inline-flex; flex-direction: column; align-items: center; max-width: 100%; gap: .3rem; }
+.language-control { display: inline-flex; flex-direction: column; align-items: center; max-width: 100%; min-width: 0; gap: .3rem; }
 .language-selector {
   display: inline-flex;
   align-items: center;

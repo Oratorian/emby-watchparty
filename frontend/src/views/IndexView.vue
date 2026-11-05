@@ -254,6 +254,8 @@ function joinParty() {
 .index-language {
   display: flex;
   justify-content: center;
+  max-width: 100%;
+  min-width: 0;
   margin-top: var(--space-xl);
 }
 
