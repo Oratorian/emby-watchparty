@@ -1,0 +1,5 @@
+{
+  "loading": "Loading language packs...",
+  "unavailable": "A language pack could not be loaded. Bundled translations remain available.",
+  "retry": "Retry languages"
+}

@@ -1,6 +1,6 @@
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { createPinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App.vue'
 import { api } from '@/api/client'
@@ -13,6 +13,13 @@ vi.mock('@/api/client', () => ({
 }))
 
 describe('application startup', () => {
+  let wrapper: VueWrapper | undefined
+
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = undefined
+  })
+
   beforeEach(() => {
     vi.mocked(api.authStatus).mockReset()
   })
@@ -25,7 +32,7 @@ describe('application startup', () => {
       }),
     )
 
-    const wrapper = mount(App, {
+    wrapper = mount(App, {
       global: {
         plugins: [createPinia()],
         stubs: { RouterView: { template: '<div data-testid="route">route</div>' } },
@@ -47,7 +54,7 @@ describe('application startup', () => {
       .mockRejectedValueOnce(new Error('Backend unavailable'))
       .mockResolvedValueOnce({ require_login: false })
 
-    const wrapper = mount(App, {
+    wrapper = mount(App, {
       global: {
         plugins: [createPinia()],
         stubs: { RouterView: { template: '<div data-testid="route">route</div>' } },
@@ -56,7 +63,7 @@ describe('application startup', () => {
     await flushPromises()
 
     expect(wrapper.get('[role="status"]').text()).toContain('Backend unavailable')
-    await wrapper.get('button').trigger('click')
+    await wrapper.get('.startup-error + button').trigger('click')
     await flushPromises()
 
     expect(api.authStatus).toHaveBeenCalledTimes(2)
