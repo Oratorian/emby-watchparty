@@ -28,6 +28,7 @@ import type {
   FilterControl,
   FilterOption,
   FilterOptionsResponse,
+  LanguagePackSummary,
   SuccessResponse,
 } from '@/api/client'
 
@@ -37,6 +38,7 @@ type Satisfies<To, From extends To> = From
 type _FilterOption = Satisfies<FilterOption, Generated.FilterOption>
 type _FilterControl = Satisfies<FilterControl, Generated.FilterControl>
 type _FilterOptions = Satisfies<FilterOptionsResponse, Generated.FilterOptionsResponse>
+type _LanguagePackSummary = Satisfies<LanguagePackSummary, Generated.LanguagePackSummary>
 
 type KeyDrift<Actual, Expected extends PropertyKey> =
   Exclude<keyof Actual, Expected> | Exclude<Expected, keyof Actual>
@@ -118,6 +120,7 @@ export type {
   _FilterOption,
   _FilterControl,
   _FilterOptions,
+  _LanguagePackSummary,
   _V2AudioProjection,
   _V2AuthStatusContract,
   _V2LoginContract,

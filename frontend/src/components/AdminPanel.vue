@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { ApiError, api } from '@/api/client'
 import type { AdminConfig } from '@/api/client'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
+import LanguagePacks from '@/components/LanguagePacks.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const emit = defineEmits<{
@@ -353,6 +354,7 @@ loadConfig()
       <button type="button" class="btn btn-small" @click="loadConfig">{{ t('interface.admin_panel.retry') }}</button>
     </div>
     <div v-if="configLoaded" class="admin-grid">
+      <LanguagePacks @unauthorized="emit('unauthorized')" />
       <!-- Auth -->
       <div class="admin-card card">
         <h2 class="card-title">{{ t('interface.admin_panel.auth') }}</h2>

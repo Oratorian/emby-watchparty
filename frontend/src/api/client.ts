@@ -81,6 +81,19 @@ function responseError(resp: Response, body: JsonValue | undefined): ApiError {
 }
 
 export interface SuccessResponse { success?: boolean; message?: string }
+export interface LanguagePackSummary {
+  locale: string
+  name: string
+  author: string
+  version: string
+  revision: string
+}
+export interface LanguagePacksResponse { languages: LanguagePackSummary[] }
+
+function isLanguagePackSummary(value: JsonValue | undefined): value is JsonObject & LanguagePackSummary {
+  return isJsonObject(value) && ['locale', 'name', 'author', 'version', 'revision']
+    .every(key => typeof value[key] === 'string')
+}
 export interface AuthResponse extends SuccessResponse {
   authenticated?: boolean
   username?: string | null
@@ -777,4 +790,33 @@ export const api = {
     apiFetch<ConfigUpdateResponse>('/api/admin/config', {
       method: 'PUT', body: JSON.stringify(data), signal,
     }),
+  languagePacks: (signal?: AbortSignal) => apiFetch<LanguagePacksResponse>(
+    '/api/languages', { signal },
+  ),
+  languagePackUpload: async (file: File, signal?: AbortSignal): Promise<LanguagePackSummary> => {
+    const body = new FormData()
+    body.append('file', file)
+    const response = await fetch(withPrefix('/api/admin/languages'), {
+      method: 'POST', body, credentials: 'same-origin', signal,
+    })
+    const result = await readResponseBody(response)
+    if (!response.ok) throw responseError(response, result)
+    if (!isLanguagePackSummary(result)) {
+      throw new ApiError(response.status, 'Invalid language pack response', result)
+    }
+    return result
+  },
+  languagePackRemove: (locale: string, signal?: AbortSignal) => apiFetch<{ success: boolean }>(
+    `/api/admin/languages/${encodeURIComponent(locale)}`, { method: 'DELETE', signal },
+  ),
+  languagePackTemplate: async (signal?: AbortSignal): Promise<Blob> => {
+    const response = await fetch(withPrefix('/api/admin/languages/template'), {
+      credentials: 'same-origin', signal,
+    })
+    if (!response.ok) throw responseError(response, await readResponseBody(response))
+    if (!response.headers.get('Content-Type')?.toLowerCase().startsWith('application/zip')) {
+      throw new ApiError(response.status, 'Invalid language template response', undefined)
+    }
+    return response.blob()
+  },
 }
