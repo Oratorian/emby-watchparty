@@ -101,7 +101,7 @@ days. See the section on it below.
   aliases, no fallback reads, and a retired name still present is a boot error.
   `MEDIA_SERVER_TYPE` is unchanged and still has to be stated.
 - Python 3.12.x is required for source installs.
-- Node 20.19 or newer is required when building the frontend from source. The
+- Node 22.12 or newer is required when building the frontend from source. The
   project CI and Docker builder use Node 24.
 - Run exactly one application worker. Party state, administrator sessions,
   HLS grants, and rate-limit buckets are process-local.

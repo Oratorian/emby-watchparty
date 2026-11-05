@@ -27,7 +27,7 @@ By participating in this project, you agree to maintain a respectful and inclusi
 ### Prerequisites
 
 - **Python 3.12**, exactly. `pyproject.toml` pins `requires-python = ">=3.12,<3.13"`, and the lock files are compiled against it. 3.13 will not work.
-- **Node.js** 20.19+ or 22.12+ (`package.json` `engines`). CI builds on Node 24.
+- **Node.js** 22.12+ (`package.json` `engines`). CI builds on Node 24.
 - Git
 - Access to an Emby server for testing
 

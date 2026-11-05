@@ -116,7 +116,7 @@ CI exercises Chromium, Firefox and desktop WebKit. Chromium covers the full fake
 - A dedicated administrative API key from that server. Host credentials are supplied through the in-app login flow, rather than stored in `.env`.
 - A Watch Party URL reachable by your viewers, with HTTPS for production deployments.
 - **For Docker installs:** Docker Engine and Docker Compose v2.
-- **For manual installs:** Python **3.12.x**, Node.js matching **`^20.19.0 || >=22.12.0`**, and npm. The official frontend build and CI use Node 24.
+- **For manual installs:** Python **3.12.x**, Node.js **22.12 or newer**, and npm. The official frontend build and CI use Node 24.
 
 ### Manual installation
 

@@ -6,7 +6,7 @@ The frontend runs alongside the Python backend. See the [main README](../README.
 
 ## Requirements
 
-- Node.js matching `^20.19.0 || >=22.12.0`, plus npm. CI uses Node 24.
+- Node.js 22.12 or newer, plus npm. CI uses Node 24.
 - Python 3.12 and the repository-root `.venv` for the backend, generated contracts and browser tests.
 - An Emby or Jellyfin server for manual playback testing. The default browser suite uses a fake Emby server.
 
@@ -98,6 +98,10 @@ python scripts/generate_socket_types.py
 ```
 
 The socket generator also updates `backend/socket-events.schema.json`. Use `--check` on either command to detect stale committed output without rewriting it. Commit regenerated contracts alongside their backend changes. The [Socket.IO reference](../docs/SOCKET_API.md) describes event payloads and flows; the running backend exposes Swagger UI at `/docs` and ReDoc at `/redoc`.
+
+## UI translations
+
+The interface supports English and German through vue-i18n. Browser language is used initially; each viewer can choose a language and save it in their browser. English is the fallback. See [the localization guide](../docs/localization.md) for catalogs, placeholders, plurals and backend labels.
 
 ## Source layout
 

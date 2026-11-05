@@ -21,6 +21,7 @@
     "pinia": "^3.0.4",
     "socket.io-client": "^4.8.3",
     "vue": "^3.5.30",
+    "vue-i18n": "^11.4.18",
     "vue-router": "^5.0.3"
   },
   "devDependencies": {
@@ -45,7 +46,7 @@
     "vue-tsc": "^3.2.5"
   },
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": ">=22.12.0"
   },
   "allowScripts": {
     "esbuild@0.28.1": true
