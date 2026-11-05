@@ -160,6 +160,8 @@ function onPanelUnauthorized() {
 
 .admin-header {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
   justify-content: space-between;
   align-items: center;
   margin-bottom: var(--space-lg);
@@ -167,6 +169,7 @@ function onPanelUnauthorized() {
 
 .admin-header-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-sm);
   align-items: center;
 }

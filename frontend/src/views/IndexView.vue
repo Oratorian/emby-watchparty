@@ -8,6 +8,9 @@ import { withPrefix } from '@/utils/appPrefix'
 import { useAuthStore } from '@/stores/auth'
 import { getClientId } from '@/stores/party'
 import { getHiddenParties } from '@/utils/hiddenParties'
+import { version } from '../../package.json'
+
+const releaseLine = version.split('.').slice(0, 2).join('.')
 
 // Modal is only opened in the REQUIRE_LOGIN=true create flow,
 // so defer loading until the user actually clicks Create.
@@ -145,9 +148,11 @@ function joinParty() {
 
 <template>
   <div class="index-page">
-    <div class="hero">
+    <div class="index-language">
       <LanguageSelector />
-      <div class="hero-badge badge badge-primary">Watch Party 2.0</div>
+    </div>
+    <div class="hero">
+      <div class="hero-badge badge badge-primary">Watch Party {{ releaseLine }}</div>
       <h1>Emby Watch Party</h1>
       <p class="hero-tagline">{{ t('interface.index.watch_together_wherever_you_are') }}</p>
     </div>
@@ -243,6 +248,12 @@ function joinParty() {
     max(var(--space-xl), env(safe-area-inset-right))
     max(var(--space-xl), env(safe-area-inset-bottom))
     max(var(--space-xl), env(safe-area-inset-left));
+}
+
+.index-language {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-xl);
 }
 
 .hero {
