@@ -13,9 +13,15 @@ test.beforeAll(async () => {
   const mime: Record<string, string> = {
     'index.html': 'text/html', 'app.js': 'text/javascript', 'styles.css': 'text/css',
     'catalog.json': 'application/json', 'brand-mark.webp': 'image/webp',
+    'relay-config.json': 'application/json',
   }
   server = createServer(async (request, response) => {
     const name = new URL(request.url!, 'http://local').pathname.replace('/emby-watchparty/', '') || 'index.html'
+    if (name === 'relay-config.json') {
+      response.setHeader('Content-Type', 'application/json')
+      response.end(JSON.stringify({ endpoint: '' }))
+      return
+    }
     if (!mime[name]) { response.writeHead(404).end(); return }
     response.setHeader('Content-Type', mime[name])
     response.end(await readFile(path.join(root, 'docs', name)))

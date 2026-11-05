@@ -6,6 +6,7 @@ import { encodeZip, decodeZip } from './zip.js'
 
 const DRAFT_KEY = 'ewp-language-pack-creator-draft-v1'
 const BACKUP_KEY = 'ewp-language-pack-creator-backup-v1'
+const SUBMISSIONS_KEY = 'ewp-language-pack-submissions-v1'
 const PAGE_SIZE = 30
 const MAX_ZIP_BYTES = 1024 * 1024
 const MAX_JSON_BYTES = 2 * 1024 * 1024
@@ -34,6 +35,25 @@ let backupNeedsSaving = false
 let loaded = false
 let busy = false
 let importVersion = 0
+let catalogRevision = ''
+let relayEndpoint = ''
+let relayReady = false
+let relayChecking = false
+let submissionSending = false
+let editVersion = 0
+let fingerprintVersion = -1
+let currentFingerprint = ''
+let currentArchive = null
+let fingerprintTimer
+let fingerprintChecking = false
+let retryTimer
+let turnstileToken = ''
+let turnstileWidget = null
+let turnstileRequired = false
+let turnstileLoadPromise = null
+let relayMaxZipBytes = MAX_ZIP_BYTES
+const submissionRecords = new Map()
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function notice(message, type = '') {
   const element = $('operation-notice')
@@ -191,6 +211,7 @@ function updateOverview() {
   } else {
     $('export-hint').textContent = `watchparty-${validation.manifest.locale}.zip · ${translated} ${translated === 1 ? 'translation' : 'translations'}`
   }
+  updateSubmissionControls(validation, translated)
 }
 
 function updateRow(entry) {
@@ -205,10 +226,13 @@ function updateRow(entry) {
   row.error.textContent = error || ''
   row.error.hidden = !error
   row.counter.textContent = `${value.length.toLocaleString()} / 8,000`
-  row.useEnglish.disabled = Boolean(value.trim())
+  row.useEnglish.disabled = submissionSending || Boolean(value.trim())
+  row.textarea.disabled = submissionSending
 }
 
 function changeTranslation(entry, value) {
+  if (submissionSending) return
+  draftChanged()
   if (value) translations[entry.key] = value
   else delete translations[entry.key]
   const error = value.trim() ? validateMessage(value, entry.source) : null
@@ -256,10 +280,15 @@ function createRow(entry) {
   textarea.id = id
   textarea.rows = entry.source.length > 180 ? 5 : 3
   textarea.value = translations[entry.key] || ''
+  textarea.disabled = submissionSending
   textarea.placeholder = 'Leave blank to use English'
   textarea.setAttribute('aria-describedby', `${id}-source ${id}-error`)
-  textarea.addEventListener('input', () => changeTranslation(entry, textarea.value))
+  textarea.addEventListener('input', () => {
+    if (submissionSending) { textarea.value = translations[entry.key] || ''; return }
+    changeTranslation(entry, textarea.value)
+  })
   useEnglish.addEventListener('click', () => {
+    if (submissionSending) return
     if (textarea.value.trim()) return
     textarea.value = entry.source
     changeTranslation(entry, textarea.value)
@@ -273,10 +302,12 @@ function createRow(entry) {
     const token = `{${parameter}}`
     const insert = document.createElement('button')
     insert.type = 'button'
+    insert.disabled = submissionSending
     insert.textContent = token
     insert.title = `Insert ${token} at the cursor`
     insert.setAttribute('aria-label', `Insert ${token}`)
     insert.addEventListener('click', () => {
+      if (submissionSending) return
       const start = textarea.selectionStart
       const end = textarea.selectionEnd
       textarea.value = textarea.value.slice(0, start) + token + textarea.value.slice(end)
@@ -316,6 +347,7 @@ function filterEntries() {
 }
 
 function renderRows() {
+  if (submissionSending) return
   visibleEntries = filterEntries()
   const pages = Math.max(1, Math.ceil(visibleEntries.length / PAGE_SIZE))
   page = Math.min(page, pages - 1)
@@ -344,23 +376,27 @@ function download(bytes, filename, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-function exportZip() {
+function createPackArchive() {
   const validated = validateManifest(manifest)
   checkAllMessages()
+  if (!validated.manifest || errors.size) throw new Error('Enter valid pack details and fix all message errors.')
+  const messages = buildMessages(entries, translations)
+  const checked = validateImportedPack(validated.manifest, messages, english)
+  const files = { 'manifest.json': `${JSON.stringify(checked.manifest, null, 2)}\n` }
+  for (const [namespace, tree] of Object.entries(messages)) {
+    files[`${namespace}.json`] = `${JSON.stringify(tree, null, 2)}\n`
+  }
+  const expanded = Object.values(files).reduce((size, text) => size + new TextEncoder().encode(text).byteLength, 0)
+  if (expanded > MAX_JSON_BYTES) throw new Error('The expanded language files are larger than 2 MiB. Split your work into a smaller partial pack.')
+  const zip = encodeZip(files)
+  if (zip.byteLength > MAX_ZIP_BYTES) throw new Error('This ZIP is larger than EWP\'s 1 MiB upload limit. Export a smaller partial pack.')
+  return { zip, filename: `watchparty-${checked.manifest.locale}.zip`, manifest: checked.manifest }
+}
+
+function exportZip() {
   updateOverview()
-  if (!validated.manifest || errors.size) return
   try {
-    const messages = buildMessages(entries, translations)
-    const checked = validateImportedPack(validated.manifest, messages, english)
-    const files = { 'manifest.json': `${JSON.stringify(checked.manifest, null, 2)}\n` }
-    for (const [namespace, tree] of Object.entries(messages)) {
-      files[`${namespace}.json`] = `${JSON.stringify(tree, null, 2)}\n`
-    }
-    const expanded = Object.values(files).reduce((size, text) => size + new TextEncoder().encode(text).byteLength, 0)
-    if (expanded > MAX_JSON_BYTES) throw new Error('The expanded language files are larger than 2 MiB. Split your work into a smaller partial pack.')
-    const zip = encodeZip(files)
-    if (zip.byteLength > MAX_ZIP_BYTES) throw new Error('This ZIP is larger than EWP\'s 1 MiB upload limit. Export a smaller partial pack.')
-    const filename = `watchparty-${checked.manifest.locale}.zip`
+    const { zip, filename } = createPackArchive()
     download(zip, filename, 'application/zip')
     saveDraft()
     notice(`Downloaded ${filename}. In EWP, open Admin Panel, then Manage language packs to install it.`)
@@ -381,7 +417,7 @@ function importFinishedPack(files) {
 }
 
 async function importFile(file) {
-  if (!file || busy) return
+  if (!file || busy || submissionSending) return
   const version = ++importVersion
   busy = true
   $('open-pack').disabled = true
@@ -412,6 +448,7 @@ async function importFile(file) {
     }
     manifest = Object.fromEntries(FIELD_NAMES.map(name => [name, imported.manifest[name] || '']))
     translations = Object.assign(Object.create(null), imported.translations)
+    draftChanged()
     touchedFields = new Set()
     page = 0
     $('search').value = ''
@@ -437,6 +474,8 @@ async function importFile(file) {
 }
 
 function resetDraft() {
+  if (submissionSending) return
+  draftChanged()
   importVersion += 1
   busy = false
   $('open-pack').disabled = false
@@ -467,6 +506,368 @@ function resetDraft() {
   fields.locale.focus()
 }
 
+async function sha256(bytes) {
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes)
+  return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join('')
+}
+
+function setSubmissionStatus(message, type = '') {
+  $('submission-status').textContent = message
+  $('submission-status').className = `submission-status${type ? ` ${type}` : ''}`
+}
+
+function recordKey(fingerprint = currentFingerprint) {
+  return `${relayEndpoint}|${catalogRevision}|${fingerprint}`
+}
+
+function currentRecord() {
+  return currentFingerprint ? submissionRecords.get(recordKey()) : null
+}
+
+function saveSubmissionRecords() {
+  const recent = [...submissionRecords.values()].sort((left, right) => right.updated - left.updated).slice(0, 30)
+  try { localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(recent)) } catch {
+    // The relay also deduplicates the validated pack, independently of browser storage.
+  }
+}
+
+function restoreSubmissionRecords() {
+  try {
+    const values = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY) || '[]')
+    if (!Array.isArray(values)) return
+    for (const value of values.slice(0, 30)) {
+      if (!value || typeof value !== 'object' || !UUID_V4.test(value.submissionId)
+        || !/^[a-f0-9]{64}$/.test(value.fingerprint) || !/^[a-f0-9]{64}$/.test(value.catalog)
+        || typeof value.endpoint !== 'string' || value.endpoint.length > 2048
+        || !['sent', 'retry', 'pending', 'uncertain', 'sending'].includes(value.status)
+        || !Number.isFinite(value.updated) || Date.now() - value.updated > 30 * 86400000) continue
+      const record = {
+        endpoint: value.endpoint, catalog: value.catalog, fingerprint: value.fingerprint,
+        submissionId: value.submissionId,
+        status: value.status === 'sending'
+          ? ['pending', 'uncertain'].includes(value.resumeStatus) ? value.resumeStatus : 'retry'
+          : value.status,
+        receipt: typeof value.receipt === 'string' && UUID_V4.test(value.receipt) ? value.receipt : '',
+        retryAt: Number.isFinite(value.retryAt) ? value.retryAt : 0, updated: value.updated,
+      }
+      submissionRecords.set(`${record.endpoint}|${record.catalog}|${record.fingerprint}`, record)
+    }
+  } catch { /* Submission remains usable when browser storage is unavailable. */ }
+}
+
+function draftChanged() {
+  const previous = currentRecord()
+  if (previous?.status === 'sent' && previous.receipt) {
+    setSubmissionStatus(`Last confirmation: ${previous.receipt}. Your new edits have not been submitted.`)
+  }
+  editVersion += 1
+  fingerprintVersion = -1
+  currentFingerprint = ''
+  currentArchive = null
+  fingerprintChecking = false
+  clearTimeout(fingerprintTimer)
+}
+
+function allMessagesComplete() {
+  return entries.length > 0 && errors.size === 0
+    && entries.every(entry => (translations[entry.key] || '').trim())
+}
+
+function updateSubmissionControls(validation = validateManifest(manifest), translated) {
+  if ($('discord-submission').hidden) return
+  const complete = translated === undefined ? allMessagesComplete() : translated === entries.length && errors.size === 0
+  const record = currentRecord()
+  const retryIn = Math.max(0, Math.ceil(((record?.retryAt || 0) - Date.now()) / 1000))
+  const blocked = record?.status === 'pending' || record?.status === 'uncertain' || record?.status === 'sent'
+  const unavailable = !relayReady || relayChecking || busy || submissionSending
+    || !validation.manifest || !complete || fingerprintChecking || !currentFingerprint
+    || retryIn > 0 || (turnstileRequired && !turnstileToken)
+  $('submit-discord').disabled = unavailable || blocked
+  const needsConfirmation = record?.status === 'pending' || record?.status === 'uncertain'
+  $('retry-checked-submission').hidden = !needsConfirmation
+  $('retry-checked-submission').disabled = unavailable
+  $('retry-checked-submission').textContent = retryIn
+    ? `Retry after team confirmation in ${retryIn}s` : 'Retry after team confirmation'
+  $('submit-discord').textContent = submissionSending ? 'Sending...'
+    : record?.status === 'sent' ? 'Submitted to Discord'
+      : retryIn ? `Retry in ${retryIn}s`
+        : record?.status === 'retry' ? 'Retry submission' : 'Submit to Discord'
+  if (!relayReady) {
+    $('submission-hint').textContent = 'Submission is unavailable right now. Your draft and ZIP download remain available.'
+  } else if (!validation.manifest || !complete) {
+    $('submission-hint').textContent = 'Complete every message and fix any errors before submitting. You can still download partial packs.'
+  } else if (record?.status === 'pending' || record?.status === 'uncertain') {
+    $('submission-hint').textContent = 'Ask the EWP team to check this receipt first. The retry action uses the same reference and may send the pack if the team confirmed it was not delivered. Nothing is resent automatically.'
+  } else if (record?.status === 'sent') {
+    $('submission-hint').textContent = 'This pack has been received. You can keep a ZIP copy or edit a new version.'
+  } else if (turnstileRequired && !turnstileToken) {
+    $('submission-hint').textContent = 'Complete the verification check, then submit the finished pack.'
+  } else {
+    $('submission-hint').textContent = 'Ready to share this completed pack with the EWP Discord team.'
+  }
+  if (retryIn && !retryTimer) {
+    retryTimer = setInterval(() => {
+      updateSubmissionControls()
+      const active = currentRecord()
+      if (!active || (active.retryAt || 0) <= Date.now()) {
+        clearInterval(retryTimer)
+        retryTimer = null
+      }
+    }, 1000)
+  }
+  if (relayReady && validation.manifest && complete && !busy && !submissionSending
+    && fingerprintVersion !== editVersion && !fingerprintChecking) {
+    fingerprintChecking = true
+    const version = editVersion
+    clearTimeout(fingerprintTimer)
+    fingerprintTimer = setTimeout(async () => {
+      try {
+        const archive = createPackArchive()
+        if (archive.zip.byteLength > relayMaxZipBytes) throw new Error('The pack exceeds the submission service upload limit.')
+        const fingerprint = await sha256(archive.zip)
+        if (editVersion !== version) return
+        currentArchive = archive
+        currentFingerprint = fingerprint
+        fingerprintVersion = version
+        const stored = currentRecord()
+        if (stored?.status === 'sent') setSubmissionStatus(`This pack was received. Confirmation: ${stored.receipt}`, 'success')
+        else if (stored?.status === 'pending' || stored?.status === 'uncertain') {
+          setSubmissionStatus(`Delivery is awaiting confirmation. Reference: ${stored.receipt || stored.submissionId}. Contact the EWP team before trying again.`, 'error')
+        }
+      } catch (error) {
+        if (editVersion === version) {
+          fingerprintVersion = version
+          setSubmissionStatus(error instanceof Error ? error.message : 'The pack could not be prepared.', 'error')
+        }
+      } finally {
+        if (editVersion === version) {
+          fingerprintChecking = false
+          updateSubmissionControls()
+        }
+      }
+    }, 150)
+  }
+}
+
+function normalizeRelayEndpoint(value) {
+  if (typeof value !== 'string' || value.length > 2048) throw new Error('The submission service is not configured correctly.')
+  const url = new URL(value)
+  const loopback = ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
+  if ((url.protocol !== 'https:' && !(loopback && url.protocol === 'http:'))
+    || url.username || url.password || url.search || url.hash
+    || !url.pathname.endsWith('/v1/submissions') || /(^|\.)discord(?:app)?\.com$/i.test(url.hostname)) {
+    throw new Error('The submission service is not configured correctly.')
+  }
+  return url.href
+}
+
+async function readRelayJson(response) {
+  if (!response.body) throw new Error('The service returned an empty reply.')
+  const reader = response.body.getReader()
+  const chunks = []
+  let length = 0
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      length += value.length
+      if (length > 65536) throw new Error('The service reply was too large.')
+      chunks.push(value)
+    }
+  } finally { await reader.cancel().catch(() => {}) }
+  const bytes = new Uint8Array(length)
+  let offset = 0
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length }
+  return parseJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+}
+
+async function relayRequest(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(url, {
+      ...options, signal: controller.signal, credentials: 'omit', redirect: 'error', cache: 'no-store',
+    })
+    if (url === './relay-config.json' && response.status === 404) return { response, data: null }
+    return { response, data: await readRelayJson(response) }
+  } finally { clearTimeout(timer) }
+}
+
+async function setupTurnstile(siteKey) {
+  $('submission-challenge').hidden = false
+  if (!window.turnstile) {
+    if (!turnstileLoadPromise) {
+      turnstileLoadPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+        script.async = true
+        const timer = setTimeout(() => { script.remove(); reject(new Error('Verification could not load. Retry the connection.')) }, 10000)
+        script.onload = () => { clearTimeout(timer); resolve() }
+        script.onerror = () => { clearTimeout(timer); script.remove(); reject(new Error('Verification could not load. Retry the connection.')) }
+        document.head.append(script)
+      }).catch(error => { turnstileLoadPromise = null; throw error })
+    }
+    await turnstileLoadPromise
+  }
+  if (!window.turnstile?.render) throw new Error('Verification could not load. Retry the connection.')
+  if (turnstileWidget !== null) window.turnstile.remove(turnstileWidget)
+  turnstileToken = ''
+  turnstileWidget = window.turnstile.render($('submission-challenge'), {
+    sitekey: siteKey,
+    action: 'lp-submit',
+    callback: token => { turnstileToken = token; updateSubmissionControls() },
+    'expired-callback': () => { turnstileToken = ''; updateSubmissionControls() },
+    'error-callback': () => {
+      turnstileToken = ''
+      setSubmissionStatus('Verification failed. Retry the connection or keep a downloaded copy of your pack.', 'error')
+      $('retry-relay').hidden = false
+      updateSubmissionControls()
+    },
+  })
+}
+
+async function loadRelaySettings() {
+  if (relayChecking || submissionSending) return
+  relayChecking = true
+  relayReady = false
+  $('retry-relay').hidden = true
+  try {
+    const { response, data: settings } = await relayRequest('./relay-config.json')
+    if (response.status === 404 || (response.ok && settings?.endpoint === '')) {
+      $('discord-submission').hidden = true
+      return
+    }
+    $('discord-submission').hidden = false
+    if (!response.ok) throw new Error('Community submission could not connect. Try again later.')
+    relayEndpoint = normalizeRelayEndpoint(settings?.endpoint)
+    if (!catalogRevision) throw new Error('A secure browser connection is required for community submission.')
+    setSubmissionStatus('Connecting to community submission...')
+    const { response: serviceResponse, data: config } = await relayRequest(new URL('config', relayEndpoint).href)
+    if (!serviceResponse.ok) throw new Error('Community submission is unavailable. Your draft is safe.')
+    if (config?.require_complete !== true || config.total_messages !== entries.length
+      || typeof config.catalog_revision !== 'string' || config.catalog_revision.toLowerCase() !== catalogRevision
+      || !Number.isSafeInteger(config.max_zip_bytes) || config.max_zip_bytes < 1 || config.max_zip_bytes > MAX_ZIP_BYTES
+      || (config.turnstile_site_key !== null && (typeof config.turnstile_site_key !== 'string'
+        || !/^[A-Za-z0-9_-]{3,200}$/.test(config.turnstile_site_key)))) {
+      throw new Error('The submission service and editor use different English messages or settings. Save your draft and retry after the service is updated.')
+    }
+    relayMaxZipBytes = config.max_zip_bytes
+    turnstileRequired = Boolean(config.turnstile_site_key)
+    if (turnstileRequired) await setupTurnstile(config.turnstile_site_key)
+    else {
+      turnstileToken = ''
+      if (turnstileWidget !== null && window.turnstile) window.turnstile.remove(turnstileWidget)
+      turnstileWidget = null
+      $('submission-challenge').hidden = true
+    }
+    relayReady = true
+    setSubmissionStatus('Complete the translation to share it with the EWP Discord team.')
+  } catch (error) {
+    $('discord-submission').hidden = false
+    setSubmissionStatus(error instanceof Error ? error.message : 'Community submission could not connect. Your draft is safe.', 'error')
+    $('retry-relay').hidden = false
+  } finally {
+    relayChecking = false
+    updateSubmissionControls()
+  }
+}
+
+function setEditorLocked(locked) {
+  if (!locked) return () => {}
+  const controls = [...$('creator').querySelectorAll('input, textarea, select, button')]
+    .map(element => ({ element, disabled: element.disabled }))
+  for (const { element } of controls) element.disabled = true
+  return () => {
+    for (const { element, disabled } of controls) if (element.isConnected) element.disabled = disabled
+  }
+}
+
+async function submitToDiscord({ afterConfirmation = false } = {}) {
+  if (!relayReady || busy || submissionSending || !allMessagesComplete()
+    || !validateManifest(manifest).manifest || (turnstileRequired && !turnstileToken)) return
+  if (fingerprintChecking || fingerprintVersion !== editVersion || !currentFingerprint || !currentArchive) return
+  let record = currentRecord()
+  const awaitingConfirmation = record?.status === 'pending' || record?.status === 'uncertain'
+  if (record && (record.status === 'sent' || (awaitingConfirmation && !afterConfirmation) || record.retryAt > Date.now())) return
+  if (afterConfirmation && !awaitingConfirmation) return
+  const archive = currentArchive
+  const fingerprint = currentFingerprint
+  if (!record) {
+    record = {
+      endpoint: relayEndpoint, catalog: catalogRevision, fingerprint,
+      submissionId: crypto.randomUUID(), status: 'retry', receipt: '', retryAt: 0, updated: Date.now(),
+    }
+    submissionRecords.set(recordKey(fingerprint), record)
+  }
+  submissionSending = true
+  clearTimeout(searchTimer)
+  const resumeStatus = awaitingConfirmation ? record.status : ''
+  record.resumeStatus = resumeStatus
+  record.status = 'sending'
+  record.updated = Date.now()
+  saveSubmissionRecords()
+  const unlock = setEditorLocked(true)
+  $('submit-discord').textContent = 'Sending...'
+  setSubmissionStatus('Sending your completed pack to the EWP Discord team...')
+  try {
+    const form = new FormData()
+    form.append('file', new Blob([archive.zip], { type: 'application/zip' }), archive.filename)
+    form.append('submission_id', record.submissionId)
+    form.append('catalog_revision', catalogRevision)
+    if (turnstileRequired) form.append('turnstile_token', turnstileToken)
+    const { response, data } = await relayRequest(relayEndpoint, { method: 'POST', body: form }, 50000)
+    if (data?.receipt && UUID_V4.test(data.receipt)) record.receipt = data.receipt
+    if (response.ok) {
+      if (data?.status !== 'sent' || !UUID_V4.test(data.receipt) || data.locale !== archive.manifest.locale
+        || data.message_count !== entries.length || typeof data.duplicate !== 'boolean') {
+        throw new Error('The service reply could not be confirmed. Retry uses the same submission reference.')
+      }
+      record.status = 'sent'
+      record.receipt = data.receipt
+      record.retryAt = 0
+      setSubmissionStatus(`${data.duplicate ? 'This pack was already received.' : 'Your pack was received.'} Confirmation: ${data.receipt}`, 'success')
+    } else {
+      const code = typeof data?.code === 'string' ? data.code : ''
+      const detail = typeof data?.detail === 'string' ? data.detail.slice(0, 500) : 'The pack could not be submitted. Your draft is safe.'
+      if (code === 'delivery_uncertain' || code === 'delivery_pending') {
+        record.status = code === 'delivery_pending' ? 'pending' : 'uncertain'
+        setSubmissionStatus(`${detail} Reference: ${record.receipt || record.submissionId}. Contact the EWP team before trying again.`, 'error')
+      } else {
+        record.status = resumeStatus || 'retry'
+        if (response.status === 429) {
+          const rawDelay = Number(data?.retry_after ?? response.headers.get('Retry-After'))
+          const delay = Number.isFinite(rawDelay) && rawDelay > 0 ? Math.min(86400, Math.ceil(rawDelay)) : 60
+          record.retryAt = Date.now() + delay * 1000
+        }
+        if (code === 'stale_catalog') {
+          relayReady = false
+          $('retry-relay').hidden = false
+        }
+        setSubmissionStatus(detail, 'error')
+      }
+    }
+  } catch (error) {
+    record.status = resumeStatus || 'retry'
+    setSubmissionStatus(error instanceof Error && error.message.startsWith('The service reply')
+      ? error.message : 'Delivery could not be confirmed. Your draft is safe. Retry uses the same submission reference.', 'error')
+  } finally {
+    record.updated = Date.now()
+    delete record.resumeStatus
+    saveSubmissionRecords()
+    saveDraft()
+    submissionSending = false
+    unlock()
+    renderRows()
+    if (turnstileRequired) {
+      turnstileToken = ''
+      if (turnstileWidget !== null && window.turnstile) {
+        try { window.turnstile.reset(turnstileWidget) } catch { $('retry-relay').hidden = false }
+      }
+    }
+    updateOverview()
+  }
+}
+
 async function loadCatalog() {
   $('retry-load').hidden = true
   $('load-message').textContent = 'Loading the English messages...'
@@ -475,7 +876,9 @@ async function loadCatalog() {
   try {
     const response = await fetch('./catalog.json', { cache: 'no-cache', signal: controller.signal })
     if (!response.ok) throw new Error('Catalog unavailable')
-    const catalog = await response.json()
+    const bytes = await response.arrayBuffer()
+    const catalog = parseJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+    catalogRevision = globalThis.crypto?.subtle ? await sha256(bytes) : ''
     if (catalog?.format !== 1 || !catalog.messages || typeof catalog.messages !== 'object') throw new Error('Invalid catalog')
     english = catalog.messages
     entries = flattenCatalog(english)
@@ -491,6 +894,7 @@ async function loadCatalog() {
     $('namespace').append(sectionFragment)
     $('catalog-count').textContent = `${entries.length.toLocaleString()} English messages`
     restoreDraft()
+    restoreSubmissionRecords()
     applyFields()
     checkAllMessages()
     renderRows()
@@ -498,6 +902,7 @@ async function loadCatalog() {
     loaded = true
     $('load-state').hidden = true
     $('creator').hidden = false
+    void loadRelaySettings()
   } catch {
     $('load-message').textContent = 'The English messages could not be loaded. Your saved draft has not changed.'
     $('retry-load').hidden = false
@@ -508,6 +913,8 @@ async function loadCatalog() {
 
 for (const name of FIELD_NAMES) {
   fields[name].addEventListener('input', () => {
+    if (submissionSending) { fields[name].value = manifest[name]; return }
+    draftChanged()
     manifest[name] = fields[name].value
     touchedFields.add(name)
     updateOverview()
@@ -515,8 +922,10 @@ for (const name of FIELD_NAMES) {
   })
 }
 fields.locale.addEventListener('blur', () => {
+  if (submissionSending) return
   const locale = canonicalLocale(fields.locale.value.trim())
   if (!locale) return
+  if (locale !== canonicalLocale(manifest.locale)) draftChanged()
   manifest.locale = locale
   fields.locale.value = locale
   updateOverview()
@@ -564,5 +973,8 @@ $('download-recovery').addEventListener('click', () => {
   if (recoveryRaw) download(recoveryRaw, 'watchparty-previous-draft.json', 'application/json')
 })
 $('retry-load').addEventListener('click', () => { void loadCatalog() })
+$('retry-relay').addEventListener('click', () => { void loadRelaySettings() })
+$('submit-discord').addEventListener('click', () => { void submitToDiscord() })
+$('retry-checked-submission').addEventListener('click', () => { void submitToDiscord({ afterConfirmation: true }) })
 window.addEventListener('beforeunload', () => { if (loaded) saveDraft() })
 void loadCatalog()

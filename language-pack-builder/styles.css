@@ -827,3 +827,30 @@ progress::-moz-progress-bar {
     transition:none!important
   }
 }
+
+.submission-panel h2 {
+  font-size:1.1rem;
+  margin:0 0 12px;
+}
+.submission-panel > p {
+  font-size:.78rem;
+  line-height:1.6;
+  color:var(--muted);
+}
+.submission-panel > .button {
+  width:100%;
+  margin-top:12px;
+}
+.submission-status {
+  overflow-wrap:anywhere;
+}
+.submission-status.error {
+  color:var(--danger);
+}
+.submission-status.success {
+  color:var(--green);
+}
+#submission-challenge {
+  margin:14px 0 8px;
+  max-width:100%;
+}

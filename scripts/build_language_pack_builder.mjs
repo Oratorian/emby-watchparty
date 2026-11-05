@@ -35,6 +35,7 @@ const files = new Map([
   ['styles.css', await textFile(path.join(source, 'styles.css'))],
   ['app.js', Buffer.from(bundle.outputFiles[0].contents)],
   ['catalog.json', await textFile(path.join(root, 'backend/language-catalog.json'))],
+  ['relay-config.json', await textFile(path.join(source, 'relay-config.json'))],
   ['brand-mark.webp', await readFile(path.join(root, 'frontend/src/assets/brand-mark.webp'))],
   ['THIRD-PARTY-NOTICES.txt', compilerLicense],
   ['.nojekyll', Buffer.alloc(0)],

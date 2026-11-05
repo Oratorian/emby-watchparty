@@ -79,6 +79,17 @@
             <p id="save-status" class="save-status" role="status">Drafts stay in this browser. No account needed.</p>
           </section>
 
+          <section id="discord-submission" class="panel submission-panel" aria-labelledby="submission-heading" hidden>
+            <h2 id="submission-heading">Share your translation</h2>
+            <p>Send a completed pack to the EWP Discord team for review. Submitting shares this pack and its translator details with the team.</p>
+            <div id="submission-challenge" hidden></div>
+            <button id="submit-discord" class="button primary" type="button" disabled>Submit to Discord</button>
+            <button id="retry-checked-submission" class="button secondary" type="button" hidden>Retry after team confirmation</button>
+            <p id="submission-hint" class="field-hint">Complete every message and fix any errors before submitting. You can still download partial packs.</p>
+            <p id="submission-status" class="submission-status" role="status" aria-live="polite"></p>
+            <button id="retry-relay" class="text-button" type="button" hidden>Retry connection</button>
+          </section>
+
           <details class="panel translation-help">
             <summary>How to translate</summary>
             <ol>
