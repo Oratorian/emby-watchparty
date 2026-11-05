@@ -1,7 +1,7 @@
 {
   "language": "Language",
   "browser_language": "Browser language",
-  "page_title": "Emby Watch Party - Tonight's Premiere",
+  "page_title": "Emby Watch Party - Director's Cut",
   "request_failed": "Request failed ({status})",
   "rate_limited": "Too many requests. Please try again in {count} second. | Too many requests. Please try again in {count} seconds."
 }

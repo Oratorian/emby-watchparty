@@ -26,7 +26,7 @@ describe('language preferences', () => {
     expect(wrapper.text()).toContain('Sprache')
     expect(localStorage.getItem('watchparty-language')).toBe('de')
     expect(document.documentElement.lang).toBe('de')
-    expect(document.title).toContain('Die heutige Premiere')
+    expect(document.title).toBe("Emby Watch Party - Director's Cut")
     wrapper.unmount()
   })
 

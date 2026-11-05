@@ -1,7 +1,7 @@
 {
   "language": "Sprache",
   "browser_language": "Browsersprache",
-  "page_title": "Emby Watch Party - Die heutige Premiere",
+  "page_title": "Emby Watch Party - Director's Cut",
   "request_failed": "Anfrage fehlgeschlagen ({status})",
   "rate_limited": "Zu viele Anfragen. Bitte in {count} Sekunde erneut versuchen. | Zu viele Anfragen. Bitte in {count} Sekunden erneut versuchen."
 }
