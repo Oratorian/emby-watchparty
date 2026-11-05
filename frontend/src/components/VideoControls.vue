@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { qualityLabel } from '@/i18n/filters'
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { api } from '@/api/client'
 
@@ -128,10 +130,10 @@ async function loadQualityOptions() {
 }
 
 function formatAudioLabel(track: AudioStream): string {
-  const lang = track.displayLanguage || track.language || 'Unknown'
+  const lang = track.displayLanguage || track.language || t('library.unknown')
   const codec = (track.codec || '').toUpperCase()
   const ch = track.channels
-  let channelLabel = `${ch}ch`
+  let channelLabel = t('library.audio_channels', { count: ch })
   if (ch === 2) channelLabel = '2.0'
   else if (ch === 6) channelLabel = '5.1'
   else if (ch === 8) channelLabel = '7.1'
@@ -143,11 +145,11 @@ function formatSubtitleLabel(track: SubtitleStream): string {
   // Keep this in sync with the <track> label construction in
   // PartyView.vue's auto-load watcher so the dropdown and the browser's
   // native CC button menu show the same text for the same subtitle.
-  let label = track.displayLanguage || track.language || 'Unknown'
+  let label = track.displayLanguage || track.language || t('library.unknown')
   if (track.title) label += ` (${track.title})`
-  if (track.isForced) label += ' [Forced]'
-  if (track.isExternal) label += ' [External]'
-  if (track.isPGS) label += ' (burned in)'
+  if (track.isForced) label += t('library.forced_suffix')
+  if (track.isExternal) label += t('library.external_suffix')
+  if (track.isPGS) label += t('library.burned_in_suffix')
   if (track.isDefault) label += ' *'
   return label
 }
@@ -505,13 +507,13 @@ onMounted(() => {
 <template>
   <div class="video-controls">
     <div class="control-group" v-if="versions.length > 1">
-      <label for="version-select">Version</label>
+      <label for="version-select">{{ t('library.version') }}</label>
       <select id="version-select" v-model="selectedVersion" @change="onVersionChange">
         <option v-for="version in versions" :key="version.id" :value="version.id">{{ version.name }}</option>
       </select>
     </div>
     <div class="control-group" v-if="audioTracks.length">
-      <label for="audio-select">Audio</label>
+      <label for="audio-select">{{ t('library.audio') }}</label>
       <select id="audio-select" v-model="selectedAudio" @change="onAudioChange">
         <option v-for="track in audioTracks" :key="track.index" :value="track.index">
           {{ formatAudioLabel(track) }}
@@ -520,9 +522,9 @@ onMounted(() => {
     </div>
 
     <div class="control-group" v-if="subtitleTracks.length">
-      <label for="subtitle-select">Subtitles</label>
+      <label for="subtitle-select">{{ t('library.subtitles') }}</label>
       <select id="subtitle-select" v-model="selectedSubtitle" @change="onSubtitleChange">
-        <option :value="-1">None</option>
+        <option :value="-1">{{ t('library.none') }}</option>
         <option v-for="track in subtitleTracks" :key="track.index" :value="track.index">
           {{ formatSubtitleLabel(track) }}
         </option>
@@ -530,10 +532,10 @@ onMounted(() => {
     </div>
 
     <div class="control-group" v-if="qualityOptions.length">
-      <label for="quality-select">Quality</label>
+      <label for="quality-select">{{ t('library.quality') }}</label>
       <select id="quality-select" v-model="selectedQuality" @change="onQualityChange">
         <option v-for="option in qualityOptions" :key="option.id" :value="option.id">
-          {{ option.label }}
+          {{ qualityLabel(option) }}
         </option>
       </select>
     </div>
@@ -542,47 +544,47 @@ onMounted(() => {
       v-if="bingeVisible && bingeAvailable"
       class="binge-btn"
       :class="{ active: bingeActive }"
-      :title="bingeActive ? 'Binge-watch: ON (auto-advance enabled). Click to turn off.' : 'Binge-watch: OFF. Click to auto-play the next episode when this one ends.'"
+      :title="bingeActive ? t('library.binge_watch_on_auto_advance_enabled_click_to_turn_off') : t('library.binge_watch_off_click_to_auto_play_the_next_episode_when_this_one_ends')"
       @click="emit('toggle-binge')"
     >
       <span class="binge-dot" />
-      Binge {{ bingeActive ? 'ON' : 'OFF' }}
+      {{ t(bingeActive ? 'library.binge_on' : 'library.binge_off') }}
     </button>
 
     <div class="jump-group" ref="seekRoot">
-      <button class="jump-btn" @click="onJump(-30)" title="Back 30 seconds">−30s</button>
-      <button class="jump-btn" @click="onJump(-10)" title="Back 10 seconds">−10s</button>
+      <button class="jump-btn" @click="onJump(-30)" :title="t('library.back_30_seconds')">{{ t('library.30s') }}</button>
+      <button class="jump-btn" @click="onJump(-10)" :title="t('library.back_10_seconds')">{{ t('library.10s') }}</button>
       <button
         class="jump-label-btn"
         :class="{ open: seekPopoverOpen }"
-        :title="seekPopoverOpen ? 'Close timestamp jump' : 'Jump to a specific timestamp'"
+        :title="seekPopoverOpen ? t('library.close_timestamp_jump') : t('library.jump_to_a_specific_timestamp')"
         @click="seekPopoverOpen ? closeSeekPopover() : openSeekPopover()"
       >
-        Jump/Seek
+        {{ t('library.jump_seek') }}
       </button>
-      <button class="jump-btn" @click="onJump(10)" title="Forward 10 seconds">+10s</button>
-      <button class="jump-btn" @click="onJump(30)" title="Forward 30 seconds">+30s</button>
+      <button class="jump-btn" @click="onJump(10)" :title="t('library.forward_10_seconds')">{{ t('library.10s_5497f4') }}</button>
+      <button class="jump-btn" @click="onJump(30)" :title="t('library.forward_30_seconds')">{{ t('library.30s_b80aec') }}</button>
 
-      <div v-if="seekPopoverOpen" class="seek-popover" role="dialog" aria-label="Jump to timestamp">
+      <div v-if="seekPopoverOpen" class="seek-popover" role="dialog" :aria-label="t('library.jump_to_timestamp')">
         <input
           ref="seekInputEl"
           v-model="seekInput"
           type="text"
           inputmode="numeric"
-          placeholder="1:04:07 or 10407"
+          :placeholder="t('library.1_04_07_or_10407')"
           class="seek-input"
           @keydown="onSeekKey"
         />
         <div class="seek-preview" v-if="seekPreview">→ {{ seekPreview }}</div>
         <div class="seek-actions">
-          <button class="seek-go" :disabled="!seekValid" @click="commitSeek">Go</button>
-          <button class="seek-cancel" @click="closeSeekPopover">Cancel</button>
+          <button class="seek-go" :disabled="!seekValid" @click="commitSeek">{{ t('library.go') }}</button>
+          <button class="seek-cancel" @click="closeSeekPopover">{{ t('library.cancel') }}</button>
         </div>
       </div>
     </div>
 
     <button v-show="showIntroButton" class="skip-intro-btn" @click="onSkipIntro">
-      Skip Intro
+      {{ t('library.skip_intro') }}
     </button>
   </div>
 </template>

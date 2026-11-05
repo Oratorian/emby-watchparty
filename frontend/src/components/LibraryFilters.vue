@@ -1,12 +1,12 @@
 <template>
-  <section ref="filtersRoot" class="library-filters" aria-label="Library filters">
+  <section ref="filtersRoot" class="library-filters" :aria-label="t('library.library_filters')">
     <button
       class="filter-toggle"
       type="button"
       :aria-expanded="open"
       @click="togglePanel"
     >
-      Filters <span v-if="activeCount">{{ activeCount }} active</span>
+      {{ t('library.filters') }} <span v-if="activeCount">{{ t('library.count_active', { count: activeCount }) }}</span>
     </button>
 
     <div v-if="open" class="filter-panel">
@@ -18,9 +18,9 @@
           :aria-expanded="advancedOpen"
           @click="toggleAdvanced"
         >
-          <span>More filters</span>
+          <span>{{ t('library.more_filters') }}</span>
           <span class="advanced-summary">
-            {{ advancedActiveCount ? `${advancedActiveCount} active` : `${advancedControls.length} available` }}
+            {{ advancedActiveCount ? t('library.value0_active', { value0: advancedActiveCount }) : t('library.value0_available', { value0: advancedControls.length }) }}
             <span class="disclosure-icon" aria-hidden="true">⌄</span>
           </span>
         </button>
@@ -36,15 +36,15 @@
               <button
                 type="button"
                 class="filter-choice"
-                :aria-label="`${activeGroup === control.id ? 'Close' : 'Open'} ${control.label} filter`"
+                :aria-label="t(activeGroup === control.id ? 'library.filter_close' : 'library.filter_open', { label: filterLabel(control) })"
                 :aria-expanded="activeGroup === control.id"
                 @click="toggleGroup(control.id)"
               >
-                <span>{{ control.label }}</span>
-                <span>{{ yearSummary || 'Any' }}</span>
+                <span>{{ filterLabel(control) }}</span>
+                <span>{{ yearSummary || t('library.any') }}</span>
               </button>
               <div v-if="activeGroup === control.id" class="option-popover year-popover">
-                <div class="year-modes" aria-label="Year filter mode">
+                <div class="year-modes" :aria-label="t('library.year_filter_mode')">
                   <button
                     v-for="mode in YEAR_MODES"
                     :key="mode.id"
@@ -57,54 +57,54 @@
                   </button>
                 </div>
                 <label v-if="yearMode === 'exact'" class="year-field">
-                  <span>Year</span>
-                  <input v-model="exactYear" aria-label="Exact year" type="number" :min="MIN_YEAR" :max="MAX_YEAR">
+                  <span>{{ t('library.year') }}</span>
+                  <input v-model="exactYear" :aria-label="t('library.exact_year')" type="number" :min="MIN_YEAR" :max="MAX_YEAR">
                 </label>
                 <div v-else-if="yearMode === 'range'" class="year-range">
                   <label class="year-field">
-                    <span>Start</span>
-                    <input v-model="rangeStart" aria-label="Start year" type="number" :min="MIN_YEAR" :max="MAX_YEAR">
+                    <span>{{ t('library.start') }}</span>
+                    <input v-model="rangeStart" :aria-label="t('library.start_year')" type="number" :min="MIN_YEAR" :max="MAX_YEAR">
                   </label>
                   <label class="year-field">
-                    <span>End</span>
-                    <input v-model="rangeEnd" aria-label="End year" type="number" :min="MIN_YEAR" :max="MAX_YEAR">
+                    <span>{{ t('library.end') }}</span>
+                    <input v-model="rangeEnd" :aria-label="t('library.end_year')" type="number" :min="MIN_YEAR" :max="MAX_YEAR">
                   </label>
                 </div>
                 <label v-else class="year-field">
-                  <span>Decade</span>
-                  <select v-model="decadeStart" aria-label="Year decade">
+                  <span>{{ t('library.decade') }}</span>
+                  <select v-model="decadeStart" :aria-label="t('library.year_decade')">
                     <option v-for="decade in decades" :key="decade" :value="String(decade)">
                       {{ decade }}–{{ Math.min(decade + 9, MAX_YEAR) }}
                     </option>
                   </select>
                 </label>
                 <p v-if="yearMode === 'range' && !yearSelectionValid" class="option-hint">
-                  Start year must not be later than end year.
+                  {{ t('library.start_year_must_not_be_later_than_end_year') }}
                 </p>
                 <div class="year-actions">
-                  <button type="button" aria-label="Clear year filter" @click="clearYear">Clear</button>
+                  <button type="button" :aria-label="t('library.clear_year_filter')" @click="clearYear">{{ t('library.clear') }}</button>
                   <button
                     type="button"
-                    aria-label="Apply year filter"
+                    :aria-label="t('library.apply_year_filter')"
                     :disabled="!yearSelectionValid"
                     @click="applyYear"
                   >
-                    Apply
+                    {{ t('library.apply') }}
                   </button>
                 </div>
               </div>
             </div>
 
             <label v-else-if="control.kind === 'select'" class="filter-select">
-              <span>{{ control.label }}</span>
+              <span>{{ filterLabel(control) }}</span>
               <select
-                :aria-label="control.label"
+                :aria-label="filterLabel(control)"
                 :value="selectedScalar(control.id)"
                 @change="setScalar(control.id, ($event.target as HTMLSelectElement).value)"
               >
-                <option v-if="needsAnyOption(control)" value="">Any</option>
+                <option v-if="needsAnyOption(control)" value="">{{ t('library.any') }}</option>
                 <option v-for="option in control.values" :key="option.value" :value="option.value">
-                  {{ option.label }}
+                  {{ filterOptionLabel(control, option) }}
                 </option>
               </select>
             </label>
@@ -116,28 +116,28 @@
               :aria-pressed="selectedScalar(control.id) === 'true'"
               @click="setToggle(control.id, selectedScalar(control.id) !== 'true')"
             >
-              <span>{{ control.label }}</span>
-              <span>{{ selectedScalar(control.id) === 'true' ? 'Yes' : 'Any' }}</span>
+              <span>{{ filterLabel(control) }}</span>
+              <span>{{ selectedScalar(control.id) === 'true' ? t('library.yes') : t('library.any') }}</span>
             </button>
 
             <div v-else class="filter-multi">
               <button
                 type="button"
                 class="filter-choice"
-                :aria-label="`${activeGroup === control.id ? 'Close' : 'Open'} ${control.label} filter`"
+                :aria-label="t(activeGroup === control.id ? 'library.filter_close' : 'library.filter_open', { label: filterLabel(control) })"
                 :aria-expanded="activeGroup === control.id"
                 @click="toggleGroup(control.id)"
               >
-                <span>{{ control.label }}</span>
-                <span>{{ selectedList(control.id).length ? `${selectedList(control.id).length} selected` : 'Any' }}</span>
+                <span>{{ filterLabel(control) }}</span>
+                <span>{{ selectedList(control.id).length ? t('library.value0_selected', { value0: selectedList(control.id).length }) : t('library.any') }}</span>
               </button>
               <div v-if="activeGroup === control.id" class="option-popover">
                 <input
                   v-if="control.values.length > OPTION_SEARCH_THRESHOLD"
                   v-model="optionQueries[control.id]"
                   type="search"
-                  :aria-label="`Search ${control.label} options`"
-                  :placeholder="`Search ${control.label.toLowerCase()}…`"
+                  :aria-label="t('library.search_value0_options', { value0: filterLabel(control) })"
+                  :placeholder="t('library.search_value0', { value0: filterLabel(control) })"
                   autocomplete="off"
                 />
                 <div class="option-list">
@@ -148,9 +148,9 @@
                       :checked="selectedList(control.id).includes(option.value)"
                       @change="setListValue(control.id, option.value, ($event.target as HTMLInputElement).checked)"
                     />
-                    <span>{{ option.label }}</span>
+                    <span>{{ filterOptionLabel(control, option) }}</span>
                   </label>
-                  <p v-if="!displayedOptions(control).length" class="option-hint">No matching options.</p>
+                  <p v-if="!displayedOptions(control).length" class="option-hint">{{ t('library.no_matching_options') }}</p>
                 </div>
               </div>
             </div>
@@ -161,12 +161,14 @@
 
     <div v-if="chips.length" class="active-filters" aria-live="polite">
       <span v-for="chip in chips" :key="chip.key" class="filter-chip">{{ chip.label }}</span>
-      <button class="reset-all" type="button" @click="reset">Reset All</button>
+      <button class="reset-all" type="button" @click="reset">{{ t('library.reset_all') }}</button>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { filterLabel, filterOptionLabel } from '@/i18n/filters'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { FilterControl, LibraryFilterState } from '@/api/client'
 
@@ -186,11 +188,11 @@ const OPTION_SEARCH_THRESHOLD = 8
 const MIN_YEAR = 1888
 const MAX_YEAR = new Date().getFullYear()
 type YearMode = 'exact' | 'range' | 'decade'
-const YEAR_MODES: { id: YearMode, label: string, ariaLabel: string }[] = [
-  { id: 'exact', label: 'Exact', ariaLabel: 'Exact year mode' },
-  { id: 'range', label: 'Range', ariaLabel: 'Year range mode' },
-  { id: 'decade', label: 'Decade', ariaLabel: 'Decade mode' },
-]
+const YEAR_MODES = computed<{ id: YearMode, label: string, ariaLabel: string }[]>(() => [
+  { id: 'exact', label: t('library.year_exact_mode'), ariaLabel: t('library.year_exact_mode_label') },
+  { id: 'range', label: t('library.year_range_mode'), ariaLabel: t('library.year_range_mode_label') },
+  { id: 'decade', label: t('library.year_decade_mode'), ariaLabel: t('library.year_decade_mode_label') },
+])
 const yearMode = ref<YearMode>('exact')
 const exactYear = ref(String(MAX_YEAR))
 const rangeStart = ref(String(MAX_YEAR - 9))
@@ -336,7 +338,7 @@ const yearSummary = computed(() => {
 function displayedOptions(control: FilterControl) {
   const query = (optionQueries.value[control.id] ?? '').trim().toLocaleLowerCase()
   if (query) {
-    return control.values.filter((option) => option.label.toLocaleLowerCase().includes(query))
+    return control.values.filter((option) => filterOptionLabel(control, option).toLocaleLowerCase().includes(query))
   }
   // Showing every option is the point, but the list scrolls inside a fixed
   // 16rem box and some catalogs are long: Jellyfin generates a Year control
@@ -387,18 +389,19 @@ function setListValue(id: string, value: string, checked: boolean) {
 }
 
 function optionLabel(control: FilterControl, value: string): string {
-  return control.values.find((option) => option.value === value)?.label ?? value
+  const option = control.values.find((candidate) => candidate.value === value)
+  return option ? filterOptionLabel(control, option) : value
 }
 
 const chips = computed(() => props.controls.flatMap((control) => {
   const value = selected.value[control.id]
   if (control.id === 'year' && yearSummary.value) {
-    return [{ key: `year:${String(value)}`, label: `Year: ${yearSummary.value}` }]
+    return [{ key: `year:${String(value)}`, label: t('library.year_chip', { year: yearSummary.value }) }]
   }
   const values = Array.isArray(value) ? value : value ? [value] : []
   return values.map((entry) => ({
     key: `${control.id}:${entry}`,
-    label: `${control.label}: ${control.kind === 'toggle' ? 'Yes' : optionLabel(control, entry)}`,
+    label: t('library.filter_chip', { label: filterLabel(control), value: control.kind === 'toggle' ? t('library.yes') : optionLabel(control, entry) }),
   }))
 }))
 const activeCount = computed(() => chips.value.length)
@@ -448,7 +451,7 @@ function reset() {
 .filter-select {
   min-height: 2.65rem;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: .5rem;
   padding: .25rem .35rem .25rem .75rem;
@@ -459,8 +462,9 @@ function reset() {
 }
 .filter-select:focus-within { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 .filter-select select {
-  min-width: 5.5rem;
-  width: auto;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   min-height: 2rem;
   padding-top: .25rem;
   padding-bottom: .25rem;
@@ -469,8 +473,10 @@ function reset() {
   color: var(--text-secondary);
   font-weight: 500;
 }
-.filter-choice { width: 100%; min-height: 2.65rem; display: flex; justify-content: space-between; gap: .6rem; text-align: left; }
-.filter-choice span:last-child { color: var(--text-secondary); font-weight: 500; white-space: nowrap; }
+.filter-choice { width: 100%; min-height: 2.65rem; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .35rem .6rem; text-align: left; }
+.filter-choice span { min-width: 0; overflow-wrap: anywhere; }
+.filter-select > span { overflow-wrap: anywhere; }
+.filter-choice span:last-child { color: var(--text-secondary); font-weight: 500; }
 .filter-choice[aria-pressed="true"] { border-color: var(--accent-primary); background: var(--bg-surface-hover); }
 .advanced-toggle {
   width: 100%;
@@ -528,9 +534,9 @@ function reset() {
 .year-actions button { padding: .35rem .75rem; }
 .year-actions button:disabled { cursor: not-allowed; opacity: .5; }
 .active-filters { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
-.filter-chip { padding: .25rem .55rem; border-radius: 999px; background: var(--bg-surface); }
+.filter-chip { max-width: 100%; overflow-wrap: anywhere; padding: .25rem .55rem; border-radius: 999px; background: var(--bg-surface); }
 @media (max-width: 640px) {
-  .filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filter-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); }
   .option-popover { position: fixed; inset: auto 1rem 1rem; width: auto; max-height: 65vh; }
   .option-list { max-height: 45vh; }
 }

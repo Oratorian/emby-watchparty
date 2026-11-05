@@ -1,7 +1,7 @@
 <template>
   <article class="title-details">
     <div class="detail-topbar">
-      <button class="back-to-library" type="button" @click="$emit('back')">← Back</button>
+      <button class="back-to-library" type="button" @click="$emit('back')">{{ t('library.back') }}</button>
       <!-- Both control groups on the top bar beside Back, and one popover
            showing one section at a time.
            Previously two stacked sections further down the page, each with its
@@ -42,7 +42,7 @@
               <button
                 type="button"
                 class="section-close"
-                aria-label="Close"
+                :aria-label="t('library.close')"
                 @click="closeSection"
               >
                 ×
@@ -50,7 +50,7 @@
             </header>
             <p v-if="sectionErrors[openSection]" role="alert">{{ sectionErrors[openSection] }}</p>
             <p v-else-if="sectionLoading === openSection" role="status">
-              Loading {{ openSectionLabel.toLowerCase() }}…
+              {{ t(`library.loading_${openSection}`) }}
             </p>
             <ul v-else-if="sectionItems[openSection]?.length" class="section-grid">
               <li v-for="item in sectionItems[openSection]" :key="item.Id">
@@ -71,7 +71,7 @@
                 </button>
               </li>
             </ul>
-            <p v-else class="section-empty">None available.</p>
+            <p v-else class="section-empty">{{ t('library.none_available') }}</p>
           </div>
         </div>
 
@@ -82,21 +82,21 @@
              is exactly when it needs to be visible. -->
         <div v-if="details?.Type === 'Series'" class="toolbar-group series-group">
           <p v-if="seriesError" class="toolbar-error" role="alert">{{ seriesError }}</p>
-          <p v-if="seasonsLoading && !seasonsLoaded" role="status">Loading seasons…</p>
+          <p v-if="seasonsLoading && !seasonsLoaded" role="status">{{ t('library.loading_seasons') }}</p>
           <button
             v-else-if="!seasonsLoaded"
             type="button"
             data-section="seasons"
             @click="loadSeasons()"
           >
-            {{ seriesError ? 'Retry' : 'Load seasons' }}
+            {{ seriesError ? t('library.retry') : t('library.load_seasons') }}
           </button>
           <div v-else class="series-pickers">
             <label>
-              Season
+              {{ t('library.season') }}
               <select
                 v-model="selectedSeason"
-                aria-label="Season"
+                :aria-label="t('library.season')"
                 @change="selectSeason(selectedSeason)"
               >
                 <option v-for="season in seasons" :key="season.Id" :value="season.Id">
@@ -106,15 +106,15 @@
             </label>
 
             <label>
-              Episode
+              {{ t('library.episode') }}
               <select
                 v-model="chosenEpisode"
-                aria-label="Episode"
+                :aria-label="t('library.episode')"
                 :disabled="episodesLoading || !episodes.length"
                 @change="openChosenEpisode"
               >
                 <option value="">
-                  {{ episodesLoading ? 'Loading…' : episodes.length ? 'Choose an episode…' : 'No episodes' }}
+                  {{ episodesLoading ? t('library.loading_33ce41') : episodes.length ? t('library.choose_an_episode') : t('library.no_episodes') }}
                 </option>
                 <option
                   v-for="episode in episodes"
@@ -128,13 +128,13 @@
             </label>
 
             <p v-if="episodes.length" class="series-count">
-              {{ episodes.length }} Episode{{ episodes.length === 1 ? '' : 's' }}
+              {{ t('library.count_episode_count_episodes', { count: episodes.length }) }}
             </p>
           </div>
         </div>
       </section>
     </div>
-    <div v-if="loading" role="status">Loading title…</div>
+    <div v-if="loading" role="status">{{ t('library.loading_title') }}</div>
     <div v-else-if="error" role="alert">{{ error }}</div>
     <template v-else-if="details">
       <header
@@ -156,7 +156,7 @@
             <span v-if="runtime">{{ runtime }}</span>
             <span v-if="details.OfficialRating">{{ details.OfficialRating }}</span>
             <span v-if="details.CommunityRating">★ {{ details.CommunityRating }}</span>
-            <span v-if="details.CriticRating">Critics {{ details.CriticRating }}%</span>
+            <span v-if="details.CriticRating">{{ t('library.critics_rating', { rating: details.CriticRating }) }}</span>
           </p>
           <p v-if="details.Genres?.length">{{ details.Genres.join(' · ') }}</p>
           <div class="primary-actions">
@@ -169,20 +169,20 @@
               type="button"
               @click="openPlaybackOptions"
             >
-              Set up playback
+              {{ t('library.set_up_playback') }}
             </button>
             <button v-if="browsable" type="button" @click="$emit('browse', details)">
-              Browse {{ details.Type === 'Series' ? 'seasons' : 'titles' }}
+              {{ t(details.Type === 'Series' ? 'library.browse_seasons' : 'library.browse_titles') }}
             </button>
           </div>
-          <div v-if="isHost" aria-label="Personal actions" class="personal-actions">
+          <div v-if="isHost" :aria-label="t('library.personal_actions')" class="personal-actions">
             <button
               class="favorite-action"
               type="button"
               :disabled="busyActions.has('favorite')"
               @click="toggleFavorite"
             >
-              {{ details.UserData?.IsFavorite ? 'Remove favorite' : 'Favorite' }}
+              {{ details.UserData?.IsFavorite ? t('library.remove_favorite') : t('library.favorite') }}
             </button>
             <button
               class="played-action"
@@ -190,94 +190,96 @@
               :disabled="busyActions.has('played')"
               @click="togglePlayed"
             >
-              Mark {{ details.UserData?.Played ? 'unplayed' : 'played' }}
+              {{ details.UserData?.Played ? t('library.mark_unplayed') : t('library.mark_played') }}
             </button>
             <button type="button" :disabled="busyActions.has('playlists')" @click="openPlaylists">
-              Add to playlist
+              {{ t('library.add_to_playlist') }}
             </button>
           </div>
           <p v-if="mutationError" class="inline-error" role="alert">{{ mutationError }}</p>
           <div v-if="showPlaylists" class="playlist-picker">
             <label>
-              Playlist
-              <select v-model="selectedPlaylist" aria-label="Playlist">
-                <option value="">Choose…</option>
+              {{ t('library.playlist') }}
+              <select v-model="selectedPlaylist" :aria-label="t('library.playlist')">
+                <option value="">{{ t('library.choose') }}</option>
                 <option v-for="playlist in playlists" :key="playlist.Id" :value="playlist.Id">
                   {{ playlist.Name }}
                 </option>
               </select>
             </label>
             <button type="button" :disabled="!selectedPlaylist || busyActions.has('playlist-add')" @click="addToPlaylist">
-              Add
+              {{ t('library.add') }}
             </button>
             <label>
-              New playlist
-              <input v-model="newPlaylistName" aria-label="New playlist name" />
+              {{ t('library.new_playlist') }}
+              <input v-model="newPlaylistName" :aria-label="t('library.new_playlist_name')" />
             </label>
             <button type="button" :disabled="!newPlaylistName.trim() || busyActions.has('playlist-create')" @click="createAndAddPlaylist">
-              Create and add
+              {{ t('library.create_and_add') }}
             </button>
           </div>
-          <div v-if="showPlaybackOptions" class="playback-options" aria-label="Playback options">
-            <p v-if="playbackLoading" role="status">Loading playback options…</p>
+          <div v-if="showPlaybackOptions" class="playback-options" :aria-label="t('library.playback_options')">
+            <p v-if="playbackLoading" role="status">{{ t('library.loading_playback_options') }}</p>
             <p v-else-if="playbackError" role="alert">{{ playbackError }}</p>
             <template v-else>
               <label v-if="streams.versions.length > 1">
-                Version
-                <select v-model="selectedMediaSource" aria-label="Version" @change="reloadVersionStreams">
+                {{ t('library.version') }}
+                <select v-model="selectedMediaSource" :aria-label="t('library.version')" @change="reloadVersionStreams">
                   <option v-for="version in streams.versions" :key="version.id" :value="version.id">
                     {{ version.name }}
                   </option>
                 </select>
               </label>
               <label>
-                Quality
-                <select v-model="selectedQuality" aria-label="Quality">
-                  <option v-for="option in qualities" :key="option.id" :value="option.id">{{ option.label }}</option>
+                {{ t('library.quality') }}
+                <select v-model="selectedQuality" :aria-label="t('library.quality')">
+                  <option v-for="option in qualities" :key="option.id" :value="option.id">{{ qualityLabel(option) }}</option>
                 </select>
               </label>
               <label v-if="streams.audio.length">
-                Audio
-                <select v-model.number="selectedAudio" aria-label="Audio">
+                {{ t('library.audio') }}
+                <select v-model.number="selectedAudio" :aria-label="t('library.audio')">
                   <option v-for="track in streams.audio" :key="track.index" :value="track.index">{{ streamLabel(track) }}</option>
                 </select>
               </label>
               <label>
-                Subtitles
-                <select v-model.number="selectedSubtitle" aria-label="Subtitles">
-                  <option :value="-1">Off</option>
+                {{ t('library.subtitles') }}
+                <select v-model.number="selectedSubtitle" :aria-label="t('library.subtitles')">
+                  <option :value="-1">{{ t('library.off') }}</option>
                   <option v-for="track in streams.subtitles" :key="track.index" :value="track.index">{{ streamLabel(track) }}</option>
                 </select>
               </label>
               <label v-if="resumeSeconds > 0">
-                Start
-                <select v-model="resumeMode" aria-label="Start position">
-                  <option value="resume">Resume at {{ formatTime(resumeSeconds) }}</option>
-                  <option value="start_over">Start over</option>
+                {{ t('library.start') }}
+                <select v-model="resumeMode" :aria-label="t('library.start_position')">
+                  <option value="resume">{{ t('library.resume_at_time', { time: formatTime(resumeSeconds) }) }}</option>
+                  <option value="start_over">{{ t('library.start_over') }}</option>
                 </select>
               </label>
               <span v-if="isHost && details.Type === 'Episode'" class="binge-toggle">
-                <ToggleSwitch v-model="binge" label="Binge next episodes" />
-                <span>Binge next episodes</span>
+                <ToggleSwitch v-model="binge" :label="t('library.binge_next_episodes')" />
+                <span>{{ t('library.binge_next_episodes') }}</span>
               </span>
-              <button class="start-playback" type="button" @click="startPlayback">Start watch party</button>
+              <button class="start-playback" type="button" @click="startPlayback">{{ t('library.start_watch_party') }}</button>
             </template>
           </div>
         </div>
       </header>
 
-      <section v-if="details.Overview"><h3>Overview</h3><p>{{ details.Overview }}</p></section>
+      <section v-if="details.Overview"><h3>{{ t('library.overview') }}</h3><p>{{ details.Overview }}</p></section>
       <section v-if="details.People?.length">
-        <h3>Cast & crew</h3>
+        <h3>{{ t('library.cast_crew') }}</h3>
         <p>{{ details.People.map((person) => person.Name).filter(Boolean).join(' · ') }}</p>
       </section>
-      <section v-if="details.Studios?.length"><h3>Studios</h3><p>{{ details.Studios.map((studio) => studio.Name).join(' · ') }}</p></section>
-      <section v-if="tagNames.length"><h3>Tags</h3><p>{{ tagNames.join(' · ') }}</p></section>
+      <section v-if="details.Studios?.length"><h3>{{ t('library.studios') }}</h3><p>{{ details.Studios.map((studio) => studio.Name).join(' · ') }}</p></section>
+      <section v-if="tagNames.length"><h3>{{ t('library.tags') }}</h3><p>{{ tagNames.join(' · ') }}</p></section>
     </template>
   </article>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { mediaKindLabel, qualityLabel } from '@/i18n/filters'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import {
   api,
@@ -304,14 +306,14 @@ let controller: AbortController | null = null
 const sectionControllers = new Map<ItemSection, AbortController>()
 
 function streamLabel(track: { title: string; displayLanguage: string; language: string }): string {
-  const base = track.displayLanguage || track.language || 'Unknown'
+  const base = track.displayLanguage || track.language || t('library.unknown')
   return track.title && track.title !== base ? `${base} (${track.title})` : track.title || base
 }
-const optionalSections: Array<{ id: ItemSection; label: string }> = [
-  { id: 'related', label: 'Related titles' },
-  { id: 'extras', label: 'Extras' },
-  { id: 'trailers', label: 'Trailers' },
-]
+const optionalSections = computed<Array<{ id: ItemSection; label: string }>>(() => [
+  { id: 'related', label: t('library.related_titles') },
+  { id: 'extras', label: t('library.extras') },
+  { id: 'trailers', label: t('library.trailers') },
+])
 const sectionItems = ref<Partial<Record<ItemSection, LibraryItem[]>>>({})
 const sectionErrors = ref<Partial<Record<ItemSection, string>>>({})
 const sectionLoading = ref<ItemSection | null>(null)
@@ -319,7 +321,7 @@ const sectionLoading = ref<ItemSection | null>(null)
 // Which optional section is showing. Exactly one, or none.
 const openSection = ref<ItemSection | null>(null)
 const openSectionLabel = computed(
-  () => optionalSections.find((section) => section.id === openSection.value)?.label ?? '',
+  () => optionalSections.value.find((section) => section.id === openSection.value)?.label ?? '',
 )
 let sectionCloseTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -352,11 +354,11 @@ function itemMeta(item: LibraryItem): string {
   const ticks = item.RunTimeTicks
   if (ticks) {
     const minutes = Math.round(ticks / 600_000_000)
-    parts.push(minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`)
+    parts.push(minutes >= 60 ? t('library.runtime_hours', { hours: Math.floor(minutes / 60), minutes: minutes % 60 }) : t('library.runtime_minutes', { minutes }))
   }
   // Only when it adds something: a Related list is mostly Movies, and
   // repeating "Movie" on every row is noise.
-  if (item.Type && item.Type !== 'Movie') parts.push(item.Type)
+  if (item.Type && item.Type !== 'Movie') parts.push(mediaKindLabel(item.Type))
   return parts.join(' · ')
 }
 
@@ -432,7 +434,7 @@ async function toggleFavorite() {
     await api.setFavorite(details.value.Id, !previous)
   } catch (cause) {
     details.value.UserData.IsFavorite = previous
-    mutationError.value = cause instanceof Error ? cause.message : 'Favorite update failed.'
+    mutationError.value = cause instanceof Error ? cause.message : t('library.favorite_update_failed')
   } finally {
     setBusy('favorite', false)
   }
@@ -449,7 +451,7 @@ async function togglePlayed() {
     await api.setPlayed(details.value.Id, !previous)
   } catch (cause) {
     details.value.UserData.Played = previous
-    mutationError.value = cause instanceof Error ? cause.message : 'Played update failed.'
+    mutationError.value = cause instanceof Error ? cause.message : t('library.played_update_failed')
   } finally {
     setBusy('played', false)
   }
@@ -463,7 +465,7 @@ async function openPlaylists() {
   try {
     playlists.value = (await api.playlists()).items
   } catch (cause) {
-    mutationError.value = cause instanceof Error ? cause.message : 'Playlists unavailable.'
+    mutationError.value = cause instanceof Error ? cause.message : t('library.playlists_unavailable')
   } finally {
     setBusy('playlists', false)
   }
@@ -477,7 +479,7 @@ async function addToPlaylist() {
     await api.addPlaylistItem(selectedPlaylist.value, details.value.Id)
     showPlaylists.value = false
   } catch (cause) {
-    mutationError.value = cause instanceof Error ? cause.message : 'Playlist add failed.'
+    mutationError.value = cause instanceof Error ? cause.message : t('library.playlist_add_failed')
   } finally {
     setBusy('playlist-add', false)
   }
@@ -493,7 +495,7 @@ async function createAndAddPlaylist() {
     showPlaylists.value = false
     newPlaylistName.value = ''
   } catch (cause) {
-    mutationError.value = cause instanceof Error ? cause.message : 'Playlist creation failed.'
+    mutationError.value = cause instanceof Error ? cause.message : t('library.playlist_creation_failed')
   } finally {
     setBusy('playlist-create', false)
   }
@@ -523,7 +525,7 @@ async function openPlaybackOptions() {
     selectedQuality.value = qualityResponse.default_id
     resumeMode.value = resumeSeconds.value > 0 ? 'resume' : 'start_over'
   } catch (cause) {
-    playbackError.value = cause instanceof Error ? cause.message : 'Playback options unavailable.'
+    playbackError.value = cause instanceof Error ? cause.message : t('library.playback_options_unavailable')
   } finally {
     playbackLoading.value = false
   }
@@ -535,7 +537,7 @@ async function reloadVersionStreams() {
   try {
     applyStreams(await api.itemStreams(details.value.Id, selectedMediaSource.value))
   } catch (cause) {
-    playbackError.value = cause instanceof Error ? cause.message : 'Version unavailable.'
+    playbackError.value = cause instanceof Error ? cause.message : t('library.version_unavailable')
   } finally {
     playbackLoading.value = false
   }
@@ -569,7 +571,7 @@ const runtime = computed(() => {
   const ticks = details.value?.RunTimeTicks
   if (!ticks) return ''
   const minutes = Math.round(ticks / 600_000_000)
-  return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`
+  return minutes >= 60 ? t('library.runtime_hours', { hours: Math.floor(minutes / 60), minutes: minutes % 60 }) : t('library.runtime_minutes', { minutes })
 })
 const backdropUrl = computed(() => details.value
   ? api.imageUrl(details.value.Id, 'Backdrop', { maxWidth: 1600, maxHeight: 900, quality: 85 })
@@ -616,7 +618,7 @@ async function load() {
     }
   } catch (cause) {
     if (controller.signal.aborted) return
-    error.value = cause instanceof Error ? cause.message : 'Title details unavailable.'
+    error.value = cause instanceof Error ? cause.message : t('library.title_details_unavailable')
   } finally {
     if (!controller.signal.aborted) loading.value = false
   }
@@ -632,7 +634,7 @@ async function loadSeasons(initialSeason?: string) {
     const seasonId = initialSeason || selectedSeason.value || seasons.value[0]?.Id
     if (seasonId) await selectSeason(seasonId)
   } catch (cause) {
-    seriesError.value = cause instanceof Error ? cause.message : 'Seasons unavailable.'
+    seriesError.value = cause instanceof Error ? cause.message : t('library.seasons_unavailable')
   } finally {
     seasonsLoading.value = false
   }
@@ -652,7 +654,7 @@ async function selectSeason(seasonId: string) {
     episodes.value = (await api.seriesEpisodes(details.value.Id, seasonId)).items
   } catch (cause) {
     episodes.value = []
-    seriesError.value = cause instanceof Error ? cause.message : 'Episodes unavailable.'
+    seriesError.value = cause instanceof Error ? cause.message : t('library.episodes_unavailable')
   } finally {
     episodesLoading.value = false
   }
@@ -669,7 +671,7 @@ async function loadSection(section: ItemSection) {
     sectionItems.value[section] = response.items
   } catch (cause) {
     if (sectionController.signal.aborted) return
-    sectionErrors.value[section] = cause instanceof Error ? cause.message : `${section} unavailable.`
+    sectionErrors.value[section] = cause instanceof Error ? cause.message : t('library.section_unavailable', { section: optionalSections.value.find((candidate) => candidate.id === section)?.label ?? section })
   } finally {
     sectionControllers.delete(section)
     if (sectionLoading.value === section) sectionLoading.value = null

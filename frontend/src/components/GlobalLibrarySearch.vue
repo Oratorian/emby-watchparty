@@ -3,18 +3,18 @@
     <input
       v-model="query"
       type="search"
-      aria-label="Search all libraries"
-      placeholder="Search movies, series, episodes, people…"
+      :aria-label="t('library.search_all_libraries')"
+      :placeholder="t('library.search_movies_series_episodes_people')"
       autocomplete="off"
       @keydown.enter.prevent="submitNow"
     />
-    <button v-if="query" type="button" @click="clear">Clear</button>
-    <div v-if="loading" role="status">Searching…</div>
+    <button v-if="query" type="button" @click="clear">{{ t('library.clear') }}</button>
+    <div v-if="loading" role="status">{{ t('library.searching') }}</div>
     <div v-else-if="error" role="alert">{{ error }}</div>
-    <div v-else-if="submitted && !groups.length" class="empty-search">No results.</div>
+    <div v-else-if="submitted && !groups.length" class="empty-search">{{ t('library.no_results') }}</div>
     <div v-if="groups.length" class="search-results">
       <section v-for="group in groups" :key="group.id">
-        <h3>{{ group.label }}</h3>
+        <h3>{{ searchGroupLabel(group) }}</h3>
         <button
           v-for="item in group.items"
           :key="item.Id"
@@ -30,6 +30,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { searchGroupLabel } from '@/i18n/filters'
 import { onUnmounted, ref, watch } from 'vue'
 import { api, type GroupedSearchResponse, type LibraryItem, type SearchGroup } from '@/api/client'
 
@@ -84,7 +86,7 @@ async function search() {
   } catch (cause) {
     if (token !== requestToken || myController.signal.aborted) return
     groups.value = []
-    error.value = cause instanceof Error ? cause.message : 'Search unavailable.'
+    error.value = cause instanceof Error ? cause.message : t('library.search_unavailable')
   } finally {
     if (token === requestToken) loading.value = false
   }

@@ -13,11 +13,11 @@
     <template v-else>
       <div class="panel-header">
         <div v-if="!currentParentId" class="library-home-heading">
-          <h2>Choose a library</h2>
-          <p>Browse your {{ mediaServerName }} media and pick what the party watches next.</p>
+          <h2>{{ t('library.choose_a_library') }}</h2>
+          <p>{{ t('library.browse_your_server_media_and_pick_what_the_party_watches_next', { server: mediaServerName }) }}</p>
         </div>
         <div v-else class="breadcrumbs">
-          <span class="crumb" @click="goToRoot">Libraries</span>
+          <span class="crumb" @click="goToRoot">{{ t('library.libraries') }}</span>
           <template v-for="(crumb, i) in breadcrumbs" :key="crumb.id">
             <span class="crumb-sep">/</span>
             <span
@@ -35,8 +35,8 @@
           @results="handleSearchResults"
         />
         <div v-if="selectedPerson" class="search-filter-chip" role="status">
-          Showing titles with <strong>{{ selectedPerson.Name }}</strong>
-          <button type="button" aria-label="Clear person filter" @click="clearPersonFilter">×</button>
+          {{ t('library.showing_titles_with_name', { name: selectedPerson.Name }) }}
+          <button type="button" :aria-label="t('library.clear_person_filter')" @click="clearPersonFilter">×</button>
         </div>
       </div>
 
@@ -48,25 +48,25 @@
           @update:model-value="applyFilters"
         />
         <label>
-          Sort
-          <select v-model="sortField" aria-label="Sort titles" @change="applySort">
-            <option value="SortName">Title</option>
-            <option value="DateCreated">Date added</option>
-            <option value="PremiereDate">Release date</option>
-            <option value="ProductionYear">Year</option>
-            <option value="CommunityRating">Community rating</option>
-            <option value="CriticRating">Critic rating</option>
-            <option value="Runtime">Runtime</option>
-            <option value="Random">Random</option>
+          {{ t('library.sort') }}
+          <select v-model="sortField" :aria-label="t('library.sort_titles')" @change="applySort">
+            <option value="SortName">{{ t('library.title') }}</option>
+            <option value="DateCreated">{{ t('library.date_added') }}</option>
+            <option value="PremiereDate">{{ t('library.release_date') }}</option>
+            <option value="ProductionYear">{{ t('library.year') }}</option>
+            <option value="CommunityRating">{{ t('library.community_rating') }}</option>
+            <option value="CriticRating">{{ t('library.critic_rating') }}</option>
+            <option value="Runtime">{{ t('library.runtime') }}</option>
+            <option value="Random">{{ t('library.random') }}</option>
           </select>
-          <select v-model="sortDirection" aria-label="Sort direction" @change="applySort">
-            <option value="Ascending">Ascending</option>
-            <option value="Descending">Descending</option>
+          <select v-model="sortDirection" :aria-label="t('library.sort_direction')" @change="applySort">
+            <option value="Ascending">{{ t('library.ascending') }}</option>
+            <option value="Descending">{{ t('library.descending') }}</option>
           </select>
         </label>
       </div>
 
-      <div v-if="loading" class="loading">Loading...</div>
+      <div v-if="loading" class="loading">{{ t('library.loading') }}</div>
 
       <div v-else-if="itemsError" class="empty load-error" role="alert">
         {{ itemsError }}
@@ -78,10 +78,10 @@
              or past TotalRecordCount, and unmounting the whole panel took the
              rail with it: the grid was empty and the only control that could
              navigate back out had disappeared with it. -->
-        <div v-if="items.length === 0" class="empty">No items found.</div>
+        <div v-if="items.length === 0" class="empty">{{ t('library.no_items_found') }}</div>
         <div v-else class="items-grid">
           <div v-if="hasPrevious" ref="topSentinel" class="sentinel sentinel-top">
-            <span v-if="loadingPrevious">Loading earlier titles...</span>
+            <span v-if="loadingPrevious">{{ t('library.loading_earlier_titles') }}</span>
           </div>
           <div
             v-for="item in items"
@@ -89,7 +89,7 @@
             :data-item-id="item.Id"
             class="item-card"
             role="button"
-            :aria-label="`Open ${item.Name}`"
+            :aria-label="t('library.open_value0', { value0: item.Name })"
             tabindex="0"
             :class="{
               'item-card-live': item.Id === playingItemId,
@@ -108,13 +108,13 @@
               <div v-else class="no-poster">
                 {{ !currentParentId ? libraryMark(item) : item.Name.charAt(0) }}
               </div>
-              <div v-if="item.Id === playingItemId" class="live-badge" aria-label="Currently playing">
+              <div v-if="item.Id === playingItemId" class="live-badge" :aria-label="t('library.currently_playing')">
                 <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span class="live-text">LIVE</span>
+                <span class="live-text">{{ t('library.live') }}</span>
               </div>
-              <div v-else-if="item.Id === nextItemId" class="next-badge" aria-label="Up next">
+              <div v-else-if="item.Id === nextItemId" class="next-badge" :aria-label="t('library.up_next')">
                 <span class="next-arrow" aria-hidden="true">&#9654;</span>
-                <span class="next-text">NEXT</span>
+                <span class="next-text">{{ t('library.next') }}</span>
               </div>
               <!-- Played-progress bar at the bottom of the poster.
                    Mirrors Emby's web UI Continue Watching rail: the
@@ -127,7 +127,7 @@
               <div
                 v-if="resumePercent(item) > 0"
                 class="poster-progress"
-                :aria-label="`Watched ${Math.round(resumePercent(item))}%`"
+                :aria-label="t('library.watched_value0', { value0: Math.round(resumePercent(item)) })"
               >
                 <div class="poster-progress-fill" :style="{ width: resumePercent(item) + '%' }" />
               </div>
@@ -139,20 +139,20 @@
                 <span v-if="item.ProductionYear">{{ item.ProductionYear }}</span>
                 <span v-if="item.ProductionYear && itemRuntime(item)" class="sep">·</span>
                 <span v-if="itemRuntime(item)">{{ itemRuntime(item) }}</span>
-                <span v-if="currentParentId && !item.ProductionYear && !itemRuntime(item)" class="item-type">{{ item.Type }}</span>
+                <span v-if="currentParentId && !item.ProductionYear && !itemRuntime(item)" class="item-type">{{ mediaKindLabel(item.Type) }}</span>
               </span>
               <span v-if="playedLabel(item)" class="item-played">{{ playedLabel(item) }}</span>
             </div>
           </div>
           <div v-if="hasMore" ref="sentinel" class="sentinel">
-            <span v-if="loadingMore">Loading more...</span>
+            <span v-if="loadingMore">{{ t('library.loading_more') }}</span>
           </div>
         </div>
 
         <!-- iOS-style prefix jump bar. Availability comes from Emby,
              not the currently loaded page, so every server prefix works
              immediately in a paginated library. -->
-        <div v-if="showAlphabetBar" class="alphabet-bar" aria-label="Jump to letter">
+        <div v-if="showAlphabetBar" class="alphabet-bar" :aria-label="t('library.jump_to_letter')">
           <button
             v-for="letter in displayedPrefixes"
             :key="letter"
@@ -160,7 +160,7 @@
             :class="{ dim: !availablePrefixes.has(letter) }"
             :disabled="!availablePrefixes.has(letter)"
             @click="jumpToLetter(letter)"
-            :aria-label="`Jump to ${letter}`"
+            :aria-label="t('library.jump_to_value0', { value0: letter })"
           >
             {{ letter }}
           </button>
@@ -171,6 +171,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { mediaKindLabel } from '@/i18n/filters'
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { api, type FilterControl, type GroupedSearchResponse, type LibraryFilterState, type LibraryItem, type LibraryQueryRequest, type PlaybackSelection } from '@/api/client'
 import { usePartyStore } from '@/stores/party'
@@ -266,9 +268,9 @@ function ticksToShort(ticks: number): string {
   const totalSeconds = Math.floor(ticks / 10_000_000)
   const hours = Math.floor(totalSeconds / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
-  if (hours > 0) return `${hours}h ${minutes}m`
-  if (minutes > 0) return `${minutes}m`
-  return '<1m'
+  if (hours > 0) return t('library.runtime_hours', { hours, minutes })
+  if (minutes > 0) return t('library.runtime_minutes', { minutes })
+  return t('library.runtime_under_minute')
 }
 
 // "Played: 1h 2m (41%) of 2h 34m" -- mirrors Emby's Continue Watching
@@ -282,7 +284,7 @@ function playedLabel(item: EmbyItem): string | null {
   const playedTicks = Number(ud?.PlaybackPositionTicks ?? 0)
   const totalTicks = item.RunTimeTicks ?? 0
   if (!playedTicks || !totalTicks) return null
-  return `Played: ${ticksToShort(playedTicks)} (${Math.round(pct)}%) of ${ticksToShort(totalTicks)}`
+  return t('library.played_progress', { played: ticksToShort(playedTicks), percent: Math.round(pct), total: ticksToShort(totalTicks) })
 }
 
 interface Breadcrumb {
@@ -294,30 +296,34 @@ interface Breadcrumb {
 
 function libraryKind(item: EmbyItem): string {
   const labels: Record<string, string> = {
-    movies: 'Movie library',
-    tvshows: 'Series library',
-    boxsets: 'Curated collections',
-    playlists: 'Saved playlists',
-    livetv: 'Live channels',
+    movies: t('library.kind_movies'),
+    tvshows: t('library.kind_tvshows'),
+    boxsets: t('library.kind_boxsets'),
+    playlists: t('library.kind_playlists'),
+    livetv: t('library.kind_livetv'),
   }
-  return labels[item.CollectionType ?? ''] ?? 'Media library'
+  return labels[item.CollectionType ?? ''] ?? t('library.kind_media')
 }
 
 function libraryMark(item: EmbyItem): string {
   const marks: Record<string, string> = {
-    movies: 'MOVIES',
-    tvshows: 'SERIES',
-    boxsets: 'SETS',
-    playlists: 'LISTS',
-    livetv: 'LIVE',
+    movies: t('library.mark_movies'),
+    tvshows: t('library.mark_tvshows'),
+    boxsets: t('library.mark_boxsets'),
+    playlists: t('library.mark_playlists'),
+    livetv: t('library.mark_livetv'),
   }
-  return marks[item.CollectionType ?? ''] ?? (item.Name === 'Recordings' ? 'DVR' : 'MEDIA')
+  return marks[item.CollectionType ?? ''] ?? (item.Name === 'Recordings' ? 'DVR' : t('library.mark_media'))
 }
 
 const emit = defineEmits<{
   'select-video': [selection: EmbyItem | PlaybackSelection]
   'navigation-change': [label: string]
 }>()
+
+watch(() => t('library.libraries'), () => {
+  emit('navigation-change', detailItem.value?.Name ?? breadcrumbs.value.at(-1)?.name ?? t('library.libraries'))
+})
 
 const browserRoot = ref<HTMLElement | null>(null)
 const loading = ref(false)
@@ -365,7 +371,7 @@ async function closeDetails() {
     bumpNavToken('closeSearchDetails')
     await fetchItems(currentParentId.value)
   }
-  emit('navigation-change', breadcrumbs.value.at(-1)?.name ?? 'Libraries')
+  emit('navigation-change', breadcrumbs.value.at(-1)?.name ?? t('library.libraries'))
   await nextTick()
   const panel = browserRoot.value?.closest<HTMLElement>('.library-panel')
   if (panel) panel.scrollTop = detailScrollTop
@@ -707,7 +713,7 @@ async function goToRoot() {
   availablePrefixes.value = new Set()
   currentParentId.value = null
   currentParentType.value = null
-  emit('navigation-change', 'Libraries')
+  emit('navigation-change', t('library.libraries'))
   await fetchLibraries()
 }
 
@@ -716,7 +722,7 @@ async function goToCrumb(index: number) {
   const crumb = breadcrumbs.value[index]
   breadcrumbs.value = breadcrumbs.value.slice(0, index + 1)
   currentParentType.value = crumb?.type ?? null
-  emit('navigation-change', crumb?.name ?? 'Libraries')
+  emit('navigation-change', crumb?.name ?? t('library.libraries'))
   await fetchItems(crumb!.id)
 }
 
@@ -899,7 +905,7 @@ async function fetchItems(
     if (myToken !== navToken) return 'stale'
     if (!append && !prepend) {
       items.value = []
-      itemsError.value = 'Could not load library. Try again.'
+      itemsError.value = t('library.could_not_load_library_try_again')
     }
     return 'error'
   } finally {
@@ -1062,7 +1068,7 @@ async function restoreOrFetchRoot() {
   // mount here, silently discarding the user's browsing position.
   breadcrumbs.value = saved.breadcrumbs
   currentParentType.value = saved.breadcrumbs.at(-1)?.type ?? null
-  emit('navigation-change', saved.breadcrumbs.at(-1)?.name ?? 'Libraries')
+  emit('navigation-change', saved.breadcrumbs.at(-1)?.name ?? t('library.libraries'))
   const status = await fetchItems(saved.parentId)
   if (status === 'error') {
     bumpNavToken('restoreOrFetchRoot:fallback')
@@ -1070,7 +1076,7 @@ async function restoreOrFetchRoot() {
     breadcrumbs.value = []
     currentParentId.value = null
     currentParentType.value = null
-    emit('navigation-change', 'Libraries')
+    emit('navigation-change', t('library.libraries'))
     await fetchLibraries()
   }
 }
