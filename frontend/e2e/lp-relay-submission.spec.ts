@@ -48,10 +48,10 @@ function serviceConfig(overrides: Record<string, unknown> = {}) {
   return { require_complete: true, max_zip_bytes: 1048576, catalog_revision: revision, total_messages: 2, turnstile_site_key: null, ...overrides }
 }
 
-async function prepare(page: Page, config: Record<string, unknown> = serviceConfig()) {
+async function prepare(page: Page, config: Record<string, unknown> = serviceConfig(), relayEndpoint = endpoint) {
   await page.route('**/catalog.json', route => route.fulfill({ contentType: 'application/json', body: catalog }))
-  await page.route('**/relay-config.json', route => route.fulfill({ json: { endpoint } }))
-  await page.route('https://relay.test/v1/config', route => route.fulfill({ headers: cors, json: config }))
+  await page.route('**/relay-config.json', route => route.fulfill({ json: { endpoint: relayEndpoint } }))
+  await page.route(new URL('config', relayEndpoint).href, route => route.fulfill({ headers: cors, json: config }))
   await page.goto(address)
   await expect(page.locator('#creator')).toBeVisible()
   await expect(page.locator('#discord-submission')).toBeVisible()
@@ -64,17 +64,20 @@ async function complete(page: Page) {
   await page.locator('[data-key="core.request_failed"] textarea').fill('Échec ({status})')
 }
 
-async function submission(route: Route) {
-  const request = route.request()
-  const body = await new Request(request.url(), {
-    method: 'POST', headers: { 'Content-Type': (await request.headerValue('content-type'))! },
-    body: request.postDataBuffer()!,
+async function submissionBody(contentType: string, bytes: Buffer) {
+  const body = await new Request('http://local/v1/submissions', {
+    method: 'POST', headers: { 'Content-Type': contentType }, body: bytes,
   }).formData()
   const file = body.get('file') as File
   return {
     id: body.get('submission_id'), catalog: body.get('catalog_revision'), token: body.get('turnstile_token'),
-    filename: file.name, type: file.type, size: file.size,
+    filename: file.name, type: file.type, size: file.size, bytes: Buffer.from(await file.arrayBuffer()),
   }
+}
+
+async function submission(route: Route) {
+  const request = route.request()
+  return submissionBody((await request.headerValue('content-type'))!, request.postDataBuffer()!)
 }
 
 function accepted(duplicate = false) {
@@ -112,31 +115,50 @@ test('keeps sharing beside the editor while scrolling and stacks it on mobile', 
 test('requires full valid coverage and remembers a successful receipt', async ({ page }) => {
   const requests: Awaited<ReturnType<typeof submission>>[] = []
   const challengeRequests: string[] = []
-  page.on('request', request => { if (request.url().includes('challenges.cloudflare.com')) challengeRequests.push(request.url()) })
-  await page.route(endpoint, async route => {
-    requests.push(await submission(route))
-    await route.fulfill({ status: 201, headers: cors, json: accepted() })
+  page.on('request', request => { if (new URL(request.url()).hostname === 'challenges.cloudflare.com') challengeRequests.push(request.url()) })
+  // WebKit's intercepted postData omits Blob contents. Receive the real HTTP
+  // upload so every engine must send the ZIP bytes, not just multipart headers.
+  const receiver = createServer(async (request, response) => {
+    if (request.method === 'OPTIONS') { response.writeHead(204, cors).end(); return }
+    try {
+      const chunks: Buffer[] = []
+      for await (const chunk of request) chunks.push(Buffer.from(chunk))
+      requests.push(await submissionBody(request.headers['content-type']!, Buffer.concat(chunks)))
+      response.writeHead(201, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify(accepted()))
+    } catch {
+      response.writeHead(500, cors).end()
+    }
   })
-  await prepare(page)
-  await page.locator('[data-key="core.language"] textarea').fill('Langue')
-  await expect(page.locator('#submit-discord')).toBeDisabled()
-  await expect(page.locator('#download-zip')).toBeEnabled()
-  await page.locator('[data-key="core.request_failed"] textarea').fill('Échec ({etat})')
-  await expect(page.locator('#submit-discord')).toBeDisabled()
-  await page.locator('[data-key="core.request_failed"] textarea').fill('Échec ({status})')
-  await expect(page.locator('#submit-discord')).toBeEnabled()
-  await page.locator('#submit-discord').click()
-  await expect(page.locator('#submission-status')).toContainText(receipt)
-  await expect(page.locator('#submit-discord')).toBeDisabled()
-  expect(requests).toHaveLength(1)
-  expect(requests[0]).toMatchObject({ catalog: revision, filename: 'watchparty-fr.zip', type: 'application/zip', token: null })
-  expect(requests[0]?.size).toBeGreaterThan(100)
-  expect(requests[0]?.id).toMatch(/^[a-f0-9-]{36}$/)
-  await page.reload()
-  await expect(page.locator('#submission-status')).toContainText(receipt)
-  await expect(page.locator('#submit-discord')).toBeDisabled()
-  expect(requests).toHaveLength(1)
-  expect(challengeRequests).toEqual([])
+  await new Promise<void>(resolve => receiver.listen(0, '127.0.0.1', resolve))
+  const receivingEndpoint = `http://127.0.0.1:${(receiver.address() as { port: number }).port}/v1/submissions`
+  try {
+    await prepare(page, serviceConfig(), receivingEndpoint)
+    await page.locator('[data-key="core.language"] textarea').fill('Langue')
+    await expect(page.locator('#submit-discord')).toBeDisabled()
+    await expect(page.locator('#download-zip')).toBeEnabled()
+    await page.locator('[data-key="core.request_failed"] textarea').fill('Échec ({etat})')
+    await expect(page.locator('#submit-discord')).toBeDisabled()
+    await page.locator('[data-key="core.request_failed"] textarea').fill('Échec ({status})')
+    await expect(page.locator('#submit-discord')).toBeEnabled()
+    const downloading = page.waitForEvent('download')
+    await page.locator('#download-zip').click()
+    const expectedZip = await readFile((await (await downloading).path())!)
+    await page.locator('#submit-discord').click()
+    await expect(page.locator('#submission-status')).toContainText(receipt)
+    await expect(page.locator('#submit-discord')).toBeDisabled()
+    expect(requests).toHaveLength(1)
+    expect(requests[0]).toMatchObject({ catalog: revision, filename: 'watchparty-fr.zip', type: 'application/zip', token: null })
+    expect(requests[0]?.size).toBeGreaterThan(100)
+    expect(requests[0]?.bytes).toEqual(expectedZip)
+    expect(requests[0]?.id).toMatch(/^[a-f0-9-]{36}$/)
+    await page.reload()
+    await expect(page.locator('#submission-status')).toContainText(receipt)
+    await expect(page.locator('#submit-discord')).toBeDisabled()
+    expect(requests).toHaveLength(1)
+    expect(challengeRequests).toEqual([])
+  } finally {
+    await new Promise<void>((resolve, reject) => receiver.close(error => error ? reject(error) : resolve()))
+  }
 })
 
 test('retries an unconfirmed request with the same ID after reload', async ({ page }) => {

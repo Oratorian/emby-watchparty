@@ -925,6 +925,8 @@ fields.locale.addEventListener('blur', () => {
   if (submissionSending) return
   const locale = canonicalLocale(fields.locale.value.trim())
   if (!locale) return
+  // Keep a no-op blur from changing submit controls between pointerdown and click.
+  if (fields.locale.value === locale && manifest.locale === locale) return
   if (locale !== canonicalLocale(manifest.locale)) draftChanged()
   manifest.locale = locale
   fields.locale.value = locale

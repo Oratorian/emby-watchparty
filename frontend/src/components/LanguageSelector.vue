@@ -46,6 +46,9 @@ const unknownPreference = computed(() => languagePreference.value !== 'auto'
 .language-selector select {
   max-width: 100%;
   min-width: 0;
+  /* Keep WebKit's selected option text inside the native control. */
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 0.3rem 0.4rem;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);

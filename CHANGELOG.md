@@ -33,10 +33,11 @@ Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722
 
 - **Building the frontend from source now requires Node 22.12 or newer**, as required by the patched vue-i18n dependency. Docker and CI continue to use Node 24.
 - **The landing-page language selector is centered below the create/join cards.** Admin headers wrap on narrow screens, and long community language names stay within the viewport.
-- **Browser tests use disposable configuration and data.** The test backend isolates uploads, identities and settings without loading the operator's `.env` or writing their runtime configuration and logs.
+- **Browser tests use disposable configuration and data.** The test backend isolates uploads, identities and settings without loading the operator's `.env` or writing their runtime configuration and logs. Relay upload tests receive real HTTP uploads and compare ZIP contents instead of relying on WebKit's incomplete intercepted file bodies.
 
 ### Fixed
 
+- **WebKit language controls no longer overflow or swallow the first submission click.** Long community language names stay within the native selector, and leaving an unchanged language-code field does not interrupt the creator's submit button.
 - **The landing-page badge now follows the frontend version**, replacing the stale Watch Party 2.0 label. The browser title uses Director's Cut in both bundled languages and the initial HTML.
 - **The creator's translation-sharing panel stays beside the editor while scrolling** on desktop and tablet, keeping submission status and receipts visible. Mobile screens stack it below the editor.
 - **Generated Pages files stay consistent across Windows and Linux.** Normalized line endings prevent false CI drift failures, and page-title changes are generated from the source locales into the English catalogs.
