@@ -23,17 +23,27 @@ Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722
 
 ### Added
 
-- **Completed language packs can be submitted to a configured Discord relay.** The creator requires complete valid coverage, checks the relay's catalog revision, preserves drafts and submission receipts, and handles rate limits and uncertain delivery without automatic resends. Submission stays hidden until the maintainer configures a public relay endpoint; webhook credentials remain on the relay.
-- **A browser language-pack creator is available through GitHub Pages.** Translators can edit the English messages, check placeholders, save or recover drafts, open existing packs, and export a validated ZIP. The site lives in `docs/`; project documentation moved to `documentations/`.
-- **Community language packs can be installed at runtime.** Admins can download a translation template, upload or replace a language ZIP, and remove installed packs. Validated packs persist in the data volume and appear in viewers' language selectors without a rebuild or restart. Partial translations fall back to English; removing a German override restores the bundled translation. Archive bounds, known message keys and placeholders are checked before atomic installation. Extends [#87](https://github.com/Oratorian/emby-watchparty/issues/87).
+- **Completed language packs can be submitted to the EWP Discord team through a maintainer-hosted relay.** The creator requires complete valid coverage, checks the relay's catalog revision, preserves drafts and submission receipts, and handles rate limits and uncertain delivery without automatic resends. The public relay endpoint is configured in the creator; webhook credentials remain on the relay.
+- **A browser language-pack creator is available through GitHub Pages.** Use the [online creator](https://ewp-language.mahesvara.cloud/) to edit the English messages, check placeholders, save or recover drafts, open existing packs, and export a validated ZIP. The site lives in `docs/`; project documentation moved to `documentations/`.
+- **Community language packs can be installed at runtime.** Admins can download a translation template, upload or replace a language ZIP, and remove installed packs. Validated packs persist in the data volume and appear in viewers' language selectors without a rebuild or restart. Partial translations fall back to English; removing a German override restores the bundled translation. Archive bounds, known message keys and placeholders are checked before atomic installation. Public language discovery and admin operations are documented in OpenAPI and included in generated REST types. Extends [#87](https://github.com/Oratorian/emby-watchparty/issues/87).
 - **English and German UI localization with vue-i18n.** Watch Party detects the browser language and lets each viewer save a language preference. Party controls, library browsing, title details, admin settings and recovery dialogs use complete translated messages with placeholders and plurals. Known Emby and Jellyfin filter labels are translated while request values and media metadata stay unchanged. Longer filter labels wrap on narrow screens. Initial German translations contributed by [timokohlbrecher-collab](https://github.com/timokohlbrecher-collab) in [#87](https://github.com/Oratorian/emby-watchparty/issues/87).
+- **[The Watch Party Story](documentations/The-Watch-Party-Story.pdf)** collects the project's history in a first-person memoir, drawing on recovered 1.x history, 1,008 surviving commit messages, changelog archives and community contributions through 3.0.0.
 
 ### Changed
 
 - **Building the frontend from source now requires Node 22.12 or newer**, as required by the patched vue-i18n dependency. Docker and CI continue to use Node 24.
+- **The landing-page language selector is centered below the create/join cards.** Admin headers wrap on narrow screens, and long community language names stay within the viewport.
+- **Browser tests use disposable configuration and data.** The test backend isolates uploads, identities and settings without loading the operator's `.env` or writing their runtime configuration and logs.
+
+### Fixed
+
+- **The landing-page badge now follows the frontend version**, replacing the stale Watch Party 2.0 label. The browser title uses Director's Cut in both bundled languages and the initial HTML.
+- **The creator's translation-sharing panel stays beside the editor while scrolling** on desktop and tablet, keeping submission status and receipts visible. Mobile screens stack it below the editor.
+- **Generated Pages files stay consistent across Windows and Linux.** Normalized line endings prevent false CI drift failures, and page-title changes are generated from the source locales into the English catalogs.
 
 ### Security
 
+- **Release validation explicitly limits its GitHub token to `contents: read`.** The reusable CI caller no longer relies on inherited token permissions; the publishing job retains its required release permissions.
 - **Vue and its matching runtime/compiler packages updated from 3.5.39 to 3.5.42**, fixing unsafe carriage returns in server-rendered attribute names ([GHSA-g2v6-rqmx-r4w6](https://github.com/advisories/GHSA-g2v6-rqmx-r4w6)). The dependency floor now starts at the patched version.
 - **`source-map-js` updated from 1.2.1 to 1.2.2**, fixing denial of service from invalid indexed source-map offsets ([GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q)).
 - **`shell-quote` updated from 1.10.0 to 1.12.0** in frontend build tooling, fixing command injection when a line terminator follows a comment token ([GHSA-pqg4-j6r4-53mv](https://github.com/advisories/GHSA-pqg4-j6r4-53mv)).
