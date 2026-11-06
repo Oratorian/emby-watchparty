@@ -44,6 +44,7 @@ Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722
 
 ### Security
 
+- **Language-pack file operations verify their resolved storage paths.** Reads, replacements and removals reject pack-file symlinks and paths outside the language directory. API errors return curated validation messages instead of internal exception details.
 - **Release validation explicitly limits its GitHub token to `contents: read`.** The reusable CI caller no longer relies on inherited token permissions; the publishing job retains its required release permissions.
 - **Vue and its matching runtime/compiler packages updated from 3.5.39 to 3.5.42**, fixing unsafe carriage returns in server-rendered attribute names ([GHSA-g2v6-rqmx-r4w6](https://github.com/advisories/GHSA-g2v6-rqmx-r4w6)). The dependency floor now starts at the patched version.
 - **`source-map-js` updated from 1.2.1 to 1.2.2**, fixing denial of service from invalid indexed source-map offsets ([GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q)).

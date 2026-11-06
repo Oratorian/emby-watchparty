@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import JsonValue
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.src.dependencies import (
     get_admin_session_store,
@@ -98,7 +99,7 @@ def language_messages(locale: str, request: Request, response: Response):
     try:
         pack = _store(request).get(locale)
     except LanguagePackError as error:
-        return _error(str(error))
+        return _error(error.detail)
     if pack is None:
         return _error("Language pack not found.", "language_pack_not_found", 404)
     return pack.payload()
@@ -156,8 +157,10 @@ async def upload_language(request: Request):
     try:
         raw = await _uploaded_zip(request)
         pack = await run_in_threadpool(_store(request).install, raw)
-    except (LanguagePackError, HTTPException) as error:
-        return _error(str(error.detail) if isinstance(error, HTTPException) else str(error))
+    except LanguagePackError as error:
+        return _error(error.detail)
+    except StarletteHTTPException:
+        return _error("Could not read the uploaded language pack.")
     except OSError:
         return _error(
             "Could not save the language pack. Check data directory permissions.",
@@ -199,7 +202,7 @@ def delete_language(locale: str, request: Request):
     try:
         deleted = _store(request).delete(locale)
     except LanguagePackError as error:
-        return _error(str(error))
+        return _error(error.detail)
     except OSError:
         return _error(
             "Could not remove the language pack. Check data directory permissions.",

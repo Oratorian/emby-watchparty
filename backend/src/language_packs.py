@@ -40,6 +40,10 @@ type MessageTree = dict[str, str | MessageTree]
 class LanguagePackError(ValueError):
     """Invalid community input, suitable for a bounded client-facing answer."""
 
+    def __init__(self, detail: str):
+        self.detail = detail
+        super().__init__(detail)
+
 
 def canonical_locale(value: object) -> str:
     if not isinstance(value, str) or not _LOCALE.fullmatch(value):
@@ -215,6 +219,17 @@ class LanguagePackStore:
         self._catalog: MessageTree | None = None
         self._cache: dict[str, tuple[tuple[int, int], LanguagePack | None]] = {}
 
+    def _pack_path(self, locale: str) -> Path:
+        directory = os.path.realpath(self.directory)
+        expected = str(Path(directory) / f"pack-{canonical_locale(locale)}.json")
+        path = os.path.realpath(expected)
+        # Resolve before checking containment, and reject pack-file symlinks even
+        # when they point at another file inside the configured directory.
+        prefix = directory if directory.endswith(os.sep) else f"{directory}{os.sep}"
+        if not path.startswith(prefix) or os.path.normcase(path) != os.path.normcase(expected):
+            raise LanguagePackError("Language pack files must stay in the language directory.")
+        return Path(path)
+
     def catalog(self) -> MessageTree:
         if self._catalog is not None:
             return self._catalog
@@ -297,7 +312,7 @@ class LanguagePackStore:
         payload = _serialized({"manifest": pack.manifest, "messages": pack.messages})
         with self._lock:
             self.directory.mkdir(parents=True, exist_ok=True)
-            destination = self.directory / f"pack-{pack.manifest['locale']}.json"
+            destination = self._pack_path(pack.manifest["locale"])
             if (
                 not destination.exists()
                 and len(list(self.directory.glob("pack-*.json"))) >= MAX_PACKS
@@ -321,7 +336,7 @@ class LanguagePackStore:
 
     def get(self, locale: str) -> LanguagePack | None:
         canonical = canonical_locale(locale)
-        path = self.directory / f"pack-{canonical}.json"
+        path = self._pack_path(canonical)
         with self._lock:
             try:
                 info = path.stat()
@@ -361,7 +376,7 @@ class LanguagePackStore:
         canonical = canonical_locale(locale)
         with self._lock:
             try:
-                (self.directory / f"pack-{canonical}.json").unlink()
+                self._pack_path(canonical).unlink()
             except FileNotFoundError:
                 return False
             self._cache.pop(canonical, None)

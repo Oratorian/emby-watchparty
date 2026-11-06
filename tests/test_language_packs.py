@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 import pytest
 from fastapi import FastAPI
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.app import create_app
 from backend.src.config import Config, EnvConfig, RuntimeConfig
@@ -138,10 +139,39 @@ def test_backslashes_outside_literals_remain_plain_text(store: LanguagePackStore
 
 
 @pytest.mark.parametrize("locale", ["en", "EN", "auto", "../fr", "fr/FR", "fr_FR", "fr-FR/../../x"])
-def test_reserved_or_unsafe_locales_rejected(store: LanguagePackStore, locale: str):
+@pytest.mark.parametrize("operation", ["install", "get", "delete"])
+def test_reserved_or_unsafe_locales_rejected(store: LanguagePackStore, locale: str, operation: str):
+    argument = _archive(locale=locale) if operation == "install" else locale
     with pytest.raises(LanguagePackError):
-        store.install(_archive(locale=locale))
+        getattr(store, operation)(argument)
     assert not store.directory.exists()
+
+
+@pytest.mark.parametrize("operation", ["install", "get", "delete"])
+@pytest.mark.parametrize("target_location", ["inside", "sibling"])
+def test_pack_file_symlinks_cannot_read_replace_or_delete_another_file(
+    store: LanguagePackStore, operation: str, target_location: str
+):
+    store.install(_archive(locale="de"))
+    original = (store.directory / "pack-de.json").read_bytes()
+    if target_location == "inside":
+        target = store.directory / "pack-de.json"
+    else:
+        sibling = store.directory.with_name("languages-backup")
+        sibling.mkdir()
+        target = sibling / "pack-fr.json"
+        target.write_bytes(original)
+    link = store.directory / "pack-fr.json"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("File symlinks are not available to this test process.")
+    argument = _archive() if operation == "install" else "fr"
+    with pytest.raises(LanguagePackError, match="language directory"):
+        getattr(store, operation)(argument)
+    assert target.read_bytes() == original
+    assert link.is_symlink()
+    assert [pack.manifest["locale"] for pack in store.list()] == ["de"]
 
 
 def test_canonical_locale_and_german_override(store: LanguagePackStore):
@@ -372,5 +402,42 @@ def test_unauthenticated_upload_does_not_read_body(tmp_path: Path):
             response = await client.post("/api/admin/languages", content=body())
             assert response.status_code == 401
             assert not consumed
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("failure", ["multipart", "validation"])
+def test_upload_errors_only_return_curated_client_details(
+    tmp_path: Path, monkeypatch, failure: str
+):
+    private_detail = "internal parser failure at /private/watchparty/config.json"
+
+    if failure == "multipart":
+
+        async def reject_multipart(_request):
+            raise StarletteHTTPException(status_code=400, detail=private_detail)
+
+        monkeypatch.setattr("backend.src.routers.languages._uploaded_zip", reject_multipart)
+        expected_detail = "Could not read the uploaded language pack."
+    else:
+
+        def reject_pack(_store, _raw):
+            raise LanguagePackError("Use a valid language code.") from OSError(private_detail)
+
+        monkeypatch.setattr(LanguagePackStore, "install", reject_pack)
+        expected_detail = "Use a valid language code."
+
+    async def exercise():
+        async with asgi_client(_application(tmp_path)) as client:
+            login = await client.post(
+                "/api/admin/login", json={"username": "Alice", "password": "test"}
+            )
+            assert login.json()["success"]
+            response = await client.post(
+                "/api/admin/languages", files={"file": ("fr.zip", _archive())}
+            )
+            assert response.status_code == 400
+            assert response.json() == {"detail": expected_detail, "code": "invalid_language_pack"}
+            assert private_detail not in response.text
 
     asyncio.run(exercise())
