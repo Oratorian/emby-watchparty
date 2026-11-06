@@ -11,6 +11,14 @@ import { parse } from 'editorconfig'
 
 const require = createRequire(import.meta.url)
 
+test('matchers honor explicit Windows and Linux path rules', () => {
+  const { minimatch, Minimatch } = require('minimatch')
+  assert(new Minimatch('src/**/*.ts', { optimizationLevel: 2 }).match('src/view.ts'))
+  assert(minimatch('src\\view.ts', 'src/**/*.ts', { platform: 'win32', windowsPathsNoEscape: true }))
+  assert(minimatch('src/view.ts', 'src/**/*.ts', { platform: 'linux' }))
+  assert.equal(minimatch('src\\view.ts', 'src/**/*.ts', { platform: 'linux' }), false)
+})
+
 test('patched matchers work with glob, EditorConfig and the formatter CLI', async t => {
   const fixture = mkdtempSync(join(tmpdir(), 'ewp-tooling-'))
   const source = join(fixture, 'src')
@@ -25,9 +33,6 @@ test('patched matchers work with glob, EditorConfig and the formatter CLI', asyn
     rmdirSync(fixture)
   })
 
-  const { minimatch, Minimatch } = require('minimatch')
-  assert(new Minimatch('src/**/*.ts', { optimizationLevel: 2 }).match('src/view.ts'))
-  assert(minimatch('src\\view.ts', 'src/**/*.ts', { windowsPathsNoEscape: true }))
   const expected = ['other.js', 'view.ts'].map(name => join('src', name))
   assert.deepEqual(globSync('src/**/*.{js,ts}', { cwd: fixture }).sort(), expected)
   assert.deepEqual((await glob('src/**/*.{js,ts}', { cwd: fixture })).sort(), expected)
