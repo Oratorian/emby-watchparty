@@ -19,7 +19,7 @@ Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722
 
 ---
 
-## [Unreleased]
+## [3.1.0] - 2026-11-06 - Director's Cut
 
 ### Added
 
@@ -47,6 +47,8 @@ Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722
 - **Vue and its matching runtime/compiler packages updated from 3.5.39 to 3.5.42**, fixing unsafe carriage returns in server-rendered attribute names ([GHSA-g2v6-rqmx-r4w6](https://github.com/advisories/GHSA-g2v6-rqmx-r4w6)). The dependency floor now starts at the patched version.
 - **`source-map-js` updated from 1.2.1 to 1.2.2**, fixing denial of service from invalid indexed source-map offsets ([GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q)).
 - **`shell-quote` updated from 1.10.0 to 1.12.0** in frontend build tooling, fixing command injection when a line terminator follows a comment token ([GHSA-pqg4-j6r4-53mv](https://github.com/advisories/GHSA-pqg4-j6r4-53mv)).
+
+---
 
 ## [3.0.0] - 2026-11-02 - Director's Cut
 
