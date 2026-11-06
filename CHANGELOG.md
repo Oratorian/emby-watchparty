@@ -31,6 +31,7 @@ Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722
 
 ### Changed
 
+- **Release publishing reuses successful Validate results for the exact release commit.** A lightweight gate checks the current CI attempt and CI Gate, waits for validation already running, and blocks publishing when validation is missing or unsuccessful. The publishing checkout stays pinned to the validated commit, with the existing release approval step.
 - **Building the frontend from source now requires Node 22.12 or newer**, as required by the patched vue-i18n dependency. Docker and CI continue to use Node 24.
 - **The landing-page language selector is centered below the create/join cards.** Admin headers wrap on narrow screens, and long community language names stay within the viewport.
 - **Browser tests use disposable configuration and data.** The test backend isolates uploads, identities and settings without loading the operator's `.env` or writing their runtime configuration and logs. Relay upload tests receive real HTTP uploads and compare ZIP contents instead of relying on WebKit's incomplete intercepted file bodies.
@@ -46,7 +47,7 @@ Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722
 
 - **Development tooling uses patched `minimatch` 11.0.5 and `glob` 14.0.4.** Overrides remove affected transitive matcher versions for [GHSA-g3hv-75wg-m249](https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249) and pair the formatter with a compatible glob release, also fixing [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4). Compatibility checks cover file matching, Windows paths, EditorConfig and the formatter CLI.
 - **Language-pack file operations verify their resolved storage paths.** Reads, replacements and removals reject pack-file symlinks and paths outside the language directory. API errors return curated validation messages instead of internal exception details.
-- **Release validation explicitly limits its GitHub token to `contents: read`.** The reusable CI caller no longer relies on inherited token permissions; the publishing job retains its required release permissions.
+- **Release validation explicitly limits its GitHub token to `contents: read` and `actions: read`.** The validation gate can inspect CI results without publishing permissions; the publishing job retains its required release permissions.
 - **Vue and its matching runtime/compiler packages updated from 3.5.39 to 3.5.42**, fixing unsafe carriage returns in server-rendered attribute names ([GHSA-g2v6-rqmx-r4w6](https://github.com/advisories/GHSA-g2v6-rqmx-r4w6)). The dependency floor now starts at the patched version.
 - **`source-map-js` updated from 1.2.1 to 1.2.2**, fixing denial of service from invalid indexed source-map offsets ([GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q)).
 - **`shell-quote` updated from 1.10.0 to 1.12.0** in frontend build tooling, fixing command injection when a line terminator follows a comment token ([GHSA-pqg4-j6r4-53mv](https://github.com/advisories/GHSA-pqg4-j6r4-53mv)).

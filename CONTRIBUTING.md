@@ -447,6 +447,27 @@ Version and codename live in `backend/src/__init__.py`, which feeds the startup
 banner, `/api/version`, `/api/health`, the OpenAPI title and the frontend
 version page. `frontend/package.json` carries a matching version.
 
+### Publishing a release
+
+1. Commit the version and changelog updates, push the release commit to `main`
+   or `3.0-dev`, and wait for **Validate** (`.github/workflows/ci.yml`) and its
+   **CI Gate** to succeed.
+2. Tag that exact commit with `v<version>` and push the tag, or run **Create
+   Release** manually from a ref pointing to the same commit.
+3. Approve the existing `release` environment review when publishing is ready.
+
+Release validation reuses the latest trusted push CI result for the exact
+release commit, including the current attempt's CI Gate. It waits up to 30
+minutes for validation already queued or running. Missing, failed or cancelled
+validation blocks publishing; the release workflow does not rerun the suite.
+The publishing checkout is pinned to the validated commit.
+
+A green pull-request check does not qualify. Push the final commit to an
+integration branch first, especially when merging creates a new commit SHA.
+This also applies to new commits containing only release or workflow edits.
+After correcting a failed check, validate the new commit before releasing it.
+Use a new release version for changed code instead of moving a published tag.
+
 ### Changelog Format
 
 Follow [Keep a Changelog](https://keepachangelog.com/) format:

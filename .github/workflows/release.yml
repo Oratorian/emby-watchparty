@@ -26,9 +26,32 @@ env:
 
 jobs:
   validate:
+    name: Reuse successful CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
     permissions:
       contents: read
-    uses: ./.github/workflows/ci.yml
+      actions: read
+    outputs:
+      sha: ${{ steps.validation.outputs.sha }}
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Resolve release commit
+        id: target
+        run: echo "sha=$(git rev-parse 'HEAD^{commit}')" >> "$GITHUB_OUTPUT"
+      - name: Require existing Validate results
+        id: validation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.target.outputs.sha }}
+        run: python scripts/require_release_ci.py --sha "$RELEASE_SHA" --wait-seconds 1800
 
   build-and-release:
     needs: validate
@@ -50,6 +73,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
 
       - name: Get the version
         id: get_version
