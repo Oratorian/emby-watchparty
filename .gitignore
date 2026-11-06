@@ -29,6 +29,7 @@ wheels/
 
 # internal tools
 lp-relay/
+language-pack-builder/README.md
 
 # IDE
 .vscode/
