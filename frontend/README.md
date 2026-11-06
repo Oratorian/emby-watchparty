@@ -12,6 +12,8 @@ The frontend runs alongside the Python backend. See the [main README](../README.
 
 Run the npm commands below from `frontend/`, unless another working directory is shown.
 
+The npm overrides keep development tooling on patched `minimatch` 11.x for [GHSA-g3hv-75wg-m249](https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249), paired with `glob` 14.x under `js-beautify`. The older glob version cannot consume minimatch 11's parsed patterns. Formatter and linter dependencies still request affected versions, so keep the overrides until their supported ranges include the fixes. Run `npm run test:tooling`, linting, type checking, unit tests and builds when changing them; the tooling check exercises real filesystem globs, Windows path matching, EditorConfig and the formatter CLI.
+
 ## Local development
 
 Create and activate the repository-root `.venv` with Python 3.12, then run these commands from the repository root:

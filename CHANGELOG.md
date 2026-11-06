@@ -44,6 +44,7 @@ Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722
 
 ### Security
 
+- **Development tooling uses patched `minimatch` 11.0.5 and `glob` 14.0.4.** Overrides remove affected transitive matcher versions for [GHSA-g3hv-75wg-m249](https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249) and pair the formatter with a compatible glob release, also fixing [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4). Compatibility checks cover file matching, Windows paths, EditorConfig and the formatter CLI.
 - **Language-pack file operations verify their resolved storage paths.** Reads, replacements and removals reject pack-file symlinks and paths outside the language directory. API errors return curated validation messages instead of internal exception details.
 - **Release validation explicitly limits its GitHub token to `contents: read`.** The reusable CI caller no longer relies on inherited token permissions; the publishing job retains its required release permissions.
 - **Vue and its matching runtime/compiler packages updated from 3.5.39 to 3.5.42**, fixing unsafe carriage returns in server-rendered attribute names ([GHSA-g2v6-rqmx-r4w6](https://github.com/advisories/GHSA-g2v6-rqmx-r4w6)). The dependency floor now starts at the patched version.

@@ -115,6 +115,9 @@ jobs:
         working-directory: frontend
       - run: npm run type-check
         working-directory: frontend
+      - name: Dependency override compatibility
+        run: npm run test:tooling
+        working-directory: frontend
       - name: Vitest with coverage
         run: npm run test:coverage
         working-directory: frontend
