@@ -13,20 +13,28 @@ the left side of `HOST_PORT:5000` under `ports`; do not change `WATCH_PARTY_BIND
    ports, networks, and every volume mapping.
 2. Back up `.env`, Compose configuration, `config.json`, `data/`, `images/avatars/`, and
    optional logs. Keep old 2.1.x image and complete configuration.
-3. Copy examples to `docker-compose.yml` and `.env`. Create the directories, and
-   `config.json` **only if it does not already exist**, so Compose cannot turn that path
-   into a directory:
+3. Copy examples to `docker-compose.yml` and `.env`. With the container stopped,
+   create the directories and initialize `config.json` **only if it is missing or
+   a zero-byte regular file**, so Compose cannot turn that path into a directory:
 
    ```sh
    mkdir -p data images/avatars logs
-   [ -f config.json ] || echo {} > config.json
+   if [ -e config.json ] && [ ! -f config.json ]; then
+     printf '%s\n' 'config.json must be a file; correct the host path before starting.' >&2
+     exit 1
+   fi
+   if [ ! -e config.json ] || [ ! -s config.json ]; then
+     printf '%s\n' '{}' > config.json
+   fi
    ```
 
    **A 2.1.x upgrade must keep its existing `config.json`.** Overwriting it discards every
    admin setting, including the `ENABLE_HLS_TOKEN_VALIDATION=false` that makes production
    refuse to boot, which is the one thing the preflight in step 5 exists to warn you about.
-   Use `echo {}` rather than `touch`: an empty file is not valid JSON, so it is quarantined
-   as `config.json.corrupt-<timestamp>` on every boot.
+   Plain `touch` leaves invalid empty JSON. The guarded command repairs that zero-byte
+   placeholder without changing any nonempty config. If the path is already a directory,
+   inspect and preserve its contents before correcting that specific path and recreating
+   the container. Do not delete the appdata directory or replace a populated config.
 
 4. Fill every required `.env` field except the pinned container bind/port. Generate
    `SESSION_SECRET` once. Set `BEHIND_PROXY` explicitly. If true, use only actual proxy source

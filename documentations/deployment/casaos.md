@@ -15,10 +15,13 @@ port field when another external port is needed.
    variables, and volumes.
 2. Back up installed Compose, `config.json`, data, avatars, logs, environment values, and every
    mapped path. Preserve old 2.1.x image and full configuration.
-3. Ensure app data directories exist, and create `config.json` containing `{}` **only if
-   it does not already exist**. A 2.1.x upgrade must keep its existing file: overwriting
-   it discards every admin setting and blinds the preflight below. Use `echo {}` rather
-   than `touch`, since an empty file is quarantined as invalid JSON on every boot.
+3. With the container stopped, ensure app data directories exist and initialize
+   `config.json` containing `{}` **only if it is missing or a zero-byte regular file**.
+   Use the [guarded Compose preparation](compose.md#setup-or-21x-migration) at the
+   actual CasaOS host path. Do not use `touch` or accept a directory at that path.
+   A 2.1.x upgrade must keep every nonempty config: overwriting it discards admin
+   settings and blinds the preflight below. Correct a file/directory mismatch before
+   recreating the container; do not delete appdata.
 4. Import manifest. Enter required values in app settings/Compose, leaving the container bind and
    port fixed. Secret fields start blank and fail closed.
 

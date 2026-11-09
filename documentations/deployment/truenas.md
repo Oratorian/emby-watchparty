@@ -14,10 +14,12 @@ side of the TrueNAS port mapping; keep its container target and `WATCH_PARTY_POR
    storage mappings.
 2. Back up YAML and environment securely. Snapshot datasets containing `config.json`, data,
    avatars, and logs. Preserve old 2.1.x image/configuration.
-3. Create host-path directories, and `config.json` containing `{}` **only if it does not
-   already exist**. A 2.1.x upgrade must keep its existing file: overwriting it discards
-   every admin setting and blinds the preflight below. Use `echo {}` rather than
-   `touch`, since an empty file is quarantined as invalid JSON on every boot. Replace every `/mnt/POOL`
+3. With the container stopped, create host-path directories and initialize `config.json`
+   containing `{}` **only if it is missing or a zero-byte regular file**. Use the
+   [guarded Compose preparation](compose.md#setup-or-21x-migration) at the actual dataset
+   path. Do not use `touch` or accept a directory at that path. A 2.1.x upgrade must
+   retain every nonempty config. Correct a file/directory mismatch before recreating
+   the container; do not delete appdata or overwrite settings. Replace every `/mnt/POOL`
    placeholder before deployment.
 4. Import manifest. Enter required values in app settings/Compose, leaving the container bind and
    port fixed. Secret fields start blank and fail closed.

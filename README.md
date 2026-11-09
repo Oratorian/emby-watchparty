@@ -224,23 +224,40 @@ Fill the production settings described above. In the copied Compose file,
 Setting them only in Compose's `.env` does not pass them into the container
 while those mappings remain commented out.
 
-Create persistent directories and `config.json` before the first start.
-Keep an existing `config.json` unchanged; a new file must contain `{}`,
-rather than be empty or a directory.
+Create persistent directories and `config.json` before the first start. Run the
+preparation on the Docker host with the container stopped. Initialize only a
+missing or zero-byte file with `{}`; keep every nonempty existing config unchanged.
+Do not use `touch`, and do not let the config path become a directory.
 
 Linux/macOS:
 
 ```sh
 mkdir -p data images/avatars logs
-[ -f config.json ] || echo {} > config.json
+if [ -e config.json ] && [ ! -f config.json ]; then
+  printf '%s\n' 'config.json must be a file; correct the host path before starting.' >&2
+  exit 1
+fi
+if [ ! -e config.json ] || [ ! -s config.json ]; then
+  printf '%s\n' '{}' > config.json
+fi
 ```
 
 Windows PowerShell:
 
 ```powershell
 New-Item -ItemType Directory -Force data, images/avatars, logs | Out-Null
-if (-not (Test-Path config.json)) { Set-Content config.json '{}' }
+if (Test-Path -LiteralPath config.json -PathType Container) {
+    throw 'config.json must be a file; correct the host path before starting.'
+}
+if (-not (Test-Path -LiteralPath config.json) -or (Get-Item -LiteralPath config.json).Length -eq 0) {
+    [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'config.json'), '{}')
+}
 ```
+
+If Docker already created a directory named `config.json`, inspect and preserve
+its contents before correcting that specific path and mount. Do not delete the
+appdata directory. Recreate the container from the corrected Compose/template;
+restarting it alone does not correct a file/directory mount mismatch.
 
 Run the read-only preflight against the exact candidate environment and volumes,
 then start only after resolving its errors and required actions:
