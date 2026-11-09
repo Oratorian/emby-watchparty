@@ -251,7 +251,12 @@ jobs:
           # the address and the key are provider-neutral names now, so this is
           # the only line that records which provider the gate exercises, and
           # the listener above serves Emby's contract.
+          # Reproduce first-install `touch config.json`: the Docker wrapper must
+          # initialize the host's empty file through its single-file bind mount.
+          runtime_config="${RUNNER_TEMP}/watchparty-ci-config.json"
+          : > "$runtime_config"
           docker run --detach --name watchparty-ci --publish 5013:5000 \
+            --mount "type=bind,source=${runtime_config},target=/app/config.json" \
             --add-host host.docker.internal:host-gateway \
             --env APP_ENV=development \
             --env MEDIA_SERVER_TYPE=emby \
@@ -263,6 +268,7 @@ jobs:
           for _attempt in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:5013/api/health >/dev/null && \
                curl -fsS http://127.0.0.1:5013/api/ready >/dev/null; then
+              python -c 'import json, sys; assert json.load(open(sys.argv[1])) == {}' "$runtime_config"
               exit 0
             fi
             sleep 2

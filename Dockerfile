@@ -57,9 +57,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY --from=frontend-build /app/backend/static ./backend/static/
 
-# Pre-create persistent data and log directories so volume mounts land
-# somewhere writable. /app/data also stores first-run bootstrap.json.
-RUN mkdir -p /app/data /app/logs
+# Pre-create directories and a valid file target for the runtime config mount.
+# The Docker startup wrapper also initializes a blank host-mounted config file.
+RUN mkdir -p /app/data /app/logs && printf '%s\n' '{}' > /app/config.json
 
 # Default port; override at runtime with WATCH_PARTY_PORT. EXPOSE is
 # metadata only and cannot read runtime env, so it documents the default.
@@ -78,4 +78,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 
 # Launch via the app's own entrypoint so it binds to
 # WATCH_PARTY_BIND:WATCH_PARTY_PORT instead of a hardcoded port.
-CMD ["python", "-m", "backend.app"]
+# The Docker-only wrapper initializes blank file mounts without changing source
+# installs. An explicit container command, including migration preflight, bypasses it.
+CMD ["python", "-m", "backend.docker_entrypoint"]

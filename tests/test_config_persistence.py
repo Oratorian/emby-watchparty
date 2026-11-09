@@ -35,8 +35,7 @@ def _refuse(err: int) -> Callable[..., None]:
 
 @pytest.fixture
 def target(tmp_path: Path) -> Path:
-    # The bind-mounted file always exists already: `touch config.json` on the
-    # host is step one of the documented setup.
+    # The bind-mounted file already exists as valid JSON on the host.
     path = tmp_path / "config.json"
     path.write_text("{}\n", encoding="utf-8")
     return path
