@@ -28,19 +28,13 @@ async function harness() {
   const wrapper = mount(defineComponent({
     setup() {
       resize = useChatPanelResize()
-      return () => h('div', [
-        h('main', { ref: resize.videoArea }),
-        h('aside', { ref: resize.chatPanel }),
-      ])
+      return () => h('div', { ref: resize.contentArea })
     },
   }))
   wrappers.push(wrapper)
   await nextTick()
-  vi.spyOn(resize.videoArea.value!, 'getBoundingClientRect').mockImplementation(
-    () => ({ width: available - resize.width.value }) as DOMRect,
-  )
-  vi.spyOn(resize.chatPanel.value!, 'getBoundingClientRect').mockImplementation(
-    () => ({ width: resize.width.value }) as DOMRect,
+  vi.spyOn(resize.contentArea.value!, 'getBoundingClientRect').mockImplementation(
+    () => ({ width: available }) as DOMRect,
   )
   const handle = document.createElement('div')
   let captured: number | undefined
@@ -108,7 +102,7 @@ describe('chat width preference', () => {
   it('temporarily clamps a preference to protect video space and restores it afterward', async () => {
     localStorage.setItem(STORAGE_KEY, '540')
     const { resize, layout, keyboard } = await harness()
-    layout(950) // The library leaves 950px shared by video and chat.
+    layout(950) // A constrained content area leaves 950px shared by video and chat.
     expect(resize.width.value).toBe(310)
     expect(localStorage.getItem(STORAGE_KEY)).toBe('540')
     layout(1300)

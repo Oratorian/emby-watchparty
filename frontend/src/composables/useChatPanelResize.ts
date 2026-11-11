@@ -15,8 +15,7 @@ function savedWidth(): number {
 }
 
 export function useChatPanelResize() {
-  const videoArea = ref<HTMLElement | null>(null)
-  const chatPanel = ref<HTMLElement | null>(null)
+  const contentArea = ref<HTMLElement | null>(null)
   const preferredWidth = ref(savedWidth())
   const maxWidth = ref(MAX_WIDTH)
   const desktop = ref(false)
@@ -42,10 +41,10 @@ export function useChatPanelResize() {
       finishResize()
       return
     }
-    if (!videoArea.value || !chatPanel.value) return
-    // Measure only the video and chat, so the open library is already excluded.
-    const available = videoArea.value.getBoundingClientRect().width
-      + chatPanel.value.getBoundingClientRect().width
+    if (!contentArea.value) return
+    // Library browsing replaces the video visually, so both share the space
+    // left beside chat. Measuring the room also works while the player is hidden.
+    const available = contentArea.value.getBoundingClientRect().width
     if (!available) return
     maxWidth.value = Math.max(MIN_WIDTH, Math.min(
       MAX_WIDTH,
@@ -100,12 +99,11 @@ export function useChatPanelResize() {
   }
 
   // The room renders after joining, so its elements may not exist at mount.
-  watch([videoArea, chatPanel], ([video, chat]) => {
+  watch(contentArea, (content) => {
     observer?.disconnect()
-    if (video && chat && typeof ResizeObserver !== 'undefined') {
+    if (content && typeof ResizeObserver !== 'undefined') {
       observer = new ResizeObserver(updateBounds)
-      observer.observe(video)
-      observer.observe(chat)
+      observer.observe(content)
     }
     updateBounds()
   }, { flush: 'post' })
@@ -126,7 +124,7 @@ export function useChatPanelResize() {
   })
 
   return {
-    videoArea, chatPanel, width, minWidth: MIN_WIDTH, maxWidth, style, resizing,
+    contentArea, width, minWidth: MIN_WIDTH, maxWidth, style, resizing,
     startResize, moveResize, endResize, resetWidth, resizeWithKeyboard,
   }
 }

@@ -184,8 +184,7 @@ watch(() => party.partyMissing, (missing) => {
 const awaitingAutoJoin = ref(!!localStorage.getItem(STORAGE_KEY))
 const showLibrary = ref(false)
 const {
-  videoArea,
-  chatPanel,
+  contentArea,
   width: chatWidth,
   minWidth: minChatWidth,
   maxWidth: maxChatWidth,
@@ -1450,7 +1449,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
       </button>
     </header>
 
-    <div class="party-content" :class="{ 'is-chat-resizing': resizingChat }" :style="chatWidthStyle">
+    <div ref="contentArea" class="party-content" :class="{ 'is-chat-resizing': resizingChat }" :style="chatWidthStyle">
       <!-- Library panel -->
       <LibraryBrowser
         v-if="showLibrary"
@@ -1461,7 +1460,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
       />
 
       <!-- Video area -->
-      <main ref="videoArea" class="video-area">
+      <main class="video-area">
         <section
           v-if="pendingSelection"
           ref="selectionScreen"
@@ -1659,7 +1658,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
       </main>
 
       <!-- Chat -->
-      <aside id="party-chat-panel" ref="chatPanel" class="chat-panel" :class="{ 'chat-mobile-open': showMobileChat }">
+      <aside id="party-chat-panel" class="chat-panel" :class="{ 'chat-mobile-open': showMobileChat }">
         <div
           class="chat-resize-handle"
           role="separator"
@@ -2436,11 +2435,8 @@ async function submitBecomeHost(payload: { username: string; password: string })
 
 /* ─── Library Panel ─── */
 .library-panel {
-  width: 350px;
-  /* The browser component also declares width: 100%. Keep its desktop
-     flex basis fixed so it cannot consume the space reserved for video. */
-  flex: 0 0 350px;
-  min-width: 300px;
+  flex: 1;
+  min-width: 0;
   /* Match the topbar's glass treatment so the panel reads as part of
      the same surface stack instead of a solid block. Vertical fade
      darkens the bottom slightly. */
@@ -2462,6 +2458,11 @@ async function submitBecomeHost(payload: { username: string; password: string })
   overflow: hidden;
   min-height: 0;
   background: var(--bg-deep);
+}
+
+/* Browsing takes the player's place without unmounting its active stream. */
+.party-container.library-open .video-area {
+  display: none;
 }
 
 .no-video {
@@ -3106,14 +3107,9 @@ async function submitBecomeHost(payload: { username: string; password: string })
 
   .library-panel {
     width: 100%;
-    flex-basis: 100%;
     min-width: 0;
     height: 100%;
     overflow-x: hidden;
-  }
-
-  .party-container.library-open .video-area {
-    display: none;
   }
 
   .chat-panel {
