@@ -21,6 +21,10 @@ Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722
 
 ## [Unreleased]
 
+### Added
+
+- **The desktop chat panel can be resized by dragging its divider.** Width limits account for the open library and preserve space for the video. Arrow keys also adjust the width, a double-click restores the default, and each browser remembers its preferred width.
+
 ### Fixed
 
 - **Docker initializes missing or blank runtime configuration files with `{}` before startup.** Initialization writes through single-file bind mounts and preserves existing nonblank settings. The image also includes a valid `config.json` mount target. Deployment instructions initialize missing or empty host files without overwriting populated configurations; source installations and explicit migration-preflight commands retain their existing behavior.

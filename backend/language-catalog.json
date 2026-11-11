@@ -607,6 +607,8 @@
       "open_admin": "Open the admin panel ({provider} admin policy required)",
       "admin": "Admin",
       "chat": "Chat",
+      "resize_chat_panel": "Resize chat panel",
+      "resize_chat_hint": "Drag or use the arrow keys to resize chat. Double-click to reset.",
       "poster": "{title} poster",
       "waiting_for_selection": "Waiting for {name} to retry or choose another video.",
       "locked_login": "A {provider} login is needed before anyone can browse the library. Any party member can do it.",

@@ -76,6 +76,8 @@
   "open_admin": "Admin-Bereich öffnen ({provider}-Adminrechte erforderlich)",
   "admin": "Admin",
   "chat": "Chat",
+  "resize_chat_panel": "Chat-Breite ändern",
+  "resize_chat_hint": "Ziehen oder Pfeiltasten verwenden, um die Chat-Breite zu ändern. Doppelklicken zum Zurücksetzen.",
   "poster": "Poster von {title}",
   "waiting_for_selection": "Warte darauf, dass {name} es erneut versucht oder ein anderes Video auswählt.",
   "locked_login": "Eine Anmeldung bei {provider} ist nötig, bevor jemand die Bibliothek durchsuchen kann. Jedes Party-Mitglied kann das übernehmen.",

@@ -57,6 +57,7 @@ import { usePartyVoting } from '@/composables/usePartyVoting'
 import { usePartyStream } from '@/composables/usePartyStream'
 import { usePartyPlayback } from '@/composables/usePartyPlayback'
 import { usePartyLifecycle } from '@/composables/usePartyLifecycle'
+import { useChatPanelResize } from '@/composables/useChatPanelResize'
 // Brand mark asset. Vite resolves this to a hashed URL at build time
 // (and inlines small assets), so the WebP ships with cache-busting and
 // no runtime path drift. Sits on top of the cyan->magenta gradient
@@ -182,6 +183,20 @@ watch(() => party.partyMissing, (missing) => {
 // confirms the auto-join, even when localStorage has a saved name.
 const awaitingAutoJoin = ref(!!localStorage.getItem(STORAGE_KEY))
 const showLibrary = ref(false)
+const {
+  videoArea,
+  chatPanel,
+  width: chatWidth,
+  minWidth: minChatWidth,
+  maxWidth: maxChatWidth,
+  style: chatWidthStyle,
+  resizing: resizingChat,
+  startResize: startChatResize,
+  moveResize: moveChatResize,
+  endResize: endChatResize,
+  resetWidth: resetChatWidth,
+  resizeWithKeyboard: resizeChatWithKeyboard,
+} = useChatPanelResize()
 const selectionIsSlow = ref(false)
 let selectionSlowTimer: ReturnType<typeof setTimeout> | null = null
 const pendingSelection = computed(() => party.pendingVideoSelection)
@@ -1435,7 +1450,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
       </button>
     </header>
 
-    <div class="party-content">
+    <div class="party-content" :class="{ 'is-chat-resizing': resizingChat }" :style="chatWidthStyle">
       <!-- Library panel -->
       <LibraryBrowser
         v-if="showLibrary"
@@ -1446,7 +1461,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
       />
 
       <!-- Video area -->
-      <main class="video-area">
+      <main ref="videoArea" class="video-area">
         <section
           v-if="pendingSelection"
           ref="selectionScreen"
@@ -1644,7 +1659,26 @@ async function submitBecomeHost(payload: { username: string; password: string })
       </main>
 
       <!-- Chat -->
-      <aside class="chat-panel" :class="{ 'chat-mobile-open': showMobileChat }">
+      <aside id="party-chat-panel" ref="chatPanel" class="chat-panel" :class="{ 'chat-mobile-open': showMobileChat }">
+        <div
+          class="chat-resize-handle"
+          role="separator"
+          tabindex="0"
+          aria-orientation="vertical"
+          aria-controls="party-chat-panel"
+          :aria-label="t('party.resize_chat_panel')"
+          :aria-valuemin="minChatWidth"
+          :aria-valuemax="maxChatWidth"
+          :aria-valuenow="chatWidth"
+          :title="t('party.resize_chat_hint')"
+          @pointerdown="startChatResize"
+          @pointermove="moveChatResize"
+          @pointerup="endChatResize"
+          @pointercancel="endChatResize"
+          @lostpointercapture="endChatResize"
+          @keydown="resizeChatWithKeyboard"
+          @dblclick="resetChatWidth"
+        />
         <div class="chat-header" @click="showParticipants = !showParticipants">
           <h3>{{ t('party.chat') }}</h3>
           <div class="chat-header-actions">
@@ -2403,6 +2437,9 @@ async function submitBecomeHost(payload: { username: string; password: string })
 /* ─── Library Panel ─── */
 .library-panel {
   width: 350px;
+  /* The browser component also declares width: 100%. Keep its desktop
+     flex basis fixed so it cannot consume the space reserved for video. */
+  flex: 0 0 350px;
   min-width: 300px;
   /* Match the topbar's glass treatment so the panel reads as part of
      the same surface stack instead of a solid block. Vertical fade
@@ -2419,6 +2456,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
 /* ─── Video Area ─── */
 .video-area {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2550,7 +2588,10 @@ async function submitBecomeHost(payload: { username: string; password: string })
 
 /* ─── Chat Panel ─── */
 .chat-panel {
-  width: 320px;
+  position: relative;
+  width: var(--chat-panel-width, 320px);
+  flex-shrink: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   /* Mirror the library panel's glass surface so left/right shoulders
@@ -2559,6 +2600,43 @@ async function submitBecomeHost(payload: { username: string; password: string })
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-left: 1px solid var(--border-subtle);
+}
+
+.chat-resize-handle {
+  position: absolute;
+  inset: 0 auto 0 -6px;
+  width: 12px;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.chat-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: calc(50% - 24px);
+  left: 4px;
+  width: 3px;
+  height: 48px;
+  border-radius: 3px;
+  background: var(--border-subtle);
+}
+
+.chat-resize-handle:hover::after,
+.chat-resize-handle:focus-visible::after,
+.is-chat-resizing .chat-resize-handle::after {
+  background: var(--accent-primary);
+}
+
+.chat-resize-handle:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.is-chat-resizing,
+.is-chat-resizing :deep(*) {
+  cursor: col-resize !important;
+  user-select: none;
 }
 
 .chat-header {
@@ -2896,6 +2974,10 @@ async function submitBecomeHost(payload: { username: string; password: string })
    Use the existing chat drawer at this intermediate breakpoint while
    retaining the normal desktop library layout. */
 @media (max-width: 1280px) {
+  .chat-resize-handle {
+    display: none;
+  }
+
   .brand-name {
     display: none;
   }
@@ -3024,6 +3106,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
 
   .library-panel {
     width: 100%;
+    flex-basis: 100%;
     min-width: 0;
     height: 100%;
     overflow-x: hidden;
