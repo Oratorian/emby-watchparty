@@ -23,6 +23,7 @@ Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722
 
 ### Added
 
+- **The emoji button opens a chat menu with emojis and appearance settings.** The menu works with hover, keyboard or touch. Viewers can choose the default font or bundled Rajdhani, Oxanium and Space Grotesk webfonts, adjust chat text from 12 to 24 pixels, preview changes and reset the appearance. Preferences stay in each browser; the open-source fonts are served locally.
 - **The desktop chat panel can be resized by dragging its divider.** Width limits preserve space for the video or library. Arrow keys also adjust the width, a double-click restores the default, and each browser remembers its preferred width.
 
 ### Fixed

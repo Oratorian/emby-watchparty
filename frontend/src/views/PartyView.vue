@@ -58,6 +58,7 @@ import { usePartyStream } from '@/composables/usePartyStream'
 import { usePartyPlayback } from '@/composables/usePartyPlayback'
 import { usePartyLifecycle } from '@/composables/usePartyLifecycle'
 import { useChatPanelResize } from '@/composables/useChatPanelResize'
+import { useChatAppearance } from '@/composables/useChatAppearance'
 // Brand mark asset. Vite resolves this to a hashed URL at build time
 // (and inlines small assets), so the WebP ships with cache-busting and
 // no runtime path drift. Sits on top of the cyan->magenta gradient
@@ -196,6 +197,12 @@ const {
   resetWidth: resetChatWidth,
   resizeWithKeyboard: resizeChatWithKeyboard,
 } = useChatPanelResize()
+const {
+  font: chatFont,
+  size: chatFontSize,
+  style: chatAppearanceStyle,
+  reset: resetChatAppearance,
+} = useChatAppearance()
 const selectionIsSlow = ref(false)
 let selectionSlowTimer: ReturnType<typeof setTimeout> | null = null
 const pendingSelection = computed(() => party.pendingVideoSelection)
@@ -1658,7 +1665,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
       </main>
 
       <!-- Chat -->
-      <aside id="party-chat-panel" class="chat-panel" :class="{ 'chat-mobile-open': showMobileChat }">
+      <aside id="party-chat-panel" class="chat-panel" :class="{ 'chat-mobile-open': showMobileChat }" :style="chatAppearanceStyle">
         <div
           class="chat-resize-handle"
           role="separator"
@@ -1736,7 +1743,12 @@ async function submitBecomeHost(payload: { username: string; password: string })
         </div>
         <div class="chat-input">
           <div class="chat-composer">
-            <EmojiPicker @select="insertEmoji" />
+            <EmojiPicker
+              v-model:font="chatFont"
+              v-model:size="chatFontSize"
+              @select="insertEmoji"
+              @reset="resetChatAppearance"
+            />
             <input
               v-model="chatInput"
               @keypress.enter="sendChat"
@@ -2742,7 +2754,8 @@ async function submitBecomeHost(payload: { username: string; password: string })
   flex: 1;
   overflow-y: auto;
   padding: var(--space-sm) var(--space-md);
-  font-size: 0.85rem;
+  font-family: var(--chat-font-family, var(--font-sans));
+  font-size: var(--chat-font-size, 14px);
   line-height: 1.5;
 }
 
@@ -2770,7 +2783,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
   max-width: 75%;
   min-width: 0;
   word-break: break-word;
-  font-size: 0.85rem;
+  font-size: inherit;
 }
 
 .bubble-other {
@@ -2786,7 +2799,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
 }
 
 .msg-bubble strong {
-  font-size: 0.75rem;
+  font-size: 0.88em;
   font-weight: 600;
 }
 
@@ -2834,7 +2847,7 @@ async function submitBecomeHost(payload: { username: string; password: string })
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-full);
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: 0.88em;
   font-weight: 500;
   max-width: 100%;
   text-align: center;
@@ -2871,7 +2884,9 @@ async function submitBecomeHost(payload: { username: string; password: string })
   box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.08);
 }
 
-.chat-composer-input {
+/* The global input rule has several type exclusions. The panel ID keeps
+   these composer overrides stronger without changing other form controls. */
+#party-chat-panel .chat-composer-input {
   flex: 1;
   min-width: 0;
   /* Override the global input chip styling -- the surface/border live
@@ -2880,11 +2895,12 @@ async function submitBecomeHost(payload: { username: string; password: string })
   background: none;
   border: 0;
   border-radius: 0;
-  font-size: 13px;
+  font-family: var(--chat-font-family, var(--font-sans));
+  font-size: var(--chat-font-size, 14px);
   color: var(--text-primary);
 }
 
-.chat-composer-input:focus {
+#party-chat-panel .chat-composer-input:focus {
   background: none;
   border: 0;
   box-shadow: none;
