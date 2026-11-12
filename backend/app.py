@@ -68,6 +68,14 @@ API_TAGS = [
         ),
     },
     {
+        "name": "previews",
+        "description": (
+            "Temporary per-viewer background previews for movies and series, with creation, "
+            "cancellation, and protected HLS playlists and segments. Preview sessions are "
+            "separate from synchronized party playback."
+        ),
+    },
+    {
         "name": "party",
         "description": (
             "Create, join, probe and leave a watch party. Joining issues the party-bound "
