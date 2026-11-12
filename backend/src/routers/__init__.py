@@ -1,9 +1,21 @@
 """Canonical FastAPI route surface used by runtime and schema generation."""
 
-from backend.src.routers import admin, auth, avatar, health, hls, languages, party, quality, v2
+from backend.src.routers import (
+    admin,
+    auth,
+    avatar,
+    health,
+    hls,
+    languages,
+    party,
+    previews,
+    quality,
+    v2,
+)
 
 API_ROUTERS = (
     v2.router,
+    previews.router,
     auth.router,
     hls.router,
     party.router,

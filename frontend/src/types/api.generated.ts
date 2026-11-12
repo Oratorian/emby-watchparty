@@ -66,6 +66,7 @@ export type RecoverRequest = { "code": string }
 export type RecoverResponse = { "success": boolean; "uuid": string | null; "message": string | null }
 export type RuntimeConfigResponse = { "error": string | null }
 export type SearchGroupV2 = { "id": string; "label": string; "items": MediaItemV2[] }
+export type ShowPreviewResponseV2 = { "preview_id": string; "url": string; "duration_seconds": number; "start_seconds": number; "expires_in": number }
 export type StaticSessionResponse = { "party_id": string | null }
 export type StreamCatalogV2 = { "audio": AudioStreamV2[]; "subtitles": SubtitleStreamV2[]; "media_source_id": string | null; "versions": MediaVersionV2[] }
 export type SubtitleStreamV2 = { "index": number; "language": string; "display_language": string; "codec": string; "is_default": boolean; "is_forced": boolean; "is_external": boolean; "is_text": boolean; "is_image": boolean; "title": string }

@@ -16,7 +16,12 @@ from fastapi.routing import APIRoute
 from backend.src.routers import API_ROUTERS
 
 # Anything that can reach the media server can meet a transport failure.
-UPSTREAM_DEPENDENCIES = {"get_emby_client", "get_emby_gateway", "get_media_server"}
+UPSTREAM_DEPENDENCIES = {
+    "get_emby_client",
+    "get_emby_gateway",
+    "get_media_server",
+    "get_preview_manager",
+}
 # Routes that reach the media server but convert an upstream failure
 # themselves, so a 502 can never escape them and declaring one would be its own
 # kind of wrong.
@@ -42,6 +47,8 @@ SELF_HANDLED_UPSTREAM = {
     "/api/v2/auth/login",
     "/api/v2/auth/status",
     "/api/v2/items/{item_id}/intro",
+    # Preview deletion always revokes access, even if encoding cleanup fails.
+    "/api/v2/previews/{preview_id}",
 }
 # Guard name -> the status codes it can produce, which the route must declare.
 GUARD_CODES = {
@@ -70,7 +77,8 @@ def _routes():
 
 
 def _label(route: APIRoute) -> str:
-    return f"{sorted(route.methods - {'HEAD', 'OPTIONS'})[0]} {route.path}"
+    methods = route.methods - {"HEAD", "OPTIONS"}
+    return f"{sorted(methods or route.methods)[0]} {route.path}"
 
 
 def _declared(route: APIRoute) -> set[int]:

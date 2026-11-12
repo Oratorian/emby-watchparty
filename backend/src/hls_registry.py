@@ -66,6 +66,7 @@ class HLSResourceRegistry:
         resolve: Callable[[HLSResource, str], HLSResource],
         app_prefix: str,
         token: str,
+        path_prefix: str = "/hls",
     ) -> str:
         if self._plans.get(plan.stream_id) is not plan:
             raise KeyError("playback plan is not active")
@@ -79,7 +80,7 @@ class HLSResourceRegistry:
             if not already_registered:
                 created_resource_ids.append(resource_id)
             return (
-                f"{app_prefix}/hls/{quote(plan.stream_id, safe='')}/resources/"
+                f"{app_prefix}{path_prefix}/{quote(plan.stream_id, safe='')}/resources/"
                 f"{quote(resource_id, safe='')}?token={quote(token, safe='')}"
             )
 

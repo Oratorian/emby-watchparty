@@ -96,6 +96,28 @@ MOVIE: dict[str, Any] = {
     ],
 }
 
+PREVIEW_SERIES: dict[str, Any] = {
+    "Id": "series-1",
+    "Name": "Preview Series",
+    "Type": "Series",
+    "IsFolder": True,
+    "Overview": "A deterministic series for background preview checks.",
+    "ImageTags": {"Primary": "preview-poster"},
+    "BackdropImageTags": ["preview-backdrop"],
+}
+PREVIEW_EPISODE: dict[str, Any] = {
+    **MOVIE,
+    "Id": "episode-1",
+    "Name": "Preview Episode",
+    "Type": "Episode",
+    "SeriesId": "series-1",
+    "SeasonId": "season-1",
+    "ParentId": "season-1",
+    "SeriesName": "Preview Series",
+    "IndexNumber": 1,
+    "ParentIndexNumber": 1,
+}
+
 
 @dataclass
 class FakeEmbyBehavior:
@@ -274,6 +296,8 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
             user_id = "user-large"
         elif username == "AlphabetLibrary":
             user_id = "user-alphabet"
+        elif username == "PreviewViewer":
+            user_id = "user-preview"
         else:
             user_id = "user-1"
         return {
@@ -376,6 +400,13 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
                 "Items": copy.deepcopy(state.user_items),
                 "TotalRecordCount": len(state.user_items),
             }
+        if user_id == "user-preview":
+            catalog = (
+                [PREVIEW_EPISODE]
+                if request.query_params.get("ParentId") == "series-1"
+                else [PREVIEW_SERIES]
+            )
+            return {"Items": catalog, "TotalRecordCount": len(catalog)}
         if user_id not in {"user-large", "user-alphabet"}:
             return {"Items": [MOVIE], "TotalRecordCount": 1}
 
@@ -509,8 +540,12 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
 
     @app.get("/emby/Users/{user_id}/Items/{item_id}")
     async def user_item(request: Request, user_id: str, item_id: str):
-        del user_id
         state.record(request)
+        if user_id == "user-preview":
+            if item_id == "series-1":
+                return copy.deepcopy(PREVIEW_SERIES)
+            if item_id == "episode-1":
+                return copy.deepcopy(PREVIEW_EPISODE)
         return {**MOVIE, "Id": item_id}
 
     @app.get("/emby/Items/{item_id}")
@@ -522,7 +557,11 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
     async def playback_info(request: Request, item_id: str):
         state.record(request, body=await request.json())
         return {
-            "PlaySessionId": "play-session-1",
+            "PlaySessionId": (
+                f"preview-session-{len(state.requests)}"
+                if item_id == "episode-1"
+                else "play-session-1"
+            ),
             "MediaSources": [{**MOVIE["MediaSources"][0], "ItemId": item_id}],
         }
 

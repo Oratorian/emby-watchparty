@@ -27,6 +27,7 @@ from backend.src.language_packs import LanguagePackStore
 from backend.src.log_levels import apply_log_levels
 from backend.src.observability import RequestLogMiddleware
 from backend.src.party_manager import PartyManager
+from backend.src.preview_manager import PreviewManager
 from backend.src.providers import create_provider
 from backend.src.rate_limit import RateLimitMiddleware, SlidingWindowRateLimiter
 from backend.src.routers import API_ROUTERS
@@ -332,6 +333,8 @@ async def lifespan(application: FastAPI):
         rate_limiter = SlidingWindowRateLimiter()
         media_server_gateway = MediaServerGateway(http_client, config.MEDIA_SERVER_URL, logger)
         media_server = create_provider(config, logger, media_server_gateway)
+        preview_manager = PreviewManager(media_server, party_manager, logger)
+        resources.push_async_callback(preview_manager.close)
         stream_builder = StreamBuilder(media_server.client, logger, config)
 
         application.state.config = config
@@ -342,6 +345,7 @@ async def lifespan(application: FastAPI):
         application.state.party_manager = party_manager
         application.state.token_manager = token_manager
         application.state.hls_registry = hls_registry
+        application.state.preview_manager = preview_manager
         application.state.stream_builder = stream_builder
         application.state.avatar_store = avatar_store
         application.state.admin_session_store = admin_session_store

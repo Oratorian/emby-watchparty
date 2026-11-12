@@ -282,6 +282,9 @@ def test_every_documented_v2_error_has_a_body_schema(tmp_path: Path) -> None:
         if not path.startswith("/api/v2/"):
             continue
         for method, operation in methods.items():
+            # HEAD returns the status and headers without a response body.
+            if method == "head":
+                continue
             for status, response in operation["responses"].items():
                 if status in {"401", "403", "404", "423", "429", "502"} and not response.get(
                     "content", {}

@@ -22,6 +22,7 @@ from backend.src.emby_gateway import EmbyGateway
 from backend.src.hls_registry import HLSResourceRegistry
 from backend.src.hls_token_manager import HLSTokenManager
 from backend.src.party_manager import PartyManager
+from backend.src.preview_manager import PreviewManager
 from backend.src.providers.base import MediaServerProvider
 from backend.src.schemas import HTTPErrorResponse
 from backend.src.stream_builder import StreamBuilder
@@ -69,6 +70,10 @@ def get_token_manager(request: Request) -> HLSTokenManager:
 
 def get_hls_registry(request: Request) -> HLSResourceRegistry:
     return request.app.state.hls_registry
+
+
+def get_preview_manager(request: Request) -> PreviewManager:
+    return request.app.state.preview_manager
 
 
 def get_stream_builder(request: Request) -> StreamBuilder:
