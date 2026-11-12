@@ -139,9 +139,14 @@
     <template v-else-if="details">
       <header
         class="detail-hero"
-        :class="{ 'has-backdrop': !!details.BackdropImageTags?.length }"
+        :class="{ 'has-backdrop': !!details.BackdropImageTags?.length, 'has-preview': details.Type === 'Series' && previewAllowed }"
         :style="details.BackdropImageTags?.length ? { backgroundImage: `url(${backdropUrl})` } : {}"
       >
+        <ShowBackgroundPreview
+          v-if="details.Type === 'Series' && previewAllowed"
+          :key="details.Id"
+          :series-id="details.Id"
+        />
         <img
           v-if="details.ImageTags?.Primary"
           class="detail-poster"
@@ -290,8 +295,14 @@ import {
   type StreamsResponse,
 } from '@/api/client'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
+import ShowBackgroundPreview from '@/components/ShowBackgroundPreview.vue'
 
-const props = defineProps<{ item: LibraryItem; isHost: boolean; selectedSeasonId?: string | null }>()
+const props = withDefaults(defineProps<{
+  item: LibraryItem
+  isHost: boolean
+  selectedSeasonId?: string | null
+  previewAllowed?: boolean
+}>(), { previewAllowed: false })
 const emit = defineEmits<{
   back: []
   play: [selection: PlaybackSelection]
@@ -703,6 +714,7 @@ onUnmounted(() => {
 .title-details button:disabled { cursor: wait; opacity: .6; }
 .back-to-library { justify-self: start; }
 .detail-hero {
+  --detail-backdrop-shade: linear-gradient(100deg, rgba(8, 9, 14, .94) 0%, rgba(8, 9, 14, .88) 38%, rgba(8, 9, 14, .7) 68%, rgba(8, 9, 14, .45) 100%);
   display: grid;
   grid-template-columns: minmax(9rem, 15rem) 1fr;
   gap: 1.5rem;
@@ -740,17 +752,15 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   z-index: 0;
-  background: linear-gradient(
-    100deg,
-    rgba(8, 9, 14, .94) 0%,
-    rgba(8, 9, 14, .88) 38%,
-    rgba(8, 9, 14, .7) 68%,
-    rgba(8, 9, 14, .45) 100%
-  );
+  background: var(--detail-backdrop-shade);
 }
 
 /* Above the scrim. Without this the grid children paint underneath it. */
 .detail-hero > * { position: relative; z-index: 1; }
+.detail-hero.has-preview::before { display: none; }
+/* No stacking context on the preview wrapper: its video and scrim stay below
+   the copy, while its controls can sit above the stretched grid cells. */
+.detail-hero > .show-background-preview { position: absolute; inset: 0; z-index: auto; }
 
 /* Cheap second line of defence for the largest text, which is the part that
    overhangs furthest into the lighter half of the gradient. Only with a

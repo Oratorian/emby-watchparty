@@ -20,6 +20,7 @@ import type {
   MediaSectionV2,
   MediaServerInfoV2,
   PrefixesV2,
+  ShowPreviewResponseV2,
   StreamCatalogV2,
 } from '@/types/api.generated'
 
@@ -89,6 +90,7 @@ export interface LanguagePackSummary {
   revision: string
 }
 export interface LanguagePacksResponse { languages: LanguagePackSummary[] }
+export type ShowPreviewResponse = ShowPreviewResponseV2
 
 function isLanguagePackSummary(value: JsonValue | undefined): value is JsonObject & LanguagePackSummary {
   return isJsonObject(value) && ['locale', 'name', 'author', 'version', 'revision']
@@ -602,6 +604,15 @@ export const api = {
   itemDetails: async (id: string, signal?: AbortSignal) => projectMediaDetails(
     await apiFetch<MediaItemDetailsV2>(`/api/v2/items/${id}`, { signal }),
   ),
+  startShowPreview: (id: string, options: { signal?: AbortSignal } = {}) =>
+    apiFetch<ShowPreviewResponse>(`/api/v2/items/${encodeURIComponent(id)}/preview`, {
+      method: 'POST', signal: options.signal,
+    }),
+  stopShowPreview: async (id: string, options: { keepalive?: boolean } = {}): Promise<void> => {
+    await apiFetch<void>(`/api/v2/previews/${encodeURIComponent(id)}`, {
+      method: 'DELETE', keepalive: options.keepalive,
+    })
+  },
   itemSection: async (
     id: string, section: ItemSection, signal?: AbortSignal,
   ): Promise<ItemSectionResponse> => {

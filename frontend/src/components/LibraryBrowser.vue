@@ -5,6 +5,7 @@
       :item="detailItem"
       :is-host="auth.isHost"
       :selected-season-id="selectedSeasonId"
+      :preview-allowed="!party.playbackState.playing && !party.pendingVideoSelection"
       @back="closeDetails"
       @play="emit('select-video', $event)"
       @browse="browseDetail"
