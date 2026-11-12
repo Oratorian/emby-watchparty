@@ -33,7 +33,7 @@ vi.mock('vue-router', () => ({
 // component emits through is never the one a test can inspect.
 const socket = {
   emit: vi.fn(),
-  connect: vi.fn(),
+  prepare: vi.fn(), connect: vi.fn(),
   disconnect: vi.fn(),
   on: vi.fn(),
   off: vi.fn(),

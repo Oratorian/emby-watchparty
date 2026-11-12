@@ -31,6 +31,9 @@ export function usePartyReconnect(
       nextConnectIsRejoin = true
       return
     }
+    // Explicit joins bind HTTP first and own the following handshake/emit.
+    // Ordinary reconnects resume only after that flow succeeds.
+    if (party.joinInProgress || socket.sessionRebinding || party.sessionError) return
     if (!party.partyId || !party.username) return
     socket.emit('join_party', {
       party_id: party.partyId,

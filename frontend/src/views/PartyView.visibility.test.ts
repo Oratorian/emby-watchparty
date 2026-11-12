@@ -31,7 +31,7 @@ vi.mock('vue-router', () => ({
 vi.mock('@/stores/socket', () => ({
   useSocketStore: () => ({
     emit: vi.fn(),
-    connect: vi.fn(),
+    prepare: vi.fn(), connect: vi.fn(),
     disconnect: vi.fn(),
     on: vi.fn(),
     off: vi.fn(),

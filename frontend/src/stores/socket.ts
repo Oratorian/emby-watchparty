@@ -17,6 +17,12 @@ export const useSocketStore = defineStore('socket', () => {
   const reconnecting = ref(false)
   const connectionError = ref<string | null>(null)
   const connectionRetryAfter = ref(0)
+  // An explicit HTTP join owns the next connection and its join_party emit.
+  // Reconnect listeners must not send a second join with an older cookie.
+  const sessionRebinding = ref(false)
+  let awaitingSessionBinding = false
+  let sessionRevision = 0
+  let pendingSessionJoin: Parameters<ClientToServerEvents['join_party']> | null = null
   let networkListenersInstalled = false
   let connectionRetryTimer: ReturnType<typeof setInterval> | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -29,7 +35,7 @@ export const useSocketStore = defineStore('socket', () => {
     connectionRetryAfter.value = 0
   }
 
-  function connect() {
+  function prepare() {
     // Skip if a socket already exists for this Pinia singleton, even
     // when it has not finished the handshake yet. The old guard only
     // checked `connected`, so a second connect() call during the brief
@@ -58,6 +64,7 @@ export const useSocketStore = defineStore('socket', () => {
     const s: Socket<ServerToClientEvents, ClientToServerEvents> = io('', {
       path: `${APP_PREFIX}/socket.io`,
       transports: ['websocket', 'polling'],
+      autoConnect: false,
     })
 
     s.on('connect', () => {
@@ -66,6 +73,21 @@ export const useSocketStore = defineStore('socket', () => {
       connected.value = true
       hasEverConnected.value = true
       reconnecting.value = false
+      if (!awaitingSessionBinding) {
+        if (pendingSessionJoin) {
+          const args = pendingSessionJoin
+          pendingSessionJoin = null
+          s.emit('join_party', ...args)
+        }
+        // Keep the flag through all connect listeners, including
+        // usePartyReconnect, then allow genuine transport reconnects again.
+        const revision = sessionRevision
+        queueMicrotask(() => {
+          if (revision === sessionRevision && !awaitingSessionBinding) {
+            sessionRebinding.value = false
+          }
+        })
+      }
     })
 
     s.on('connected', (data: { sid: string }) => {
@@ -119,7 +141,46 @@ export const useSocketStore = defineStore('socket', () => {
     socket.value = s
   }
 
+  function beginSessionBinding() {
+    ++sessionRevision
+    sessionRebinding.value = true
+    awaitingSessionBinding = true
+    pendingSessionJoin = null
+    clearConnectionRetry()
+    // An existing healthy socket may stay connected while HTTP binds. A
+    // dropped transport must wait for the new cookie before reconnecting.
+    socket.value?.io.reconnection(false)
+  }
+
+  function cancelSessionBinding() {
+    ++sessionRevision
+    awaitingSessionBinding = false
+    pendingSessionJoin = null
+    sessionRebinding.value = false
+    socket.value?.io.reconnection(true)
+  }
+
+  function connect(options: { freshSession?: boolean } = {}) {
+    prepare()
+    const current = socket.value!
+    if (options.freshSession) {
+      ++sessionRevision
+      sessionRebinding.value = true
+      awaitingSessionBinding = false
+      pendingSessionJoin = null
+      clearConnectionRetry()
+      // Socket.IO freezes cookies at handshake. Keep the instance and all
+      // listeners, but replace that handshake after HTTP minted the session.
+      current.disconnect()
+      connected.value = false
+      sid.value = null
+      current.io.reconnection(true)
+    } else if (awaitingSessionBinding) return
+    if (!connected.value) current.connect()
+  }
+
   function disconnect() {
+    cancelSessionBinding()
     clearConnectionRetry()
     socket.value?.disconnect()
     socket.value = null
@@ -133,6 +194,16 @@ export const useSocketStore = defineStore('socket', () => {
     event: K,
     ...args: Parameters<ClientToServerEvents[K]>
   ) {
+    if (event === 'join_party' && sessionRebinding.value) {
+      // Keep only the latest explicit join while the authenticated handshake
+      // is pending. Socket.IO's own send buffer would accumulate retries.
+      pendingSessionJoin = args as Parameters<ClientToServerEvents['join_party']>
+      if (!connected.value || awaitingSessionBinding) return
+      const joinArgs = pendingSessionJoin
+      pendingSessionJoin = null
+      socket.value?.emit('join_party', ...joinArgs)
+      return
+    }
     socket.value?.emit(event, ...args)
   }
 
@@ -158,6 +229,10 @@ export const useSocketStore = defineStore('socket', () => {
     reconnecting,
     connectionError,
     connectionRetryAfter,
+    sessionRebinding,
+    prepare,
+    beginSessionBinding,
+    cancelSessionBinding,
     connect,
     disconnect,
     emit,

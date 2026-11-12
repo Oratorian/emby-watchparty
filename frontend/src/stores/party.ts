@@ -100,6 +100,8 @@ export const usePartyStore = defineStore('party', () => {
   // a pasted stale link both land here.
   const partyMissing = ref(false)
   const sessionRetrying = ref(false)
+  const joinInProgress = ref(false)
+  let pendingJoin: Promise<void> | null = null
   const sessionRetryAfter = ref(0)
   let sessionRetryTimer: ReturnType<typeof setInterval> | null = null
 
@@ -197,43 +199,53 @@ export const usePartyStore = defineStore('party', () => {
 
   const userCount = computed(() => users.value.length)
 
-  async function join(id: string, name: string) {
+  function join(id: string, name: string): Promise<void> {
+    if (pendingJoin) return pendingJoin
+    if (joinInProgress.value) return Promise.resolve()
+    joinInProgress.value = true
+    pendingJoin = performJoin(id, name).finally(() => {
+      joinInProgress.value = false
+      pendingJoin = null
+    })
+    return pendingJoin
+  }
+
+  async function performJoin(id: string, name: string) {
     const socket = useSocketStore()
-    const avatar = useAvatarStore()
-    const normalisedId = id.toUpperCase()
-    partyId.value = normalisedId
-    username.value = name
-    // Cleared before the first await, not just on a successful bind:
-    // going straight from a dead party to a live one would otherwise leave
-    // the "no longer exists" card up for the whole join, avatar load
-    // included -- and leave it frozen, since the countdown watcher fires on
-    // the transition into missing, which already happened.
-    partyMissing.value = false
-    let clientId = getClientId()
-    // Load the persisted avatar id (IndexedDB or localStorage) so it
-    // can ride along on the join. Safe to call repeatedly.
-    if (!avatar.uuid) {
-      try { await avatar.load() } catch { /* ignore */ }
-    }
-    const avatarUuid = avatar.uuid
-    supersededBy.value = null
-    // Announce only once the cookie is actually bound. A tab that failed
-    // to bind never repointed anything, so it must not make a healthy
-    // tab believe it has been superseded.
-    let bound = await bindSession(clientId, name, avatarUuid)
-    if (!bound && sessionError.value === IDENTITY_IN_USE_MESSAGE) {
-      clientId = rotateClientIdForTab()
+    socket.beginSessionBinding()
+    let bound = false
+    try {
+      const avatar = useAvatarStore()
+      const normalisedId = id.toUpperCase()
+      partyId.value = normalisedId
+      username.value = name
+      // Clear before the first await so a previous missing-party screen
+      // cannot hide this attempt while the avatar identity is loading.
+      partyMissing.value = false
+      let clientId = getClientId()
+      if (!avatar.uuid) {
+        try { await avatar.load() } catch { /* ignore */ }
+      }
+      const avatarUuid = avatar.uuid
+      supersededBy.value = null
       bound = await bindSession(clientId, name, avatarUuid)
-    }
-    if (bound) {
-      announceBinding(normalisedId)
-      socket.emit('join_party', {
-        party_id: partyId.value,
-        username: name,
-        client_id: clientId,
-        avatar_uuid: avatarUuid,
-        video_codecs: detectVideoCodecs(),
-      })
+      if (!bound && sessionError.value === IDENTITY_IN_USE_MESSAGE) {
+        clientId = rotateClientIdForTab()
+        bound = await bindSession(clientId, name, avatarUuid)
+      }
+      if (bound) {
+        socket.connect({ freshSession: true })
+        announceBinding(normalisedId)
+        socket.emit('join_party', {
+          party_id: partyId.value,
+          username: name,
+          client_id: clientId,
+          avatar_uuid: avatarUuid,
+          video_codecs: detectVideoCodecs(),
+        })
+      }
+    } finally {
+      if (!bound) socket.cancelSessionBinding()
     }
   }
 
@@ -326,19 +338,25 @@ export const usePartyStore = defineStore('party', () => {
   /** Re-attempt the session cookie after a visible failure. */
   async function retrySession() {
     if (
-      !lastJoinArgs || !partyId.value || sessionRetrying.value
+      !lastJoinArgs || !partyId.value || sessionRetrying.value || joinInProgress.value
       || sessionRetryAfter.value > 0
     ) return false
     sessionRetrying.value = true
+    joinInProgress.value = true
+    const socket = useSocketStore()
+    socket.beginSessionBinding()
+    let bound = false
     try {
       const { clientId, name, avatarUuid } = lastJoinArgs
       const ok = await bindSession(clientId, name, avatarUuid)
+      bound = ok
       if (ok) {
+        socket.connect({ freshSession: true })
         // The cookie now points here, so other tabs need to know.
         announceBinding(partyId.value)
         // Re-announce over the socket so the server re-binds this sid
         // and re-issues a stream URL against the now-valid session.
-        useSocketStore().emit('join_party', {
+        socket.emit('join_party', {
           party_id: partyId.value,
           username: name,
           client_id: clientId,
@@ -349,6 +367,8 @@ export const usePartyStore = defineStore('party', () => {
       return ok
     } finally {
       sessionRetrying.value = false
+      joinInProgress.value = false
+      if (!bound) socket.cancelSessionBinding()
     }
   }
 
@@ -769,7 +789,7 @@ export const usePartyStore = defineStore('party', () => {
     myStreamUrl, streamOffset, readyCheckActive, readyUsers, waitingUsers,
     pendingVote,
     bingeWatch, pendingAutoAdvance, hidden, setHidden,
-    sessionError, partyMissing, sessionRetrying, sessionRetryAfter, supersededBy,
+    sessionError, partyMissing, sessionRetrying, sessionRetryAfter, supersededBy, joinInProgress,
     join, leave, setupListeners, submitVote, retrySession,
     setBingeWatchActive, cancelAutoAdvance, beginVideoSelection,
     retryVideoSelection, cancelVideoSelection, dismissVideoSelection,

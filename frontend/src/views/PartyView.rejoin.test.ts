@@ -8,6 +8,8 @@ import { api } from '@/api/client'
 import { usePartyStore } from '@/stores/party'
 import PartyView from './PartyView.vue'
 
+const socketHandlers = vi.hoisted(() => new Map<string, (data: any) => void>())
+
 /**
  * Returning to a party after in-app navigation.
  *
@@ -29,10 +31,10 @@ vi.mock('vue-router', () => ({
 vi.mock('@/stores/socket', () => ({
   useSocketStore: () => ({
     emit: vi.fn(),
-    connect: vi.fn(),
+    prepare: vi.fn(), connect: vi.fn(),
     disconnect: vi.fn(),
-    on: vi.fn(),
-    off: vi.fn(),
+    on: vi.fn((event: string, handler: (data: any) => void) => socketHandlers.set(event, handler)),
+    off: vi.fn((event: string) => socketHandlers.delete(event)),
     connected: true,
   }),
 }))
@@ -83,6 +85,7 @@ describe('returning to a party after in-app navigation', () => {
     pinia = createPinia()
     setActivePinia(pinia)
     vi.restoreAllMocks()
+    socketHandlers.clear()
     localStorage.setItem('emby-watchparty-username', 'Alice')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })))
   })
@@ -93,7 +96,10 @@ describe('returning to a party after in-app navigation', () => {
   })
 
   it('shows host recovery instead of a login prompt while socket presence is restored', async () => {
-    vi.spyOn(usePartyStore(), 'join').mockResolvedValue(undefined as never)
+    // The real join refreshes auth after binding, before the socket joins.
+    vi.spyOn(usePartyStore(), 'join').mockImplementation(async () => {
+      await useAuthStore().refresh()
+    })
     vi.spyOn(api, 'authStatus').mockResolvedValue({
       is_host: true, is_admin: true, party_unlocked: false,
       host_username: 'Alice', party_id: 'ABC12',
@@ -186,6 +192,67 @@ describe('returning to a party after in-app navigation', () => {
     // would find "Bob", mistake a name typed one moment ago for a preexisting
     // auto-join, and claim the same socket identity a second time.
     expect(join).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('keeps a rejected saved-name join visible and retries without another reload', async () => {
+    const party = usePartyStore()
+    const join = vi.spyOn(party, 'join').mockResolvedValue(undefined as never)
+    const wrapper = mountParty()
+    await flushPromises()
+    socketHandlers.get('error')?.({ message: 'Participant identity is already in use' })
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toBe('Participant identity is already in use')
+    expect(wrapper.get('.modal-card input').element).toHaveProperty('value', 'Alice')
+    expect(wrapper.text()).not.toContain('Join Watch Party')
+    await wrapper.get('.modal-card button').trigger('click')
+    await flushPromises()
+    expect(join).toHaveBeenCalledTimes(2)
+    expect(join).toHaveBeenLastCalledWith('ABC12', 'Alice')
+    expect(wrapper.find('.join-spinner').exists()).toBe(true)
+
+    party.users = ['Alice']
+    await flushPromises()
+    expect(wrapper.find('.party-container').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('shows a manual join failure and retains the typed name for retry', async () => {
+    localStorage.removeItem('emby-watchparty-username')
+    const party = usePartyStore()
+    const join = vi.spyOn(party, 'join').mockImplementation(async () => {
+      party.sessionError = 'Could not bind the browser session'
+    })
+    const wrapper = mountParty()
+    await flushPromises()
+    await wrapper.get('.modal-card input').setValue('Bob')
+    await wrapper.get('.modal-card button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toBe('Could not bind the browser session')
+    expect(wrapper.get('.modal-card input').element).toHaveProperty('value', 'Bob')
+    expect(wrapper.get('.modal-card button').text()).toBe('Retry')
+    await wrapper.get('.modal-card input').setValue('Robert')
+    await wrapper.get('.modal-card button').trigger('click')
+    await flushPromises()
+    expect(join).toHaveBeenLastCalledWith('ABC12', 'Robert')
+    wrapper.unmount()
+  })
+
+  it('waits for join confirmation before starting informational requests', async () => {
+    vi.spyOn(usePartyStore(), 'join').mockResolvedValue(undefined as never)
+    const auth = vi.spyOn(useAuthStore(), 'refresh').mockResolvedValue(undefined)
+    const version = vi.spyOn(api, 'version').mockResolvedValue({} as never)
+    const wrapper = mountParty()
+    await flushPromises()
+    expect(auth).not.toHaveBeenCalled()
+    expect(version).not.toHaveBeenCalled()
+    expect(wrapper.find('.join-spinner').exists()).toBe(true)
+
+    usePartyStore().users = ['Alice']
+    await flushPromises()
+    expect(version).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 })

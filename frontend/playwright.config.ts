@@ -26,12 +26,12 @@ export default defineConfig({
       use: { ...devices['Desktop Firefox'] },
       // Cross-engine smoke owns lifecycle, reconnect, admin recovery, and accessibility.
       // Chromium owns full fake-Emby/hls.js; macOS WebKit owns native HLS.
-      testMatch: /(?:index|host-admin-recovery|localization|language-packs|language-pack-builder|lp-relay-submission|chat-resize|chat-appearance|show-preview)\.spec\.ts/,
+      testMatch: /(?:index|host-admin-recovery|localization|language-packs|language-pack-builder|lp-relay-submission|chat-resize|chat-appearance|show-preview|party-refresh)\.spec\.ts/,
     },
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
-      testMatch: /(?:index|localization|language-packs|language-pack-builder|lp-relay-submission|chat-resize|chat-appearance|show-preview)\.spec\.ts/,
+      testMatch: /(?:index|localization|language-packs|language-pack-builder|lp-relay-submission|chat-resize|chat-appearance|show-preview|party-refresh)\.spec\.ts/,
     },
     {
       name: 'ios-webkit',
@@ -70,6 +70,18 @@ export default defineConfig({
       url: 'http://127.0.0.1:4173',
       reuseExistingServer: !process.env.CI,
       env: { VITE_BACKEND_TARGET: 'http://127.0.0.1:5011' },
+    },
+    {
+      command: `${python} scripts/run_e2e_dev_host_app.py`,
+      cwd: '..',
+      url: 'http://127.0.0.1:5014/api/health',
+      reuseExistingServer: false,
+    },
+    {
+      command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4174 --strictPort',
+      url: 'http://127.0.0.1:4174',
+      reuseExistingServer: false,
+      env: { VITE_BACKEND_TARGET: 'http://127.0.0.1:5014' },
     },
   ],
 })

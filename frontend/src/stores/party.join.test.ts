@@ -120,4 +120,45 @@ describe('the join_party emit', () => {
 
     expect(lastJoinPayload(emit).client_id).toBe(rotated)
   })
+
+  it('waits for HTTP binding before refreshing the socket cookie and joins only once', async () => {
+    const emit = socketSpy()
+    const socket = useSocketStore()
+    let release!: (result: { success: boolean }) => void
+    const bind = vi.spyOn(api, 'joinParty').mockReturnValue(new Promise(resolve => { release = resolve }))
+    vi.spyOn(api, 'authStatus').mockResolvedValue({ party_unlocked: true })
+    const party = usePartyStore()
+    const joining = party.join('B39AZ', 'Alice')
+    const duplicate = party.join('B39AZ', 'Alice')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(party.joinInProgress).toBe(true)
+    expect(socket.connect).not.toHaveBeenCalled()
+    expect(emit).not.toHaveBeenCalled()
+
+    release({ success: true })
+    await Promise.all([joining, duplicate])
+    expect(bind).toHaveBeenCalledTimes(1)
+    expect(socket.connect).toHaveBeenCalledExactlyOnceWith({ freshSession: true })
+    expect(joinEmits(emit)).toHaveLength(1)
+    expect(party.joinInProgress).toBe(false)
+  })
+
+  it('starts a fresh authenticated handshake when retrying a failed bind', async () => {
+    const emit = socketSpy()
+    const socket = useSocketStore()
+    const bind = vi.spyOn(api, 'joinParty').mockResolvedValue({ success: false, message: 'Try again' })
+    vi.spyOn(api, 'partyExists').mockResolvedValue({ exists: true })
+    vi.spyOn(api, 'authStatus').mockResolvedValue({ party_unlocked: true })
+    const party = usePartyStore()
+    await party.join('B39AZ', 'Alice')
+    expect(socket.connect).not.toHaveBeenCalled()
+    expect(socket.sessionRebinding).toBe(false)
+
+    bind.mockResolvedValue({ success: true })
+    expect(await party.retrySession()).toBe(true)
+    expect(socket.connect).toHaveBeenCalledExactlyOnceWith({ freshSession: true })
+    expect(joinEmits(emit)).toHaveLength(1)
+    expect(party.joinInProgress).toBe(false)
+  })
 })

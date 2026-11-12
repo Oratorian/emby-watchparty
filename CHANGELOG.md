@@ -29,6 +29,7 @@ Special thanks to **[StealthyDruid](https://discord.com/users/458152893103603722
 
 ### Fixed
 
+- **Refreshing a party restores the saved username and host session without needing a second reload.** HTTP session binding completes before the socket handshakes, and returning development hosts retain their existing host grant. Join failures show their error and retain the entered name for Retry.
 - **Library browsing fills the main area and hides the player again.** The chat divider no longer pins the library to a narrow column. The active player stays mounted, so closing the library reveals the same stream.
 - **Docker initializes missing or blank runtime configuration files with `{}` before startup.** Initialization writes through single-file bind mounts and preserves existing nonblank settings. The image also includes a valid `config.json` mount target. Deployment instructions initialize missing or empty host files without overwriting populated configurations; source installations and explicit migration-preflight commands retain their existing behavior.
 

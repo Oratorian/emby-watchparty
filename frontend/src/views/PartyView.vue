@@ -144,8 +144,16 @@ function chatAvatarSrc(msg: { username: string; avatar_uuid?: string | null }): 
 }
 
 const STORAGE_KEY = 'emby-watchparty-username'
-const usernameInput = ref('')
+function readSavedUsername(): string {
+  try { return localStorage.getItem(STORAGE_KEY)?.trim() || '' } catch { return '' }
+}
+// Snapshot before startup awaits. A manually submitted name must not become
+// a second automatic join merely because it was just saved to storage.
+const savedUsernameAtMount = readSavedUsername()
+const usernameInput = ref(savedUsernameAtMount)
 const joined = ref(false)
+const joining = ref(false)
+const joinError = ref<string | null>(null)
 
 // Seconds left before a viewer on a dead party is sent back to the start page.
 // Long enough to read why they are being moved, short enough that nobody sits
@@ -182,7 +190,7 @@ watch(() => party.partyMissing, (missing) => {
 // We only need the username modal when we have nothing to auto-join with.
 // Without this flag, the modal flashes on every mount before the socket
 // confirms the auto-join, even when localStorage has a saved name.
-const awaitingAutoJoin = ref(!!localStorage.getItem(STORAGE_KEY))
+const awaitingAutoJoin = ref(!!savedUsernameAtMount)
 const showLibrary = ref(false)
 const {
   contentArea,
@@ -309,24 +317,16 @@ const {
 const versionInfo = ref({ version: '', codename: '' })
 
 onMounted(async () => {
-  // Snapshot persisted intent before any startup await. A manual Join can
-  // complete while version/avatar requests are still pending and writes the
-  // username to storage; reading storage afterward mistakes that new value
-  // for a preexisting auto-join and claims the same socket identity twice.
-  const savedUsernameAtMount = localStorage.getItem(STORAGE_KEY)
-  socket.connect()
+  // Install listeners without capturing a cookie. The HTTP join owns the
+  // connection after it has finished binding the browser's session.
+  socket.prepare()
   party.setupListeners()
   attachReconnect()
   auth.attachSocketListeners()
 
-  // These requests are informational and must not delay socket listener
-  // registration. A fast join/play can arrive while either request is
-  // still in flight; registering below only after awaiting them used to
-  // drop that first playback event entirely.
-  void auth.refresh().catch(() => { /* ignore */ })
-  void api.version().then((v) => {
-    versionInfo.value = { version: v.current_version || v.version || '', codename: v.codename || '' }
-  }).catch(() => { /* ignore */ })
+  // App startup already refreshed auth. Binding the party refreshes it again
+  // with the final cookie, so avoid an older response racing that new session.
+  // Informational requests wait for join confirmation for the same reason.
 
   attachChat()
   attachVoting()
@@ -655,9 +655,10 @@ onMounted(async () => {
       router.push('/')
       return
     }
-    // An error during auto-join means we should fall back to the manual
-    // name prompt; otherwise the spinner sits forever.
-    awaitingAutoJoin.value = false
+    if (!joined.value) {
+      joinError.value = msg
+      awaitingAutoJoin.value = true
+    }
     // Same idea for a selection: emitSelection paints the loading screen
     // before the server has accepted the pick, and every refusal of
     // select_video arrives as one of these. Without taking the screen back
@@ -797,11 +798,24 @@ function formatTime(seconds: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
 }
 
-function joinWithName(name: string) {
+async function joinWithName(name: string) {
+  if (joining.value || party.sessionRetryAfter > 0) return
   const id = route.params.id as string
-  if (!name) name = ''
-  party.join(id, name)
-  if (name) localStorage.setItem(STORAGE_KEY, name)
+  name = name.trim()
+  usernameInput.value = name
+  joinError.value = null
+  awaitingAutoJoin.value = true
+  joining.value = true
+  if (name) {
+    try { localStorage.setItem(STORAGE_KEY, name) } catch { /* Joining still works without storage. */ }
+  }
+  try {
+    await party.join(id, name)
+  } catch {
+    joinError.value = t('party.could_not_join_the_party')
+  } finally {
+    joining.value = false
+  }
   // joined=true is set when server confirms via user_joined
 }
 
@@ -810,6 +824,10 @@ watch(() => party.users, (users) => {
   if (users.length > 0 && !joined.value) {
     joined.value = true
     awaitingAutoJoin.value = false
+    joinError.value = null
+    void api.version().then((v) => {
+      versionInfo.value = { version: v.current_version || v.version || '', codename: v.codename || '' }
+    }).catch(() => { /* ignore */ })
   }
 }, { deep: true })
 
@@ -1229,15 +1247,23 @@ async function submitBecomeHost(payload: { username: string; password: string })
         {{ t('party.go_now') }}
       </button>
     </div>
-    <div v-else-if="party.sessionError" class="modal-card">
+    <div v-else-if="joinError || party.sessionError" class="modal-card">
       <h2>{{ t('party.could_not_join_party') }}</h2>
-      <p role="alert">{{ party.sessionError }}</p>
+      <p role="alert">{{ joinError || party.sessionError }}</p>
+      <input
+        v-model="usernameInput"
+        @keypress.enter="submitJoin"
+        :placeholder="t('party.your_name_optional')"
+        :aria-label="t('party.your_name_optional')"
+        :disabled="joining"
+        type="text"
+      />
       <button
         class="btn btn-primary"
-        :disabled="party.sessionRetrying || party.sessionRetryAfter > 0"
-        @click="party.retrySession()"
+        :disabled="joining || party.sessionRetrying || party.sessionRetryAfter > 0"
+        @click="submitJoin"
       >
-        {{ party.sessionRetrying
+        {{ joining || party.sessionRetrying
           ? t('party.retrying')
           : party.sessionRetryAfter > 0
             ? t('party.retry_in', { count: party.sessionRetryAfter })

@@ -12,20 +12,26 @@ async function becomeAdminHost(page: Page) {
   await expect(page.getByRole('button', { name: 'Admin', exact: true })).toBeVisible()
 }
 
-test('a delayed pre-rejoin status cannot relock the recovered host', async ({ page }) => {
+test('host recovery waits for post-bind status before the socket handshake', async ({ page }) => {
   await becomeAdminHost(page)
   let release!: () => void
   const delayed = new Promise<void>((resolve) => { release = resolve })
   let requests = 0
+  let statusCaptured = false
+  let sockets = 0
+  page.on('websocket', socket => {
+    if (socket.url().includes('/socket.io/')) sockets++
+  })
   await page.route('**/api/v2/auth/status', async (route) => {
-    // App.vue awaits the first request before mounting PartyView. Delay the
-    // view's second, pre-bind request, rather than blocking app bootstrap.
+    // Startup owns the first read. The second belongs to the completed HTTP
+    // bind and must finish before Socket.IO captures the resulting cookie.
     if (++requests !== 2) {
       await route.continue()
       return
     }
     const response = await route.fetch()
     const snapshot = await response.json() as Record<string, unknown>
+    statusCaptured = true
     await delayed
     await route.fulfill({
       response,
@@ -37,13 +43,15 @@ test('a delayed pre-rejoin status cannot relock the recovered host', async ({ pa
   try {
     await page.reload({ waitUntil: 'domcontentloaded' })
     const library = page.getByRole('button', { name: 'Browse Library', exact: true }).first()
-    await expect(library).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Admin', exact: true })).toBeVisible()
+    await expect.poll(() => statusCaptured).toBe(true)
+    await expect(page.locator('.join-spinner')).toBeVisible()
+    await expect(page.getByPlaceholder('Your name (optional)')).toBeHidden()
+    expect(sockets).toBe(0)
     const delivered = page.waitForResponse((response) => response.headers()['x-issue74-delayed'] === 'true')
     release()
     await (await delivered).finished()
-    // Let the fetch continuation and Vue's render finish before checking the
-    // state. An immediate assertion could pass against the pre-response DOM.
+    // The pre-presence snapshot is intentionally locked. The fresh socket
+    // must restore the host after that response, without a second reload.
     await page.evaluate(() => new Promise<void>((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     }))

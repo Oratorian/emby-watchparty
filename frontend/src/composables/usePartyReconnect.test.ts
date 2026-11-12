@@ -10,6 +10,7 @@ function makeSocket(hasEverConnected: boolean) {
   const handlers: Record<string, Handler[]> = {}
   return {
     hasEverConnected,
+    sessionRebinding: false,
     emit: vi.fn(),
     on: vi.fn((event: string, fn: Handler) => {
       ;(handlers[event] ??= []).push(fn)
@@ -24,7 +25,7 @@ function makeSocket(hasEverConnected: boolean) {
 }
 
 function attachTo(socket: ReturnType<typeof makeSocket>) {
-  const party = { partyId: 'PARTY', username: 'Alice' }
+  const party = { partyId: 'PARTY', username: 'Alice', joinInProgress: false, sessionError: null as string | null }
   const avatar = { uuid: 'avatar-1' }
   let attach: (() => void) | undefined
 
@@ -44,6 +45,7 @@ function attachTo(socket: ReturnType<typeof makeSocket>) {
   )
 
   attach?.()
+  return party
 }
 
 describe('usePartyReconnect', () => {
@@ -84,5 +86,28 @@ describe('usePartyReconnect', () => {
       'join_party',
       expect.objectContaining({ party_id: 'PARTY' }),
     )
+  })
+
+  it('leaves explicit binding and its fresh handshake to the join flow', () => {
+    const socket = makeSocket(true)
+    const party = attachTo(socket)
+    party.joinInProgress = true
+    socket.fire('connect')
+    party.joinInProgress = false
+    socket.sessionRebinding = true
+    socket.fire('connect')
+    expect(socket.emit).not.toHaveBeenCalled()
+
+    socket.sessionRebinding = false
+    socket.fire('connect')
+    expect(socket.emit).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not bypass a failed HTTP binding on a later transport reconnect', () => {
+    const socket = makeSocket(true)
+    const party = attachTo(socket)
+    party.sessionError = 'Could not bind session'
+    socket.fire('connect')
+    expect(socket.emit).not.toHaveBeenCalled()
   })
 })
