@@ -8,12 +8,12 @@
       "name": "Emby Developer Forum",
       "url": "https://emby.media/community/index.php?/forum/47-developer-api"
     },
-    "version": "4.10.0.25"
+    "version": "4.11.0.13"
   },
   "servers": [
     {
       "url": "http://localhost:8096/emby",
-      "description": "Emby server"
+      "description": "Explore the Emby Server API"
     }
   ],
   "paths": {
@@ -30218,58 +30218,6 @@
           }
         ],
         "x-RequiredAuthentication": "Requires authentication as administrator"
-      }
-    },
-    "/ep_meta_refresh/get_episodes": {
-      "summary": "Gets a list of episodes that would be refreshed in the schedule task",
-      "get": {
-        "tags": [
-          "ApiEndpointService"
-        ],
-        "summary": "Gets a list of episodes that would be refreshed in the schedule task",
-        "description": "Requires authentication as user",
-        "operationId": "getEpMetaRefreshGetEpisodes",
-        "responses": {
-          "200": {
-            "description": "Operation successful. Returning a Object object.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              },
-              "application/xml": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/400"
-          },
-          "401": {
-            "$ref": "#/components/responses/401"
-          },
-          "403": {
-            "$ref": "#/components/responses/403"
-          },
-          "404": {
-            "$ref": "#/components/responses/404"
-          },
-          "500": {
-            "$ref": "#/components/responses/500"
-          }
-        },
-        "security": [
-          {
-            "apikeyauth": [ ]
-          },
-          {
-            "embyauth": [ ]
-          }
-        ],
-        "x-RequiredAuthentication": "Requires authentication as user"
       }
     },
     "/GameGenres/{Name}": {
@@ -76512,6 +76460,76 @@
         "x-RequiredAuthentication": "Requires authentication as user"
       }
     },
+    "/Shows/{Id}/Orders": {
+      "summary": "Gets orders for a show",
+      "get": {
+        "tags": [
+          "TvShowsService"
+        ],
+        "summary": "Gets orders for a show",
+        "description": "Requires authentication as user",
+        "operationId": "getShowsByIdOrders",
+        "parameters": [
+          {
+            "name": "Id",
+            "in": "path",
+            "description": "The series id",
+            "required": true,
+            "style": "simple",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation successful. Returning a NameIdPair[] object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NameIdPair"
+                  }
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NameIdPair"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        },
+        "security": [
+          {
+            "apikeyauth": [ ]
+          },
+          {
+            "embyauth": [ ]
+          }
+        ],
+        "x-RequiredAuthentication": "Requires authentication as user"
+      }
+    },
     "/Shows/{Id}/Seasons": {
       "summary": "Gets seasons for a tv series",
       "get": {
@@ -84125,6 +84143,57 @@
           }
         ],
         "x-RequiredAuthentication": "Requires authentication as administrator"
+      }
+    },
+    "/Users/{Id}/RecentlySearched": {
+      "summary": "Clears recently searched",
+      "delete": {
+        "tags": [
+          "UserService"
+        ],
+        "summary": "Clears recently searched",
+        "description": "Requires authentication as user",
+        "operationId": "deleteUsersByIdRecentlysearched",
+        "parameters": [
+          {
+            "name": "Id",
+            "in": "path",
+            "required": true,
+            "style": "simple",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation successful. Empty response."
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        },
+        "security": [
+          {
+            "apikeyauth": [ ]
+          },
+          {
+            "embyauth": [ ]
+          }
+        ],
+        "x-RequiredAuthentication": "Requires authentication as user"
       }
     },
     "/Users/{Id}/Authenticate": {
@@ -95240,6 +95309,57 @@
           },
           {
             "name": "TrackType",
+            "in": "path",
+            "required": true,
+            "style": "simple",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation successful. Empty response."
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "500": {
+            "$ref": "#/components/responses/500"
+          }
+        },
+        "security": [
+          {
+            "apikeyauth": [ ]
+          },
+          {
+            "embyauth": [ ]
+          }
+        ],
+        "x-RequiredAuthentication": "Requires authentication as user"
+      }
+    },
+    "/Users/{Id}/RecentlySearched/Delete": {
+      "summary": "Clears recently searched",
+      "post": {
+        "tags": [
+          "UserService"
+        ],
+        "summary": "Clears recently searched",
+        "description": "Requires authentication as user",
+        "operationId": "postUsersByIdRecentlysearchedDelete",
+        "parameters": [
+          {
+            "name": "Id",
             "in": "path",
             "required": true,
             "style": "simple",
@@ -108119,6 +108239,9 @@
           "MediaType": {
             "type": "string"
           },
+          "MimeType": {
+            "type": "string"
+          },
           "EndDate": {
             "type": "string",
             "format": "date-time",
@@ -108531,10 +108654,21 @@
             "format": "int32",
             "nullable": true
           },
+          "FullSubtitleStreamIndex": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
           "ItemId": {
             "type": "string"
           },
           "ServerId": {
+            "type": "string"
+          },
+          "MimeType": {
+            "type": "string"
+          },
+          "TranscodingMimeType": {
             "type": "string"
           }
         },
@@ -109016,6 +109150,9 @@
           },
           "Id": {
             "type": "string"
+          },
+          "ShortOverview": {
+            "type": "string"
           }
         },
         "x-internal-ref-name": "MediaBrowser.Model.Dto.NameIdPair"
@@ -109384,7 +109521,7 @@
           "Name": {
             "type": "string"
           },
-          "Sessions": {
+          "InternalSessions": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Session.SessionInfo"
@@ -109401,6 +109538,12 @@
           },
           "IsPlaying": {
             "type": "boolean"
+          },
+          "Sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Session.PartySessionInfo"
+            }
           }
         },
         "x-internal-ref-name": "MediaBrowser.Controller.Session.PartyInfo"
@@ -109535,6 +109678,9 @@
             "format": "int32",
             "nullable": true
           },
+          "SubtitleEnableReason": {
+            "$ref": "#/components/schemas/SubtitleEnableReason"
+          },
           "MediaSourceId": {
             "type": "string"
           },
@@ -109568,6 +109714,15 @@
           }
         },
         "x-internal-ref-name": "MediaBrowser.Model.Session.PlayerStateInfo"
+      },
+      "SubtitleEnableReason": {
+        "enum": [
+          "UserEnabled",
+          "SkipBack",
+          "LowVolume"
+        ],
+        "type": "string",
+        "x-internal-ref-name": "MediaBrowser.Model.Session.SubtitleEnableReason"
       },
       "PlayMethod": {
         "enum": [
@@ -109925,19 +110080,467 @@
       "Session.PartyMessage": {
         "type": "object",
         "properties": {
-          "UserId": {
-            "type": "integer",
-            "format": "int64"
-          },
           "DateTime": {
             "type": "string",
             "format": "date-time"
           },
+          "MessageTranslationKey": {
+            "type": "string"
+          },
+          "MessageTranslationArguments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "Message": {
             "type": "string"
+          },
+          "UserId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "User": {
+            "$ref": "#/components/schemas/UserDto"
           }
         },
         "x-internal-ref-name": "MediaBrowser.Controller.Session.PartyMessage"
+      },
+      "UserDto": {
+        "type": "object",
+        "properties": {
+          "Name": {
+            "type": "string"
+          },
+          "ServerId": {
+            "type": "string"
+          },
+          "ServerName": {
+            "type": "string"
+          },
+          "Prefix": {
+            "type": "string"
+          },
+          "ConnectUserName": {
+            "type": "string"
+          },
+          "DateCreated": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "ConnectLinkType": {
+            "$ref": "#/components/schemas/Connect.UserLinkType"
+          },
+          "Id": {
+            "type": "string"
+          },
+          "PrimaryImageTag": {
+            "type": "string"
+          },
+          "HasPassword": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "HasConfiguredPassword": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "EnableAutoLogin": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "LastLoginDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "LastActivityDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "Configuration": {
+            "$ref": "#/components/schemas/UserConfiguration"
+          },
+          "Policy": {
+            "$ref": "#/components/schemas/UserPolicy"
+          },
+          "PrimaryImageAspectRatio": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "UserItemShareLevel": {
+            "$ref": "#/components/schemas/UserItemShareLevel"
+          }
+        },
+        "x-internal-ref-name": "MediaBrowser.Model.Dto.UserDto"
+      },
+      "Connect.UserLinkType": {
+        "enum": [
+          "LinkedUser",
+          "Guest"
+        ],
+        "type": "string",
+        "x-internal-ref-name": "MediaBrowser.Model.Connect.UserLinkType"
+      },
+      "UserConfiguration": {
+        "type": "object",
+        "properties": {
+          "AudioLanguagePreference": {
+            "type": "string"
+          },
+          "PlayDefaultAudioTrack": {
+            "type": "boolean"
+          },
+          "SubtitleLanguagePreference": {
+            "type": "string"
+          },
+          "ProfilePin": {
+            "type": "string"
+          },
+          "DisplayMissingEpisodes": {
+            "type": "boolean"
+          },
+          "SubtitleMode": {
+            "$ref": "#/components/schemas/SubtitlePlaybackMode"
+          },
+          "OrderedViews": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "LatestItemsExcludes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "MyMediaExcludes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "HidePlayedInLatest": {
+            "type": "boolean"
+          },
+          "HidePlayedInMoreLikeThis": {
+            "type": "boolean"
+          },
+          "HidePlayedInSuggestions": {
+            "type": "boolean"
+          },
+          "RememberAudioSelections": {
+            "type": "boolean"
+          },
+          "RememberSubtitleSelections": {
+            "type": "boolean"
+          },
+          "EnableNextEpisodeAutoPlay": {
+            "type": "boolean"
+          },
+          "ResumeRewindSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "IntroSkipMode": {
+            "$ref": "#/components/schemas/SegmentSkipMode"
+          },
+          "EnableLocalPassword": {
+            "type": "boolean",
+            "deprecated": true
+          },
+          "ShowSubtitlesOnSkipBack": {
+            "type": "boolean"
+          },
+          "ShowSubtitlesOnLowVolume": {
+            "type": "boolean"
+          }
+        },
+        "x-internal-ref-name": "MediaBrowser.Model.Configuration.UserConfiguration"
+      },
+      "SubtitlePlaybackMode": {
+        "enum": [
+          "Default",
+          "Always",
+          "OnlyForced",
+          "None",
+          "Smart",
+          "HearingImpaired"
+        ],
+        "type": "string",
+        "x-internal-ref-name": "MediaBrowser.Model.Configuration.SubtitlePlaybackMode"
+      },
+      "SegmentSkipMode": {
+        "enum": [
+          "ShowButton",
+          "AutoSkip",
+          "None"
+        ],
+        "type": "string",
+        "x-internal-ref-name": "MediaBrowser.Model.Configuration.SegmentSkipMode"
+      },
+      "UserPolicy": {
+        "type": "object",
+        "properties": {
+          "IsAdministrator": {
+            "type": "boolean"
+          },
+          "IsHidden": {
+            "type": "boolean"
+          },
+          "IsHiddenRemotely": {
+            "type": "boolean"
+          },
+          "IsHiddenFromUnusedDevices": {
+            "type": "boolean"
+          },
+          "IsDisabled": {
+            "type": "boolean"
+          },
+          "LockedOutDate": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "MaxParentalRating": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "AllowTagOrRating": {
+            "type": "boolean"
+          },
+          "BlockedTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "IsTagBlockingModeInclusive": {
+            "type": "boolean"
+          },
+          "IncludeTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "EnableUserPreferenceAccess": {
+            "type": "boolean"
+          },
+          "AccessSchedules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessSchedule"
+            }
+          },
+          "BlockUnratedItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnratedItem"
+            }
+          },
+          "EnableRemoteControlOfOtherUsers": {
+            "type": "boolean"
+          },
+          "EnableSharedDeviceControl": {
+            "type": "boolean"
+          },
+          "EnableRemoteAccess": {
+            "type": "boolean"
+          },
+          "EnableLiveTvManagement": {
+            "type": "boolean"
+          },
+          "EnableLiveTvAccess": {
+            "type": "boolean"
+          },
+          "EnableMediaPlayback": {
+            "type": "boolean"
+          },
+          "EnableAudioPlaybackTranscoding": {
+            "type": "boolean"
+          },
+          "EnableVideoPlaybackTranscoding": {
+            "type": "boolean"
+          },
+          "EnableTranscodingQuality": {
+            "type": "boolean"
+          },
+          "AutoRemoteQuality": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "EnablePlaybackRemuxing": {
+            "type": "boolean"
+          },
+          "EnableContentDeletion": {
+            "type": "boolean"
+          },
+          "RestrictedFeatures": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "EnableContentDeletionFromFolders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "EnableContentDownloading": {
+            "type": "boolean"
+          },
+          "EnableSubtitleDownloading": {
+            "type": "boolean"
+          },
+          "EnableSubtitleManagement": {
+            "type": "boolean"
+          },
+          "EnableSyncTranscoding": {
+            "type": "boolean"
+          },
+          "EnableMediaConversion": {
+            "type": "boolean"
+          },
+          "EnabledChannels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "EnableAllChannels": {
+            "type": "boolean"
+          },
+          "EnabledFolders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "EnableAllFolders": {
+            "type": "boolean"
+          },
+          "InvalidLoginAttemptCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "EnablePublicSharing": {
+            "type": "boolean"
+          },
+          "RemoteClientBitrateLimit": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "AuthenticationProviderId": {
+            "type": "string"
+          },
+          "ExcludedSubFolders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "SimultaneousStreamLimit": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "EnabledDevices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "EnableAllDevices": {
+            "type": "boolean"
+          },
+          "AllowCameraUpload": {
+            "type": "boolean"
+          },
+          "AllowSharingPersonalItems": {
+            "type": "boolean"
+          }
+        },
+        "x-internal-ref-name": "MediaBrowser.Model.Users.UserPolicy"
+      },
+      "AccessSchedule": {
+        "type": "object",
+        "properties": {
+          "DayOfWeek": {
+            "$ref": "#/components/schemas/DynamicDayOfWeek"
+          },
+          "StartHour": {
+            "type": "number",
+            "format": "double"
+          },
+          "EndHour": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "x-internal-ref-name": "MediaBrowser.Model.Configuration.AccessSchedule"
+      },
+      "DynamicDayOfWeek": {
+        "enum": [
+          "Sunday",
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday",
+          "Everyday",
+          "Weekday",
+          "Weekend"
+        ],
+        "type": "string",
+        "x-internal-ref-name": "MediaBrowser.Model.Configuration.DynamicDayOfWeek"
+      },
+      "UnratedItem": {
+        "enum": [
+          "Movie",
+          "Trailer",
+          "Series",
+          "Music",
+          "Game",
+          "Book",
+          "LiveTvChannel",
+          "LiveTvProgram",
+          "ChannelContent",
+          "Other"
+        ],
+        "type": "string",
+        "x-internal-ref-name": "MediaBrowser.Model.Configuration.UnratedItem"
+      },
+      "UserItemShareLevel": {
+        "enum": [
+          "None",
+          "Read",
+          "Write",
+          "Manage",
+          "ManageDelete"
+        ],
+        "type": "string",
+        "x-internal-ref-name": "MediaBrowser.Model.Dto.UserItemShareLevel"
+      },
+      "Session.PartySessionInfo": {
+        "type": "object",
+        "properties": {
+          "Id": {
+            "type": "string"
+          },
+          "User": {
+            "$ref": "#/components/schemas/UserDto"
+          },
+          "IsHost": {
+            "type": "boolean"
+          }
+        },
+        "x-internal-ref-name": "MediaBrowser.Controller.Session.PartySessionInfo"
       },
       "Playlists.PlaylistCreationResult": {
         "type": "object",
@@ -110873,6 +111476,9 @@
           "Container": {
             "type": "string"
           },
+          "SubtitleContainer": {
+            "type": "string"
+          },
           "AllowChunkedResponse": {
             "type": "boolean"
           },
@@ -111003,6 +111609,15 @@
           },
           "ParentId": {
             "type": "string"
+          },
+          "ExtensionButtons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Editors.EditorButtonItem"
+            }
+          },
+          "DescriptionSourceId": {
+            "type": "string"
           }
         },
         "x-internal-ref-name": "Emby.Web.GenericEdit.Editors.EditorRoot"
@@ -111108,6 +111723,15 @@
           },
           "ParentId": {
             "type": "string"
+          },
+          "ExtensionButtons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Editors.EditorButtonItem"
+            }
+          },
+          "DescriptionSourceId": {
+            "type": "string"
           }
         },
         "x-internal-ref-name": "Emby.Web.GenericEdit.Editors.EditorButtonItem"
@@ -111169,6 +111793,15 @@
             "type": "boolean"
           },
           "ParentId": {
+            "type": "string"
+          },
+          "ExtensionButtons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Editors.EditorButtonItem"
+            }
+          },
+          "DescriptionSourceId": {
             "type": "string"
           }
         },
@@ -111267,17 +111900,6 @@
           }
         },
         "x-internal-ref-name": "Emby.Api.UserLibrary.UpdateUserItemAccess"
-      },
-      "UserItemShareLevel": {
-        "enum": [
-          "None",
-          "Read",
-          "Write",
-          "Manage",
-          "ManageDelete"
-        ],
-        "type": "string",
-        "x-internal-ref-name": "MediaBrowser.Model.Dto.UserItemShareLevel"
       },
       "ItemCounts": {
         "type": "object",
@@ -111564,6 +112186,9 @@
             "type": "boolean"
           },
           "MergeTopLevelFolders": {
+            "type": "boolean"
+          },
+          "EnableEpisodeDetectionWithCombinedNumbers": {
             "type": "boolean"
           },
           "AutoGenerateChapterIntervalMinutes": {
@@ -112827,38 +113452,23 @@
           "RecordingFolders": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Api.NameIdDescriptionPair"
+              "$ref": "#/components/schemas/NameIdPair"
             }
           },
           "MovieRecordingFolders": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Api.NameIdDescriptionPair"
+              "$ref": "#/components/schemas/NameIdPair"
             }
           },
           "SeriesRecordingFolders": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Api.NameIdDescriptionPair"
+              "$ref": "#/components/schemas/NameIdPair"
             }
           }
         },
         "x-internal-ref-name": "Emby.LiveTV.Api.AvailableRecordingOptions"
-      },
-      "Api.NameIdDescriptionPair": {
-        "type": "object",
-        "properties": {
-          "ShortOverview": {
-            "type": "string"
-          },
-          "Name": {
-            "type": "string"
-          },
-          "Id": {
-            "type": "string"
-          }
-        },
-        "x-internal-ref-name": "Emby.LiveTV.Api.NameIdDescriptionPair"
       },
       "ParentalRating": {
         "type": "object",
@@ -113057,6 +113667,9 @@
             "type": "integer",
             "format": "int32",
             "nullable": true
+          },
+          "SubtitleEnableReason": {
+            "$ref": "#/components/schemas/SubtitleEnableReason"
           },
           "IsPaused": {
             "type": "boolean"
@@ -113859,12 +114472,6 @@
           "EnableSqLiteMmio": {
             "type": "boolean"
           },
-          "PlaylistsUpgradedToM3U": {
-            "type": "boolean"
-          },
-          "ImageExtractorUpgraded1": {
-            "type": "boolean"
-          },
           "EnablePeopleLetterSubFolders": {
             "type": "boolean"
           },
@@ -113896,7 +114503,7 @@
           "MigratedLibraryOptionsToDb": {
             "type": "boolean"
           },
-          "AllowLegacyLocalNetworkPassword": {
+          "MigratedSeriesDisplayOrder": {
             "type": "boolean"
           },
           "EnableSavedMetadataForPeople": {
@@ -113913,6 +114520,9 @@
           },
           "MaintenanceModeMessage": {
             "type": "string"
+          },
+          "KeepLiveStreamFiles": {
+            "type": "boolean"
           },
           "EnableDebugLevelLogging": {
             "type": "boolean"
@@ -114216,10 +114826,19 @@
           "ShowDialogFullScreen": {
             "type": "boolean"
           },
+          "DialogSize": {
+            "$ref": "#/components/schemas/Enums.UiDialogSize"
+          },
+          "ShowResetToDefaults": {
+            "type": "boolean"
+          },
           "IsInSequence": {
             "type": "boolean"
           },
           "RedirectViewUrl": {
+            "type": "string"
+          },
+          "HelpUrl": {
             "type": "string"
           },
           "EditObjectContainer": {
@@ -114251,6 +114870,18 @@
         ],
         "type": "string",
         "x-internal-ref-name": "Emby.Web.GenericUI.Model.Enums.UIViewType"
+      },
+      "Enums.UiDialogSize": {
+        "enum": [
+          "AutoFit",
+          "Small",
+          "Medium",
+          "MediumTall",
+          "FullScreenBorder",
+          "FullScreen"
+        ],
+        "type": "string",
+        "x-internal-ref-name": "Emby.Web.GenericUI.Model.Enums.UiDialogSize"
       },
       "GenericEdit.IEditObjectContainer": {
         "type": "object",
@@ -114357,410 +114988,6 @@
           }
         },
         "x-internal-ref-name": "Emby.Web.GenericUI.Api.Endpoints.RunUICommand"
-      },
-      "UserDto": {
-        "type": "object",
-        "properties": {
-          "Name": {
-            "type": "string"
-          },
-          "ServerId": {
-            "type": "string"
-          },
-          "ServerName": {
-            "type": "string"
-          },
-          "Prefix": {
-            "type": "string"
-          },
-          "ConnectUserName": {
-            "type": "string"
-          },
-          "DateCreated": {
-            "type": "string",
-            "format": "date-time",
-            "nullable": true
-          },
-          "ConnectLinkType": {
-            "$ref": "#/components/schemas/Connect.UserLinkType"
-          },
-          "Id": {
-            "type": "string"
-          },
-          "PrimaryImageTag": {
-            "type": "string"
-          },
-          "HasPassword": {
-            "type": "boolean",
-            "nullable": true
-          },
-          "HasConfiguredPassword": {
-            "type": "boolean",
-            "nullable": true
-          },
-          "EnableAutoLogin": {
-            "type": "boolean",
-            "nullable": true
-          },
-          "LastLoginDate": {
-            "type": "string",
-            "format": "date-time",
-            "nullable": true
-          },
-          "LastActivityDate": {
-            "type": "string",
-            "format": "date-time",
-            "nullable": true
-          },
-          "Configuration": {
-            "$ref": "#/components/schemas/UserConfiguration"
-          },
-          "Policy": {
-            "$ref": "#/components/schemas/UserPolicy"
-          },
-          "PrimaryImageAspectRatio": {
-            "type": "number",
-            "format": "double",
-            "nullable": true
-          },
-          "UserItemShareLevel": {
-            "$ref": "#/components/schemas/UserItemShareLevel"
-          }
-        },
-        "x-internal-ref-name": "MediaBrowser.Model.Dto.UserDto"
-      },
-      "Connect.UserLinkType": {
-        "enum": [
-          "LinkedUser",
-          "Guest"
-        ],
-        "type": "string",
-        "x-internal-ref-name": "MediaBrowser.Model.Connect.UserLinkType"
-      },
-      "UserConfiguration": {
-        "type": "object",
-        "properties": {
-          "AudioLanguagePreference": {
-            "type": "string"
-          },
-          "PlayDefaultAudioTrack": {
-            "type": "boolean"
-          },
-          "SubtitleLanguagePreference": {
-            "type": "string"
-          },
-          "ProfilePin": {
-            "type": "string"
-          },
-          "DisplayMissingEpisodes": {
-            "type": "boolean"
-          },
-          "SubtitleMode": {
-            "$ref": "#/components/schemas/SubtitlePlaybackMode"
-          },
-          "OrderedViews": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "LatestItemsExcludes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "MyMediaExcludes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "HidePlayedInLatest": {
-            "type": "boolean"
-          },
-          "HidePlayedInMoreLikeThis": {
-            "type": "boolean"
-          },
-          "HidePlayedInSuggestions": {
-            "type": "boolean"
-          },
-          "RememberAudioSelections": {
-            "type": "boolean"
-          },
-          "RememberSubtitleSelections": {
-            "type": "boolean"
-          },
-          "EnableNextEpisodeAutoPlay": {
-            "type": "boolean"
-          },
-          "ResumeRewindSeconds": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "IntroSkipMode": {
-            "$ref": "#/components/schemas/SegmentSkipMode"
-          },
-          "EnableLocalPassword": {
-            "type": "boolean",
-            "deprecated": true
-          }
-        },
-        "x-internal-ref-name": "MediaBrowser.Model.Configuration.UserConfiguration"
-      },
-      "SubtitlePlaybackMode": {
-        "enum": [
-          "Default",
-          "Always",
-          "OnlyForced",
-          "None",
-          "Smart",
-          "HearingImpaired"
-        ],
-        "type": "string",
-        "x-internal-ref-name": "MediaBrowser.Model.Configuration.SubtitlePlaybackMode"
-      },
-      "SegmentSkipMode": {
-        "enum": [
-          "ShowButton",
-          "AutoSkip",
-          "None"
-        ],
-        "type": "string",
-        "x-internal-ref-name": "MediaBrowser.Model.Configuration.SegmentSkipMode"
-      },
-      "UserPolicy": {
-        "type": "object",
-        "properties": {
-          "IsAdministrator": {
-            "type": "boolean"
-          },
-          "IsHidden": {
-            "type": "boolean"
-          },
-          "IsHiddenRemotely": {
-            "type": "boolean"
-          },
-          "IsHiddenFromUnusedDevices": {
-            "type": "boolean"
-          },
-          "IsDisabled": {
-            "type": "boolean"
-          },
-          "LockedOutDate": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "MaxParentalRating": {
-            "type": "integer",
-            "format": "int32",
-            "nullable": true
-          },
-          "AllowTagOrRating": {
-            "type": "boolean"
-          },
-          "BlockedTags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "IsTagBlockingModeInclusive": {
-            "type": "boolean"
-          },
-          "IncludeTags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "EnableUserPreferenceAccess": {
-            "type": "boolean"
-          },
-          "AccessSchedules": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AccessSchedule"
-            }
-          },
-          "BlockUnratedItems": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/UnratedItem"
-            }
-          },
-          "EnableRemoteControlOfOtherUsers": {
-            "type": "boolean"
-          },
-          "EnableSharedDeviceControl": {
-            "type": "boolean"
-          },
-          "EnableRemoteAccess": {
-            "type": "boolean"
-          },
-          "EnableLiveTvManagement": {
-            "type": "boolean"
-          },
-          "EnableLiveTvAccess": {
-            "type": "boolean"
-          },
-          "EnableMediaPlayback": {
-            "type": "boolean"
-          },
-          "EnableAudioPlaybackTranscoding": {
-            "type": "boolean"
-          },
-          "EnableVideoPlaybackTranscoding": {
-            "type": "boolean"
-          },
-          "EnableTranscodingQuality": {
-            "type": "boolean"
-          },
-          "AutoRemoteQuality": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "EnablePlaybackRemuxing": {
-            "type": "boolean"
-          },
-          "EnableContentDeletion": {
-            "type": "boolean"
-          },
-          "RestrictedFeatures": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "EnableContentDeletionFromFolders": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "EnableContentDownloading": {
-            "type": "boolean"
-          },
-          "EnableSubtitleDownloading": {
-            "type": "boolean"
-          },
-          "EnableSubtitleManagement": {
-            "type": "boolean"
-          },
-          "EnableSyncTranscoding": {
-            "type": "boolean"
-          },
-          "EnableMediaConversion": {
-            "type": "boolean"
-          },
-          "EnabledChannels": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "EnableAllChannels": {
-            "type": "boolean"
-          },
-          "EnabledFolders": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "EnableAllFolders": {
-            "type": "boolean"
-          },
-          "InvalidLoginAttemptCount": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "EnablePublicSharing": {
-            "type": "boolean"
-          },
-          "RemoteClientBitrateLimit": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "AuthenticationProviderId": {
-            "type": "string"
-          },
-          "ExcludedSubFolders": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "SimultaneousStreamLimit": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "EnabledDevices": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "EnableAllDevices": {
-            "type": "boolean"
-          },
-          "AllowCameraUpload": {
-            "type": "boolean"
-          },
-          "AllowSharingPersonalItems": {
-            "type": "boolean"
-          }
-        },
-        "x-internal-ref-name": "MediaBrowser.Model.Users.UserPolicy"
-      },
-      "AccessSchedule": {
-        "type": "object",
-        "properties": {
-          "DayOfWeek": {
-            "$ref": "#/components/schemas/DynamicDayOfWeek"
-          },
-          "StartHour": {
-            "type": "number",
-            "format": "double"
-          },
-          "EndHour": {
-            "type": "number",
-            "format": "double"
-          }
-        },
-        "x-internal-ref-name": "MediaBrowser.Model.Configuration.AccessSchedule"
-      },
-      "DynamicDayOfWeek": {
-        "enum": [
-          "Sunday",
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-          "Everyday",
-          "Weekday",
-          "Weekend"
-        ],
-        "type": "string",
-        "x-internal-ref-name": "MediaBrowser.Model.Configuration.DynamicDayOfWeek"
-      },
-      "UnratedItem": {
-        "enum": [
-          "Movie",
-          "Trailer",
-          "Series",
-          "Music",
-          "Game",
-          "Book",
-          "LiveTvChannel",
-          "LiveTvProgram",
-          "ChannelContent",
-          "Other"
-        ],
-        "type": "string",
-        "x-internal-ref-name": "MediaBrowser.Model.Configuration.UnratedItem"
       },
       "QueryResult_UserDto": {
         "type": "object",
@@ -115042,12 +115269,6 @@
               "type": "string"
             }
           },
-          "ProfileAndLevelInformation": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ProfileLevelInformation"
-            }
-          },
           "Id": {
             "type": "string"
           },
@@ -115176,7 +115397,13 @@
           "DxVa",
           "D3d11va",
           "VideoToolbox",
-          "Mmal"
+          "Mmal",
+          "Vulkan",
+          "D3d12va",
+          "OhCodec",
+          "RkMpp",
+          "Drm",
+          "OpenCL"
         ],
         "type": "string",
         "x-internal-ref-name": "Emby.Media.Model.Enums.SecondaryFrameworks"
@@ -115424,7 +115651,55 @@
           "yuv4",
           "zerocodec",
           "zlib",
-          "zmbv"
+          "zmbv",
+          "agm",
+          "apv",
+          "arbc",
+          "argo",
+          "avs2",
+          "avs3",
+          "cdtoons",
+          "cri",
+          "dnxuc",
+          "evc",
+          "gem",
+          "hdr",
+          "hymt",
+          "imm4",
+          "imm5",
+          "ipu",
+          "jpegxl",
+          "jpegxl_anim",
+          "lead",
+          "lscr",
+          "media100",
+          "mobiclip",
+          "msp2",
+          "mv30",
+          "mvdv",
+          "mvha",
+          "mwsc",
+          "notchlc",
+          "pdv",
+          "pfm",
+          "pgx",
+          "phm",
+          "photocd",
+          "prores_raw",
+          "prosumer",
+          "qoi",
+          "rasc",
+          "rtv1",
+          "rv60",
+          "sga",
+          "simbiosis_imx",
+          "vbn",
+          "vmix",
+          "vp4",
+          "vqc",
+          "vvc",
+          "wbmp",
+          "wcmv"
         ],
         "type": "string",
         "x-internal-ref-name": "Emby.Media.Model.Enums.VideoMediaTypes"
@@ -115578,123 +115853,54 @@
           "yuva422p12",
           "yuva444p12",
           "nv24",
-          "nv42"
+          "nv42",
+          "vulkan",
+          "y210",
+          "x2rgb10",
+          "x2bgr10",
+          "p210",
+          "p410",
+          "p216",
+          "p416",
+          "vuya",
+          "rgbaf16",
+          "vuyx",
+          "p012",
+          "y212",
+          "xv30",
+          "xv36",
+          "rgbf32",
+          "rgbaf32",
+          "p212",
+          "p412",
+          "gbrap14",
+          "d3d12",
+          "ayuv",
+          "uyva",
+          "vyu444",
+          "v30x",
+          "rgbf16",
+          "rgba128",
+          "rgb96",
+          "y216",
+          "xv48",
+          "gbrpf16",
+          "gbrapf16",
+          "grayf16",
+          "amf_surface",
+          "gray32",
+          "yaf32",
+          "yaf16",
+          "gbrap32",
+          "yuv444p10msb",
+          "yuv444p12msb",
+          "gbrp10msb",
+          "gbrp12msb",
+          "ohcodec",
+          "nv15"
         ],
         "type": "string",
         "x-internal-ref-name": "Emby.Media.Model.Enums.ColorFormats"
-      },
-      "ProfileLevelInformation": {
-        "type": "object",
-        "properties": {
-          "Profile": {
-            "$ref": "#/components/schemas/ProfileInformation"
-          },
-          "Level": {
-            "$ref": "#/components/schemas/LevelInformation"
-          }
-        },
-        "x-internal-ref-name": "Emby.Media.Model.Types.ProfileLevelInformation"
-      },
-      "ProfileInformation": {
-        "type": "object",
-        "properties": {
-          "ShortName": {
-            "type": "string"
-          },
-          "Description": {
-            "type": "string"
-          },
-          "Details": {
-            "type": "string"
-          },
-          "Id": {
-            "type": "string"
-          },
-          "BitDepths": {
-            "type": "array",
-            "items": {
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        },
-        "x-internal-ref-name": "Emby.Media.Model.Types.ProfileInformation"
-      },
-      "LevelInformation": {
-        "type": "object",
-        "properties": {
-          "ShortName": {
-            "type": "string"
-          },
-          "Description": {
-            "type": "string"
-          },
-          "Ordinal": {
-            "type": "integer",
-            "format": "int32",
-            "nullable": true
-          },
-          "MaxBitRate": {
-            "$ref": "#/components/schemas/BitRate"
-          },
-          "MaxBitRateDisplay": {
-            "type": "string"
-          },
-          "Id": {
-            "type": "string"
-          },
-          "ResolutionRates": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ResolutionWithRate"
-            }
-          },
-          "ResolutionRateStrings": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "ResolutionRatesDisplay": {
-            "type": "string"
-          }
-        },
-        "x-internal-ref-name": "Emby.Media.Model.Types.LevelInformation"
-      },
-      "ResolutionWithRate": {
-        "type": "object",
-        "properties": {
-          "Width": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "Height": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "FrameRate": {
-            "type": "number",
-            "format": "double"
-          },
-          "Resolution": {
-            "$ref": "#/components/schemas/Resolution"
-          }
-        },
-        "x-internal-ref-name": "Emby.Media.Model.Types.ResolutionWithRate"
-      },
-      "Resolution": {
-        "type": "object",
-        "properties": {
-          "Width": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "Height": {
-            "type": "integer",
-            "format": "int32"
-          }
-        },
-        "x-internal-ref-name": "Emby.Media.Model.Types.Resolution"
       },
       "CodecDirections": {
         "enum": [
@@ -116103,8 +116309,11 @@
             "format": "date-time",
             "nullable": true
           },
-          "DisplayOrder": {
-            "$ref": "#/components/schemas/SeriesDisplayOrder"
+          "SeriesOrder": {
+            "type": "string"
+          },
+          "SeriesOrderInfo": {
+            "$ref": "#/components/schemas/Entities.TV.SeriesOrderInfo"
           },
           "Name": {
             "type": "string"
@@ -116156,14 +116365,17 @@
         },
         "x-internal-ref-name": "MediaBrowser.Controller.Providers.SeriesInfo"
       },
-      "SeriesDisplayOrder": {
-        "enum": [
-          "Aired",
-          "Dvd",
-          "Absolute"
-        ],
-        "type": "string",
-        "x-internal-ref-name": "MediaBrowser.Model.Entities.SeriesDisplayOrder"
+      "Entities.TV.SeriesOrderInfo": {
+        "type": "object",
+        "properties": {
+          "ProviderKey": {
+            "type": "string"
+          },
+          "Id": {
+            "type": "string"
+          }
+        },
+        "x-internal-ref-name": "MediaBrowser.Controller.Entities.TV.SeriesOrderInfo"
       },
       "RemoteSearchQuery_GameInfo": {
         "type": "object",
@@ -117310,9 +117522,6 @@
         "properties": {
           "Id": {
             "type": "string"
-          },
-          "RefreshLibrary": {
-            "type": "boolean"
           }
         },
         "x-internal-ref-name": "Emby.Api.Library.RemoveVirtualFolder"
@@ -117503,6 +117712,9 @@
             "type": "integer",
             "format": "int32",
             "nullable": true
+          },
+          "IsPaused": {
+            "type": "boolean"
           }
         },
         "x-internal-ref-name": "MediaBrowser.Model.Session.PlayRequest"
@@ -117591,6 +117803,9 @@
             "type": "integer",
             "format": "int32",
             "nullable": true
+          },
+          "SubtitleEnableReason": {
+            "$ref": "#/components/schemas/SubtitleEnableReason"
           },
           "IsPaused": {
             "type": "boolean"
@@ -118296,6 +118511,11 @@
             "format": "int64",
             "nullable": true
           },
+          "SeekToleranceTicks": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
           "ControllingUserId": {
             "type": "string"
           }
@@ -118798,13 +119018,6 @@
       "externalDocs": {
         "description": "API Reference: EnvironmentService",
         "url": "https://betadev.emby.media/reference/RestAPI/EnvironmentService.html"
-      }
-    },
-    {
-      "name": "ApiEndpointService",
-      "externalDocs": {
-        "description": "API Reference: ApiEndpointService",
-        "url": "https://betadev.emby.media/reference/RestAPI/ApiEndpointService.html"
       }
     },
     {
