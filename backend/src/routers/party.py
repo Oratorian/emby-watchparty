@@ -330,7 +330,10 @@ async def join_party(
     session["party_id"] = party_id
     session["client_id"] = body.client_id
     session["display_name"] = body.display_name
-    if not owns_identity:
+    # A host may have unbound their party/client fields through HTTP leave
+    # while retaining the party-scoped grant needed to reclaim their seat.
+    # Keep it only when it already proves ownership of this target party.
+    if not owns_identity and not owns_host_identity:
         session.pop("host_session_grant", None)
     if body.avatar_uuid:
         session["avatar_uuid"] = body.avatar_uuid
@@ -349,7 +352,11 @@ async def join_party(
     # members don't get bumped on every new join.
     dev_user, dev_pw = _env_dev_host_creds(config)
     is_host = party.host_client_id == body.client_id
-    if dev_user and dev_pw and not party_manager.is_unlocked(party_id):
+    # A returning host already proved ownership above. During the disconnect
+    # grace window the party is temporarily locked, but rotating its grant here
+    # would invalidate a replacement socket that handshook with the old cookie.
+    # Let that socket reclaim presence using the existing grant instead.
+    if dev_user and dev_pw and not party_manager.is_unlocked(party_id) and not owns_host_identity:
         try:
             auth = await provider.authenticate_user(dev_user, dev_pw)
         except MediaServerUnavailableError:
