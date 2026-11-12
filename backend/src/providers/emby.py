@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import secrets
 from typing import TYPE_CHECKING
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urljoin, urlsplit
 
 import httpx
 
@@ -26,6 +26,7 @@ from backend.src.providers.models import (
     ProviderCredentials,
     ProviderIdentity,
     ProviderReadiness,
+    UnsafeProviderResourceError,
 )
 from backend.src.providers.normalization import (
     emby_family_query,
@@ -521,6 +522,9 @@ class EmbyProvider:
             master=HLSResource(upstream),
             credentials=request.credentials,
             browser_path=browser_path,
+            upstream_headers={
+                key: str(value) for key, value in (source.get("RequiredHttpHeaders") or {}).items()
+            },
         )
 
     async def report_playback(self, event: PlaybackEvent) -> bool:
@@ -570,3 +574,110 @@ class EmbyProvider:
                 access_token=plan.credentials.access_token,
             )
         )
+
+    @staticmethod
+    def _decoded_hls_uri(uri: str) -> str:
+        decoded = uri
+        for _ in range(8):
+            expanded = unquote(decoded)
+            if expanded == decoded:
+                break
+            decoded = expanded
+        else:
+            raise UnsafeProviderResourceError("HLS URI exceeded decoding limit")
+        if not decoded or any(
+            ord(character) < 32 or ord(character) == 127 for character in decoded
+        ):
+            raise UnsafeProviderResourceError("HLS URI contains unsafe characters")
+        if "\\" in decoded:
+            raise UnsafeProviderResourceError("HLS URI contains a backslash")
+        try:
+            path = urlsplit(decoded).path
+        except ValueError as exc:
+            raise UnsafeProviderResourceError("HLS URI is malformed") from exc
+        if any(part in {".", ".."} for part in path.split("/")):
+            raise UnsafeProviderResourceError("HLS URI contains traversal")
+        return decoded
+
+    def _validate_hls_url(self, plan: PlaybackPlan, url: str) -> None:
+        child = urlsplit(self._decoded_hls_uri(url))
+        configured = urlsplit(self._client.server_url)
+        server_prefix = f"{configured.path.rstrip('/')}/"
+        item_path = child.path[len(server_prefix) :] if child.path.startswith(server_prefix) else ""
+        parts = item_path.split("/")
+        # ASP.NET route names are case-insensitive. Keep the reverse-proxy
+        # base path and the selected item exact while allowing Emby's fixed
+        # route components to vary their capitalization in playlist URIs.
+        within_item = (
+            len(parts) >= 4
+            and parts[0].lower() == "emby"
+            and parts[1].lower() == "videos"
+            and parts[2] == quote(plan.item_id, safe="")
+        )
+        if (
+            child.scheme not in {"http", "https"}
+            or (child.scheme, child.netloc) != (configured.scheme, configured.netloc)
+            or child.username is not None
+            or child.password is not None
+            or child.fragment
+            or not within_item
+        ):
+            raise UnsafeProviderResourceError("HLS URI is outside the playback plan")
+
+    def _hls_headers(
+        self, plan: PlaybackPlan, resource: HLSResource, range_header: str | None
+    ) -> dict[str, str]:
+        if resource != plan.master and resource not in plan.resources.values():
+            raise UnsafeProviderResourceError("HLS resource is not registered")
+        # Validate again at the request boundary, including the master. A
+        # registered resource must never bypass the configured item/origin scope.
+        self._validate_hls_url(plan, resource.url)
+        headers = self._client._headers(plan.credentials.access_token, plan.credentials.user_id)
+        headers.update(plan.upstream_headers)
+        if range_header:
+            headers["Range"] = range_header
+        return headers
+
+    def resolve_hls_resource(
+        self, plan: PlaybackPlan, parent: HLSResource, uri: str
+    ) -> HLSResource:
+        if parent != plan.master and parent not in plan.resources.values():
+            raise UnsafeProviderResourceError("HLS parent resource is not registered")
+        self._validate_hls_url(plan, parent.url)
+        # Check traversal before urljoin normalizes dot segments away.
+        self._decoded_hls_uri(uri)
+        child_url = urljoin(parent.url, uri)
+        self._validate_hls_url(plan, child_url)
+        return HLSResource(child_url)
+
+    async def fetch_hls_resource(
+        self,
+        plan: PlaybackPlan,
+        resource: HLSResource,
+        *,
+        range_header: str | None = None,
+        head: bool = False,
+    ) -> httpx.Response:
+        headers = self._hls_headers(plan, resource, range_header)
+        # Use the gateway's client so redirect refusal is explicit even when a
+        # caller supplied an AsyncClient configured to follow redirects.
+        return await self._client.gateway.client.request(
+            "HEAD" if head else "GET",
+            resource.url,
+            headers=headers,
+            timeout=30.0,
+            follow_redirects=False,
+        )
+
+    async def open_hls_resource(
+        self,
+        plan: PlaybackPlan,
+        resource: HLSResource,
+        *,
+        range_header: str | None = None,
+    ) -> httpx.Response:
+        headers = self._hls_headers(plan, resource, range_header)
+        request = self._client.gateway.client.build_request(
+            "GET", resource.url, headers=headers, timeout=30.0
+        )
+        return await self._client.gateway.client.send(request, stream=True, follow_redirects=False)
