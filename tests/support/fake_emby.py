@@ -401,12 +401,12 @@ def create_fake_emby_app(state: FakeEmbyState | None = None) -> FastAPI:
                 "TotalRecordCount": len(state.user_items),
             }
         if user_id == "user-preview":
-            catalog = (
+            preview_items = (
                 [PREVIEW_EPISODE]
                 if request.query_params.get("ParentId") == "series-1"
                 else [PREVIEW_SERIES]
             )
-            return {"Items": catalog, "TotalRecordCount": len(catalog)}
+            return {"Items": preview_items, "TotalRecordCount": len(preview_items)}
         if user_id not in {"user-large", "user-alphabet"}:
             return {"Items": [MOVIE], "TotalRecordCount": 1}
 
