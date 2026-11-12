@@ -500,6 +500,7 @@ class EmbyProvider:
                 round(request.start_seconds * 10_000_000) if request.start_seconds > 0 else None
             ),
             client_codecs=set(request.client_codecs),
+            force_transcode=request.force_transcode,
         )
         query = browser_path.split("?", 1)[1] if "?" in browser_path else ""
         upstream = f"{self._client.server_url}/emby/Videos/{request.item_id}/master.m3u8"
@@ -514,6 +515,7 @@ class EmbyProvider:
             method=(
                 PlaybackMethod.HLS_TRANSCODE
                 if "TranscodeReasons=" in browser_path
+                or "EnableAutoStreamCopy=false" in browser_path
                 else PlaybackMethod.HLS_COPY
             ),
             master=HLSResource(upstream),
@@ -557,3 +559,14 @@ class EmbyProvider:
             access_token=event.credentials.access_token,
         )
         return bool(reported and cleaned)
+
+    async def cancel_preview(self, plan: PlaybackPlan) -> bool:
+        """Stop only this encoding, without reporting a watched position."""
+        if not plan.play_session_id.strip():
+            raise ValueError("Preview cancellation requires a play session ID")
+        return bool(
+            await self._client.stop_active_encodings(
+                play_session_id=plan.play_session_id,
+                access_token=plan.credentials.access_token,
+            )
+        )

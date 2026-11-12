@@ -35,6 +35,7 @@ class StreamBuilder:
         quality: str,
         start_time_ticks: int | None = None,
         client_codecs: set[str] | None = None,
+        force_transcode: bool = False,
     ) -> list:
         """Build HLS URL parameters for Emby.
 
@@ -135,7 +136,7 @@ class StreamBuilder:
         # host. Default off -- only useful when stream-copied sources
         # misbehave on large seeks (Skip Intro / timeline drag) or
         # HLS.js can't seek into them cleanly.
-        if self._config and self._config.FORCE_TRANSCODE:
+        if force_transcode or (self._config and self._config.FORCE_TRANSCODE):
             params.append("EnableAutoStreamCopy=false")
 
         # Bitrate cap: only when an explicit kbps was selected. Clamp to
@@ -252,6 +253,7 @@ class StreamBuilder:
         quality: str,
         start_time_ticks: int | None = None,
         client_codecs: set[str] | None = None,
+        force_transcode: bool = False,
     ) -> str:
         """Build the full relative HLS stream URL"""
         params = self.build_params(
@@ -263,6 +265,7 @@ class StreamBuilder:
             quality,
             start_time_ticks,
             client_codecs=client_codecs,
+            force_transcode=force_transcode,
         )
         param_string = "&".join(params)
         prefix = app_prefix or ""

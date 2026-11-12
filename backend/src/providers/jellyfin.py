@@ -781,6 +781,17 @@ class JellyfinProvider:
     async def stop_playback(self, event: PlaybackEvent) -> bool:
         return await self._send_playback_event("/Sessions/Playing/Stopped", event)
 
+    async def cancel_preview(self, plan: PlaybackPlan) -> bool:
+        """Stop only this encoding, without changing the user's watched state."""
+        if not plan.play_session_id.strip():
+            raise ValueError("Preview cancellation requires a play session ID")
+        return bool(
+            await self._client.stop_active_encodings(
+                play_session_id=plan.play_session_id,
+                access_token=plan.credentials.access_token,
+            )
+        )
+
     async def _send_playback_event(self, path: str, event: PlaybackEvent) -> bool:
         """Report a playback event. Returns success; never raises.
 
