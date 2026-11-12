@@ -1,4 +1,4 @@
-"""Bounded per-viewer show previews, separate from synchronized party playback."""
+"""Bounded per-viewer title previews, separate from synchronized party playback."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from backend.src.party_manager import PartyManager
     from backend.src.providers.base import MediaServerProvider
-    from backend.src.providers.models import PlaybackPlan
+    from backend.src.providers.models import MediaItem, PlaybackPlan
 
 PREVIEW_SECONDS = 120.0
 PREVIEW_TTL_SECONDS = 180
@@ -36,7 +36,7 @@ MAX_PREVIEW_REQUESTS = 8
 
 
 class PreviewUnavailableError(Exception):
-    """A show cannot currently provide a background preview."""
+    """A title cannot currently provide a background preview."""
 
 
 class PreviewCapacityError(Exception):
@@ -97,7 +97,7 @@ class PreviewManager:
             and party.host_user_id == preview.credentials.user_id
         )
 
-    async def create(self, party_id: str, client_id: str, series_id: str) -> ShowPreview:
+    async def create(self, party_id: str, client_id: str, item_id: str) -> ShowPreview:
         owner = (party_id, client_id)
         while True:
             async with self._lock:
@@ -125,7 +125,7 @@ class PreviewManager:
                     )
                     self._records[preview.preview_id] = preview
                     self._owners[owner] = preview
-                    preview.prepare_task = asyncio.create_task(self._prepare(preview, series_id))
+                    preview.prepare_task = asyncio.create_task(self._prepare(preview, item_id))
                     break
             await self._discard(previous)
         try:
@@ -135,37 +135,49 @@ class PreviewManager:
             await self._discard(preview)
             raise
 
-    async def _prepare(self, preview: ShowPreview, series_id: str) -> None:
+    async def _prepare(self, preview: ShowPreview, item_id: str) -> None:
         async with asyncio.timeout(20):
-            details = await self._provider.get_details(series_id, preview.credentials)
-            if details is None or details.kind != "series":
+            details = await self._provider.get_details(item_id, preview.credentials)
+            if details is None:
                 raise PreviewUnavailableError
-            # The providers already support random sorting. Fetch only a small
-            # candidate page, rather than every episode of a long-running show.
-            page = await self._provider.query_catalog(
-                CatalogQuery(
-                    scope=CatalogScope(
-                        parent_id=series_id, include_kinds=("episode",), recursive=True
+            candidates: list[MediaItem]
+            if details.kind == "series":
+                # The providers already support random sorting. Fetch only a
+                # small candidate page instead of every episode of a long show.
+                page = await self._provider.query_catalog(
+                    CatalogQuery(
+                        scope=CatalogScope(
+                            parent_id=item_id, include_kinds=("episode",), recursive=True
+                        ),
+                        page=CatalogPage(limit=8),
+                        sort=CatalogSort(field="random"),
                     ),
-                    page=CatalogPage(limit=8),
-                    sort=CatalogSort(field="random"),
-                ),
-                preview.credentials,
-            )
+                    preview.credentials,
+                )
+                candidates = [
+                    item
+                    for item in page.items
+                    if item.kind == "episode" and item.series_id in {None, item_id}
+                ]
+            elif details.kind == "movie":
+                # A movie is already the playable source. It must not trigger
+                # an episode lookup, which may return unrelated media.
+                candidates = [details]
+            else:
+                raise PreviewUnavailableError
             candidates = [
                 item
-                for item in page.items
-                if item.kind == "episode"
-                and item.is_playable
+                for item in candidates
+                if item.is_playable
+                and not item.is_folder
                 and item.runtime_seconds is not None
                 and math.isfinite(item.runtime_seconds)
                 and item.runtime_seconds >= PREVIEW_SECONDS + 15
-                and item.series_id in {None, series_id}
             ]
             if not candidates:
                 raise PreviewUnavailableError
-            episode = secrets.choice(candidates)
-            runtime = episode.runtime_seconds or 0.0
+            selected = secrets.choice(candidates)
+            runtime = selected.runtime_seconds or 0.0
             first = min(120.0, max(10.0, runtime * 0.15))
             last = min(runtime - PREVIEW_SECONDS - 5, runtime * 0.75)
             first = min(first, last)
@@ -176,7 +188,7 @@ class PreviewManager:
             # timeline, including source files with unusually wide keyframes.
             preview.plan = await self._provider.prepare_playback(
                 PlaybackRequest(
-                    item_id=episode.id,
+                    item_id=selected.id,
                     credentials=preview.credentials,
                     subtitle_index=-1,
                     quality="360p-750",

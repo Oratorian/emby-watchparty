@@ -14,6 +14,20 @@ async function openShow(page: Page) {
   await expect(page.getByRole('heading', { name: 'Preview Series', exact: true })).toBeVisible()
 }
 
+async function openMovie(page: Page) {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create Party', exact: true }).click()
+  await page.getByPlaceholder('Your name (optional)').fill('Movie preview viewer')
+  await page.getByRole('button', { name: 'Join', exact: true }).click()
+  await page.getByRole('main').getByRole('button', { name: 'Login to Become Host', exact: true }).click()
+  await page.getByPlaceholder('Emby username').fill('Alice')
+  await page.getByPlaceholder('Emby password').fill('password')
+  await page.getByRole('button', { name: 'Become Host', exact: true }).click()
+  await page.getByRole('button', { name: 'Open Movies', exact: true }).click()
+  await page.getByRole('button', { name: 'Open Fake Movie', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Fake Movie', exact: true })).toBeVisible()
+}
+
 test.use({ viewport: { width: 1600, height: 900 }, locale: 'en-US' })
 
 test('a show background starts muted, can be unmuted and releases its isolated stream', async ({ page, browserName, request }) => {
@@ -62,6 +76,44 @@ test('a show background starts muted, can be unmuted and releases its isolated s
     && row.body?.PlaySessionId === session)).toBe(false)
 })
 
+test('a movie background autoplays muted without starting party playback', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Chromium owns the fake-Emby media playback checks.')
+  const creation = page.waitForResponse(response => response.url().endsWith('/api/v2/items/movie-1/preview'))
+  await openMovie(page)
+  const response = await creation
+  expect(response.status()).toBe(201)
+  const lease = await response.json() as { preview_id: string; url: string; duration_seconds: number }
+  expect(lease.duration_seconds).toBe(120)
+  expect(lease.url).toContain('/api/v2/previews/')
+  expect(lease.url).not.toMatch(/fake-access-token|127\.0\.0\.1:5012/)
+  const group = page.getByRole('group', { name: 'Background preview', exact: true })
+  const video = group.locator('.show-preview-video')
+  await expect(group.getByRole('button', { name: 'Pause preview', exact: true })).toBeVisible({ timeout: 15_000 })
+  await expect(video).toHaveJSProperty('muted', true)
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(2)
+  await expect(video).toHaveClass(/is-playing/)
+  await expect(page.getByRole('button', { name: 'Set up playback', exact: true })).toBeVisible()
+  await expect(page.locator('video#videoElement')).toHaveCount(0)
+
+  await group.getByRole('button', { name: 'Unmute preview', exact: true }).click()
+  await expect(video).toHaveJSProperty('muted', false)
+  await group.getByRole('button', { name: 'Pause preview', exact: true }).click()
+  await expect(video).toHaveJSProperty('paused', true)
+  await group.getByRole('button', { name: 'Play preview', exact: true }).click()
+  await expect(group.getByRole('button', { name: 'Pause preview', exact: true })).toBeVisible()
+  await expect(video).toHaveJSProperty('muted', false)
+  await expect(page.locator('video#videoElement')).toHaveCount(0)
+
+  const released = page.waitForResponse(result => result.request().method() === 'DELETE'
+    && result.url().endsWith(`/api/v2/previews/${lease.preview_id}`))
+  await page.getByRole('banner').getByRole('button', { name: 'Hide Library', exact: true }).click()
+  expect((await released).status()).toBe(204)
+  await expect(page.locator('.show-preview-video')).toHaveCount(0)
+  await expect(page.locator('video#videoElement')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'No video selected', exact: true })).toBeVisible()
+  expect((await page.request.get(lease.url)).status()).toBe(404)
+})
+
 test('autoplay refusal offers an explicit play action without enabling audio', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Uses the fake-Emby HLS media boundary.')
   await page.addInitScript(() => {
@@ -76,7 +128,7 @@ test('autoplay refusal offers an explicit play action without enabling audio', a
     }
   })
   await openShow(page)
-  const group = page.getByRole('group', { name: 'Show preview', exact: true })
+  const group = page.getByRole('group', { name: 'Background preview', exact: true })
   await expect(group.getByRole('button', { name: 'Unmute preview', exact: true })).toBeVisible({ timeout: 15_000 })
   await expect(group.getByRole('button', { name: 'Play preview', exact: true })).toBeVisible()
   await expect(page.locator('.show-preview-video')).toHaveJSProperty('muted', true)
@@ -92,7 +144,7 @@ test('reduced motion keeps the still backdrop without creating an automatic prev
     if (request.method() === 'POST' && request.url().endsWith('/items/series-1/preview')) requests++
   })
   await openShow(page)
-  await expect(page.getByRole('group', { name: 'Show preview', exact: true })
+  await expect(page.getByRole('group', { name: 'Background preview', exact: true })
     .getByRole('button', { name: 'Play preview', exact: true })).toBeVisible()
   await page.waitForTimeout(1100)
   expect(requests).toBe(0)

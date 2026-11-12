@@ -66,7 +66,7 @@ function intersect(visible: boolean) {
 }
 
 async function mountPreview() {
-  const wrapper = mount(ShowBackgroundPreview, { props: { seriesId: 'series-1' } })
+  const wrapper = mount(ShowBackgroundPreview, { props: { itemId: 'series-1' } })
   wrappers.push(wrapper)
   await flushPromises()
   intersect(true)
@@ -140,7 +140,7 @@ describe('show background previews', () => {
     expect(video.element.muted).toBe(false)
     await video.trigger('playing')
     vi.mocked(api.startShowPreview).mockResolvedValueOnce(response('preview-2'))
-    await wrapper.setProps({ seriesId: 'series-2' })
+    await wrapper.setProps({ itemId: 'series-2' })
     const prepared = await prepare(wrapper)
     expect(prepared.video.element.muted).toBe(true)
     expect(api.startShowPreview).toHaveBeenLastCalledWith('series-2', { signal: expect.any(AbortSignal) })
@@ -176,7 +176,7 @@ describe('show background previews', () => {
     await vi.advanceTimersByTimeAsync(800)
     await flushPromises()
     const signal = vi.mocked(api.startShowPreview).mock.calls[0]![1]!.signal!
-    await wrapper.setProps({ seriesId: 'series-2' })
+    await wrapper.setProps({ itemId: 'series-2' })
     expect(signal.aborted).toBe(true)
     resolve(response('old-preview'))
     await flushPromises()

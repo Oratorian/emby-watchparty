@@ -1,4 +1,4 @@
-"""Authenticated show-preview leases and an isolated opaque HLS proxy."""
+"""Authenticated title-preview leases and an isolated opaque HLS proxy."""
 
 from urllib.parse import quote, urlsplit
 
@@ -50,7 +50,7 @@ class ShowPreviewResponseV2(V2Model):
 
 
 @router.post(
-    "/items/{series_id}/preview",
+    "/items/{item_id}/preview",
     status_code=201,
     response_model=ShowPreviewResponseV2,
     responses={
@@ -59,14 +59,14 @@ class ShowPreviewResponseV2(V2Model):
     },
 )
 async def create_show_preview(
-    series_id: str,
+    item_id: str,
     request: Request,
     session: PartySession = Depends(require_party_unlocked),
     manager=Depends(get_preview_manager),
     config=Depends(get_config),
 ):
     try:
-        preview = await manager.create(session.party_id, session.client_id, series_id)
+        preview = await manager.create(session.party_id, session.client_id, item_id)
     except PreviewCapacityError as exc:
         raise HTTPException(503, "Preview capacity reached", headers={"Retry-After": "2"}) from exc
     except PreviewUnavailableError as exc:

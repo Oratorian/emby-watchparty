@@ -4,7 +4,7 @@ import type Hls from 'hls.js'
 import { api } from '@/api/client'
 import { t } from '@/i18n'
 
-const props = withDefaults(defineProps<{ seriesId: string; active?: boolean }>(), { active: true })
+const props = withDefaults(defineProps<{ itemId: string; active?: boolean }>(), { active: true })
 type State = 'idle' | 'loading' | 'playing' | 'paused' | 'blocked' | 'finished' | 'failed'
 const state = ref<State>('idle')
 const root = ref<HTMLElement | null>(null)
@@ -116,7 +116,7 @@ async function start(manual = false) {
       stop('failed')
       return
     }
-    const response = await api.startShowPreview(props.seriesId, { signal: controller.signal })
+    const response = await api.startShowPreview(props.itemId, { signal: controller.signal })
     if (current !== generation || disposed || !eligible.value) {
       release(response.preview_id, disposed || !visible.value)
       return
@@ -223,7 +223,7 @@ watch(eligible, (allowed) => {
   if (allowed) scheduleAutomatic()
   else stop('idle', !visible.value)
 }, { flush: 'sync' })
-watch(() => props.seriesId, () => {
+watch(() => props.itemId, () => {
   stop()
   attempted = false
   scheduleAutomatic()

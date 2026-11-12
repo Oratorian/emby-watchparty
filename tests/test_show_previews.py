@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import secrets
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from urllib.parse import urljoin
@@ -52,11 +53,16 @@ class PreviewProvider:
             is_playable=True,
             runtime_seconds=600,
         )
+        self.movie = MediaItemDetails(
+            id="movie-1", name="Movie", kind="movie", is_playable=True, runtime_seconds=600
+        )
 
     async def get_details(self, item_id, _credentials):
-        return MediaItemDetails(
-            id=item_id, name="Show", kind="series" if item_id == "series-1" else "movie"
-        )
+        if item_id == "movie-1":
+            return self.movie
+        if item_id == "series-1":
+            return MediaItemDetails(id=item_id, name="Show", kind="series")
+        return None
 
     async def query_catalog(self, query, _credentials):
         self.queries.append(query)
@@ -75,7 +81,9 @@ class PreviewProvider:
             media_source_id="source-1",
             play_session_id=f"session-{len(self.requests)}",
             method=PlaybackMethod.HLS_TRANSCODE,
-            master=HLSResource("http://media.test/Videos/episode-1/master.m3u8?api_key=secret"),
+            master=HLSResource(
+                f"http://media.test/Videos/{request.item_id}/master.m3u8?api_key=secret"
+            ),
             credentials=request.credentials,
         )
 
@@ -90,9 +98,9 @@ class PreviewProvider:
     async def stop_playback(self, _event):
         raise AssertionError("A preview must not report stopped history")
 
-    def resolve_hls_resource(self, _plan, parent, uri):
+    def resolve_hls_resource(self, plan, parent, uri):
         target = urljoin(parent.url, uri)
-        if not target.startswith("http://media.test/Videos/episode-1/"):
+        if not target.startswith(f"http://media.test/Videos/{plan.item_id}/"):
             raise UnsafeProviderResourceError("Unapproved resource")
         return HLSResource(target)
 
@@ -168,6 +176,72 @@ def test_preview_is_bounded_and_separate_from_party_playback():
         finally:
             await manager.close()
         assert provider.cancelled == ["session-1"]
+
+    asyncio.run(exercise())
+
+
+def test_movie_preview_uses_the_movie_without_an_episode_query():
+    async def exercise():
+        manager, provider, party = setup_manager()
+        try:
+            preview = await manager.create("ROOM", "a", "movie-1")
+            assert provider.queries == []
+            request = provider.requests[0]
+            assert request.item_id == "movie-1"
+            assert request.quality == "360p-750"
+            assert request.force_transcode
+            assert request.subtitle_index == -1
+            assert 10 <= preview.start_seconds <= 600 - 120 - 5
+            assert party.current_video is None
+            assert party.user_streams == {}
+            assert not party.playback_state.playing
+        finally:
+            await manager.close()
+        assert provider.cancelled == ["session-1"]
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"is_playable": False},
+        {"is_folder": True},
+        {"kind": "episode"},
+        {"kind": "folder"},
+        {"runtime_seconds": None},
+        {"runtime_seconds": 134},
+        {"runtime_seconds": float("nan")},
+        {"runtime_seconds": float("inf")},
+    ],
+)
+def test_unplayable_movie_previews_do_not_start_transcodes_or_query_episodes(overrides):
+    async def exercise():
+        manager, provider, _party = setup_manager()
+        provider.movie = replace(provider.movie, **overrides)
+        try:
+            with pytest.raises(PreviewUnavailableError):
+                await manager.create("ROOM", "a", "movie-1")
+            assert provider.queries == []
+            assert provider.requests == []
+            assert not manager._records
+        finally:
+            await manager.close()
+
+    asyncio.run(exercise())
+
+
+def test_shortest_supported_movie_keeps_the_full_clip_inside_its_runtime():
+    async def exercise():
+        manager, provider, _party = setup_manager()
+        provider.movie = replace(provider.movie, runtime_seconds=135)
+        try:
+            preview = await manager.create("ROOM", "a", "movie-1")
+            assert preview.start_seconds == 10
+            assert provider.requests[0].start_seconds + 120 <= 135 - 5
+            assert not provider.queries
+        finally:
+            await manager.close()
 
     asyncio.run(exercise())
 
@@ -558,7 +632,10 @@ def test_preview_openapi_has_binary_contracts_and_unique_operation_ids():
 
 
 @pytest.mark.parametrize("kind", ["emby", "jellyfin"])
-def test_real_provider_preview_lifecycle_does_not_touch_party_or_watch_history(tmp_path, kind):
+@pytest.mark.parametrize("media_kind", ["series", "movie"])
+def test_real_provider_preview_lifecycle_does_not_touch_party_or_watch_history(
+    tmp_path, kind, media_kind
+):
     state = FakeEmbyState() if kind == "emby" else FakeJellyfinState()
     fake = create_fake_emby_app(state) if kind == "emby" else create_fake_jellyfin_app(state)
     if kind == "jellyfin":
@@ -609,8 +686,15 @@ def test_real_provider_preview_lifecycle_does_not_touch_party_or_watch_history(t
             party = app.state.party_manager.get(party_id)
             party.sid_client_ids["sid-a"] = "a"
             provider = app.state.media_server
+            item_id = "movie-1" if media_kind == "movie" else "series-1"
             provider.get_details = AsyncMock(
-                return_value=MediaItemDetails(id="series-1", name="Show", kind="series")
+                return_value=MediaItemDetails(
+                    id=item_id,
+                    name="Title",
+                    kind=media_kind,
+                    is_playable=media_kind == "movie",
+                    runtime_seconds=600,
+                )
             )
             provider.query_catalog = AsyncMock(
                 return_value=MediaPage(
@@ -626,8 +710,12 @@ def test_real_provider_preview_lifecycle_does_not_touch_party_or_watch_history(t
                     )
                 )
             )
-            preview = await client.post("/api/v2/items/series-1/preview")
+            preview = await client.post(f"/api/v2/items/{item_id}/preview")
             assert preview.status_code == 201, preview.text
+            if media_kind == "movie":
+                provider.query_catalog.assert_not_awaited()
+            else:
+                provider.query_catalog.assert_awaited_once()
             data = preview.json()
             master = await client.get(data["url"])
             assert master.status_code == 200, master.text

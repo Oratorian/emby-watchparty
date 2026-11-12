@@ -139,13 +139,13 @@
     <template v-else-if="details">
       <header
         class="detail-hero"
-        :class="{ 'has-backdrop': !!details.BackdropImageTags?.length, 'has-preview': details.Type === 'Series' && previewAllowed }"
+        :class="{ 'has-backdrop': !!details.BackdropImageTags?.length, 'has-preview': previewSupported }"
         :style="details.BackdropImageTags?.length ? { backgroundImage: `url(${backdropUrl})` } : {}"
       >
         <ShowBackgroundPreview
-          v-if="details.Type === 'Series' && previewAllowed"
+          v-if="previewSupported"
           :key="details.Id"
-          :series-id="details.Id"
+          :item-id="details.Id"
         />
         <img
           v-if="details.ImageTags?.Primary"
@@ -576,6 +576,8 @@ function startPlayback() {
 }
 
 const playable = computed(() => ['Movie', 'Episode', 'Video'].includes(details.value?.Type || ''))
+const previewSupported = computed(() => props.previewAllowed
+  && ['Movie', 'Series'].includes(details.value?.Type || ''))
 const browsable = computed(() => ['Series', 'Season', 'BoxSet'].includes(details.value?.Type || ''))
 const tagline = computed(() => details.value?.Tagline || details.value?.Taglines?.[0] || '')
 const runtime = computed(() => {
